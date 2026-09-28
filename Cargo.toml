@@ -1,0 +1,87 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "Apache-2.0"
+repository = "https://example.invalid/controlhub"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+dbg_macro = "warn"
+todo = "warn"
+
+[workspace.dependencies]
+# internal
+controlhub-domain = { path = "crates/controlhub-domain" }
+controlhub-protocol = { path = "crates/controlhub-protocol" }
+controlhub-storage = { path = "crates/controlhub-storage" }
+controlhub-engine-core = { path = "crates/controlhub-engine-core" }
+controlhub-runtime = { path = "crates/controlhub-runtime" }
+
+# pure / shared
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+sha2 = "0.10"
+hex = "0.4"
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+base64 = "0.22"
+
+# async / server
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "signal", "time", "sync", "net"] }
+axum = { version = "0.8", features = ["ws", "macros"] }
+tower = { version = "0.5", features = ["limit", "timeout", "load-shed", "util"] }
+tower-http = { version = "0.7", features = ["trace", "limit", "decompression-gzip", "request-id", "timeout", "set-header"] }
+tonic = { version = "0.14", features = ["gzip"] }
+prost = "0.14"
+opentelemetry-proto = { version = "0.33", default-features = false, features = ["gen-tonic", "trace", "logs", "metrics"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+rand = "0.9"
+argon2 = { version = "0.5", features = ["std"] }
+subtle = "2"
+time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+futures = "0.3"
+bytes = "1"
+flate2 = "1"
+
+# storage
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "json", "time", "macros", "migrate"] }
+clickhouse = { version = "0.15", default-features = false, features = ["lz4"] }
+dotenvy = "0.15"
+rskafka = { version = "0.6", default-features = false, features = ["compression-lz4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+# api docs
+utoipa = { version = "5", features = ["axum_extras", "uuid"] }
+
+# wasm
+wasm-bindgen = "=0.2.129"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+
+# testing
+proptest = "1"
+ts-rs = { version = "12", features = ["serde-compat"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1

@@ -1,0 +1,16 @@
+---
+description: ControlHub web app, Worker and WASM engine conventions
+globs: apps/web/**,packages/web-engine/**,packages/api-client/**,crates/controlhub-engine-core/**,crates/controlhub-web-engine/**
+alwaysApply: false
+---
+
+# Web / engine conventions
+
+- Time crosses every boundary as a decimal nanosecond string; use `BigInt` in TS (`src/lib/time.ts`) and `i64` in Rust. Never convert ns to `number`.
+- The Worker (`src/engine/engine.worker.ts`) owns fetching timeline/topology JSON and passes raw text to WASM. The UI thread must not parse large telemetry payloads.
+- Every seek carries a generation; the engine rejects stale seeks and the UI ignores older frames. Keep that when adding requests.
+- Render buffers are flat typed arrays (`NODE_STRIDE`, `EDGE_STRIDE`, flags in `packages/web-engine/src/index.ts`). Changing the layout requires bumping `ENGINE_ABI_VERSION` in Rust and TS.
+- Browser-only code (Pixi, Worker, WASM) is lazy-loaded from client components; public SEO pages must not import it.
+- `/app` is private (noindex, no-store). Mutations go through `@controlhub/api-client`, which sends the CSRF header.
+- Render telemetry as text nodes only. Never `dangerouslySetInnerHTML`.
+- When there is no WebGL, the table view must keep working.

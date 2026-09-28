@@ -1,0 +1,19 @@
+[package]
+name = "controlhub-protocol"
+description = "ControlHub protobuf contracts (generated from /proto) and OTLP re-exports"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+prost.workspace = true
+opentelemetry-proto.workspace = true
+
+[build-dependencies]
+prost-build = "0.14"
+protox = "0.9"
+
+[lints]
+workspace = true

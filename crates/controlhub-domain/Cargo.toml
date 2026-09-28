@@ -1,0 +1,21 @@
+[package]
+name = "controlhub-domain"
+description = "Pure ControlHub domain models, identifiers and invariants (no I/O, WASM-compatible)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true

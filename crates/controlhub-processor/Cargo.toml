@@ -1,0 +1,28 @@
+[package]
+name = "controlhub-processor"
+description = "ControlHub processor: broker -> normalisation -> ClickHouse"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+controlhub-domain.workspace = true
+controlhub-protocol.workspace = true
+controlhub-storage.workspace = true
+controlhub-runtime.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+hex.workspace = true
+prost.workspace = true
+rskafka.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+
+[lints]
+workspace = true

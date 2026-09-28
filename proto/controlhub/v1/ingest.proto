@@ -1,0 +1,63 @@
+// Internal ingestion envelope written to the event broker by controlhub-ingest
+// and consumed by controlhub-processor.
+//
+// OTLP payloads are carried as the *official* OTLP protobuf messages
+// (ExportTraceServiceRequest / ExportLogsServiceRequest), already redacted,
+// so there is no Protobuf -> JSON -> Protobuf conversion in the pipeline.
+syntax = "proto3";
+
+package controlhub.v1;
+
+// Tenant scope resolved from the ingestion credential — never from payload.
+message IngestScope {
+  string tenant_id = 1;
+  string project_id = 2;
+  string environment_id = 3;
+  // ID (not the secret) of the ingestion token that authorised this batch.
+  string token_id = 4;
+}
+
+message IngestEnvelope {
+  // Bumped on incompatible changes; processors reject unknown major versions
+  // into the dead-letter table instead of guessing.
+  uint32 schema_version = 1;
+  // UUIDv7 assigned by ingest per accepted request. SDK retries produce a new batch_id.
+  string batch_id = 2;
+  IngestScope scope = 3;
+  // When ingest received the request (ingest node clock).
+  int64 received_time_unix_nano = 4;
+  // Ingest instance that accepted the request.
+  string source_id = 5;
+
+  oneof payload {
+    bytes otlp_traces = 10;   // opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest
+    bytes otlp_logs = 11;     // opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest
+    CustomEventBatch custom_events = 13;
+  }
+}
+
+message CustomEventBatch {
+  repeated CustomEvent events = 1;
+}
+
+message CustomEvent {
+  // Client-generated unique ID (UUID recommended). Deduplication key.
+  string event_id = 1;
+  string event_type = 2;
+  string service_name = 3;
+  string service_namespace = 4;
+  string service_instance_id = 5;
+  string entity_id = 6;
+  int64 event_time_unix_nano = 7;
+  int64 observed_time_unix_nano = 8;
+  string trace_id = 9;
+  string span_id = 10;
+  // Producer identity for ordering: sequence numbers are only comparable
+  // within the same (source_id, source_epoch).
+  string source_id = 11;
+  string source_epoch = 12;
+  optional uint64 source_sequence = 13;
+  map<string, string> attributes = 14;
+  // Sanitised JSON payload (size-limited).
+  string payload_json = 15;
+}

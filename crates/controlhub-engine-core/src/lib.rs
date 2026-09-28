@@ -1,0 +1,835 @@
+//! ControlHub viewer engine core.
+//!
+//! Holds a bounded window of recorded timeline items, reconstructs the
+//! displayed system state at any selected time, filters/culls the visible
+//! subgraph and produces compact render buffers. Pure Rust: no I/O, no clock,
+//! no threads — the same code runs natively (tests, benchmarks) and in WASM.
+
+mod layout;
+mod reducer;
+pub mod reference;
+pub mod types;
+
+use std::collections::{HashMap, HashSet};
+
+use controlhub_domain::{EntityKind, HealthStatus, Provenance, RelationKind};
+use layout::Layout;
+use reducer::*;
+pub use types::*;
+
+/// Floats per node in [`VisibleState::node_data`]:
+/// `x, y, radius, status, active, window_requests, flags`.
+pub const NODE_STRIDE: usize = 7;
+/// Floats per edge in [`VisibleState::edge_data`]:
+/// `x1, y1, x2, y2, active, window_calls, error_ratio, flags`.
+pub const EDGE_STRIDE: usize = 8;
+
+pub const FLAG_HIGHLIGHT: u32 = 1;
+pub const FLAG_INFERRED: u32 = 2;
+pub const FLAG_DECLARED: u32 = 4;
+pub const FLAG_RESOURCE: u32 = 8;
+pub const FLAG_PROBLEM: u32 = 16;
+
+#[derive(Debug, thiserror::Error)]
+pub enum EngineError {
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SeekOutcome {
+    Applied,
+    /// A newer generation was already applied; this result must be discarded.
+    Stale,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct VisibleState {
+    pub node_data: Vec<f32>,
+    pub node_indices: Vec<u32>,
+    pub edge_data: Vec<f32>,
+    pub edge_indices: Vec<u32>,
+    /// Node indices whose health status changed since the previous frame.
+    pub changed_nodes: Vec<u32>,
+    pub summary: FrameSummary,
+}
+
+#[derive(Debug, Clone)]
+struct NodeRec {
+    id: String,
+    name: String,
+    kind: EntityKind,
+    provenance: Provenance,
+}
+
+#[derive(Debug, Clone)]
+struct EdgeRec {
+    source: u32,
+    target: u32,
+    relation: RelationKind,
+    provenance: Provenance,
+    reasons: Vec<String>,
+}
+
+#[derive(Debug)]
+pub struct Engine {
+    config: EngineConfig,
+    nodes: Vec<NodeRec>,
+    node_index: HashMap<String, u32>,
+    edges: Vec<EdgeRec>,
+    edge_index: HashMap<(u32, u32, RelationKind), u32>,
+    layout: Layout,
+    spans: HashMap<(String, String), SpanItem>,
+    logs: HashMap<String, LogItem>,
+    events: HashMap<String, EventItem>,
+    timeline: Option<Timeline>,
+    unresolved_parents: u32,
+    viewport: Option<Viewport>,
+    filters: Filters,
+    current_time: Option<i64>,
+    last_generation: u64,
+    last_status: Vec<u8>,
+    topology_revision: u64,
+    duplicates_ignored: u64,
+    evicted_items: u64,
+    evicted_before: Option<i64>,
+    stale_seeks: u64,
+}
+
+fn stable_hash(parts: &[&str]) -> u64 {
+    // FNV-1a: deterministic across native and wasm (unlike RandomState).
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for p in parts {
+        for b in p.as_bytes() {
+            h ^= u64::from(*b);
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+        h ^= 0xff;
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    h
+}
+
+impl Engine {
+    pub fn new(config: EngineConfig) -> Self {
+        Self {
+            config,
+            nodes: Vec::new(),
+            node_index: HashMap::new(),
+            edges: Vec::new(),
+            edge_index: HashMap::new(),
+            layout: Layout::default(),
+            spans: HashMap::new(),
+            logs: HashMap::new(),
+            events: HashMap::new(),
+            timeline: None,
+            unresolved_parents: 0,
+            viewport: None,
+            filters: Filters::default(),
+            current_time: None,
+            last_generation: 0,
+            last_status: Vec::new(),
+            topology_revision: 0,
+            duplicates_ignored: 0,
+            evicted_items: 0,
+            evicted_before: None,
+            stale_seeks: 0,
+        }
+    }
+
+    pub fn config(&self) -> &EngineConfig {
+        &self.config
+    }
+
+    // ---------------------------------------------------------------- input
+
+    /// Replace topology (nodes/edges known from the server). Recorded items are kept.
+    pub fn load_topology(&mut self, snapshot: TopologySnapshot) {
+        let old_nodes = std::mem::take(&mut self.nodes);
+        self.node_index.clear();
+        self.edges.clear();
+        self.edge_index.clear();
+        for n in snapshot.nodes {
+            self.ensure_node(&n.id, &n.name, n.kind.into(), n.provenance.into());
+        }
+        // Keep nodes discovered from items so their items remain attributable.
+        for n in old_nodes {
+            if !self.node_index.contains_key(&n.id) {
+                self.ensure_node(&n.id, &n.name, n.kind, n.provenance);
+            }
+        }
+        for e in snapshot.edges {
+            let (Some(&s), Some(&t)) = (self.node_index.get(&e.source), self.node_index.get(&e.target)) else {
+                continue;
+            };
+            let idx = self.ensure_edge(s, t, e.relation.into(), e.provenance.into());
+            if let Some(rec) = self.edges.get_mut(idx as usize) {
+                rec.reasons = e.reasons;
+            }
+        }
+        self.relayout();
+        self.timeline = None;
+    }
+
+    pub fn load_topology_json(&mut self, json: &str) -> Result<(), EngineError> {
+        let snap: TopologySnapshot =
+            serde_json::from_str(json).map_err(|e| EngineError::InvalidInput(e.to_string()))?;
+        self.load_topology(snap);
+        Ok(())
+    }
+
+    /// Apply a batch of items. Idempotent per item ID; order-independent.
+    pub fn apply_batch(&mut self, batch: Batch) -> Result<(), EngineError> {
+        let before_nodes = self.nodes.len();
+        for item in batch.items {
+            match item {
+                TimelineItem::Span(s) => {
+                    if s.end_ns < s.start_ns {
+                        return Err(EngineError::InvalidInput(format!("span {} ends before it starts", s.span_id)));
+                    }
+                    self.ensure_node(&s.service_id, &s.service_name, EntityKind::Service, Provenance::Observed);
+                    let key = (s.trace_id.clone(), s.span_id.clone());
+                    if self.spans.insert(key, s).is_some() {
+                        self.duplicates_ignored += 1;
+                    }
+                }
+                TimelineItem::Log(l) => {
+                    self.ensure_node(&l.service_id, &l.service_name, EntityKind::Service, Provenance::Observed);
+                    if self.logs.insert(l.id.clone(), l).is_some() {
+                        self.duplicates_ignored += 1;
+                    }
+                }
+                TimelineItem::Event(e) => {
+                    if let (Some(id), Some(name)) = (&e.service_id, &e.service_name) {
+                        let (id, name) = (id.clone(), name.clone());
+                        self.ensure_node(&id, &name, EntityKind::Service, Provenance::Observed);
+                    }
+                    if self.events.insert(e.id.clone(), e).is_some() {
+                        self.duplicates_ignored += 1;
+                    }
+                }
+            }
+        }
+        self.evict_if_needed();
+        if self.nodes.len() != before_nodes {
+            self.relayout();
+        }
+        self.timeline = None;
+        Ok(())
+    }
+
+    pub fn apply_batch_json(&mut self, json: &str) -> Result<(), EngineError> {
+        let batch: Batch = serde_json::from_str(json).map_err(|e| EngineError::InvalidInput(e.to_string()))?;
+        self.apply_batch(batch)
+    }
+
+    /// Drop all recorded items older than `before_ns` (explicit window shrink).
+    pub fn evict_before(&mut self, before_ns: i64) {
+        let n0 = self.item_count();
+        self.spans.retain(|_, s| s.end_ns >= before_ns);
+        self.logs.retain(|_, l| l.time_ns >= before_ns);
+        self.events.retain(|_, e| e.time_ns >= before_ns);
+        let removed = n0 - self.item_count();
+        if removed > 0 {
+            self.evicted_items += removed as u64;
+            self.evicted_before = Some(self.evicted_before.map_or(before_ns, |b| b.max(before_ns)));
+            self.timeline = None;
+        }
+    }
+
+    pub fn set_viewport(&mut self, viewport: Viewport) {
+        self.viewport = Some(viewport);
+    }
+
+    pub fn set_filters(&mut self, filters: Filters) {
+        self.filters = filters;
+    }
+
+    /// Move the selected time. Results of older generations are rejected so a
+    /// slow seek can never overwrite a newer one.
+    pub fn seek(&mut self, time_ns: i64, generation: u64) -> SeekOutcome {
+        if generation < self.last_generation {
+            self.stale_seeks += 1;
+            return SeekOutcome::Stale;
+        }
+        self.last_generation = generation;
+        self.current_time = Some(time_ns);
+        self.ensure_timeline();
+        SeekOutcome::Applied
+    }
+
+    pub fn current_time(&self) -> Option<i64> {
+        self.current_time
+    }
+
+    pub fn prev_event_time(&mut self, t: i64) -> Option<i64> {
+        self.ensure_timeline();
+        self.timeline.as_ref().and_then(|tl| tl.prev_time(t))
+    }
+
+    pub fn next_event_time(&mut self, t: i64) -> Option<i64> {
+        self.ensure_timeline();
+        self.timeline.as_ref().and_then(|tl| tl.next_time(t))
+    }
+
+    // ---------------------------------------------------------------- output
+
+    pub fn topology(&self) -> TopologyView {
+        TopologyView {
+            revision: self.topology_revision,
+            nodes: self
+                .nodes
+                .iter()
+                .enumerate()
+                .map(|(i, n)| {
+                    let (x, y) = self.layout.position(&n.id).unwrap_or((0.0, 0.0));
+                    TopologyViewNode {
+                        index: i as u32,
+                        id: n.id.clone(),
+                        name: n.name.clone(),
+                        kind: n.kind.into(),
+                        provenance: n.provenance.into(),
+                        x,
+                        y,
+                    }
+                })
+                .collect(),
+            edges: self
+                .edges
+                .iter()
+                .enumerate()
+                .map(|(i, e)| TopologyViewEdge {
+                    index: i as u32,
+                    source: e.source,
+                    target: e.target,
+                    relation: e.relation.into(),
+                    provenance: e.provenance.into(),
+                    reasons: e.reasons.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    /// Compute the visible frame at the current time.
+    pub fn visible_state(&mut self) -> VisibleState {
+        self.ensure_timeline();
+        let t = self.current_time;
+        let (now, past) = self.states_at(t);
+        let window = self.window_for(&now, &past);
+
+        let highlight = self.trace_highlight();
+        let search = self.filters.search.to_lowercase();
+        let lod = match self.viewport.map(|v| v.scale) {
+            Some(s) if s < 0.45 => 0,
+            Some(s) if s > 1.6 => 2,
+            _ => 1,
+        };
+
+        let mut node_visible = vec![false; self.nodes.len()];
+        let mut out = VisibleState::default();
+        let mut statuses = vec![0u8; self.nodes.len()];
+        let (mut total_active, mut win_req, mut win_err) = (0i64, 0i64, 0i64);
+
+        for (i, n) in self.nodes.iter().enumerate() {
+            let m = &window[i];
+            statuses[i] = m.status.as_u8();
+            total_active += m.active;
+            win_req += m.started;
+            win_err += m.errors;
+
+            if self.filters.hide_inferred && n.provenance == Provenance::Inferred {
+                continue;
+            }
+            if !search.is_empty() && !n.name.to_lowercase().contains(&search) && !n.id.contains(&search) {
+                continue;
+            }
+            let problem = matches!(m.status, HealthStatus::Degraded | HealthStatus::Failing);
+            if self.filters.only_problems && !problem {
+                continue;
+            }
+            let (x, y) = self.layout.position(&n.id).unwrap_or((0.0, 0.0));
+            let radius = if n.kind == EntityKind::Service { 26.0 } else { 20.0 };
+            if !self.in_viewport(x, y, radius) {
+                continue;
+            }
+            node_visible[i] = true;
+            let mut flags = 0u32;
+            if highlight.0.contains(&(i as u32)) {
+                flags |= FLAG_HIGHLIGHT;
+            }
+            if n.provenance == Provenance::Inferred {
+                flags |= FLAG_INFERRED;
+            }
+            if n.provenance == Provenance::Declared {
+                flags |= FLAG_DECLARED;
+            }
+            if n.kind != EntityKind::Service {
+                flags |= FLAG_RESOURCE;
+            }
+            if problem {
+                flags |= FLAG_PROBLEM;
+            }
+            out.node_indices.push(i as u32);
+            out.node_data.extend_from_slice(&[
+                x,
+                y,
+                radius,
+                f32::from(m.status.as_u8()),
+                m.active as f32,
+                m.started.max(m.completed) as f32,
+                flags as f32,
+            ]);
+        }
+
+        for (i, e) in self.edges.iter().enumerate() {
+            let (s, tg) = (e.source as usize, e.target as usize);
+            let (Some(&sv), Some(&tv)) = (node_visible.get(s), node_visible.get(tg)) else {
+                continue;
+            };
+            let hidden_by_filter = self.filters.hide_inferred && e.provenance == Provenance::Inferred;
+            // Keep edges whose both endpoints pass filters; culling allows one end off-screen.
+            if hidden_by_filter || !(sv || tv) || !self.passes_filter(s) || !self.passes_filter(tg) {
+                continue;
+            }
+            let (Some(sn), Some(tn)) = (self.nodes.get(s), self.nodes.get(tg)) else {
+                continue;
+            };
+            let (x1, y1) = self.layout.position(&sn.id).unwrap_or((0.0, 0.0));
+            let (x2, y2) = self.layout.position(&tn.id).unwrap_or((0.0, 0.0));
+            let active = now.edge(i, E_ACTIVE);
+            let calls = now.edge(i, E_CALLS) - past.edge(i, E_CALLS);
+            let errors = now.edge(i, E_ERRORS) - past.edge(i, E_ERRORS);
+            let ratio = if calls > 0 { errors as f32 / calls as f32 } else { 0.0 };
+            let mut flags = 0u32;
+            if highlight.1.contains(&(i as u32)) {
+                flags |= FLAG_HIGHLIGHT;
+            }
+            match e.provenance {
+                Provenance::Inferred => flags |= FLAG_INFERRED,
+                Provenance::Declared => flags |= FLAG_DECLARED,
+                Provenance::Observed => {}
+            }
+            if ratio >= self.config.degraded_error_ratio && calls > 0 {
+                flags |= FLAG_PROBLEM;
+            }
+            out.edge_indices.push(i as u32);
+            out.edge_data.extend_from_slice(&[x1, y1, x2, y2, active as f32, calls as f32, ratio, flags as f32]);
+        }
+
+        if self.last_status.len() == statuses.len() {
+            for (i, (a, b)) in self.last_status.iter().zip(statuses.iter()).enumerate() {
+                if a != b {
+                    out.changed_nodes.push(i as u32);
+                }
+            }
+        } else {
+            out.changed_nodes = (0..statuses.len() as u32).collect();
+        }
+        self.last_status = statuses;
+
+        out.summary = FrameSummary {
+            generation: self.last_generation,
+            time_ns: t,
+            prev_event_ns: t.and_then(|t| self.timeline.as_ref().and_then(|tl| tl.prev_time(t))),
+            next_event_ns: t.and_then(|t| self.timeline.as_ref().and_then(|tl| tl.next_time(t))),
+            total_active: total_active.max(0) as u32,
+            window_requests: win_req.max(0) as u32,
+            window_errors: win_err.max(0) as u32,
+            visible_nodes: out.node_indices.len() as u32,
+            visible_edges: out.edge_indices.len() as u32,
+            lod,
+            topology_revision: self.topology_revision,
+        };
+        out
+    }
+
+    /// Metrics for one node at an arbitrary time (defaults to the current time).
+    pub fn node_metrics(&mut self, node_id: &str, at: Option<i64>) -> Option<NodeMetrics> {
+        self.ensure_timeline();
+        let idx = *self.node_index.get(node_id)? as usize;
+        let t = at.or(self.current_time);
+        let (now, past) = self.states_at(t);
+        let window = self.window_for(&now, &past);
+        let m = window.get(idx)?;
+        let n = self.nodes.get(idx)?;
+        Some(m.to_metrics(n))
+    }
+
+    /// Compare node state at two moments.
+    pub fn compare(&mut self, a_ns: i64, b_ns: i64) -> Vec<NodeDiff> {
+        self.ensure_timeline();
+        let (na, pa) = self.states_at(Some(a_ns));
+        let (nb, pb) = self.states_at(Some(b_ns));
+        let wa = self.window_for(&na, &pa);
+        let wb = self.window_for(&nb, &pb);
+        self.nodes
+            .iter()
+            .zip(wa.iter().zip(wb.iter()))
+            .filter(|(_, (a, b))| a.status != b.status || a.started != b.started || a.errors != b.errors)
+            .map(|(n, (a, b))| NodeDiff {
+                id: n.id.clone(),
+                name: n.name.clone(),
+                before: a.to_metrics(n),
+                after: b.to_metrics(n),
+            })
+            .collect()
+    }
+
+    /// Hit-test in world coordinates.
+    pub fn pick(&self, x: f32, y: f32) -> Option<String> {
+        self.nodes
+            .iter()
+            .filter_map(|n| {
+                let (nx, ny) = self.layout.position(&n.id)?;
+                let d2 = (nx - x).powi(2) + (ny - y).powi(2);
+                (d2 <= 30.0f32.powi(2)).then_some((d2, n.id.clone()))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, id)| id)
+    }
+
+    pub fn diagnostics(&mut self) -> Diagnostics {
+        self.ensure_timeline();
+        let tl = self.timeline.as_ref();
+        let (first, last) = self.item_bounds();
+        let items_bytes = self.spans.len() * 256 + self.logs.len() * 128 + self.events.len() * 128;
+        Diagnostics {
+            spans: self.spans.len() as u32,
+            logs: self.logs.len() as u32,
+            events: self.events.len() as u32,
+            deltas: tl.map_or(0, |t| t.deltas.len() as u32),
+            checkpoints: tl.map_or(0, |t| t.checkpoints.len() as u32),
+            checkpoint_interval: tl.map_or(0, |t| t.interval as u32),
+            nodes: self.nodes.len() as u32,
+            edges: self.edges.len() as u32,
+            approx_memory_bytes: (items_bytes + tl.map_or(0, |t| t.approx_bytes())) as u64,
+            duplicates_ignored: self.duplicates_ignored,
+            evicted_items: self.evicted_items,
+            evicted_before_ns: self.evicted_before,
+            unresolved_parents: self.unresolved_parents,
+            stale_seeks_ignored: self.stale_seeks,
+            first_item_ns: first,
+            last_item_ns: last,
+        }
+    }
+
+    pub fn item_count(&self) -> usize {
+        self.spans.len() + self.logs.len() + self.events.len()
+    }
+
+    // ------------------------------------------------------------- internal
+
+    fn passes_filter(&self, idx: usize) -> bool {
+        let Some(n) = self.nodes.get(idx) else { return false };
+        if self.filters.hide_inferred && n.provenance == Provenance::Inferred {
+            return false;
+        }
+        let search = self.filters.search.to_lowercase();
+        search.is_empty() || n.name.to_lowercase().contains(&search) || n.id.contains(&search)
+    }
+
+    fn in_viewport(&self, x: f32, y: f32, r: f32) -> bool {
+        match self.viewport {
+            None => true,
+            Some(v) if v.width <= 0.0 || v.height <= 0.0 => true,
+            Some(v) => {
+                let margin = r + 40.0;
+                x + margin >= v.x && x - margin <= v.x + v.width && y + margin >= v.y && y - margin <= v.y + v.height
+            }
+        }
+    }
+
+    fn item_bounds(&self) -> (Option<i64>, Option<i64>) {
+        let times = self
+            .spans
+            .values()
+            .flat_map(|s| [s.start_ns, s.end_ns])
+            .chain(self.logs.values().map(|l| l.time_ns))
+            .chain(self.events.values().map(|e| e.time_ns));
+        let mut first: Option<i64> = None;
+        let mut last: Option<i64> = None;
+        for t in times {
+            first = Some(first.map_or(t, |f| f.min(t)));
+            last = Some(last.map_or(t, |l| l.max(t)));
+        }
+        (first, last)
+    }
+
+    fn ensure_node(&mut self, id: &str, name: &str, kind: EntityKind, provenance: Provenance) -> u32 {
+        if let Some(&i) = self.node_index.get(id) {
+            return i;
+        }
+        let i = self.nodes.len() as u32;
+        self.nodes.push(NodeRec { id: id.to_owned(), name: name.to_owned(), kind, provenance });
+        self.node_index.insert(id.to_owned(), i);
+        self.topology_revision += 1;
+        i
+    }
+
+    fn ensure_edge(&mut self, s: u32, t: u32, relation: RelationKind, provenance: Provenance) -> u32 {
+        if let Some(&i) = self.edge_index.get(&(s, t, relation)) {
+            return i;
+        }
+        let i = self.edges.len() as u32;
+        self.edges.push(EdgeRec { source: s, target: t, relation, provenance, reasons: Vec::new() });
+        self.edge_index.insert((s, t, relation), i);
+        self.topology_revision += 1;
+        i
+    }
+
+    fn relayout(&mut self) {
+        let ids: Vec<String> = self.nodes.iter().map(|n| n.id.clone()).collect();
+        let edges: Vec<(u32, u32)> = self.edges.iter().map(|e| (e.source, e.target)).collect();
+        self.layout.place_new(&ids, &edges);
+        self.topology_revision += 1;
+    }
+
+    fn evict_if_needed(&mut self) {
+        let max = self.config.max_items as usize;
+        let count = self.item_count();
+        if count <= max {
+            return;
+        }
+        let mut times: Vec<i64> = self
+            .spans
+            .values()
+            .map(|s| s.end_ns)
+            .chain(self.logs.values().map(|l| l.time_ns))
+            .chain(self.events.values().map(|e| e.time_ns))
+            .collect();
+        let excess = count - max;
+        let nth = excess.saturating_sub(1).min(times.len().saturating_sub(1));
+        times.select_nth_unstable(nth);
+        let cutoff = times.get(nth).copied().unwrap_or(i64::MIN).saturating_add(1);
+        self.evict_before(cutoff);
+    }
+
+    /// Rebuild ordered deltas + checkpoints if inputs changed.
+    fn ensure_timeline(&mut self) {
+        if self.timeline.is_some() {
+            return;
+        }
+        let span_service: HashMap<(&str, &str), u32> = self
+            .spans
+            .values()
+            .filter_map(|s| self.node_index.get(&s.service_id).map(|&n| ((s.trace_id.as_str(), s.span_id.as_str()), n)))
+            .collect();
+
+        let mut span_edges: Vec<((String, String), u32, u32, Provenance)> = Vec::new();
+        let mut unresolved = 0u32;
+        for s in self.spans.values() {
+            let Some(&node) = self.node_index.get(&s.service_id) else { continue };
+            let key = (s.trace_id.clone(), s.span_id.clone());
+            if let Some(&target) = s.target_entity_id.as_ref().and_then(|t| self.node_index.get(t)) {
+                span_edges.push((key, node, target, Provenance::Inferred));
+            } else if (s.kind == 2 || s.kind == 5)
+                && let Some(parent) = s.parent_span_id.as_deref()
+            {
+                match span_service.get(&(s.trace_id.as_str(), parent)) {
+                    Some(&caller) if caller != node => {
+                        span_edges.push((key, caller, node, Provenance::Observed));
+                    }
+                    Some(_) => {}
+                    None => unresolved += 1,
+                }
+            }
+        }
+        // Sort so edge indices are assigned deterministically regardless of HashMap order.
+        span_edges.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut edge_of_span: HashMap<(String, String), u32> = HashMap::new();
+        for (key, a, b, prov) in span_edges {
+            let rel = if prov == Provenance::Inferred { RelationKind::DependsOn } else { RelationKind::Calls };
+            let idx = match self.edge_index.get(&(a, b, rel)) {
+                Some(&i) => i,
+                None => {
+                    let i = self.ensure_edge(a, b, rel, prov);
+                    if prov == Provenance::Inferred
+                        && let Some(e) = self.edges.get_mut(i as usize)
+                    {
+                        e.reasons.push("client span references this resource (db.system / peer attributes)".into());
+                    }
+                    i
+                }
+            };
+            edge_of_span.insert(key, idx);
+        }
+        self.unresolved_parents = unresolved;
+
+        let mut deltas = Vec::with_capacity(self.spans.len() * 2 + self.logs.len() + self.events.len());
+        for s in self.spans.values() {
+            let Some(&node) = self.node_index.get(&s.service_id) else { continue };
+            let key = (s.trace_id.clone(), s.span_id.clone());
+            let edge = edge_of_span.get(&key).copied();
+            let entry = s.kind == 2 || s.kind == 5 || s.parent_span_id.is_none();
+            let tb = stable_hash(&[&s.trace_id, &s.span_id]);
+            deltas.push(Delta { time: s.start_ns, tiebreak: tb, kind: DeltaKind::SpanStart { node, edge, entry } });
+            deltas.push(Delta {
+                time: s.end_ns,
+                tiebreak: tb ^ 1,
+                kind: DeltaKind::SpanEnd { node, edge, entry, error: s.is_error, duration_ns: s.end_ns - s.start_ns },
+            });
+        }
+        for l in self.logs.values() {
+            let Some(&node) = self.node_index.get(&l.service_id) else { continue };
+            deltas.push(Delta {
+                time: l.time_ns,
+                tiebreak: stable_hash(&[&l.id]),
+                kind: DeltaKind::Log { node, error: l.severity >= 17 },
+            });
+        }
+        for e in self.events.values() {
+            let node = e.service_id.as_ref().and_then(|s| self.node_index.get(s)).copied();
+            deltas.push(Delta { time: e.time_ns, tiebreak: stable_hash(&[&e.id]), kind: DeltaKind::Event { node } });
+        }
+        self.timeline = Some(Timeline::build(
+            deltas,
+            self.nodes.len(),
+            self.edges.len(),
+            self.config.checkpoint_budget_bytes as usize,
+        ));
+    }
+
+    fn states_at(&self, t: Option<i64>) -> (StateVec, StateVec) {
+        match (t, self.timeline.as_ref()) {
+            (Some(t), Some(tl)) => (tl.state_at(t), tl.state_at(t.saturating_sub(self.config.rolling_window_ns))),
+            _ => (StateVec::new(self.nodes.len(), self.edges.len()), StateVec::new(self.nodes.len(), self.edges.len())),
+        }
+    }
+
+    fn window_for(&self, now: &StateVec, past: &StateVec) -> Vec<WindowMetrics> {
+        let d = |n: usize, f: usize| now.node(n, f) - past.node(n, f);
+        let mut incoming: Vec<(i64, i64, i64)> = vec![(0, 0, 0); self.nodes.len()];
+        for (i, e) in self.edges.iter().enumerate() {
+            if let Some(slot) = incoming.get_mut(e.target as usize) {
+                slot.0 += now.edge(i, E_CALLS) - past.edge(i, E_CALLS);
+                slot.1 += now.edge(i, E_ERRORS) - past.edge(i, E_ERRORS);
+                slot.2 += now.edge(i, E_ACTIVE);
+            }
+        }
+        self.nodes
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                let mut m = WindowMetrics {
+                    active: now.node(i, N_ACTIVE).max(0),
+                    started: d(i, N_STARTED),
+                    completed: d(i, N_COMPLETED),
+                    errors: d(i, N_ERRORS),
+                    latency_sum: d(i, N_LATENCY_SUM),
+                    logs: d(i, N_LOGS),
+                    error_logs: d(i, N_ERROR_LOGS),
+                    events: d(i, N_EVENTS),
+                    any_spans: d(i, N_ANY_SPANS),
+                    status: HealthStatus::Unknown,
+                    reason: String::new(),
+                };
+                let (calls_in, errors_in, active_in) = incoming.get(i).copied().unwrap_or((0, 0, 0));
+                if n.kind != EntityKind::Service {
+                    m.active = active_in;
+                    m.started = calls_in;
+                    m.completed = calls_in;
+                    m.errors = errors_in;
+                    (m.status, m.reason) = classify(calls_in, errors_in, &self.config);
+                    if m.status != HealthStatus::Unknown {
+                        m.reason.push_str(" — derived from caller spans; resource itself is not instrumented");
+                    } else {
+                        m.reason = "not instrumented; no caller activity in window".into();
+                    }
+                } else if m.completed > 0 {
+                    (m.status, m.reason) = classify(m.completed, m.errors, &self.config);
+                } else if m.active > 0 {
+                    m.status = HealthStatus::Healthy;
+                    m.reason = format!("{} request(s) in flight, none completed in window", m.active);
+                } else if m.error_logs > 0 {
+                    m.status = HealthStatus::Degraded;
+                    m.reason = format!("{} error log(s) in window, no completed requests", m.error_logs);
+                } else if m.logs > 0 || m.any_spans > 0 || m.events > 0 {
+                    m.reason = "activity seen but no request spans completed in window".into();
+                } else {
+                    m.reason = "no data in window".into();
+                }
+                m
+            })
+            .collect()
+    }
+
+    fn trace_highlight(&self) -> (HashSet<u32>, HashSet<u32>) {
+        let mut nodes = HashSet::new();
+        let mut edges = HashSet::new();
+        let Some(trace) = self.filters.selected_trace_id.as_deref() else {
+            return (nodes, edges);
+        };
+        let spans: Vec<&SpanItem> = self.spans.values().filter(|s| s.trace_id == trace).collect();
+        let by_id: HashMap<&str, &SpanItem> = spans.iter().map(|s| (s.span_id.as_str(), *s)).collect();
+        for s in &spans {
+            let Some(&n) = self.node_index.get(&s.service_id) else { continue };
+            nodes.insert(n);
+            if let Some(t) = s.target_entity_id.as_ref().and_then(|t| self.node_index.get(t)) {
+                nodes.insert(*t);
+                if let Some(&e) = self.edge_index.get(&(n, *t, RelationKind::DependsOn)) {
+                    edges.insert(e);
+                }
+            }
+            if let Some(p) = s.parent_span_id.as_deref().and_then(|p| by_id.get(p))
+                && let Some(&pn) = self.node_index.get(&p.service_id)
+                && let Some(&e) = self.edge_index.get(&(pn, n, RelationKind::Calls))
+            {
+                edges.insert(e);
+            }
+        }
+        (nodes, edges)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct WindowMetrics {
+    active: i64,
+    started: i64,
+    completed: i64,
+    errors: i64,
+    latency_sum: i64,
+    logs: i64,
+    error_logs: i64,
+    events: i64,
+    any_spans: i64,
+    status: HealthStatus,
+    reason: String,
+}
+
+impl WindowMetrics {
+    fn to_metrics(&self, n: &NodeRec) -> NodeMetrics {
+        NodeMetrics {
+            id: n.id.clone(),
+            name: n.name.clone(),
+            status: self.status.into(),
+            status_reason: self.reason.clone(),
+            active: self.active.max(0) as u32,
+            window_requests: self.started.max(0) as u32,
+            window_completed: self.completed.max(0) as u32,
+            window_errors: self.errors.max(0) as u32,
+            avg_latency_ms: (self.completed > 0 && n.kind == EntityKind::Service)
+                .then(|| self.latency_sum as f64 / self.completed as f64 / 1e6),
+            window_logs: self.logs.max(0) as u32,
+            window_error_logs: self.error_logs.max(0) as u32,
+            window_events: self.events.max(0) as u32,
+        }
+    }
+}
+
+fn classify(completed: i64, errors: i64, cfg: &EngineConfig) -> (HealthStatus, String) {
+    if completed <= 0 {
+        return (HealthStatus::Unknown, String::new());
+    }
+    let ratio = errors as f32 / completed as f32;
+    let reason = format!("{errors}/{completed} failed ({:.1}%)", ratio * 100.0);
+    if ratio >= cfg.failing_error_ratio {
+        (HealthStatus::Failing, reason)
+    } else if ratio >= cfg.degraded_error_ratio {
+        (HealthStatus::Degraded, reason)
+    } else {
+        (HealthStatus::Healthy, reason)
+    }
+}
+
+#[cfg(test)]
+mod tests;
