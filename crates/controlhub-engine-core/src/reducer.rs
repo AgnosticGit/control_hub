@@ -36,7 +36,17 @@ pub(crate) enum DeltaKind {
 pub(crate) struct Delta {
     pub time: i64,
     pub tiebreak: u64,
+    /// Time used by eviction for the item that produced this delta (span end, log/event time).
+    /// Both deltas of a span share it, so a span is always evicted as a whole.
+    pub evict_at: i64,
     pub kind: DeltaKind,
+}
+
+impl Delta {
+    #[inline]
+    fn order_key(&self) -> (i64, u64) {
+        (self.time, self.tiebreak)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -128,23 +138,73 @@ pub(crate) struct Timeline {
     pub interval: usize,
     pub nodes: usize,
     pub edges: usize,
+    /// Checkpoint count the memory budget allows; exceeding it twice over calls for a rebuild.
+    pub max_checkpoints: usize,
 }
 
 impl Timeline {
     pub fn build(mut deltas: Vec<Delta>, nodes: usize, edges: usize, budget_bytes: usize) -> Self {
-        deltas.sort_by(|a, b| a.time.cmp(&b.time).then(a.tiebreak.cmp(&b.tiebreak)));
+        deltas.sort_by_key(Delta::order_key);
         let state_bytes = (nodes * NODE_FIELDS + edges * EDGE_FIELDS).max(1) * 8;
         let max_checkpoints = (budget_bytes / state_bytes).max(1);
         let interval = (deltas.len() / max_checkpoints + 1).max(512);
-        let mut checkpoints = Vec::with_capacity(deltas.len() / interval + 1);
-        let mut state = StateVec::new(nodes, edges);
-        for (i, d) in deltas.iter().enumerate() {
+        let mut tl = Self { deltas, checkpoints: Vec::new(), interval, nodes, edges, max_checkpoints };
+        tl.recompute_checkpoints_from(0);
+        tl
+    }
+
+    /// Recompute checkpoints `cp..`; checkpoints before `cp` must still be valid.
+    fn recompute_checkpoints_from(&mut self, cp: usize) {
+        let cp = cp.min(self.checkpoints.len());
+        self.checkpoints.truncate(cp);
+        let mut state = match cp.checked_sub(1).and_then(|i| self.checkpoints.get(i)) {
+            Some(s) => s.clone(),
+            None => StateVec::new(self.nodes, self.edges),
+        };
+        let start = cp * self.interval;
+        for (i, d) in self.deltas.iter().enumerate().skip(start) {
             state.apply(&d.kind);
-            if (i + 1) % interval == 0 {
-                checkpoints.push(state.clone());
+            if (i + 1) % self.interval == 0 {
+                self.checkpoints.push(state.clone());
             }
         }
-        Self { deltas, checkpoints, interval, nodes, edges }
+    }
+
+    /// Insert new deltas (for already known nodes/edges). Only checkpoints at or after the
+    /// earliest inserted delta are recomputed, so appending live data is cheap.
+    pub fn merge(&mut self, mut new: Vec<Delta>) {
+        new.sort_by_key(Delta::order_key);
+        let Some(first) = new.first().map(Delta::order_key) else { return };
+        let p = self.deltas.partition_point(|d| d.order_key() < first);
+        let tail = self.deltas.split_off(p);
+        self.deltas.reserve(tail.len() + new.len());
+        let (mut a, mut b) = (tail.into_iter().peekable(), new.into_iter().peekable());
+        loop {
+            let take_a = match (a.peek(), b.peek()) {
+                (Some(x), Some(y)) => x.order_key() <= y.order_key(),
+                (Some(_), None) => true,
+                (None, Some(_)) => false,
+                (None, None) => break,
+            };
+            let next = if take_a { a.next() } else { b.next() };
+            if let Some(d) = next {
+                self.deltas.push(d);
+            }
+        }
+        self.recompute_checkpoints_from(p / self.interval);
+    }
+
+    /// Drop deltas of items evicted before `before` and recompute checkpoints.
+    pub fn retain_from(&mut self, before: i64) {
+        let n0 = self.deltas.len();
+        self.deltas.retain(|d| d.evict_at >= before);
+        if self.deltas.len() != n0 {
+            self.recompute_checkpoints_from(0);
+        }
+    }
+
+    pub fn over_budget(&self) -> bool {
+        self.checkpoints.len() > self.max_checkpoints.saturating_mul(2)
     }
 
     /// Number of deltas with `time <= t`.

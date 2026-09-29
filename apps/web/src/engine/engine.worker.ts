@@ -10,6 +10,7 @@ import {
   type Filters,
   type Frame,
   type FrameSummary,
+  type LiveEvent,
   type LoadResult,
   type WorkerRequest,
   type WorkerResponse,
@@ -121,6 +122,99 @@ function timelineTail(text: string): TimelineTail {
   return full;
 }
 
+// ------------------------------------------------------------------ live channel
+
+interface LiveState {
+  url: string;
+  ws: WebSocket | null;
+  resume: string | null;
+  attempt: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+let live: LiveState | null = null;
+
+function postLive(event: LiveEvent) {
+  post({ kind: "live", event });
+}
+
+function liveConnect() {
+  const l = live;
+  if (!l) return;
+  const u = new URL(l.url, self.location.origin);
+  u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
+  if (l.resume) u.searchParams.set("resume", l.resume);
+  postLive({ type: "connecting", attempt: l.attempt });
+  const ws = new WebSocket(u);
+  l.ws = ws;
+  ws.onopen = () => {
+    if (live !== l) return;
+    l.attempt = 0;
+    postLive({ type: "open" });
+  };
+  ws.onmessage = (ev: MessageEvent<unknown>) => {
+    if (live !== l || typeof ev.data !== "string") return;
+    onLiveMessage(l, ev.data);
+  };
+  ws.onclose = (ev: CloseEvent) => {
+    if (live !== l) return;
+    l.ws = null;
+    l.attempt += 1;
+    const base = Math.min(30_000, 500 * 2 ** Math.min(l.attempt, 6));
+    const retryInMs = Math.round(base * (0.5 + Math.random() / 2));
+    postLive({ type: "closed", attempt: l.attempt, retryInMs, code: ev.code });
+    l.timer = setTimeout(liveConnect, retryInMs);
+  };
+}
+
+/** Server messages start with `{"type":"…","resume":"…"`; batches go to WASM as raw text. */
+function onLiveMessage(l: LiveState, text: string) {
+  const head = /^\{"type":"(\w+)"(?:,"resume":"(\d+)")?/.exec(text.slice(0, 128));
+  if (!head) return;
+  const type = head[1];
+  const resume = head[2];
+  if (resume) l.resume = resume;
+  switch (type) {
+    case "batch": {
+      if (!engine || !resume) return;
+      const t0 = performance.now();
+      engine.applyBatch(text);
+      schedule();
+      postLive({ type: "batch", items: Math.max(0, countItems(text) - 1), applyMs: performance.now() - t0, resume });
+      return;
+    }
+    case "gap":
+      if (resume) postLive({ type: "gap", resume });
+      return;
+    case "hello":
+    case "heartbeat":
+      if (resume) postLive({ type: "heartbeat", resume });
+      return;
+    case "error": {
+      let message = "live channel error";
+      try {
+        const parsed = JSON.parse(text) as { message?: unknown };
+        if (typeof parsed.message === "string") message = parsed.message;
+      } catch {
+        // keep generic message
+      }
+      postLive({ type: "error", message });
+      return;
+    }
+  }
+}
+
+function liveStop() {
+  const l = live;
+  live = null;
+  if (!l) return;
+  if (l.timer) clearTimeout(l.timer);
+  if (l.ws) {
+    l.ws.onclose = null;
+    l.ws.close(1000, "stopped");
+  }
+}
+
 function countItems(text: string): number {
   let n = 0;
   let i = text.indexOf('"type":"');
@@ -207,6 +301,16 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       return requireEngine().getDiagnostics();
     case "topology":
       return requireEngine().getTopology();
+    case "liveStart":
+      requireEngine();
+      if (live?.url === msg.url && (live.ws || live.timer)) return null;
+      liveStop();
+      live = { url: msg.url, ws: null, resume: null, attempt: 0, timer: null };
+      liveConnect();
+      return null;
+    case "liveStop":
+      liveStop();
+      return null;
   }
 }
 

@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Providers } from "./providers";
 
+// Rendered per request so Next.js can put the CSP nonce from proxy.ts on its scripts.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "App",
   robots: { index: false, follow: false },

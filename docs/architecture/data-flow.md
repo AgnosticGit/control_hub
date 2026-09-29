@@ -19,13 +19,27 @@ SDK events client ──────POST /api/v1/events/batch┘
                                                  ▼
                               ClickHouse: spans, logs, events (ReplacingMergeTree(ingested_at), TTL)
                                                  ▼
-                              controlhub-api (:8080, /api/v1, cookie session, tenant-scoped queries)
+                              controlhub-api (:8080, /api/v1, cookie session or read-only API token,
+                                              tenant-scoped queries, WebSocket …/live)
                                                  ▼
-                              Next.js (:3000) rewrites /api/v1/* → API
+                              Next.js (:3000) rewrites /api/v1/* → API (HTTP and WebSocket)
                                                  ▼
-                              Web Worker: fetch JSON → WASM engine (apply, index, seek, frame)
+                              Web Worker: fetch JSON / live WebSocket → WASM engine
+                                          (apply, incremental append, index, seek, frame)
                                                  ▼
                               UI thread: PixiJS map / table fallback, React panels, timeline
+```
+
+Side paths (not part of the telemetry flow, and no LLM anywhere):
+
+```
+web (Actions page) ─propose/approve─▶ controlhub-api ─▶ PostgreSQL action_plans + audit_log
+                                                               ▲ claim (SKIP LOCKED, lease)
+controlhub-executor ───────────────────────────────────────────┘
+   ├─ demo adapter: loopback /__demo/faults, docker restart (fixed args, label check)
+   └─ verification: ClickHouse service_summaries (SELECT-only user)
+
+controlhub CLI `context` / `mcp` ──read-only API token──▶ controlhub-api (GET only)
 ```
 
 ## Delivery guarantees
@@ -33,8 +47,10 @@ SDK events client ──────POST /api/v1/events/batch┘
 - **Ingest → Kafka.** ingest writes each request with `acks=-1` and returns success only after
   the broker acknowledges it. If the broker is unavailable, or does not ACK within 15 s, the
   client gets `503 Service Unavailable` with `Retry-After` (HTTP) or `UNAVAILABLE` (gRPC), and the
-  item is counted in `failed_broker`. This was checked by stopping Kafka during a run: the demo
-  services got 503, and once Kafka came back the counters recovered.
+  item is counted in `failed_broker`. `just test-broker-outage` checks this automatically. It
+  stops Kafka and expects 503 ("events NOT accepted, retry") after the 15 s ACK timeout, with a
+  higher `failed_broker` counter. It then restarts Kafka and requires a new event to be accepted
+  and queryable.
 - **Kafka → ClickHouse** is at least once. The partition offset lives in PostgreSQL and moves
   forward only after the ClickHouse insert has succeeded. A crash can therefore replay a batch.
   Rows have deterministic keys (IDs are derived from the envelope, and span IDs come from OTLP),
@@ -60,8 +76,15 @@ SDK events client ──────POST /api/v1/events/batch┘
 - Every seek carries a generation number. The engine drops stale seeks, and the UI ignores frames
   from older generations. Seeks, viewport changes and filter changes that arrive in the same tick
   are merged into a single frame.
+- Live batches are merged into the existing timeline index incrementally. A full rebuild happens
+  only on structural changes: a new node or edge (which changes the state-vector layout), or a
+  parent span that arrives after its child. The diagnostics popover counts both merges and
+  rebuilds, and a property test checks that incremental merges equal a full build.
 - Modes:
-  - LIVE: poll every 2 s, with a 10 s overlap to catch late data.
+  - LIVE: WebSocket `…/live` owned by the Worker (`hello`/`batch`/`gap`/`heartbeat`), with a
+    resume cursor on reconnect. On `gap` the window is reloaded over HTTP. After 3 failed
+    reconnects it falls back to polling every 2 s with a 10 s overlap. The badge shows
+    "Live: WebSocket" or "Live: polling".
   - PAUSED: stops following live data.
   - REPLAY: a requestAnimationFrame clock at 0.1–10x.
   - HISTORICAL: an explicit range of at most 7 days.

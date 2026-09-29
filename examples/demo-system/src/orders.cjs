@@ -19,6 +19,8 @@ const pool = new Pool({
   connectionTimeoutMillis: 5000,
   statement_timeout: 5000,
 });
+// Idle clients error out when the database restarts; the pool replaces them on next use.
+pool.on('error', (err) => log.warn('idle database connection lost', { 'error.type': err?.name ?? 'Error' }));
 
 async function migrate() {
   await pool.query(`CREATE TABLE IF NOT EXISTS orders (

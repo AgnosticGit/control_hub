@@ -1,0 +1,25 @@
+[package]
+name = "controlhub-executor"
+description = "Runs approved action plans (the only ControlHub component with Docker access)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+controlhub-actions.workspace = true
+controlhub-domain.workspace = true
+controlhub-runtime.workspace = true
+controlhub-storage.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+time.workspace = true
+tokio = { workspace = true, features = ["process"] }
+tracing.workspace = true
+uuid.workspace = true
+ureq = { version = "3", default-features = false, features = ["json"] }
+
+[lints]
+workspace = true

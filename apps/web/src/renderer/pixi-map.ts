@@ -3,6 +3,8 @@
 // zoom are local; the resulting world-space viewport is reported back so the
 // engine can cull and choose a level of detail.
 
+// Replaces Pixi's `new Function` code generation so the page runs without CSP 'unsafe-eval'.
+import "pixi.js/unsafe-eval";
 import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
 import {
   EDGE_STRIDE,

@@ -1,6 +1,7 @@
 //! Storage adapters. All telemetry queries take an explicit [`Scope`] and bind
 //! it as a parameter; there is no API for arbitrary SQL.
 
+pub mod actions;
 pub mod ch;
 pub mod pg;
 pub mod secrets;

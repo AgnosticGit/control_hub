@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { baselineCsp } from "./src/lib/csp";
 
 // Server-side only: where the Next.js server forwards /api/v1/* (same-origin
 // for the browser, so session cookies stay SameSite=Strict and HttpOnly).
@@ -9,6 +10,8 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  // `/app/*` additionally gets a strict nonce policy from proxy.ts; browsers enforce both.
+  { key: "Content-Security-Policy", value: baselineCsp },
 ];
 
 const nextConfig: NextConfig = {

@@ -5,8 +5,10 @@ management of distributed systems. It takes in standard OpenTelemetry data, keep
 in ClickHouse, and shows the system as a live map with a time machine. The map runs on a Rust
 engine compiled to WebAssembly and is rendered with WebGL.
 
-> **Status:** early. Stages 0–1 and most of stage 2 work end to end on a local demo stand.
-> The CLI, the actions pipeline, MCP, WebSocket realtime and OTLP metrics are not implemented yet.
+> **Status:** not production-ready. On a local demo stand the following work end to end and are
+> tested: telemetry flow, map and time machine, WebSocket live updates, token management, the
+> `controlhub` CLI, controlled actions (demo adapter only) and a read-only MCP server. OTLP metrics,
+> archiving, production deployment and real (non-demo) action adapters do not exist.
 > See [STATUS.md](STATUS.md) for what was actually verified.
 
 ```
@@ -17,6 +19,10 @@ SDK / OTel Collector ──OTLP──▶ ingest (Rust) ──▶ Kafka ──▶
                                                                                  │
                               Browser: Next.js ◀── Worker ◀── WASM engine ◀──────┘
                                         └─ PixiJS map, inspector, logs/traces/events, timeline
+
+Actions: web → API (plan, policy, four-eyes approval) → PostgreSQL ← executor (separate process,
+         demo adapter, verification from ClickHouse, audit)
+CLI:     controlhub discover / plan / apply / verify / context / mcp (read-only API token)
 ```
 
 ## Requirements
@@ -50,12 +56,22 @@ just demo-fault orders --clear
 Within a few seconds the `orders` node on the map turns amber or red. Error traces and correlated ERROR logs
 show up in the bottom panel, and you can scrub the timeline back to before the fault.
 
+The same faults can go through the controlled-actions flow instead: sign in as
+`operator@controlhub.local`, open **Actions**, and propose "Inject faults" on `orders`. Then sign in
+as `admin@controlhub.local` in another browser and approve it. The executor (started by `just dev`)
+applies the change, verifies it from telemetry about 25 s later, and the plan detail shows the
+policy checks, the result, the verification and the audit trail.
+
+Integrating your own Node service and giving a coding assistant read-only context:
+[docs/integration/CLI.md](docs/integration/CLI.md).
+
 ## Checks
 
 ```
 just check              # rustfmt, clippy -D warnings, wasm32 check, TS typecheck, eslint
 just test               # Rust unit + property tests, SDK tests
 just test-integration   # needs `just dev` + `just demo`
+just test-broker-outage # disruptive: stops Kafka, expects 503, checks recovery
 just test-e2e           # Playwright; needs `just dev` + `just demo` (or `pnpm --filter @controlhub/web start`)
 just bench              # engine benchmark on synthetic data
 ```

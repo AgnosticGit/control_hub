@@ -20,4 +20,12 @@ unresolved_parents: number,
 /**
  * Serialized as a JSON number (values stay far below 2^53).
  */
-stale_seeks_ignored: number, first_item_ns: string | null, last_item_ns: string | null, };
+stale_seeks_ignored: number, 
+/**
+ * Full timeline rebuilds (structural changes). Serialized as a JSON number.
+ */
+timeline_rebuilds: number, 
+/**
+ * Incremental merges of new items into the timeline. Serialized as a JSON number.
+ */
+timeline_merges: number, first_item_ns: string | null, last_item_ns: string | null, };

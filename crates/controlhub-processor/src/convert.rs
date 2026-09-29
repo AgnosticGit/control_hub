@@ -8,6 +8,7 @@ use controlhub_protocol::otlp::common::v1::{AnyValue, KeyValue, any_value::Value
 use controlhub_protocol::v1::{IngestEnvelope, ingest_envelope::Payload};
 use controlhub_storage::ch::{EventRow, LogRow, SpanRow};
 use prost::Message;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Default)]
 pub struct Converted {
@@ -109,6 +110,39 @@ fn service_identity(scope: &Scope, resource: &[(String, String)]) -> ServiceIden
     }
 }
 
+/// Deterministic log ID from the record's content, so a client retry after a lost ACK maps to
+/// the same row (ReplacingMergeTree collapses it). Identical records from the same service
+/// instance at the same nanosecond are treated as one.
+fn log_fingerprint(
+    svc: &ServiceIdentity,
+    time: u64,
+    lr: &controlhub_protocol::otlp::logs::v1::LogRecord,
+    body: &str,
+    attributes: &[(String, String)],
+) -> String {
+    let mut h = Sha256::new();
+    let mut field = |b: &[u8]| {
+        h.update((b.len() as u64).to_le_bytes());
+        h.update(b);
+    };
+    field(svc.id.as_bytes());
+    field(svc.instance.as_bytes());
+    field(&time.to_le_bytes());
+    field(&lr.observed_time_unix_nano.to_le_bytes());
+    field(&lr.severity_number.to_le_bytes());
+    field(lr.severity_text.as_bytes());
+    field(body.as_bytes());
+    field(&lr.trace_id);
+    field(&lr.span_id);
+    let mut attrs: Vec<&(String, String)> = attributes.iter().collect();
+    attrs.sort();
+    for (k, v) in attrs {
+        field(k.as_bytes());
+        field(v.as_bytes());
+    }
+    hex::encode(&h.finalize()[..16])
+}
+
 /// Dependency target for client/producer spans, derived from semantic
 /// conventions. Returned as (entity_id, display name, kind).
 fn span_target(scope: &Scope, kind: i32, attrs: &[(String, String)]) -> Option<(String, String, String)> {
@@ -202,12 +236,15 @@ pub fn convert(env: &IngestEnvelope, ingested_at: i64) -> Result<Converted, Conv
         Payload::OtlpLogs(bytes) => {
             let req =
                 ExportLogsServiceRequest::decode(bytes.as_slice()).map_err(|e| ConvertError::Decode(e.to_string()))?;
-            for (ri, rl) in req.resource_logs.into_iter().enumerate() {
+            for rl in req.resource_logs {
                 let resource = rl.resource.map(|r| flatten(&r.attributes)).unwrap_or_default();
                 let svc = service_identity(&scope, &resource);
-                for (si, sl) in rl.scope_logs.into_iter().enumerate() {
-                    for (li, lr) in sl.log_records.into_iter().enumerate() {
+                for sl in rl.scope_logs {
+                    for lr in sl.log_records {
                         let time = if lr.time_unix_nano > 0 { lr.time_unix_nano } else { lr.observed_time_unix_nano };
+                        let body = lr.body.as_ref().map(any_to_string).unwrap_or_default();
+                        let attributes = flatten(&lr.attributes);
+                        let log_id = log_fingerprint(&svc, time, &lr, &body, &attributes);
                         out.logs.push(LogRow {
                             tenant_id: t.clone(),
                             project_id: p.clone(),
@@ -215,15 +252,15 @@ pub fn convert(env: &IngestEnvelope, ingested_at: i64) -> Result<Converted, Conv
                             service_id: svc.id.clone(),
                             service_name: svc.name.clone(),
                             service_instance_id: svc.instance.clone(),
-                            log_id: format!("{}-{ri}-{si}-{li}", env.batch_id),
+                            log_id,
                             time: clamp_ns(time),
                             observed_time: clamp_ns(lr.observed_time_unix_nano),
                             severity_number: u8::try_from(lr.severity_number).unwrap_or(0),
                             severity_text: lr.severity_text,
-                            body: lr.body.as_ref().map(any_to_string).unwrap_or_default(),
+                            body,
                             trace_id: hex::encode(&lr.trace_id),
                             span_id: hex::encode(&lr.span_id),
-                            attributes: flatten(&lr.attributes),
+                            attributes,
                             resource_attributes: resource.clone(),
                             batch_id: env.batch_id.clone(),
                             ingested_at,
@@ -343,6 +380,40 @@ mod tests {
         assert_eq!(out.spans[0].tenant_id, "t1");
         let other = convert(&envelope("t2", vec![kv("service.name", "orders")]), 5).unwrap();
         assert_ne!(out.spans[0].service_id, other.spans[0].service_id);
+    }
+
+    fn log_envelope(batch_id: &str, body: &str) -> IngestEnvelope {
+        use controlhub_protocol::otlp::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+        let req = ExportLogsServiceRequest {
+            resource_logs: vec![ResourceLogs {
+                resource: Some(Resource { attributes: vec![kv("service.name", "orders")], ..Default::default() }),
+                scope_logs: vec![ScopeLogs {
+                    log_records: vec![LogRecord {
+                        time_unix_nano: 1_000,
+                        severity_number: 9,
+                        body: Some(AnyValue { value: Some(Value::StringValue(body.into())) }),
+                        attributes: vec![kv("order.id", "7"), kv("http.route", "/orders/:id")],
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        };
+        let mut env = envelope("t1", vec![]);
+        env.batch_id = batch_id.into();
+        env.payload = Some(Payload::OtlpLogs(req.encode_to_vec()));
+        env
+    }
+
+    #[test]
+    fn retried_log_export_gets_the_same_log_id() {
+        let first = convert(&log_envelope("batch-a", "order loaded"), 1).unwrap();
+        let retry = convert(&log_envelope("batch-b", "order loaded"), 2).unwrap();
+        let other = convert(&log_envelope("batch-a", "order created"), 1).unwrap();
+        assert_eq!(first.logs[0].log_id, retry.logs[0].log_id);
+        assert_ne!(first.logs[0].log_id, other.logs[0].log_id);
+        assert_eq!(first.logs[0].log_id.len(), 32);
     }
 
     #[test]

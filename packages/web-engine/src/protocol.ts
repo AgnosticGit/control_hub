@@ -26,7 +26,21 @@ export type WorkerRequest =
   | { kind: "compare"; id: number; aNs: string; bNs: string }
   | { kind: "pick"; id: number; x: number; y: number }
   | { kind: "diagnostics"; id: number }
-  | { kind: "topology"; id: number };
+  | { kind: "topology"; id: number }
+  /** Open (or re-target) the live WebSocket; `url` is a same-origin path. */
+  | { kind: "liveStart"; id: number; url: string }
+  | { kind: "liveStop"; id: number };
+
+/** Live channel status pushed by the Worker. */
+export type LiveEvent =
+  | { type: "connecting"; attempt: number }
+  | { type: "open" }
+  | { type: "closed"; attempt: number; retryInMs: number; code: number }
+  | { type: "batch"; items: number; applyMs: number; resume: string }
+  | { type: "heartbeat"; resume: string }
+  /** The server skipped rows (size limit); reload the range over HTTP. */
+  | { type: "gap"; resume: string }
+  | { type: "error"; message: string };
 
 export interface InitResult {
   abiVersion: number;
@@ -56,6 +70,8 @@ export interface ResultMap {
   pick: string | null;
   diagnostics: Diagnostics;
   topology: TopologyView;
+  liveStart: null;
+  liveStop: null;
 }
 
 export type RpcKind = keyof ResultMap;
@@ -75,4 +91,5 @@ export type WorkerResponse =
   | { kind: "result"; id: number; value: unknown }
   | { kind: "error"; id: number; message: string }
   | { kind: "frame"; frame: Frame }
+  | { kind: "live"; event: LiveEvent }
   | { kind: "fatal"; message: string };

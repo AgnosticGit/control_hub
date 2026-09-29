@@ -62,6 +62,44 @@ pub struct IngestCredential {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenKind {
+    Ingest,
+    Api,
+}
+
+impl TokenKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TokenKind::Ingest => "ingest",
+            TokenKind::Api => "api",
+        }
+    }
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct TokenRow {
+    pub id: Uuid,
+    pub kind: String,
+    pub name: String,
+    pub token_prefix: String,
+    pub signals: Option<Vec<String>>,
+    pub created_at: OffsetDateTime,
+    pub expires_at: Option<OffsetDateTime>,
+    pub revoked_at: Option<OffsetDateTime>,
+    pub last_used_at: Option<OffsetDateTime>,
+    pub created_by: Option<Uuid>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApiTokenPrincipal {
+    pub token_id: Uuid,
+    pub scope: Scope,
+    pub user_id: Uuid,
+    pub email: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConsumerOffset {
     pub next_offset: i64,
 }
@@ -266,6 +304,124 @@ impl PgStore {
         Ok(r.rows_affected())
     }
 
+    // ------------------------------------------------------------ token management
+
+    /// Ingestion and API tokens of one environment (metadata only; hashes are never returned).
+    pub async fn list_tokens(&self, scope: &Scope) -> Result<Vec<TokenRow>> {
+        Ok(sqlx::query_as::<_, TokenRow>(
+            "SELECT id, 'ingest' AS kind, name, token_prefix, signals, created_at, expires_at, revoked_at,
+                    NULL::timestamptz AS last_used_at, created_by
+             FROM ingest_tokens WHERE tenant_id = $1 AND project_id = $2 AND environment_id = $3
+             UNION ALL
+             SELECT id, 'api' AS kind, name, token_prefix, NULL::text[] AS signals, created_at, expires_at, revoked_at,
+                    last_used_at, created_by
+             FROM api_tokens WHERE tenant_id = $1 AND project_id = $2 AND environment_id = $3
+             ORDER BY created_at DESC",
+        )
+        .bind(scope.tenant_id.as_str())
+        .bind(scope.project_id.as_str())
+        .bind(scope.environment_id.as_str())
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn find_token(&self, scope: &Scope, kind: TokenKind, id: Uuid) -> Result<Option<TokenRow>> {
+        Ok(self.list_tokens(scope).await?.into_iter().find(|t| t.id == id && t.kind == kind.as_str()))
+    }
+
+    pub async fn create_api_token(
+        &self,
+        scope: &Scope,
+        name: &str,
+        token_hash: &[u8],
+        prefix: &str,
+        expires_at: OffsetDateTime,
+        created_by: Uuid,
+    ) -> Result<Uuid> {
+        let id = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO api_tokens (id, tenant_id, project_id, environment_id, name, token_prefix, token_hash, expires_at, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        )
+        .bind(id)
+        .bind(scope.tenant_id.as_str())
+        .bind(scope.project_id.as_str())
+        .bind(scope.environment_id.as_str())
+        .bind(name)
+        .bind(prefix)
+        .bind(token_hash)
+        .bind(expires_at)
+        .bind(created_by)
+        .execute(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    /// Makes a token unusable after `at` (now for revocation, now + grace for rotation).
+    /// Returns false when the token does not exist in scope or is already revoked.
+    pub async fn end_token(&self, scope: &Scope, kind: TokenKind, id: Uuid, at: OffsetDateTime) -> Result<bool> {
+        let table = match kind {
+            TokenKind::Ingest => "ingest_tokens",
+            TokenKind::Api => "api_tokens",
+        };
+        let revoke_now = at <= OffsetDateTime::now_utc();
+        let set = if revoke_now { "revoked_at = now()" } else { "expires_at = LEAST(COALESCE(expires_at, $5), $5)" };
+        let sql = format!(
+            "UPDATE {table} SET {set}
+             WHERE id = $1 AND tenant_id = $2 AND project_id = $3 AND environment_id = $4 AND revoked_at IS NULL"
+        );
+        let mut q = sqlx::query(&sql)
+            .bind(id)
+            .bind(scope.tenant_id.as_str())
+            .bind(scope.project_id.as_str())
+            .bind(scope.environment_id.as_str());
+        if !revoke_now {
+            q = q.bind(at);
+        }
+        Ok(q.execute(&self.pool).await?.rows_affected() == 1)
+    }
+
+    // ------------------------------------------------------------ API token auth
+
+    /// Active API token with its creator. Disabled users' tokens stop working immediately.
+    pub async fn find_api_token(&self, token_hash: &[u8]) -> Result<Option<ApiTokenPrincipal>> {
+        let row = sqlx::query(
+            "SELECT t.id, t.tenant_id, t.project_id, t.environment_id, u.id AS user_id, u.email, u.display_name
+             FROM api_tokens t JOIN users u ON u.id = t.created_by
+             WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND t.expires_at > now() AND u.disabled_at IS NULL",
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(row) = row else { return Ok(None) };
+        let token_id: Uuid = row.try_get("id")?;
+        sqlx::query(
+            "UPDATE api_tokens SET last_used_at = now()
+             WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')",
+        )
+        .bind(token_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(Some(ApiTokenPrincipal {
+            token_id,
+            scope: scope_from(row.try_get("tenant_id")?, row.try_get("project_id")?, row.try_get("environment_id")?)?,
+            user_id: row.try_get("user_id")?,
+            email: row.try_get("email")?,
+            display_name: row.try_get("display_name")?,
+        }))
+    }
+
+    pub async fn api_token_is_active(&self, token_id: Uuid) -> Result<bool> {
+        let row: Option<(i32,)> = sqlx::query_as(
+            "SELECT 1 FROM api_tokens t JOIN users u ON u.id = t.created_by
+             WHERE t.id = $1 AND t.revoked_at IS NULL AND t.expires_at > now() AND u.disabled_at IS NULL",
+        )
+        .bind(token_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.is_some())
+    }
+
     // ------------------------------------------------------------ ingestion auth
 
     /// Lookup an active (not revoked, not expired) ingestion token by hash.
@@ -327,6 +483,18 @@ impl PgStore {
         .bind(token_hash)
         .fetch_optional(&self.pool)
         .await?)
+    }
+
+    /// Long-lived connections (WebSocket) re-check this so logout/expiry closes them.
+    pub async fn session_is_active(&self, session_id: Uuid) -> Result<bool> {
+        let row: Option<(i32,)> = sqlx::query_as(
+            "SELECT 1 FROM sessions s JOIN users u ON u.id = s.user_id
+             WHERE s.id = $1 AND s.revoked_at IS NULL AND s.expires_at > now() AND u.disabled_at IS NULL",
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.is_some())
     }
 
     pub async fn revoke_session(&self, session_id: Uuid) -> Result<()> {
@@ -487,6 +655,23 @@ impl PgStore {
         .execute(&self.pool)
         .await?;
         Ok(id)
+    }
+
+    pub async fn audit_entries_for_target(
+        &self,
+        tenant_id: &str,
+        project_id: &str,
+        target: &str,
+    ) -> Result<Vec<AuditRow>> {
+        Ok(sqlx::query_as::<_, AuditRow>(
+            "SELECT id, occurred_at, actor_id, actor_kind, action, target, reason, outcome FROM audit_log
+             WHERE tenant_id = $1 AND project_id = $2 AND target = $3 ORDER BY occurred_at, id LIMIT 200",
+        )
+        .bind(tenant_id)
+        .bind(project_id)
+        .bind(target)
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     pub async fn audit_entries(&self, tenant_id: &str, project_id: &str, limit: i64) -> Result<Vec<AuditRow>> {

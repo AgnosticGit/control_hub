@@ -7,6 +7,8 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
+  // Specs share one demo system (fault injection, action plans): never run files concurrently.
+  workers: 1,
   retries: 0,
   reporter: [["list"]],
   outputDir: "../../test-results/e2e",

@@ -94,6 +94,57 @@ pub struct Engine {
     evicted_items: u64,
     evicted_before: Option<i64>,
     stale_seeks: u64,
+    /// Items added since the timeline was last built or merged.
+    pending: Vec<ItemKey>,
+    /// `(trace_id, parent_span_id)` of spans whose parent was not loaded at build time.
+    unresolved_keys: HashSet<(String, String)>,
+    timeline_rebuilds: u64,
+    timeline_merges: u64,
+}
+
+#[derive(Debug, Clone)]
+enum ItemKey {
+    Span((String, String)),
+    Log(String),
+    Event(String),
+}
+
+enum EdgeLookup {
+    NoEdge,
+    Existing(u32),
+    /// The edge does not exist yet: topology changes, so the timeline must be rebuilt.
+    Missing,
+    Unresolved((String, String)),
+}
+
+fn push_span_deltas(out: &mut Vec<Delta>, s: &SpanItem, node: u32, edge: Option<u32>) {
+    let entry = s.kind == 2 || s.kind == 5 || s.parent_span_id.is_none();
+    let tb = stable_hash(&[&s.trace_id, &s.span_id]);
+    out.push(Delta {
+        time: s.start_ns,
+        tiebreak: tb,
+        evict_at: s.end_ns,
+        kind: DeltaKind::SpanStart { node, edge, entry },
+    });
+    out.push(Delta {
+        time: s.end_ns,
+        tiebreak: tb ^ 1,
+        evict_at: s.end_ns,
+        kind: DeltaKind::SpanEnd { node, edge, entry, error: s.is_error, duration_ns: s.end_ns - s.start_ns },
+    });
+}
+
+fn log_delta(l: &LogItem, node: u32) -> Delta {
+    Delta {
+        time: l.time_ns,
+        tiebreak: stable_hash(&[&l.id]),
+        evict_at: l.time_ns,
+        kind: DeltaKind::Log { node, error: l.severity >= 17 },
+    }
+}
+
+fn event_delta(e: &EventItem, node: Option<u32>) -> Delta {
+    Delta { time: e.time_ns, tiebreak: stable_hash(&[&e.id]), evict_at: e.time_ns, kind: DeltaKind::Event { node } }
 }
 
 fn stable_hash(parts: &[&str]) -> u64 {
@@ -134,6 +185,10 @@ impl Engine {
             evicted_items: 0,
             evicted_before: None,
             stale_seeks: 0,
+            pending: Vec::new(),
+            unresolved_keys: HashSet::new(),
+            timeline_rebuilds: 0,
+            timeline_merges: 0,
         }
     }
 
@@ -189,14 +244,34 @@ impl Engine {
                     }
                     self.ensure_node(&s.service_id, &s.service_name, EntityKind::Service, Provenance::Observed);
                     let key = (s.trace_id.clone(), s.span_id.clone());
-                    if self.spans.insert(key, s).is_some() {
-                        self.duplicates_ignored += 1;
+                    match self.spans.get(&key) {
+                        None => {
+                            self.pending.push(ItemKey::Span(key.clone()));
+                            self.spans.insert(key, s);
+                        }
+                        Some(old) => {
+                            self.duplicates_ignored += 1;
+                            if *old != s {
+                                self.spans.insert(key, s);
+                                self.timeline = None;
+                            }
+                        }
                     }
                 }
                 TimelineItem::Log(l) => {
                     self.ensure_node(&l.service_id, &l.service_name, EntityKind::Service, Provenance::Observed);
-                    if self.logs.insert(l.id.clone(), l).is_some() {
-                        self.duplicates_ignored += 1;
+                    match self.logs.get(&l.id) {
+                        None => {
+                            self.pending.push(ItemKey::Log(l.id.clone()));
+                            self.logs.insert(l.id.clone(), l);
+                        }
+                        Some(old) => {
+                            self.duplicates_ignored += 1;
+                            if *old != l {
+                                self.logs.insert(l.id.clone(), l);
+                                self.timeline = None;
+                            }
+                        }
                     }
                 }
                 TimelineItem::Event(e) => {
@@ -204,17 +279,28 @@ impl Engine {
                         let (id, name) = (id.clone(), name.clone());
                         self.ensure_node(&id, &name, EntityKind::Service, Provenance::Observed);
                     }
-                    if self.events.insert(e.id.clone(), e).is_some() {
-                        self.duplicates_ignored += 1;
+                    match self.events.get(&e.id) {
+                        None => {
+                            self.pending.push(ItemKey::Event(e.id.clone()));
+                            self.events.insert(e.id.clone(), e);
+                        }
+                        Some(old) => {
+                            self.duplicates_ignored += 1;
+                            if *old != e {
+                                self.events.insert(e.id.clone(), e);
+                                self.timeline = None;
+                            }
+                        }
                     }
                 }
             }
         }
         self.evict_if_needed();
         if self.nodes.len() != before_nodes {
+            // New nodes change the state vector layout: rebuild instead of merging.
             self.relayout();
+            self.timeline = None;
         }
-        self.timeline = None;
         Ok(())
     }
 
@@ -233,7 +319,10 @@ impl Engine {
         if removed > 0 {
             self.evicted_items += removed as u64;
             self.evicted_before = Some(self.evicted_before.map_or(before_ns, |b| b.max(before_ns)));
-            self.timeline = None;
+            // Kept spans keep the edge attribution they had when their (now evicted) parent was loaded.
+            if let Some(tl) = self.timeline.as_mut() {
+                tl.retain_from(before_ns);
+            }
         }
     }
 
@@ -508,6 +597,8 @@ impl Engine {
             evicted_before_ns: self.evicted_before,
             unresolved_parents: self.unresolved_parents,
             stale_seeks_ignored: self.stale_seeks,
+            timeline_rebuilds: self.timeline_rebuilds,
+            timeline_merges: self.timeline_merges,
             first_item_ns: first,
             last_item_ns: last,
         }
@@ -604,11 +695,89 @@ impl Engine {
         self.evict_before(cutoff);
     }
 
-    /// Rebuild ordered deltas + checkpoints if inputs changed.
+    /// Edge a span contributes to, resolved the same way as in a full rebuild.
+    fn span_edge(&self, s: &SpanItem, node: u32) -> EdgeLookup {
+        if let Some(&target) = s.target_entity_id.as_ref().and_then(|t| self.node_index.get(t)) {
+            return self
+                .edge_index
+                .get(&(node, target, RelationKind::DependsOn))
+                .map_or(EdgeLookup::Missing, |&e| EdgeLookup::Existing(e));
+        }
+        let (true, Some(parent)) = (s.kind == 2 || s.kind == 5, s.parent_span_id.as_deref()) else {
+            return EdgeLookup::NoEdge;
+        };
+        let parent_key = (s.trace_id.clone(), parent.to_owned());
+        match self.spans.get(&parent_key).and_then(|p| self.node_index.get(&p.service_id)) {
+            Some(&caller) if caller != node => self
+                .edge_index
+                .get(&(caller, node, RelationKind::Calls))
+                .map_or(EdgeLookup::Missing, |&e| EdgeLookup::Existing(e)),
+            Some(_) => EdgeLookup::NoEdge,
+            None => EdgeLookup::Unresolved(parent_key),
+        }
+    }
+
+    /// Merge pending items into the existing timeline. Returns false when the change is
+    /// structural (new edge, a late parent resolving an earlier child, budget exceeded) and a
+    /// full rebuild is required.
+    fn try_merge_pending(&mut self) -> bool {
+        let pending = std::mem::take(&mut self.pending);
+        let mut deltas = Vec::with_capacity(pending.len() * 2);
+        let mut new_unresolved = Vec::new();
+        for key in &pending {
+            match key {
+                ItemKey::Span(k) => {
+                    let Some(s) = self.spans.get(k) else { continue };
+                    if self.unresolved_keys.contains(k) {
+                        return false;
+                    }
+                    let Some(&node) = self.node_index.get(&s.service_id) else { continue };
+                    let edge = match self.span_edge(s, node) {
+                        EdgeLookup::NoEdge => None,
+                        EdgeLookup::Existing(e) => Some(e),
+                        EdgeLookup::Missing => return false,
+                        EdgeLookup::Unresolved(pk) => {
+                            new_unresolved.push(pk);
+                            None
+                        }
+                    };
+                    push_span_deltas(&mut deltas, s, node, edge);
+                }
+                ItemKey::Log(id) => {
+                    let Some(l) = self.logs.get(id) else { continue };
+                    let Some(&node) = self.node_index.get(&l.service_id) else { continue };
+                    deltas.push(log_delta(l, node));
+                }
+                ItemKey::Event(id) => {
+                    let Some(e) = self.events.get(id) else { continue };
+                    let node = e.service_id.as_ref().and_then(|s| self.node_index.get(s)).copied();
+                    deltas.push(event_delta(e, node));
+                }
+            }
+        }
+        let Some(tl) = self.timeline.as_mut() else { return false };
+        tl.merge(deltas);
+        if tl.over_budget() {
+            return false;
+        }
+        self.unresolved_parents += new_unresolved.len() as u32;
+        self.unresolved_keys.extend(new_unresolved);
+        self.timeline_merges += 1;
+        true
+    }
+
+    /// Bring ordered deltas + checkpoints up to date: merge new items when possible,
+    /// otherwise rebuild from all recorded items.
     fn ensure_timeline(&mut self) {
+        if self.timeline.is_some() && !self.pending.is_empty() && !self.try_merge_pending() {
+            self.timeline = None;
+        }
         if self.timeline.is_some() {
             return;
         }
+        self.pending.clear();
+        self.unresolved_keys.clear();
+        self.timeline_rebuilds += 1;
         let span_service: HashMap<(&str, &str), u32> = self
             .spans
             .values()
@@ -617,6 +786,7 @@ impl Engine {
 
         let mut span_edges: Vec<((String, String), u32, u32, Provenance)> = Vec::new();
         let mut unresolved = 0u32;
+        let mut unresolved_keys = HashSet::new();
         for s in self.spans.values() {
             let Some(&node) = self.node_index.get(&s.service_id) else { continue };
             let key = (s.trace_id.clone(), s.span_id.clone());
@@ -630,7 +800,10 @@ impl Engine {
                         span_edges.push((key, caller, node, Provenance::Observed));
                     }
                     Some(_) => {}
-                    None => unresolved += 1,
+                    None => {
+                        unresolved += 1;
+                        unresolved_keys.insert((s.trace_id.clone(), parent.to_owned()));
+                    }
                 }
             }
         }
@@ -654,32 +827,21 @@ impl Engine {
             edge_of_span.insert(key, idx);
         }
         self.unresolved_parents = unresolved;
+        self.unresolved_keys = unresolved_keys;
 
         let mut deltas = Vec::with_capacity(self.spans.len() * 2 + self.logs.len() + self.events.len());
         for s in self.spans.values() {
             let Some(&node) = self.node_index.get(&s.service_id) else { continue };
             let key = (s.trace_id.clone(), s.span_id.clone());
-            let edge = edge_of_span.get(&key).copied();
-            let entry = s.kind == 2 || s.kind == 5 || s.parent_span_id.is_none();
-            let tb = stable_hash(&[&s.trace_id, &s.span_id]);
-            deltas.push(Delta { time: s.start_ns, tiebreak: tb, kind: DeltaKind::SpanStart { node, edge, entry } });
-            deltas.push(Delta {
-                time: s.end_ns,
-                tiebreak: tb ^ 1,
-                kind: DeltaKind::SpanEnd { node, edge, entry, error: s.is_error, duration_ns: s.end_ns - s.start_ns },
-            });
+            push_span_deltas(&mut deltas, s, node, edge_of_span.get(&key).copied());
         }
         for l in self.logs.values() {
             let Some(&node) = self.node_index.get(&l.service_id) else { continue };
-            deltas.push(Delta {
-                time: l.time_ns,
-                tiebreak: stable_hash(&[&l.id]),
-                kind: DeltaKind::Log { node, error: l.severity >= 17 },
-            });
+            deltas.push(log_delta(l, node));
         }
         for e in self.events.values() {
             let node = e.service_id.as_ref().and_then(|s| self.node_index.get(s)).copied();
-            deltas.push(Delta { time: e.time_ns, tiebreak: stable_hash(&[&e.id]), kind: DeltaKind::Event { node } });
+            deltas.push(event_delta(e, node));
         }
         self.timeline = Some(Timeline::build(
             deltas,

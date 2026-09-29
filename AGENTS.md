@@ -13,7 +13,10 @@ Current progress lives in `STATUS.md`, planned work in `TASKS.md`, and decisions
 | `crates/controlhub-runtime` | tracing setup, shutdown, admin/metrics server |
 | `crates/controlhub-ingest` | OTLP HTTP/gRPC + events ingest → Kafka (ACK after broker ACK) |
 | `crates/controlhub-processor` | Kafka → ClickHouse, offsets in PostgreSQL |
-| `crates/controlhub-api` | REST `/api/v1`, sessions, OpenAPI, `bootstrap` subcommand |
+| `crates/controlhub-api` | REST `/api/v1`, sessions, API tokens, actions API, WebSocket live, OpenAPI, `bootstrap` subcommand |
+| `crates/controlhub-actions` | Action catalog, typed `Action`, validation, policy, state machine (pure, no I/O) |
+| `crates/controlhub-executor` | Separate process that runs approved plans (demo adapter) and verifies them; the only one allowed Docker |
+| `crates/controlhub-cli` | `controlhub` CLI: doctor/discover/plan/apply/verify/context and the read-only `mcp` server |
 | `crates/controlhub-engine-core` | Timeline/topology engine (pure Rust, native + WASM) |
 | `crates/controlhub-web-engine` | wasm-bindgen wrapper around engine-core |
 | `apps/web` | Next.js: public pages + private `/app` workspace |
@@ -30,11 +33,12 @@ Current progress lives in `STATUS.md`, planned work in `TASKS.md`, and decisions
 ```
 just doctor          # tools, ports, bootstrap state
 just bootstrap       # install deps, generate local secrets, start infra, migrate, seed
-just dev             # ingest + processor + API + web
+just dev             # ingest + processor + API + executor + web
 just demo            # demo system sending telemetry
 just check           # fmt, clippy -D warnings, wasm32 check, TS typecheck, eslint
 just test            # Rust unit/property tests + SDK tests
 just test-integration / just test-e2e   # need `just dev` and `just demo` running
+just test-broker-outage                 # disruptive (stops Kafka); run alone
 just wasm / just codegen                # regenerate WASM artifact / contracts
 ```
 
@@ -44,5 +48,7 @@ See `.cursor/rules/controlhub-core.mdc` (always applies) and `controlhub-web.mdc
 - Keep the fixed data flow and ACK semantics. No LLM anywhere in the data path.
 - Treat telemetry as untrusted. Redact at ingestion. Scope every query by the principal's tenant.
 - No `unsafe`, no `unwrap` on external data, no TS `any`.
+- Only `controlhub-executor` may change the observed system or use Docker. New actions go into the
+  `controlhub-actions` catalog (typed, bounded, verified), never as free-form commands (ADR-0012).
 - Never overwrite user changes, never `git reset`/`clean`, never commit `.controlhub/`.
 - Report only checks you actually ran, and update `STATUS.md` with the real results.

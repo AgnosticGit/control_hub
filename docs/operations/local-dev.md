@@ -21,7 +21,8 @@ Postgres, ClickHouse or Kafka. See ADR-0006.
 ## Generated local state (`.controlhub/`, gitignored)
 
 - `infra.env`: infrastructure passwords. It is kept across bootstraps.
-- `services.env`: a least-privilege connection string for each service. `CONTROLHUB_ENV=dev`.
+- `services.env`: a least-privilege connection string for each service, including the executor.
+  `CONTROLHUB_ENV=dev`.
 - `demo.env`: the demo services' ingestion token and endpoint.
 - `local-credentials.json`: the web login plus the ingestion token. Every bootstrap generates new
   ones.
@@ -56,3 +57,13 @@ curl http://127.0.0.1:8080/api/v1/ready
   Run `just wasm`, then restart the web app.
 - **The map is empty.** Check that `just demo` is running and that ingest `accepted` is increasing.
   The completeness badge shows how current the data is.
+- **An approved action stays `approved`.** The executor is not running (it is started by
+  `just dev`; look for `controlhub-executor running`). After 10 minutes the plan expires and is
+  never run.
+- **An action ends as `failed` with "fault control returned 404".** The demo was started without
+  fault injection. `just demo` sets `CONTROLHUB_DEMO_FAULTS=1`.
+- **An action is denied by "rate limit".** At most 30 plans per environment per hour. Repeated test
+  runs count too (the actions integration test creates 6, the e2e 1), so wait for the window to
+  pass. `just bootstrap` does not delete plans.
+- **`verification_failed` after clearing faults on `gateway`.** Verification looks at the real
+  error ratio, so errors propagated from `orders` still count. Clear `orders` first.

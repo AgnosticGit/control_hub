@@ -88,8 +88,23 @@ export function Workspace({ projectId, environmentId }: { projectId: string; env
           Table view
         </label>
         <div className="ml-auto flex items-center gap-3">
+          <LiveTransportBadge transport={state.liveTransport} />
           <CompletenessBadge state={state} />
           <EngineInfo state={state} diagnostics={actions.diagnostics} />
+          <Link
+            href={`/app/${encodeURIComponent(projectId)}/${encodeURIComponent(environmentId)}/actions`}
+            className="rounded border border-border px-2 py-1 text-xs hover:border-accent"
+          >
+            Actions
+          </Link>
+          {project && (project.role === "admin" || project.role === "owner") ? (
+            <Link
+              href={`/app/${encodeURIComponent(projectId)}/${encodeURIComponent(environmentId)}/tokens`}
+              className="rounded border border-border px-2 py-1 text-xs hover:border-accent"
+            >
+              Tokens
+            </Link>
+          ) : null}
           <span className="text-xs text-muted">{session.data?.user.email}</span>
           <button type="button" onClick={() => void logout()} className="rounded border border-border px-2 py-1 text-xs hover:border-accent">
             Sign out
@@ -158,6 +173,26 @@ export function Workspace({ projectId, environmentId }: { projectId: string; env
   );
 }
 
+const TRANSPORT_LABEL: Record<Exclude<EngineState["liveTransport"], "off">, { text: string; title: string; cls: string }> = {
+  connecting: { text: "Live: connecting", title: "Opening the live WebSocket", cls: "text-muted" },
+  websocket: { text: "Live: WebSocket", title: "New telemetry is pushed over a WebSocket", cls: "text-ok" },
+  polling: {
+    text: "Live: polling",
+    title: "WebSocket unavailable; polling the API every 2 s until it reconnects",
+    cls: "text-warn",
+  },
+};
+
+function LiveTransportBadge({ transport }: { transport: EngineState["liveTransport"] }) {
+  if (transport === "off") return null;
+  const t = TRANSPORT_LABEL[transport];
+  return (
+    <span className={`text-xs ${t.cls}`} title={t.title} aria-label="Live transport">
+      {t.text}
+    </span>
+  );
+}
+
 function CompletenessBadge({ state }: { state: EngineState }) {
   const c = state.load?.completeness;
   if (!state.load) return null;
@@ -210,6 +245,7 @@ function EngineInfo({ state, diagnostics }: { state: EngineState; diagnostics: (
               <Row k="Spans / logs / events" v={`${diag.spans} / ${diag.logs} / ${diag.events}`} />
               <Row k="Nodes / edges" v={`${diag.nodes} / ${diag.edges}`} />
               <Row k="Checkpoints" v={`${diag.checkpoints} (every ${diag.checkpoint_interval})`} />
+              <Row k="Timeline rebuilds / merges" v={`${diag.timeline_rebuilds} / ${diag.timeline_merges}`} />
               <Row k="Approx memory" v={`${(diag.approx_memory_bytes / 1048576).toFixed(1)} MiB`} />
               <Row k="Duplicates ignored" v={String(diag.duplicates_ignored)} />
               <Row k="Evicted" v={String(diag.evicted_items)} />

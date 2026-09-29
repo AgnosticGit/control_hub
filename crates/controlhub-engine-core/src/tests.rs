@@ -310,4 +310,89 @@ proptest! {
         };
         prop_assert_eq!(edges(&a), edges(&b));
     }
+
+    /// Incremental merges (a seek between every batch) give the same state as one full build,
+    /// including after eviction.
+    #[test]
+    fn incremental_matches_full_build(
+        (spans, logs) in arb_items(),
+        chunks in 1usize..8,
+        t in 0i64..140,
+        evict in prop::option::of(0i64..60),
+        small_budget in any::<bool>(),
+    ) {
+        let (spans, logs) = dedup_last_wins(&spans, &logs);
+        let mut items: Vec<TimelineItem> = spans.iter().cloned().map(TimelineItem::Span)
+            .chain(logs.iter().cloned().map(TimelineItem::Log)).collect();
+        items.sort_by_key(|i| match i {
+            TimelineItem::Span(s) => s.end_ns,
+            TimelineItem::Log(l) => l.time_ns,
+            TimelineItem::Event(e) => e.time_ns,
+        });
+        let cfg = EngineConfig {
+            checkpoint_budget_bytes: if small_budget { 1 } else { 16 << 20 },
+            ..EngineConfig::default()
+        };
+
+        let mut inc = Engine::new(cfg.clone());
+        let size = items.len().div_ceil(chunks).max(1);
+        for (g, chunk) in items.chunks(size).enumerate() {
+            inc.apply_batch(Batch { items: chunk.to_vec() }).unwrap();
+            inc.seek(BASE + t * SEC, g as u64 + 1);
+        }
+        let mut full = Engine::new(cfg);
+        full.apply_batch(Batch { items }).unwrap();
+        if let Some(ev) = evict {
+            inc.evict_before(BASE + ev * SEC);
+            full.evict_before(BASE + ev * SEC);
+        }
+
+        let tt = BASE + t * SEC;
+        inc.seek(tt, 100);
+        full.seek(tt, 100);
+        prop_assert_eq!(inc.prev_event_time(tt), full.prev_event_time(tt));
+        prop_assert_eq!(inc.next_event_time(tt), full.next_event_time(tt));
+        for n in full.topology().nodes {
+            let a = inc.node_metrics(&n.id, None);
+            let b = full.node_metrics(&n.id, None);
+            prop_assert_eq!(a, b, "node {}", n.id);
+        }
+    }
+}
+
+#[test]
+fn live_batches_merge_instead_of_rebuilding() {
+    let mut e = Engine::new(EngineConfig::default());
+    let first = vec![
+        TimelineItem::Span(span("t1", "a", None, "gateway", 2, 0, SEC, false)),
+        TimelineItem::Span(span("t1", "b", Some("a"), "orders", 2, 0, SEC, false)),
+    ];
+    e.apply_batch(Batch { items: first }).unwrap();
+    e.seek(BASE + SEC, 1);
+    assert_eq!(e.diagnostics().timeline_rebuilds, 1);
+
+    for i in 1..=5i64 {
+        let trace = format!("t{}", i + 1);
+        let items = vec![
+            TimelineItem::Span(span(&trace, "a", None, "gateway", 2, i * SEC, (i + 1) * SEC, false)),
+            TimelineItem::Span(span(&trace, "b", Some("a"), "orders", 2, i * SEC, (i + 1) * SEC, i == 3)),
+            TimelineItem::Log(log(&format!("l{i}"), "orders", i * SEC, 9)),
+        ];
+        e.apply_batch(Batch { items }).unwrap();
+        e.seek(BASE + (i + 1) * SEC, i as u64 + 1);
+    }
+    let d = e.diagnostics();
+    assert_eq!(d.timeline_rebuilds, 1, "known nodes and edges must not trigger rebuilds");
+    assert_eq!(d.timeline_merges, 5);
+    let m = e.node_metrics("svc_orders", Some(BASE + 6 * SEC)).unwrap();
+    assert_eq!(m.window_errors, 1);
+
+    // A child whose parent arrives later is structural: the late parent forces a rebuild.
+    e.apply_batch(Batch { items: vec![TimelineItem::Span(span("t9", "c", Some("late"), "orders", 2, 0, SEC, false))] })
+        .unwrap();
+    e.seek(BASE + SEC, 20);
+    e.apply_batch(Batch { items: vec![TimelineItem::Span(span("t9", "late", None, "gateway", 3, 0, SEC, false))] })
+        .unwrap();
+    e.seek(BASE + SEC, 21);
+    assert_eq!(e.diagnostics().timeline_rebuilds, 2);
 }

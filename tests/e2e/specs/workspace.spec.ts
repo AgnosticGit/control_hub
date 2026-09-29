@@ -67,6 +67,34 @@ test.describe("workspace on demo data", () => {
     await expect(timeline.getByText("live", { exact: true })).toBeVisible();
   });
 
+  test("live mode streams over WebSocket and survives pause and reload", async ({ page }) => {
+    const transport = page.getByLabel("Live transport");
+    await expect(transport).toHaveText("Live: WebSocket");
+    const timeline = page.getByLabel("Timeline");
+    await timeline.getByRole("button", { name: "Pause live" }).click();
+    await expect(transport).toHaveCount(0);
+    await timeline.getByRole("button", { name: "Return to live" }).click();
+    await expect(transport).toHaveText("Live: WebSocket");
+
+    await page.reload();
+    await expect(page.getByText("Starting engine…")).toBeHidden();
+    await expect(transport).toHaveText("Live: WebSocket");
+    await expect(timeline).toContainText(/[1-9]\d* req/);
+    // Pushed batches are merged into the timeline instead of rebuilding it.
+    const engine = page.getByRole("button", { name: "Engine" });
+    const merges = page.getByText(/Timeline rebuilds \/ merges/);
+    await expect
+      .poll(async () => {
+        // Diagnostics are read when the panel opens.
+        if (await merges.isVisible()) await engine.click();
+        await engine.click();
+        await merges.waitFor();
+        const row = await merges.locator("..").innerText();
+        return Number(/\/\s*(\d+)\s*$/.exec(row.trim())?.[1] ?? 0);
+      }, { timeout: 20_000 })
+      .toBeGreaterThan(0);
+  });
+
   test("logs, traces waterfall and events panels load", async ({ page }) => {
     const panel = page.getByRole("region", { name: "Signals" });
     await expect(panel.getByLabel("Log records")).toBeVisible();

@@ -3,6 +3,7 @@
 import type {
   Filters,
   Frame,
+  LiveEvent,
   ResultMap,
   RpcKind,
   WorkerRequest,
@@ -23,6 +24,7 @@ export class EngineClient {
   private readonly pending = new Map<number, Pending>();
   private readonly frameListeners = new Set<(f: Frame) => void>();
   private readonly fatalListeners = new Set<(message: string) => void>();
+  private readonly liveListeners = new Set<(event: LiveEvent) => void>();
   private generation = 0;
   private lastFrameGeneration = -1;
   private lastFrame: Frame | null = null;
@@ -57,6 +59,9 @@ export class EngineClient {
         for (const l of this.frameListeners) l(msg.frame);
         return;
       }
+      case "live":
+        for (const l of this.liveListeners) l(msg.event);
+        return;
       case "fatal":
         for (const l of this.fatalListeners) l(msg.message);
         return;
@@ -112,6 +117,11 @@ export class EngineClient {
     return () => this.frameListeners.delete(cb);
   }
 
+  onLive(cb: (event: LiveEvent) => void): () => void {
+    this.liveListeners.add(cb);
+    return () => this.liveListeners.delete(cb);
+  }
+
   onFatal(cb: (message: string) => void): () => void {
     this.fatalListeners.add(cb);
     return () => this.fatalListeners.delete(cb);
@@ -123,5 +133,6 @@ export class EngineClient {
     this.pending.clear();
     this.frameListeners.clear();
     this.fatalListeners.clear();
+    this.liveListeners.clear();
   }
 }

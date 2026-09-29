@@ -40,12 +40,50 @@ impl Role {
     }
 }
 
+pub const API_TOKEN_PREFIX: &str = "cha_";
+
+/// How the request was authenticated.
+#[derive(Debug, Clone)]
+pub enum Credential {
+    /// Browser session (HttpOnly cookie + CSRF for mutations).
+    Session(Uuid),
+    /// Read-only bearer API token bound to exactly one environment.
+    ApiToken { token_id: Uuid, scope: Scope },
+}
+
 #[derive(Debug, Clone)]
 pub struct CurrentUser {
-    pub session_id: Uuid,
+    pub credential: Credential,
     pub user_id: Uuid,
     pub email: String,
     pub display_name: String,
+}
+
+impl CurrentUser {
+    pub fn session_id(&self) -> Result<Uuid, ApiError> {
+        match &self.credential {
+            Credential::Session(id) => Ok(*id),
+            Credential::ApiToken { .. } => Err(ApiError::Forbidden("requires a browser session")),
+        }
+    }
+
+    pub fn is_session(&self) -> bool {
+        matches!(self.credential, Credential::Session(_))
+    }
+
+    /// Long-lived connections re-check this so logout, revocation or expiry closes them.
+    pub async fn still_active(&self, state: &AppState) -> Result<bool, ApiError> {
+        Ok(match &self.credential {
+            Credential::Session(id) => state.pg.session_is_active(*id).await?,
+            Credential::ApiToken { token_id, .. } => state.pg.api_token_is_active(*token_id).await?,
+        })
+    }
+}
+
+fn bearer(parts: &Parts) -> Option<&str> {
+    let v = parts.headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+    let (scheme, token) = v.split_once(' ')?;
+    scheme.eq_ignore_ascii_case("bearer").then(|| token.trim())
 }
 
 pub fn cookie_value<'a>(parts: &'a Parts, name: &str) -> Option<&'a str> {
@@ -78,6 +116,22 @@ impl FromRequestParts<AppState> for CurrentUser {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        if let Some(token) = bearer(parts) {
+            // API tokens are read-only: no mutation is ever authorized by one.
+            if is_mutation(&parts.method) {
+                return Err(ApiError::Forbidden("API tokens are read-only"));
+            }
+            if !token.starts_with(API_TOKEN_PREFIX) {
+                return Err(ApiError::Unauthenticated);
+            }
+            let p = state.pg.find_api_token(&hash_token(token)).await?.ok_or(ApiError::Unauthenticated)?;
+            return Ok(CurrentUser {
+                credential: Credential::ApiToken { token_id: p.token_id, scope: p.scope },
+                user_id: p.user_id,
+                email: p.email,
+                display_name: p.display_name,
+            });
+        }
         let token = cookie_value(parts, SESSION_COOKIE).ok_or(ApiError::Unauthenticated)?;
         let session = state.pg.find_session(&hash_token(token)).await?.ok_or(ApiError::Unauthenticated)?;
 
@@ -93,7 +147,7 @@ impl FromRequestParts<AppState> for CurrentUser {
             }
         }
         Ok(CurrentUser {
-            session_id: session.session_id,
+            credential: Credential::Session(session.session_id),
             user_id: session.user_id,
             email: session.email,
             display_name: session.display_name,
@@ -124,6 +178,14 @@ pub async fn authorize(
 ) -> Result<(Scope, bool), ApiError> {
     let project = ProjectId::parse(project_id).map_err(|_| ApiError::NotFound)?;
     let env = EnvironmentId::parse(environment_id).map_err(|_| ApiError::NotFound)?;
+    if let Credential::ApiToken { scope, .. } = &user.credential {
+        if scope.project_id != project || scope.environment_id != env {
+            return Err(ApiError::NotFound);
+        }
+        if min > Role::Viewer {
+            return Err(ApiError::Forbidden("API tokens are read-only"));
+        }
+    }
     let memberships = state.pg.memberships(user.user_id).await?;
     let m = memberships.iter().find(|m| m.project_id == project.as_str()).ok_or(ApiError::NotFound)?;
     let role = Role::parse(&m.role).ok_or(ApiError::Forbidden("unknown role"))?;

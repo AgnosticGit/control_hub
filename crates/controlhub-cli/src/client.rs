@@ -1,0 +1,194 @@
+//! Minimal HTTP client for the ControlHub API (read-only bearer token) and ingestion.
+
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use anyhow::{Context as _, anyhow, bail};
+use serde_json::Value;
+
+use crate::Conn;
+
+pub const API_TOKEN_ENV: &str = "CONTROLHUB_API_TOKEN";
+pub const INGEST_TOKEN_ENV: &str = "CONTROLHUB_INGEST_TOKEN";
+
+/// A secret that never appears in `Debug` output.
+pub struct Secret(String);
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret(…)")
+    }
+}
+
+impl Secret {
+    #[cfg(test)]
+    pub fn for_test(v: &str) -> Self {
+        Self(v.to_owned())
+    }
+
+    fn from_env(name: &str, prefix: &str) -> anyhow::Result<Option<Self>> {
+        match std::env::var(name) {
+            Ok(v) if v.trim().is_empty() => Ok(None),
+            Ok(v) => {
+                let v = v.trim().to_owned();
+                if !v.starts_with(prefix) {
+                    bail!("{name} must be a `{prefix}…` token");
+                }
+                Ok(Some(Self(v)))
+            }
+            Err(_) => Ok(None),
+        }
+    }
+}
+
+pub fn api_token() -> anyhow::Result<Option<Secret>> {
+    Secret::from_env(API_TOKEN_ENV, "cha_")
+}
+
+pub fn ingest_token() -> anyhow::Result<Option<Secret>> {
+    Secret::from_env(INGEST_TOKEN_ENV, "chi_")
+}
+
+/// Tokens must not travel in cleartext outside the local machine.
+pub fn check_url(url: &str) -> anyhow::Result<String> {
+    let url = url.trim_end_matches('/');
+    if let Some(rest) = url.strip_prefix("http://") {
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+        let loopback = !authority.contains('@')
+            && ["localhost", "127.0.0.1", "[::1]"]
+                .iter()
+                .any(|h| authority == *h || authority.strip_prefix(h).is_some_and(|p| p.starts_with(':')));
+        if !loopback {
+            bail!("refusing to send tokens over plain http to {authority}; use https");
+        }
+    } else if !url.starts_with("https://") {
+        bail!("URL must start with http:// or https://: {url}");
+    }
+    Ok(url.to_owned())
+}
+
+pub fn now_ns() -> i64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as i64).unwrap_or_default()
+}
+
+/// Percent-encodes a path segment (IDs are validated server-side; this is defence in depth).
+pub fn segment(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+#[derive(Debug)]
+pub struct Client {
+    agent: ureq::Agent,
+    pub api_url: String,
+    pub ingest_url: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct Scope {
+    pub project_id: String,
+    pub environment_id: String,
+}
+
+impl Scope {
+    pub fn path(&self, resource: &str) -> String {
+        format!(
+            "/api/v1/projects/{}/environments/{}/{resource}",
+            segment(&self.project_id),
+            segment(&self.environment_id)
+        )
+    }
+}
+
+impl Client {
+    pub fn new(conn: &Conn) -> anyhow::Result<Self> {
+        let agent = ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(15)))
+            .http_status_as_error(false)
+            .build()
+            .into();
+        Ok(Self { agent, api_url: check_url(&conn.api_url)?, ingest_url: check_url(&conn.ingest_url)? })
+    }
+
+    fn read(mut res: ureq::http::Response<ureq::Body>) -> anyhow::Result<(u16, Value)> {
+        let status = res.status().as_u16();
+        let body = res.body_mut().with_config().limit(16 * 1024 * 1024).read_to_string().unwrap_or_default();
+        Ok((status, serde_json::from_str(&body).unwrap_or(Value::Null)))
+    }
+
+    /// Unauthenticated GET returning only the status (health checks).
+    pub fn status(&self, url: &str) -> anyhow::Result<u16> {
+        let res = self.agent.get(url).call().with_context(|| format!("cannot reach {url}"))?;
+        Ok(res.status().as_u16())
+    }
+
+    pub fn api_get(&self, token: &Secret, path: &str, query: &[(&str, String)]) -> anyhow::Result<(u16, Value)> {
+        let url = format!("{}{path}", self.api_url);
+        let mut req = self.agent.get(&url).header("authorization", format!("Bearer {}", token.0));
+        for (k, v) in query {
+            req = req.query(*k, v);
+        }
+        Self::read(req.call().with_context(|| format!("cannot reach {}", self.api_url))?)
+    }
+
+    /// GET that must succeed with 200.
+    pub fn api_json(&self, token: &Secret, path: &str, query: &[(&str, String)]) -> anyhow::Result<Value> {
+        match self.api_get(token, path, query)? {
+            (200, v) => Ok(v),
+            (401, _) => Err(anyhow!("API token rejected (expired, revoked or invalid)")),
+            (s, v) => {
+                Err(anyhow!("GET {path} failed with {s}: {}", v.get("message").and_then(Value::as_str).unwrap_or("")))
+            }
+        }
+    }
+
+    pub fn post_events(&self, token: &Secret, body: &Value) -> anyhow::Result<(u16, Value)> {
+        let url = format!("{}/api/v1/events/batch", self.ingest_url);
+        let res = self
+            .agent
+            .post(&url)
+            .header("authorization", format!("Bearer {}", token.0))
+            .send_json(body)
+            .with_context(|| format!("cannot reach {}", self.ingest_url))?;
+        Self::read(res)
+    }
+
+    /// The environment an API token is bound to.
+    pub fn scope(&self, token: &Secret) -> anyhow::Result<Scope> {
+        let session = self.api_json(token, "/api/v1/session", &[])?;
+        let project = session.pointer("/projects/0").ok_or_else(|| anyhow!("API token has no project access"))?;
+        let env = project.pointer("/environments/0/id").and_then(Value::as_str);
+        match (project.get("id").and_then(Value::as_str), env) {
+            (Some(p), Some(e)) => Ok(Scope { project_id: p.to_owned(), environment_id: e.to_owned() }),
+            _ => Err(anyhow!("API token has no environment access")),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plain_http_only_for_loopback() {
+        assert!(check_url("http://127.0.0.1:8080").is_ok());
+        assert!(check_url("http://localhost:8080/").is_ok());
+        assert!(check_url("https://hub.example.com").is_ok());
+        assert!(check_url("http://hub.example.com").is_err());
+        assert!(check_url("http://127.0.0.1.evil.example").is_err());
+        assert!(check_url("http://127.0.0.1@evil.example").is_err());
+        assert!(check_url("http://127.0.0.1:80@evil.example").is_err());
+        assert!(check_url("http://[::1]:8080").is_ok());
+        assert!(check_url("http://[2001:db8::1]:8080").is_err());
+        assert!(check_url("ftp://x").is_err());
+    }
+
+    #[test]
+    fn segments_are_encoded() {
+        assert_eq!(segment("local-demo"), "local-demo");
+        assert_eq!(segment("a/b?c"), "a%2Fb%3Fc");
+    }
+}

@@ -11,7 +11,10 @@ export const SPEEDS = [0.1, 0.5, 1, 2, 10] as const;
 export type Speed = (typeof SPEEDS)[number];
 
 const LIVE_WINDOW_NS = 15n * 60n * NS_PER_SEC;
-const LIVE_POLL_MS = 2000;
+/** Live clock: advances the cursor (and polls when the WebSocket is unavailable). */
+const LIVE_TICK_MS = 2000;
+const LIVE_FALLBACK_AFTER = 3;
+const EVICT_EVERY_MS = 10_000;
 const TOPOLOGY_POLL_MS = 10_000;
 const OVERLAP_NS = 10n * NS_PER_SEC;
 const TIMELINE_LIMIT = "50000";
@@ -49,6 +52,7 @@ export interface EngineState {
   topology: TopologyView | null;
   load: LoadInfo | null;
   loading: boolean;
+  liveTransport: "off" | "connecting" | "websocket" | "polling";
 }
 
 function asCompleteness(v: unknown): Completeness | null {
@@ -75,6 +79,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       topology: null,
       load: null,
       loading: false,
+      liveTransport: "off",
     };
   });
   // Mirrors `state` synchronously so callbacks (rAF loop, pollers) never read a
@@ -198,42 +203,98 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     };
   }, [loadRange, patch]);
 
-  // Live polling: incremental timeline with overlap (engine deduplicates by id).
+  // Live: the Worker holds a WebSocket that pushes new items straight into the engine.
+  // After repeated connection failures we fall back to HTTP polling with overlap (the
+  // engine deduplicates by id) until the socket reconnects.
   useEffect(() => {
     if (state.phase !== "ready" || state.mode !== "live") return;
+    const c = clientRef.current;
+    if (!c) return;
     let cancelled = false;
+    let busy = false;
     let lastTopology = Date.now();
+    let lastEvict = Date.now();
+
     const tick = async () => {
-      const c = clientRef.current;
-      if (!c || cancelled) return;
-      const s = stateRef.current;
-      const now = nowNs();
-      const from = s.rangeTo - OVERLAP_NS;
+      if (cancelled || busy) return;
+      busy = true;
       try {
-        const withTopology = Date.now() - lastTopology > TOPOLOGY_POLL_MS;
-        if (withTopology) {
-          lastTopology = Date.now();
-          await c.call({ kind: "loadTopology", url: url("topology", now - LIVE_WINDOW_NS, now) });
+        const now = nowNs();
+        if (stateRef.current.liveTransport === "polling") {
+          const from = stateRef.current.rangeTo - OVERLAP_NS;
+          recordLoad(await c.call({ kind: "loadTimeline", url: url("timeline", from, now, { limit: TIMELINE_LIMIT }) }));
         }
-        const r = await c.call({ kind: "loadTimeline", url: url("timeline", from, now, { limit: TIMELINE_LIMIT }) });
-        if (cancelled) return;
-        recordLoad(r);
-        await c.call({ kind: "evictBefore", beforeNs: (now - LIVE_WINDOW_NS).toString() });
-        if (withTopology) await refreshTopologyView();
+        if (Date.now() - lastEvict > EVICT_EVERY_MS) {
+          lastEvict = Date.now();
+          await c.call({ kind: "evictBefore", beforeNs: (now - LIVE_WINDOW_NS).toString() });
+        }
+        if (Date.now() - lastTopology > TOPOLOGY_POLL_MS) {
+          lastTopology = Date.now();
+          const r = await c.call({ kind: "loadTopology", url: url("topology", now - LIVE_WINDOW_NS, now) });
+          await refreshTopologyView();
+          const prev = stateRef.current.load;
+          if (prev) patch({ load: { ...prev, completeness: asCompleteness(r.completeness) ?? prev.completeness } });
+        }
         // The user may have paused or seeked while this tick was awaiting; never move their cursor.
         if (cancelled || stateRef.current.mode !== "live") return;
         c.seek(now);
         patch({ rangeFrom: now - LIVE_WINDOW_NS, rangeTo: now, cursor: now, error: null });
       } catch (e) {
         patch({ error: e instanceof Error ? e.message : String(e) });
+      } finally {
+        busy = false;
       }
     };
-    const id = setInterval(() => void tick(), LIVE_POLL_MS);
+
+    const offLive = c.onLive((ev) => {
+      switch (ev.type) {
+        case "open":
+          patch({ liveTransport: "websocket" });
+          return;
+        case "closed":
+          if (ev.attempt >= LIVE_FALLBACK_AFTER) patch({ liveTransport: "polling" });
+          return;
+        case "batch": {
+          const prev = stateRef.current.load;
+          patch({
+            liveTransport: "websocket",
+            load: {
+              items: ev.items,
+              fetchMs: 0,
+              applyMs: ev.applyMs,
+              truncated: false,
+              completeness: prev?.completeness ?? null,
+              at: Date.now(),
+            },
+          });
+          return;
+        }
+        case "gap": {
+          // The server skipped rows over its size limit: reload the live window over HTTP.
+          const now = nowNs();
+          void c
+            .call({ kind: "loadTimeline", url: url("timeline", now - LIVE_WINDOW_NS, now, { limit: TIMELINE_LIMIT }) })
+            .then(recordLoad, (e: unknown) => patch({ error: e instanceof Error ? e.message : String(e) }));
+          return;
+        }
+        case "error":
+          patch({ error: `live: ${ev.message}` });
+          return;
+        default:
+          return;
+      }
+    });
+    patch({ liveTransport: "connecting" });
+    void c.call({ kind: "liveStart", url: scopedUrl(projectId, environmentId, "live", {}) });
+    const id = setInterval(() => void tick(), LIVE_TICK_MS);
     return () => {
       cancelled = true;
       clearInterval(id);
+      offLive();
+      void c.call({ kind: "liveStop" });
+      patch({ liveTransport: "off" });
     };
-  }, [state.phase, state.mode, url, recordLoad, refreshTopologyView, patch]);
+  }, [state.phase, state.mode, url, recordLoad, refreshTopologyView, patch, projectId, environmentId]);
 
   // Replay: advance the cursor at `speed` x real time; stop at the loaded end.
   useEffect(() => {

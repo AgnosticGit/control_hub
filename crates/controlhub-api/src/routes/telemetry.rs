@@ -11,7 +11,7 @@ use controlhub_domain::{Scope, TraceId};
 use controlhub_engine_core::{
     EntityKindDto, EventItem, LogItem, ProvenanceDto, RelationKindDto, SpanItem, TimelineItem,
 };
-use controlhub_storage::ch::{LogQuery, LogRow, TraceQuery};
+use controlhub_storage::ch::{EventRow, LogQuery, LogRow, TimelineLogRow, TimelineSpanRow, TraceQuery};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -24,7 +24,7 @@ const MAX_RANGE_NS: i64 = 7 * 24 * 60 * NS_PER_MIN;
 const PROCESSOR: &str = "controlhub-processor";
 const TOPIC: &str = "controlhub.telemetry.v1";
 
-fn now_ns() -> i64 {
+pub(crate) fn now_ns() -> i64 {
     chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
 }
 
@@ -47,7 +47,7 @@ pub struct Range {
     pub to: i64,
 }
 
-fn parse_ns(v: &Option<String>, name: &str) -> ApiResult<Option<i64>> {
+pub(crate) fn parse_ns(v: &Option<String>, name: &str) -> ApiResult<Option<i64>> {
     v.as_ref()
         .map(|s| {
             s.parse::<i64>().map_err(|_| ApiError::BadRequest(format!("{name} must be a decimal nanosecond timestamp")))
@@ -736,6 +736,44 @@ pub struct TimelineResponse {
     pub completeness: Completeness,
 }
 
+pub(crate) fn span_item(s: TimelineSpanRow) -> TimelineItem {
+    TimelineItem::Span(SpanItem {
+        trace_id: s.trace_id,
+        span_id: s.span_id,
+        parent_span_id: nonempty(s.parent_span_id),
+        service_id: s.service_id,
+        service_name: s.service_name,
+        target_entity_id: nonempty(s.target_entity_id),
+        name: s.name,
+        kind: s.kind,
+        start_ns: s.start_time,
+        end_ns: s.end_time,
+        is_error: s.status_code == 2,
+    })
+}
+
+pub(crate) fn log_item(l: TimelineLogRow) -> TimelineItem {
+    TimelineItem::Log(LogItem {
+        id: l.log_id,
+        service_id: l.service_id,
+        service_name: l.service_name,
+        time_ns: l.time,
+        severity: l.severity_number,
+        trace_id: nonempty(l.trace_id),
+    })
+}
+
+pub(crate) fn event_item(e: EventRow) -> TimelineItem {
+    TimelineItem::Event(EventItem {
+        id: e.event_id,
+        event_type: e.event_type,
+        service_id: nonempty(e.service_id),
+        service_name: nonempty(e.service_name),
+        time_ns: e.event_time,
+        trace_id: nonempty(e.trace_id),
+    })
+}
+
 #[utoipa::path(get, path = "/api/v1/projects/{project_id}/environments/{environment_id}/timeline", tag = "timeline",
     params(("project_id" = String, Path), ("environment_id" = String, Path), TimelineParams),
     responses((status = 200, body = TimelineResponse), (status = 404, body = crate::error::ErrorBody)))]
@@ -755,41 +793,9 @@ pub async fn timeline(
     )?;
     let (st, lt, et) = (spans.len() > limit as usize, logs.len() > limit as usize, events.len() > limit as usize);
     let mut items = Vec::with_capacity(spans.len() + logs.len() + events.len());
-    items.extend(spans.into_iter().take(limit as usize).map(|s| {
-        TimelineItem::Span(SpanItem {
-            trace_id: s.trace_id,
-            span_id: s.span_id,
-            parent_span_id: nonempty(s.parent_span_id),
-            service_id: s.service_id,
-            service_name: s.service_name,
-            target_entity_id: nonempty(s.target_entity_id),
-            name: s.name,
-            kind: s.kind,
-            start_ns: s.start_time,
-            end_ns: s.end_time,
-            is_error: s.status_code == 2,
-        })
-    }));
-    items.extend(logs.into_iter().take(limit as usize).map(|l| {
-        TimelineItem::Log(LogItem {
-            id: l.log_id,
-            service_id: l.service_id,
-            service_name: l.service_name,
-            time_ns: l.time,
-            severity: l.severity_number,
-            trace_id: nonempty(l.trace_id),
-        })
-    }));
-    items.extend(events.into_iter().take(limit as usize).map(|e| {
-        TimelineItem::Event(EventItem {
-            id: e.event_id,
-            event_type: e.event_type,
-            service_id: nonempty(e.service_id),
-            service_name: nonempty(e.service_name),
-            time_ns: e.event_time,
-            trace_id: nonempty(e.trace_id),
-        })
-    }));
+    items.extend(spans.into_iter().take(limit as usize).map(span_item));
+    items.extend(logs.into_iter().take(limit as usize).map(log_item));
+    items.extend(events.into_iter().take(limit as usize).map(event_item));
     Ok(Json(TimelineResponse {
         items,
         from_ns: ns(r.from),

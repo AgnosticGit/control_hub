@@ -27,6 +27,7 @@ controlhub-protocol = { path = "crates/controlhub-protocol" }
 controlhub-storage = { path = "crates/controlhub-storage" }
 controlhub-engine-core = { path = "crates/controlhub-engine-core" }
 controlhub-runtime = { path = "crates/controlhub-runtime" }
+controlhub-actions = { path = "crates/controlhub-actions" }
 
 # pure / shared
 serde = { version = "1", features = ["derive"] }

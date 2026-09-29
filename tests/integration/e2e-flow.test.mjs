@@ -3,73 +3,12 @@
 // Verifies SDK -> ingest -> Kafka -> processor -> ClickHouse -> API, plus
 // tenant isolation, token scoping and session/CSRF rules.
 //
-// Run: node --test tests/integration/
+// Run: node --test "tests/integration/*.test.mjs"
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const creds = JSON.parse(readFileSync(join(root, '.controlhub', 'local-credentials.json'), 'utf8'));
-const API = process.env.CONTROLHUB_API_URL ?? creds.api_url;
-const OTLP = creds.otlp_http_endpoint;
-const ORIGIN = 'http://localhost:3000';
-const user = (email) => creds.users.find((u) => u.email === email);
-
-class Session {
-  constructor() {
-    this.cookies = new Map();
-  }
-  cookieHeader() {
-    return [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
-  }
-  async request(path, init = {}) {
-    const headers = { ...(init.headers ?? {}) };
-    if (this.cookies.size) headers.cookie = this.cookieHeader();
-    const res = await fetch(`${API}${path}`, { ...init, headers });
-    for (const c of res.headers.getSetCookie()) {
-      const [pair] = c.split(';');
-      const i = pair.indexOf('=');
-      this.cookies.set(pair.slice(0, i), pair.slice(i + 1));
-    }
-    return res;
-  }
-  async json(path, init) {
-    const res = await this.request(path, init);
-    const body = await res.json().catch(() => null);
-    return { status: res.status, body };
-  }
-  async login(email) {
-    const u = user(email);
-    const r = await this.json('/api/v1/session/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', origin: ORIGIN },
-      body: JSON.stringify({ email: u.email, password: u.password }),
-    });
-    assert.equal(r.status, 200, `login ${email}: ${JSON.stringify(r.body)}`);
-    return r.body;
-  }
-}
-
-const scoped = (project, env) => `/api/v1/projects/${project}/environments/${env}`;
-const DEMO = scoped('demo', 'local-demo');
-const ISO = scoped('isolation', 'isolation-test');
-
-async function eventually(fn, { timeoutMs = 30_000, intervalMs = 1000 } = {}) {
-  const deadline = Date.now() + timeoutMs;
-  let last;
-  while (Date.now() < deadline) {
-    try {
-      return await fn();
-    } catch (e) {
-      last = e;
-      await new Promise((r) => setTimeout(r, intervalMs));
-    }
-  }
-  throw last;
-}
+import http from 'node:http';
+import { API, OTLP, ORIGIN, WEB, creds, user, Session, DEMO, ISO, eventually } from './lib.mjs';
 
 let admin;
 before(async () => {
@@ -226,6 +165,92 @@ test('ingestion scope comes from the token, not from payload', async () => {
   const demoEvents = await admin.json(`${DEMO}/events?limit=1000`);
   assert.ok(!demoEvents.body.events.some((e) => e.service_name === marker), 'event leaked into demo scope');
 });
+
+/** Raw WebSocket handshake; resolves with the HTTP status (101 on success). */
+function handshake(base, path, headers) {
+  const u = new URL(path, base);
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      host: u.hostname,
+      port: u.port,
+      path: u.pathname + u.search,
+      headers: {
+        connection: 'Upgrade',
+        upgrade: 'websocket',
+        'sec-websocket-version': '13',
+        'sec-websocket-key': Buffer.from(randomUUID().slice(0, 16)).toString('base64'),
+        ...headers,
+      },
+    });
+    req.on('upgrade', (res, socket) => {
+      socket.destroy();
+      resolve(res.statusCode);
+    });
+    req.on('response', (res) => {
+      res.resume();
+      resolve(res.statusCode);
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+/** Opens the live channel and collects messages until `done(messages)` returns true. */
+function liveMessages(base, session, done, timeoutMs = 20_000) {
+  const url = new URL(`${DEMO}/live`, base);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(url, { headers: { origin: ORIGIN, cookie: session.cookieHeader() } });
+  const messages = [];
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      ws.close();
+      reject(new Error(`timeout; got ${messages.map((m) => m.type)}`));
+    }, timeoutMs);
+    ws.onmessage = (ev) => {
+      messages.push(JSON.parse(ev.data));
+      if (done(messages)) {
+        clearTimeout(timer);
+        ws.close();
+        resolve(messages);
+      }
+    };
+    ws.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error('websocket error'));
+    };
+  });
+}
+
+test('live WebSocket requires session, allowed Origin and project access', async () => {
+  const path = `${DEMO}/live`;
+  assert.equal(await handshake(API, path, { origin: ORIGIN }), 401, 'no session');
+  assert.equal(await handshake(API, path, { cookie: admin.cookieHeader() }), 403, 'no Origin');
+  assert.equal(await handshake(API, path, { cookie: admin.cookieHeader(), origin: 'https://evil.example' }), 403);
+  const iso = new Session();
+  await iso.login('isolation@controlhub.local');
+  assert.equal(await handshake(API, path, { cookie: iso.cookieHeader(), origin: ORIGIN }), 404, 'foreign project');
+  assert.equal(await handshake(API, path, { cookie: admin.cookieHeader(), origin: ORIGIN }), 101);
+});
+
+for (const [name, base] of [
+  ['API', API],
+  ['web proxy', WEB],
+]) {
+  test(`live WebSocket pushes engine items for the demo environment (${name})`, async (t) => {
+    if (base === WEB && !(await fetch(WEB).then(() => true, () => false))) {
+      t.skip(`web server not running at ${WEB}`);
+      return;
+    }
+    const msgs = await liveMessages(base, admin, (m) => m.some((x) => x.type === 'batch'));
+    assert.equal(msgs[0].type, 'hello');
+    assert.match(msgs[0].resume, /^\d+$/);
+    const batch = msgs.find((m) => m.type === 'batch');
+    assert.ok(BigInt(batch.resume) >= BigInt(msgs[0].resume), 'resume cursor moves forward');
+    assert.ok(batch.items.length > 0);
+    const types = new Set(batch.items.map((i) => i.type));
+    assert.ok(types.has('span') || types.has('log'), `types: ${[...types]}`);
+  });
+}
 
 test('ingestion rejects missing and invalid tokens', async () => {
   const none = await fetch(`${OTLP}/api/v1/events/batch`, { method: 'POST', body: '{"events":[]}' });

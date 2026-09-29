@@ -1,5 +1,8 @@
+use std::sync::Arc;
+
 use controlhub_storage::ch::ChStore;
 use controlhub_storage::pg::PgStore;
+use tokio::sync::Semaphore;
 
 use crate::auth::LoginThrottle;
 
@@ -17,4 +20,6 @@ pub struct AppState {
     pub ch: ChStore,
     pub config: ApiConfig,
     pub login_throttle: LoginThrottle,
+    /// Bounds concurrent live WebSocket connections (each polls ClickHouse once per second).
+    pub live_slots: Arc<Semaphore>,
 }

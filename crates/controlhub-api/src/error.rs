@@ -18,6 +18,10 @@ pub enum ApiError {
     BadRequest(String),
     #[error("too many requests")]
     TooManyRequests,
+    #[error("conflict: {0}")]
+    Conflict(&'static str),
+    #[error("denied by policy: {0}")]
+    PolicyDenied(String),
     #[error("storage unavailable")]
     Storage(#[from] controlhub_storage::StorageError),
     #[error("internal error")]
@@ -39,6 +43,8 @@ impl IntoResponse for ApiError {
             ApiError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             ApiError::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
+            ApiError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
+            ApiError::PolicyDenied(_) => (StatusCode::FORBIDDEN, "policy_denied"),
             ApiError::Storage(e) => {
                 tracing::error!(error = %e, "storage error");
                 (StatusCode::SERVICE_UNAVAILABLE, "storage_unavailable")

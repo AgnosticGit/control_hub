@@ -6,7 +6,7 @@ use controlhub_storage::secrets::{generate_token, hash_token, verify_password};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::auth::{CSRF_COOKIE, CurrentUser, SESSION_COOKIE, check_origin};
+use crate::auth::{CSRF_COOKIE, Credential, CurrentUser, SESSION_COOKIE, check_origin};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
@@ -65,7 +65,17 @@ fn cookie(name: &str, value: &str, http_only: bool, secure: bool, max_age: i64) 
 }
 
 pub async fn projects_for(state: &AppState, user: &CurrentUser) -> ApiResult<Vec<ProjectDto>> {
-    let memberships = state.pg.memberships(user.user_id).await?;
+    let token_scope = match &user.credential {
+        Credential::ApiToken { scope, .. } => Some(scope),
+        Credential::Session(_) => None,
+    };
+    let mut memberships = state.pg.memberships(user.user_id).await?;
+    if let Some(s) = token_scope {
+        memberships.retain(|m| m.project_id == s.project_id.as_str() && m.tenant_id == s.tenant_id.as_str());
+        for m in &mut memberships {
+            m.role = "viewer".to_owned();
+        }
+    }
     let ids: Vec<String> = memberships.iter().map(|m| m.project_id.clone()).collect();
     let envs = state.pg.environments_for_projects(&ids).await?;
     Ok(memberships
@@ -74,6 +84,7 @@ pub async fn projects_for(state: &AppState, user: &CurrentUser) -> ApiResult<Vec
             environments: envs
                 .iter()
                 .filter(|e| e.project_id == m.project_id && e.tenant_id == m.tenant_id)
+                .filter(|e| token_scope.is_none_or(|s| e.id == s.environment_id.as_str()))
                 .map(|e| EnvironmentDto { id: e.id.clone(), name: e.name.clone(), is_demo: e.is_demo })
                 .collect(),
             id: m.project_id,
@@ -133,7 +144,7 @@ pub async fn login(
         .await;
 
     let current = CurrentUser {
-        session_id,
+        credential: crate::auth::Credential::Session(session_id),
         user_id: user.id,
         email: user.email.clone(),
         display_name: user.display_name.clone(),
@@ -165,7 +176,7 @@ pub async fn session(State(state): State<AppState>, user: CurrentUser) -> ApiRes
 #[utoipa::path(post, path = "/api/v1/session/logout", tag = "session",
     responses((status = 204), (status = 401, body = crate::error::ErrorBody), (status = 403, body = crate::error::ErrorBody)))]
 pub async fn logout(State(state): State<AppState>, user: CurrentUser) -> ApiResult<Response> {
-    state.pg.revoke_session(user.session_id).await?;
+    state.pg.revoke_session(user.session_id()?).await?;
     let mut headers = HeaderMap::new();
     headers.append(header::SET_COOKIE, cookie(SESSION_COOKIE, "", true, state.config.secure_cookies, 0)?);
     headers.append(header::SET_COOKIE, cookie(CSRF_COOKIE, "", false, state.config.secure_cookies, 0)?);

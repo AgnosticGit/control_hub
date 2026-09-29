@@ -12,3 +12,7 @@
 | [0008](0008-typescript-version.md) | TypeScript 5.9 (not the native TS 7 preview) | Accepted |
 | [0009](0009-worker-fetches-raw-json.md) | Worker fetches JSON and hands raw text to WASM | Accepted |
 | [0010](0010-renderer-in-web-app.md) | Pixi renderer lives in `apps/web`, not a package | Accepted |
+| [0011](0011-api-tokens-and-live-channel.md) | Read-only, environment-bound API tokens; WebSocket live channel in the Worker | Accepted |
+| [0012](0012-actions-and-executor.md) | Allowlisted actions, policy, four-eyes approval, separate executor, verification | Accepted |
+| [0013](0013-read-only-mcp.md) | Read-only MCP server over the REST API with an API token | Accepted |
+| [0014](0014-otlp-metrics-deferred.md) | OTLP metrics not ingested yet (explicit 501); RED metrics from spans | Accepted |

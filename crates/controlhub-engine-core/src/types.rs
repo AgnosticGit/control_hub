@@ -298,6 +298,12 @@ pub struct Diagnostics {
     /// Serialized as a JSON number (values stay far below 2^53).
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub stale_seeks_ignored: u64,
+    /// Full timeline rebuilds (structural changes). Serialized as a JSON number.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub timeline_rebuilds: u64,
+    /// Incremental merges of new items into the timeline. Serialized as a JSON number.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub timeline_merges: u64,
     #[serde(with = "opt_nanos_string")]
     #[cfg_attr(feature = "ts", ts(type = "string | null"))]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]

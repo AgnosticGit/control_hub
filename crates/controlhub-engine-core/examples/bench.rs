@@ -22,11 +22,11 @@ impl Rng {
     }
 }
 
-fn synthetic(requests: usize) -> Vec<TimelineItem> {
-    let mut rng = Rng(0x00C0_FFEE);
+fn synthetic(from: usize, requests: usize) -> Vec<TimelineItem> {
+    let mut rng = Rng(0x00C0_FFEE ^ from as u64);
     let base: i64 = 1_700_000_000_000_000_000;
     let mut items = Vec::with_capacity(requests * 4);
-    for r in 0..requests {
+    for r in from..from + requests {
         let start = base + (r as i64) * 2_000_000 + rng.below(1_000_000) as i64;
         let caller = rng.below(SERVICES as u64) as usize;
         let callee = (caller + 1 + rng.below(3) as usize) % SERVICES;
@@ -85,7 +85,7 @@ fn synthetic(requests: usize) -> Vec<TimelineItem> {
 
 fn main() {
     let requests: usize = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(50_000);
-    let items = synthetic(requests);
+    let items = synthetic(0, requests);
     let n_items = items.len();
     let first = 1_700_000_000_000_000_000i64;
     let last = first + (requests as i64) * 2_000_000;
@@ -116,6 +116,22 @@ fn main() {
         visible += engine.visible_state().node_indices.len();
     }
     let seek_total = t.elapsed();
+
+    // Live: small batches appended after the recorded range, each followed by a frame.
+    let live_batches = 50usize;
+    let live_size = 20usize;
+    let t = Instant::now();
+    for b in 0..live_batches {
+        let from = requests + b * live_size;
+        if let Err(e) = engine.apply_batch(Batch { items: synthetic(from, live_size) }) {
+            eprintln!("apply_batch failed: {e}");
+            std::process::exit(1);
+        }
+        let now = first + ((from + live_size) as i64) * 2_000_000;
+        let _ = engine.seek(now, seeks + 2 + b as u64);
+        visible += engine.visible_state().node_indices.len();
+    }
+    let live_total = t.elapsed();
     let diag = engine.diagnostics();
 
     println!("items                 {n_items}");
@@ -123,6 +139,11 @@ fn main() {
     println!("apply_batch           {:.1} ms", apply.as_secs_f64() * 1e3);
     println!("first frame (build)   {:.1} ms", build.as_secs_f64() * 1e3);
     println!("random seek + frame   {:.3} ms avg over {seeks}", seek_total.as_secs_f64() * 1e3 / seeks as f64);
+    println!(
+        "live batch + frame    {:.3} ms avg over {live_batches} batches of {live_size} requests",
+        live_total.as_secs_f64() * 1e3 / live_batches as f64
+    );
+    println!("timeline rebuilds     {} (merges {})", diag.timeline_rebuilds, diag.timeline_merges);
     println!("visible nodes (first) {}", first_frame.node_indices.len());
     println!("checkpoints           {} (interval {})", diag.checkpoints, diag.checkpoint_interval);
     println!("approx memory         {:.1} MiB", diag.approx_memory_bytes as f64 / 1_048_576.0);

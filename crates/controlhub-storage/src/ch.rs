@@ -170,6 +170,7 @@ pub struct TimelineSpanRow {
     pub start_time: i64,
     pub end_time: i64,
     pub status_code: u8,
+    pub ingested_at: i64,
 }
 
 #[derive(Debug, Clone, Row, Serialize, Deserialize)]
@@ -180,6 +181,7 @@ pub struct TimelineLogRow {
     pub time: i64,
     pub severity_number: u8,
     pub trace_id: String,
+    pub ingested_at: i64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -475,8 +477,7 @@ impl ChStore {
     /// Spans overlapping `[from, to)` (start < to AND end >= from).
     pub async fn timeline_spans(&self, s: &Scope, from: i64, to: i64, limit: u32) -> Result<Vec<TimelineSpanRow>> {
         let q = self.client.query(&format!(
-            "SELECT trace_id, span_id, parent_span_id, service_id, service_name, target_entity_id, name, kind,
-                    start_time, end_time, status_code
+            "SELECT {TIMELINE_SPAN_COLUMNS}
              FROM spans FINAL
              WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)
                AND end_time >= fromUnixTimestamp64Nano(?)
@@ -488,14 +489,73 @@ impl ChStore {
 
     pub async fn timeline_logs(&self, s: &Scope, from: i64, to: i64, limit: u32) -> Result<Vec<TimelineLogRow>> {
         let q = self.client.query(&format!(
-            "SELECT log_id, service_id, service_name, time, severity_number, trace_id
+            "SELECT {TIMELINE_LOG_COLUMNS}
              FROM logs FINAL
              WHERE {SCOPE_WHERE} AND time >= fromUnixTimestamp64Nano(?) AND time < fromUnixTimestamp64Nano(?)
              ORDER BY time, log_id LIMIT ?"
         ));
         Ok(bind_scope(q, s).bind(from).bind(to).bind(limit).fetch_all().await?)
     }
+
+    // Live queries select by ingestion time `(after, upto]`, so late-arriving telemetry is
+    // delivered too. `event_from` bounds the scan to recent partitions. No FINAL: the engine
+    // deduplicates by item ID.
+
+    pub async fn live_spans(
+        &self,
+        s: &Scope,
+        event_from: i64,
+        after: i64,
+        upto: i64,
+        limit: u32,
+    ) -> Result<Vec<TimelineSpanRow>> {
+        let q = self.client.query(&format!(
+            "SELECT {TIMELINE_SPAN_COLUMNS} FROM spans
+             WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?)
+               AND ingested_at > fromUnixTimestamp64Nano(?) AND ingested_at <= fromUnixTimestamp64Nano(?)
+             ORDER BY ingested_at LIMIT ?"
+        ));
+        Ok(bind_scope(q, s).bind(event_from).bind(after).bind(upto).bind(limit).fetch_all().await?)
+    }
+
+    pub async fn live_logs(
+        &self,
+        s: &Scope,
+        event_from: i64,
+        after: i64,
+        upto: i64,
+        limit: u32,
+    ) -> Result<Vec<TimelineLogRow>> {
+        let q = self.client.query(&format!(
+            "SELECT {TIMELINE_LOG_COLUMNS} FROM logs
+             WHERE {SCOPE_WHERE} AND time >= fromUnixTimestamp64Nano(?)
+               AND ingested_at > fromUnixTimestamp64Nano(?) AND ingested_at <= fromUnixTimestamp64Nano(?)
+             ORDER BY ingested_at LIMIT ?"
+        ));
+        Ok(bind_scope(q, s).bind(event_from).bind(after).bind(upto).bind(limit).fetch_all().await?)
+    }
+
+    pub async fn live_events(
+        &self,
+        s: &Scope,
+        event_from: i64,
+        after: i64,
+        upto: i64,
+        limit: u32,
+    ) -> Result<Vec<EventRow>> {
+        let q = self.client.query(&format!(
+            "SELECT ?fields FROM events
+             WHERE {SCOPE_WHERE} AND event_time >= fromUnixTimestamp64Nano(?)
+               AND ingested_at > fromUnixTimestamp64Nano(?) AND ingested_at <= fromUnixTimestamp64Nano(?)
+             ORDER BY ingested_at LIMIT ?"
+        ));
+        Ok(bind_scope(q, s).bind(event_from).bind(after).bind(upto).bind(limit).fetch_all().await?)
+    }
 }
+
+const TIMELINE_SPAN_COLUMNS: &str = "trace_id, span_id, parent_span_id, service_id, service_name, target_entity_id, \
+     name, kind, start_time, end_time, status_code, ingested_at";
+const TIMELINE_LOG_COLUMNS: &str = "log_id, service_id, service_name, time, severity_number, trace_id, ingested_at";
 
 /// Split a migration file into statements on `;` at line ends, skipping comments.
 fn split_statements(sql: &str) -> Vec<String> {

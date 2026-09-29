@@ -13,9 +13,15 @@
   wrong password and for an unknown user, and it is rate-limited (429).
 - **Ingestion tokens** are random and scoped to one tenant, project, environment and set of
   signals. Only a SHA-256 hash plus a short display prefix is stored. Tokens support `expires_at`
-  and `revoked_at`. `just bootstrap` rotates the local tokens by revoking the old ones and issuing
-  new ones.
-  - Not implemented yet: an API or CLI for managing tokens, and rotation with an overlap window.
+  and `revoked_at`. Admins create, revoke and rotate them in the web app (workspace → Tokens,
+  session plus CSRF only). Rotation keeps the old token valid for a grace period of at most 24 h.
+  Ingest caches credentials for up to 30 s, which bounds how long revocation takes there.
+- **API tokens** (`cha_…`, ADR-0011) are for the CLI and MCP. They are read-only (any mutation
+  → 403), bound to one environment (other scopes → 404), expire within 90 days, and are stored as
+  hashes. Their effective access is intersected with the creator's current membership.
+- **WebSocket live channel**: session credentials require an allowed `Origin`. The credential is
+  re-checked every 30 s, connections are limited by a semaphore, and scope comes from the
+  principal only.
 
 ## Multi-tenancy
 
@@ -25,7 +31,24 @@
   another tenant's resources return 404, so the API does not reveal whether they exist.
   Integration tests check this in both directions.
 - Each service has its own least-privilege database user in PostgreSQL and in ClickHouse
-  (`controlhub_ingest`, `controlhub_processor`, `controlhub_api`).
+  (`controlhub_ingest`, `controlhub_processor`, `controlhub_api`, `controlhub_executor`). The
+  executor may only read and update `action_plans`, insert into `audit_log`, and read
+  environments and users. Its ClickHouse user is SELECT-only.
+
+## Controlled actions (ADR-0012)
+
+- Only allowlisted, typed actions with bounded parameters exist. Nothing in a plan is a command,
+  path, URL or container name, and telemetry never creates a plan.
+- Policy (demo-only environments, one open plan per target, 30 plans per hour) is evaluated at
+  proposal, at approval and right before execution. Denials are audited.
+- Four-eyes approval: approver ≠ proposer, enforced in the API and by a database CHECK. Operators
+  propose, admins approve or reject (rejecting requires a comment). API tokens can do neither.
+- Every state change commits together with its audit row. If the audit write fails, the change
+  fails.
+- Only `controlhub-executor` touches the observed system. Its demo adapter calls a loopback-only
+  endpoint and runs `docker` with fixed arguments (no shell) after checking the container's
+  compose labels. Web, API and ingest never get the Docker socket. A plan whose executor dies is
+  marked failed and never retried automatically.
 
 ## Sensitive data
 
@@ -54,16 +77,24 @@
 - Every response carries `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options: DENY` and
   `Permissions-Policy`.
 - `/app/*` responses carry `X-Robots-Tag: noindex` and `Cache-Control: no-store`.
+- **Content-Security-Policy** (`apps/web/src/lib/csp.ts`):
+  - `/app/*` gets a strict per-request policy from `proxy.ts`:
+    `script-src 'nonce-…' 'strict-dynamic' 'wasm-unsafe-eval'`, with no `unsafe-inline` or
+    `unsafe-eval` for scripts. These pages are rendered dynamically so Next.js can apply the nonce.
+  - Public static pages and assets get a baseline policy. It allows inline scripts, because static
+    pages cannot carry a nonce, but restricts everything else: `object-src 'none'`,
+    `frame-ancestors 'none'`, `form-action 'self'`, `connect-src 'self'`.
+  - The Pixi renderer imports `pixi.js/unsafe-eval`, which removes its need for `eval`. The e2e
+    test `csp.spec.ts` checks the headers and that the workspace runs with no violations.
 
 ## Not done yet
 
-- A strict Content-Security-Policy with nonces (Next.js inline scripts need one; WASM needs
-  `wasm-unsafe-eval`).
 - TLS termination. Everything is plain HTTP on loopback in dev; production would need rustls or a
   proxy in front.
-- An SSRF policy. There are no outbound fetches driven by user input yet; it will be needed for
-  actions and integrations.
-- Audit entries for all mutations. The `audit_log` table and endpoint exist, but only successful
-  logins are written, on a best-effort basis: an audit write failure does not fail the login.
-- The actions executor, which will be the only component allowed to reach the Docker socket.
-  Neither web, API nor ingest mounts the socket.
+- A general SSRF policy. No outbound request takes a URL from user input or telemetry: the executor
+  only calls demo URLs from its own configuration, which must be loopback. Any future adapter
+  needs a real egress policy.
+- Complete audit. Token and action mutations are audited, but logins are still audited on a
+  best-effort basis (an audit write failure does not fail the login), and failed logins are not
+  audited.
+- User and membership management (users come only from `bootstrap`).

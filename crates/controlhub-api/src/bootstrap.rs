@@ -49,7 +49,16 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
             "SELECT ON tenants, projects, environments, users, memberships, consumer_offsets, processing_errors",
             "SELECT, INSERT, UPDATE ON sessions",
             "SELECT, INSERT ON audit_log",
+            "SELECT, INSERT, UPDATE ON ingest_tokens, api_tokens",
+            "SELECT, INSERT, UPDATE ON action_plans",
         ],
+    )
+    .await?;
+    // The executor is the only component that runs actions (and the only one with Docker access).
+    pg.ensure_service_role(
+        "controlhub_executor",
+        &env_required("CH_PG_EXECUTOR_PASSWORD")?,
+        &["SELECT, UPDATE ON action_plans", "SELECT ON environments, users", "INSERT ON audit_log"],
     )
     .await?;
     pg.ensure_service_role("controlhub_ingest", &env_required("CH_PG_INGEST_PASSWORD")?, &["SELECT ON ingest_tokens"])
@@ -77,6 +86,9 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
         &["INSERT, SELECT ON controlhub.*"],
     )
     .await?;
+    // Read-only: the executor verifies outcomes from telemetry.
+    ch.ensure_user("controlhub_executor", &env_required("CH_CH_EXECUTOR_PASSWORD")?, &["SELECT ON controlhub.*"])
+        .await?;
 
     // Seed scopes: a demo project and a second tenant used by isolation tests.
     let seeds = [
@@ -94,6 +106,14 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
             env_name: "isolation-test",
             is_demo: true,
         },
+        // Not a demo environment: demo-only actions must be refused here.
+        SeedScope {
+            scope: scope("isolation-tenant", "isolation", "isolation-prod")?,
+            tenant_name: "Isolation test tenant",
+            project_name: "Isolation",
+            env_name: "isolation-prod",
+            is_demo: false,
+        },
     ];
     for s in &seeds {
         pg.upsert_scope(&s.scope, s.tenant_name, s.project_name, s.env_name, s.is_demo).await?;
@@ -103,6 +123,7 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
     for (email, name, project, role) in [
         ("admin@controlhub.local", "Local admin", "demo", "owner"),
         ("viewer@controlhub.local", "Local viewer", "demo", "viewer"),
+        ("operator@controlhub.local", "Local operator", "demo", "operator"),
         ("isolation@controlhub.local", "Isolation tenant user", "isolation", "owner"),
     ] {
         let password = generate_password()?;

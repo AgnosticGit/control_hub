@@ -36,6 +36,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_actions"];
+        put?: never;
+        post: operations["propose_action"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/actions/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["action_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/actions/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_action"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/actions/{plan_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["approve_action"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/actions/{plan_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cancel_action"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/actions/{plan_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reject_action"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/environments/{environment_id}/audit": {
         parameters: {
             query?: never;
@@ -76,6 +172,23 @@ export interface paths {
             cookie?: never;
         };
         get: operations["events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description WebSocket upgrade. Server messages: hello, batch, gap, heartbeat, error (JSON text frames). */
+        get: operations["live"];
         put?: never;
         post?: never;
         delete?: never;
@@ -126,6 +239,54 @@ export interface paths {
         get: operations["timeline"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list"];
+        put?: never;
+        post: operations["create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/tokens/{token_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/tokens/{token_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rotate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -248,6 +409,53 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ActionCatalogResponse: {
+            actions: components["schemas"]["ActionSpecDto"][];
+            environment_is_demo: boolean;
+        };
+        ActionPlanDetail: {
+            audit: components["schemas"]["AuditEntryDto"][];
+            plan: components["schemas"]["ActionPlanDto"];
+        };
+        ActionPlanDto: {
+            action_type: string;
+            created_at: string;
+            created_by: string;
+            decided_at?: string | null;
+            decided_by?: string | null;
+            decision_comment?: string | null;
+            executor_id?: string | null;
+            /** @description Deadline for the decision (proposed) or for the executor to start (approved). */
+            expires_at: string;
+            finished_at?: string | null;
+            id: string;
+            params: {
+                [key: string]: number;
+            };
+            policy: components["schemas"]["PolicyDto"];
+            reason: string;
+            result?: Record<string, never> | null;
+            risk: string;
+            started_at?: string | null;
+            /** @description proposed, approved, rejected, cancelled, expired, running, succeeded, failed, verification_failed */
+            state: string;
+            target: string;
+            title: string;
+            verification?: Record<string, never> | null;
+        };
+        ActionSpecDto: {
+            action_type: string;
+            /** @description Whether policy allows this type in this environment at all (demo-only check). */
+            allowed_here: boolean;
+            demo_only: boolean;
+            description: string;
+            params: components["schemas"]["ParamSpecDto"][];
+            /** @description `low` or `medium`. */
+            risk: string;
+            targets: string[];
+            title: string;
+            verification: string;
+        };
         AuditEntryDto: {
             action: string;
             actor_id: string;
@@ -281,6 +489,24 @@ export interface components {
             services: components["schemas"]["ServiceDto"][];
             /** @description Capabilities that are explicitly NOT available, so gaps are visible. */
             unsupported: string[];
+        };
+        CreateTokenRequest: {
+            /**
+             * Format: int32
+             * @description API tokens: 1–90 days (default 30). Ingestion tokens: 1–365 days, or omitted for no expiry.
+             */
+            expires_in_days?: number | null;
+            kind: components["schemas"]["TokenKindDto"];
+            name: string;
+        };
+        CreatedTokenResponse: {
+            /** @description Shown exactly once; only its hash is stored. */
+            secret: string;
+            token: components["schemas"]["TokenDto"];
+        };
+        DecisionRequest: {
+            /** @description Required when rejecting. */
+            comment?: string | null;
         };
         /** @enum {string} */
         EntityKindDto: "service" | "instance" | "repository" | "deployment" | "database" | "cache" | "queue" | "infrastructure_resource" | "external_dependency";
@@ -367,6 +593,26 @@ export interface components {
             email: string;
             password: string;
         };
+        ParamSpecDto: {
+            description: string;
+            integer: boolean;
+            /** Format: double */
+            max: number;
+            /** Format: double */
+            min: number;
+            name: string;
+        };
+        PolicyCheckDto: {
+            detail: string;
+            name: string;
+            passed: boolean;
+        };
+        /** @description Schema of the stored policy decision (serialized `controlhub_actions::PolicyDecision`). */
+        PolicyDto: {
+            allowed: boolean;
+            checks: components["schemas"]["PolicyCheckDto"][];
+            requires_approval: boolean;
+        };
         ProjectDto: {
             environments: components["schemas"]["EnvironmentDto"][];
             id: string;
@@ -374,10 +620,29 @@ export interface components {
             role: string;
             tenant_id: string;
         };
+        ProposeActionRequest: {
+            action_type: string;
+            params?: {
+                [key: string]: number;
+            };
+            reason: string;
+            target: string;
+        };
         /** @enum {string} */
         ProvenanceDto: "observed" | "declared" | "inferred";
         /** @enum {string} */
         RelationKindDto: "calls" | "depends_on" | "runs_on" | "deployed_from" | "owns" | "publishes_to" | "consumes_from";
+        RevokeTokenRequest: {
+            reason?: string | null;
+        };
+        RotateTokenRequest: {
+            /**
+             * Format: int32
+             * @description Seconds the old token keeps working (0–86400, default 0) so running senders can switch.
+             */
+            grace_seconds?: number | null;
+            reason?: string | null;
+        };
         ServiceDto: {
             /** Format: int64 */
             error_logs: number;
@@ -480,6 +745,21 @@ export interface components {
             spans_truncated: boolean;
             to_ns: string;
         };
+        TokenDto: {
+            active: boolean;
+            created_at: string;
+            expires_at?: string | null;
+            id: string;
+            kind: components["schemas"]["TokenKindDto"];
+            last_used_at?: string | null;
+            name: string;
+            /** @description Non-secret prefix for identification. */
+            prefix: string;
+            revoked_at?: string | null;
+            signals?: string[] | null;
+        };
+        /** @enum {string} */
+        TokenKindDto: "ingest" | "api";
         TopologyEdgeDto: {
             /** Format: int64 */
             calls: number;
@@ -599,6 +879,308 @@ export interface operations {
             };
         };
     };
+    list_actions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionPlanDto"][];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    propose_action: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposeActionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionPlanDto"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    action_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionCatalogResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_action: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionPlanDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    approve_action: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionPlanDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cancel_action: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionPlanDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reject_action: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionPlanDto"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     audit: {
         parameters: {
             query?: never;
@@ -690,6 +1272,54 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    live: {
+        parameters: {
+            query?: {
+                /** @description Resume cursor from a previous message (ingestion time, decimal nanoseconds). */
+                resume?: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching protocols */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -798,6 +1428,188 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimelineResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTokenRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedTokenResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeTokenRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rotate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RotateTokenRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedTokenResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             404: {
