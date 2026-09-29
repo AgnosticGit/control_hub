@@ -160,6 +160,15 @@ impl PgStore {
         Ok(Self { pool })
     }
 
+    /// Like [`PgStore::connect`], but connects on first use (no I/O here).
+    pub fn connect_lazy(url: &str, max_connections: u32) -> Result<Self> {
+        let pool = PgPoolOptions::new()
+            .max_connections(max_connections)
+            .acquire_timeout(std::time::Duration::from_secs(5))
+            .connect_lazy(url)?;
+        Ok(Self { pool })
+    }
+
     pub fn pool(&self) -> &PgPool {
         &self.pool
     }
@@ -684,5 +693,68 @@ impl PgStore {
         .bind(limit)
         .fetch_all(&self.pool)
         .await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    #[test]
+    fn scope_from_accepts_valid_ids() {
+        let s = scope_from("local".into(), "demo".into(), "local-demo".into()).unwrap();
+        assert_eq!(
+            (s.tenant_id.as_str(), s.project_id.as_str(), s.environment_id.as_str()),
+            ("local", "demo", "local-demo")
+        );
+    }
+
+    #[test]
+    fn scope_from_rejects_corrupt_rows_instead_of_widening_scope() {
+        for (t, p, e) in [
+            ("", "demo", "env"),
+            ("local", "", "env"),
+            ("local", "demo", ""),
+            ("local", "demo", "env' OR '1'='1"),
+            ("local/other", "demo", "env"),
+            ("local", &"p".repeat(129) as &str, "env"),
+        ] {
+            match scope_from(t.into(), p.into(), e.into()) {
+                Err(StorageError::Other(m)) => assert!(m.contains("corrupt scope"), "{m}"),
+                other => panic!("{t:?}/{p:?}/{e:?} must be refused, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn token_kinds_map_to_the_sql_kind_column() {
+        assert_eq!(TokenKind::Ingest.as_str(), "ingest");
+        assert_eq!(TokenKind::Api.as_str(), "api");
+    }
+
+    #[tokio::test]
+    async fn lazy_store_does_no_io_until_used() {
+        // Port 1 is never a PostgreSQL server; construction must still succeed.
+        assert!(PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/controlhub", 1).is_ok());
+        assert!(PgStore::connect_lazy("not a url", 1).is_err());
+    }
+
+    #[tokio::test]
+    async fn service_roles_refuse_injection_before_any_query() {
+        let pg = PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/controlhub", 1).unwrap();
+        for (role, pw) in [
+            ("controlhub_api", "x' SUPERUSER; --"),
+            ("api; DROP TABLE users", "pw"),
+            ("", "pw"),
+            ("role", ""),
+            ("role name", "pw"),
+            ("role", "pw\"q"),
+        ] {
+            match pg.ensure_service_role(role, pw, &[]).await {
+                Err(StorageError::Other(m)) => assert!(m.contains("charset"), "{m}"),
+                other => panic!("{role:?}/{pw:?} must be refused before any query, got {other:?}"),
+            }
+        }
     }
 }

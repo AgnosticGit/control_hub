@@ -191,4 +191,102 @@ mod tests {
         assert_eq!(segment("local-demo"), "local-demo");
         assert_eq!(segment("a/b?c"), "a%2Fb%3Fc");
     }
+
+    #[test]
+    fn segments_encode_traversal_and_non_ascii() {
+        assert_eq!(segment(".."), "..", "dots are unreserved; the server rejects `..` ids");
+        assert_eq!(segment("../x"), "..%2Fx");
+        assert_eq!(segment("a b#c%d"), "a%20b%23c%25d");
+        assert_eq!(segment("é"), "%C3%A9");
+        assert_eq!(segment(""), "");
+    }
+
+    #[test]
+    fn scope_paths_encode_both_ids() {
+        let s = Scope { project_id: "p/1".into(), environment_id: "e?x".into() };
+        assert_eq!(s.path("traces"), "/api/v1/projects/p%2F1/environments/e%3Fx/traces");
+    }
+
+    #[test]
+    fn secrets_never_show_in_debug_output() {
+        let s = Secret::for_test("cha_super_secret");
+        assert_eq!(format!("{s:?}"), "Secret(…)");
+        assert!(!format!("{:?}", Some(&s)).contains("super_secret"));
+    }
+
+    #[test]
+    fn urls_are_trimmed_and_schemes_checked() {
+        assert_eq!(check_url("http://127.0.0.1:8080///").unwrap_or_default(), "http://127.0.0.1:8080");
+        assert!(check_url("http://localhost.evil.example").is_err());
+        assert!(check_url("http://localhostx:1").is_err());
+        assert!(check_url("HTTP://127.0.0.1").is_err(), "no case-folding tricks");
+        assert!(check_url("").is_err());
+        assert!(check_url("http://evil.example/127.0.0.1").is_err());
+        assert!(check_url("http://evil.example?h=localhost").is_err());
+    }
+
+    #[test]
+    fn client_new_rejects_bad_urls() {
+        let bad = Conn { api_url: "http://hub.example.com".into(), ingest_url: "http://127.0.0.1:1".into() };
+        assert!(Client::new(&bad).is_err());
+        let bad = Conn { api_url: "http://127.0.0.1:1".into(), ingest_url: "ftp://x".into() };
+        assert!(Client::new(&bad).is_err());
+    }
+
+    fn client(url: &str) -> Client {
+        Client::new(&Conn { api_url: url.into(), ingest_url: url.into() }).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    #[test]
+    fn api_json_maps_statuses_without_leaking_the_token() {
+        let (url, _) = crate::test_http::serve(|r| match r.target.as_str() {
+            "/ok" => (200, r#"{"a":1}"#.into()),
+            "/unauth" => (401, "{}".into()),
+            "/bad" => (400, r#"{"message":"range too large"}"#.into()),
+            _ => (500, "not json".into()),
+        });
+        let c = client(&url);
+        let t = Secret::for_test("cha_do_not_print");
+        assert_eq!(c.api_json(&t, "/ok", &[]).ok(), Some(serde_json::json!({"a": 1})));
+        let errs = ["/unauth", "/bad", "/boom"].map(|p| c.api_json(&t, p, &[]).err().map(|e| e.to_string()));
+        let errs = errs.map(Option::unwrap_or_default);
+        assert!(errs[0].contains("API token rejected"), "{}", errs[0]);
+        assert_eq!(errs[1], "GET /bad failed with 400: range too large");
+        assert_eq!(errs[2], "GET /boom failed with 500: ", "non-JSON bodies are not echoed");
+        assert!(errs.iter().all(|e| !e.contains("do_not_print")));
+    }
+
+    #[test]
+    fn api_get_sends_the_bearer_and_encodes_query_values() {
+        let (url, log) = crate::test_http::serve(|_| (200, "{}".into()));
+        let t = Secret::for_test("cha_q");
+        let got = client(&url).api_get(&t, "/x", &[("service", "a b&c=d".into())]);
+        assert_eq!(got.ok().map(|g| g.0), Some(200));
+        let log = log.lock().map(|l| l.clone()).unwrap_or_default();
+        assert_eq!(log[0].authorization.as_deref(), Some("Bearer cha_q"));
+        assert!(log[0].target.starts_with("/x?service="), "{}", log[0].target);
+        assert!(!log[0].target.contains("&c=d"), "query values are encoded: {}", log[0].target);
+    }
+
+    #[test]
+    fn scope_requires_a_project_and_an_environment() {
+        let (url, _) = crate::test_http::serve(|r| match r.authorization.as_deref() {
+            Some("Bearer cha_none") => (200, r#"{"projects":[]}"#.into()),
+            Some("Bearer cha_noenv") => (200, r#"{"projects":[{"id":"p","environments":[]}]}"#.into()),
+            _ => (200, crate::test_http::session_json()),
+        });
+        let c = client(&url);
+        let err = |t: &str| c.scope(&Secret::for_test(t)).err().map(|e| e.to_string()).unwrap_or_default();
+        assert_eq!(err("cha_none"), "API token has no project access");
+        assert_eq!(err("cha_noenv"), "API token has no environment access");
+        let s = c.scope(&Secret::for_test("cha_ok")).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!((s.project_id.as_str(), s.environment_id.as_str()), ("demo", "local-demo"));
+    }
+
+    #[test]
+    fn unreachable_hosts_are_errors_not_statuses() {
+        let c = client("http://127.0.0.1:1");
+        assert!(c.status("http://127.0.0.1:1/health").is_err());
+        assert!(c.post_events(&Secret::for_test("chi_x"), &serde_json::json!({})).is_err());
+    }
 }

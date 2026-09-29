@@ -156,7 +156,7 @@ export function Workspace({ projectId, environmentId }: { projectId: string; env
               <span className="card-title-icon">
                 <Icon name="layers" className="h-3.5 w-3.5" />
               </span>
-              System Map
+              <h1>System Map</h1>
               <div className="ml-auto flex items-center gap-4 font-normal">
                 <label className="toggle">
                   <input type="checkbox" className="switch" checked={onlyProblems} onChange={(e) => setOnlyProblems(e.target.checked)} />

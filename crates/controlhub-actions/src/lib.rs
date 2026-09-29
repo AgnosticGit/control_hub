@@ -520,4 +520,284 @@ mod tests {
             }
         }
     }
+
+    const ALL_EVENTS: [Event; 9] = [
+        Event::Approve,
+        Event::Reject,
+        Event::Cancel,
+        Event::Expire,
+        Event::Claim,
+        Event::Succeed,
+        Event::Fail,
+        Event::FailVerification,
+        Event::LoseExecutor,
+    ];
+
+    /// The complete transition table from ADR-0012. Anything not listed must be refused.
+    fn allowed(s: State, e: Event) -> Option<State> {
+        use {Event as E, State as S};
+        [
+            (S::Proposed, E::Approve, S::Approved),
+            (S::Proposed, E::Reject, S::Rejected),
+            (S::Proposed, E::Cancel, S::Cancelled),
+            (S::Proposed, E::Expire, S::Expired),
+            (S::Approved, E::Cancel, S::Cancelled),
+            (S::Approved, E::Expire, S::Expired),
+            (S::Approved, E::Claim, S::Running),
+            (S::Running, E::Succeed, S::Succeeded),
+            (S::Running, E::Fail, S::Failed),
+            (S::Running, E::LoseExecutor, S::Failed),
+            (S::Running, E::FailVerification, S::VerificationFailed),
+        ]
+        .into_iter()
+        .find(|(from, ev, _)| *from == s && *ev == e)
+        .map(|(_, _, to)| to)
+    }
+
+    #[test]
+    fn transition_table_is_exactly_the_documented_one() {
+        let mut accepted = 0;
+        for s in State::ALL {
+            for e in ALL_EVENTS {
+                assert_eq!(s.next(e), allowed(s, e), "{s:?} + {e:?}");
+                accepted += usize::from(s.next(e).is_some());
+            }
+        }
+        assert_eq!(accepted, 11);
+    }
+
+    #[test]
+    fn terminal_states_accept_no_event() {
+        for s in State::ALL.into_iter().filter(|s| s.is_terminal()) {
+            for e in ALL_EVENTS {
+                assert_eq!(s.next(e), None, "{s:?} + {e:?}");
+            }
+        }
+        let non_terminal: Vec<_> = State::ALL.into_iter().filter(|s| !s.is_terminal()).collect();
+        assert_eq!(non_terminal, [State::Proposed, State::Approved, State::Running]);
+    }
+
+    #[test]
+    fn running_plans_cannot_be_cancelled_expired_or_reclaimed() {
+        for e in [Event::Cancel, Event::Expire, Event::Claim, Event::Approve, Event::Reject] {
+            assert_eq!(State::Running.next(e), None, "{e:?}");
+        }
+        assert_eq!(State::Proposed.next(Event::Claim), None, "no execution without approval");
+        assert_eq!(State::Approved.next(Event::Approve), None, "no double approval");
+        assert_eq!(State::Approved.next(Event::Reject), None, "approved plans are cancelled, not rejected");
+    }
+
+    #[test]
+    fn state_strings_round_trip_and_match_serde() {
+        for s in State::ALL {
+            assert_eq!(State::parse(s.as_str()), Some(s));
+            assert_eq!(serde_json::to_value(s).unwrap(), json!(s.as_str()));
+            assert_eq!(serde_json::from_value::<State>(json!(s.as_str())).unwrap(), s);
+        }
+        for bad in ["", "Proposed", "PROPOSED", " proposed", "running;", "deleted"] {
+            assert_eq!(State::parse(bad), None, "{bad:?}");
+        }
+    }
+
+    fn state() -> impl Strategy<Value = State> {
+        proptest::sample::select(State::ALL.to_vec())
+    }
+
+    proptest! {
+        /// No illegal transition is ever accepted, from any state.
+        #[test]
+        fn no_illegal_transition_is_accepted(s in state(), e in event()) {
+            prop_assert_eq!(s.next(e), allowed(s, e));
+            if let Some(n) = s.next(e) {
+                prop_assert_ne!(n, s, "every transition changes the state");
+                prop_assert_ne!(n, State::Proposed, "nothing returns to proposed");
+            }
+        }
+
+        /// Any accepted run is at most proposed → approved → running → terminal (≤ 3 steps).
+        #[test]
+        fn lifecycles_are_short_and_monotonic(events in proptest::collection::vec(event(), 0..40)) {
+            let mut s = State::Proposed;
+            let mut steps = 0;
+            for e in events {
+                if let Some(n) = s.next(e) {
+                    s = n;
+                    steps += 1;
+                }
+            }
+            prop_assert!(steps <= 3);
+        }
+    }
+
+    #[test]
+    fn catalog_is_bounded_and_consistent() {
+        let mut types: Vec<_> = CATALOG.iter().map(|s| s.action_type).collect();
+        types.sort_unstable();
+        types.dedup();
+        assert_eq!(types.len(), CATALOG.len(), "action types are unique");
+        for s in CATALOG {
+            assert!(s.demo_only, "{} only demo actions exist", s.action_type);
+            assert!(!s.targets.is_empty() && !s.verification.is_empty());
+            assert_eq!(spec(s.action_type).map(|x| x.action_type), Some(s.action_type));
+            for p in s.params {
+                assert!(p.min.is_finite() && p.max.is_finite() && p.min <= p.max, "{}", p.name);
+            }
+        }
+        assert!(spec("shell.exec").is_none());
+        assert!(spec("DEMO.FAULTS.CLEAR").is_none());
+        assert!(spec("").is_none());
+    }
+
+    #[test]
+    fn validation_rejects_wrong_param_shapes() {
+        for params in [json!([]), json!("latency_ms=1"), json!(1), json!(true)] {
+            let e = validate("demo.faults.clear", "orders", &params).unwrap_err();
+            assert!(e.iter().any(|m| m.contains("params must be an object")), "{params}");
+        }
+        for (latency, rate) in [
+            (json!("100"), json!(0.1)),
+            (json!(null), json!(0.1)),
+            (json!(-1), json!(0.1)),
+            (json!(5001), json!(0.1)),
+            (json!(100), json!(-0.01)),
+            (json!(100), json!(1.0001)),
+            (json!(100), json!("0.5")),
+            (json!(1e300), json!(0.5)),
+        ] {
+            let p = json!({ "latency_ms": latency, "error_rate": rate });
+            assert!(validate("demo.faults.inject", "orders", &p).is_err(), "{p}");
+        }
+        // Every problem is reported, not just the first.
+        let e = validate("demo.faults.inject", "db", &json!({ "latency_ms": -1, "x": 1 })).unwrap_err();
+        assert!(e.len() >= 4, "{e:?}");
+    }
+
+    #[test]
+    fn validation_accepts_bounds_and_canonicalises_params() {
+        for (l, r) in [(5000, 0.0), (0, 1.0), (1, 0.0), (0, 0.000_001)] {
+            let a = validate("demo.faults.inject", "gateway", &json!({ "latency_ms": l, "error_rate": r })).unwrap();
+            assert_eq!(a.target(), "gateway");
+            assert_eq!(a.params(), json!({ "latency_ms": l, "error_rate": r }));
+            // A stored plan re-validates to the same action (API approval and executor rely on it).
+            assert_eq!(validate(a.action_type(), a.target(), &a.params()).unwrap(), a);
+        }
+        let clear = validate("demo.faults.clear", "gateway", &json!({})).unwrap();
+        assert_eq!(clear.params(), json!({}));
+        assert!(validate("demo.restart_database", "orders", &json!({})).is_err(), "fixed target only");
+        assert!(validate("demo.restart_database", "demo-postgres", &json!({ "force": true })).is_err());
+    }
+
+    #[test]
+    fn reasons_are_bounded_and_single_line() {
+        assert_eq!(validate_reason("  error rate spike  ").unwrap(), "error rate spike");
+        assert!(validate_reason("abcd").is_err(), "below minimum");
+        assert!(validate_reason("     abcd     ").is_err(), "trimmed before counting");
+        assert!(validate_reason(&"x".repeat(REASON_MAX)).is_ok());
+        assert!(validate_reason(&"x".repeat(REASON_MAX + 1)).is_err());
+        assert!(validate_reason(&"é".repeat(REASON_MAX)).is_ok(), "counted in characters, not bytes");
+        assert!(validate_reason("line one\nline two").is_err());
+        assert!(validate_reason("bell\u{7} char").is_err());
+        assert!(validate_reason("esc \u{1b}[31m red").is_err());
+    }
+
+    #[test]
+    fn policy_limits_at_their_boundaries() {
+        let a = Action::DemoRestartDatabase;
+        let base = PolicyInput { environment_is_demo: true, open_plans_for_target: 0, plans_last_hour: 0 };
+        let rate = |n| evaluate(&a, &PolicyInput { plans_last_hour: n, ..base }, false).allowed;
+        assert!(rate(MAX_PLANS_PER_HOUR - 1));
+        assert!(!rate(MAX_PLANS_PER_HOUR));
+        // Re-evaluation excludes the plan itself from both counters.
+        let own = PolicyInput { open_plans_for_target: 1, plans_last_hour: MAX_PLANS_PER_HOUR, ..base };
+        assert!(evaluate(&a, &own, true).allowed);
+        assert!(!evaluate(&a, &PolicyInput { open_plans_for_target: 2, ..own }, true).allowed);
+
+        let denied = evaluate(&a, &PolicyInput { environment_is_demo: false, ..base }, false);
+        assert!(!denied.allowed && denied.requires_approval);
+        let failed: Vec<_> = denied.checks.iter().filter(|c| !c.passed).map(|c| c.name.as_str()).collect();
+        assert_eq!(failed, ["demo environment"]);
+        assert_eq!(denied.checks.len(), 4);
+    }
+
+    proptest! {
+        /// Approval is always required and `allowed` is exactly "all checks passed".
+        #[test]
+        fn policy_decision_is_conjunction_of_checks(
+            demo in any::<bool>(), open in -2i64..5, recent in -2i64..100, own in any::<bool>(),
+        ) {
+            let input = PolicyInput { environment_is_demo: demo, open_plans_for_target: open, plans_last_hour: recent };
+            for a in [
+                Action::DemoFaultsClear { service: DemoService::Gateway },
+                Action::DemoFaultsInject { service: DemoService::Orders, latency_ms: 10, error_rate: 0.1 },
+                Action::DemoRestartDatabase,
+            ] {
+                let d = evaluate(&a, &input, own);
+                prop_assert!(d.requires_approval);
+                prop_assert_eq!(d.allowed, d.checks.iter().all(|c| c.passed));
+                if !demo { prop_assert!(!d.allowed, "demo-only actions never pass outside demo"); }
+                let o = i64::from(own);
+                prop_assert_eq!(d.allowed, demo && open - o <= 0 && recent - o < MAX_PLANS_PER_HOUR);
+            }
+        }
+
+        /// Arbitrary inject parameters either validate to in-range typed values or are refused.
+        #[test]
+        fn inject_validation_never_produces_out_of_range_values(l in -10_000.0f64..10_000.0, r in -2.0f64..2.0) {
+            match validate("demo.faults.inject", "orders", &json!({ "latency_ms": l, "error_rate": r })) {
+                Ok(Action::DemoFaultsInject { latency_ms, error_rate, .. }) => {
+                    prop_assert!(latency_ms <= 5000 && f64::from(latency_ms) == l);
+                    prop_assert!((0.0..=1.0).contains(&error_rate));
+                    prop_assert!(latency_ms > 0 || error_rate > 0.0);
+                }
+                Ok(other) => prop_assert!(false, "unexpected {:?}", other),
+                Err(e) => prop_assert!(!e.is_empty()),
+            }
+        }
+
+        /// Unknown action types and targets never validate.
+        #[test]
+        fn unknown_types_and_targets_are_refused(t in "[a-z._;/ -]{0,24}", target in "[a-z._;/ -]{0,24}") {
+            let known_type = CATALOG.iter().any(|s| s.action_type == t);
+            let r = validate(&t, &target, &json!({}));
+            if !known_type {
+                prop_assert!(r.is_err());
+            } else if let Ok(a) = r {
+                prop_assert_eq!(a.target(), target.as_str());
+            }
+        }
+    }
+
+    #[test]
+    fn verification_judgement_boundaries() {
+        let db = Action::DemoRestartDatabase.verification();
+        assert_eq!(db.service, "orders");
+        assert!(db.judge(10, 2).0, "exactly 20% passes");
+        assert!(!db.judge(10, 3).0);
+        let (ok, detail) = db.judge(0, 0);
+        assert!(!ok && detail.contains("0 requests"), "{detail}");
+        let clear = Action::DemoFaultsClear { service: DemoService::Gateway }.verification();
+        assert_eq!(clear.service, "gateway");
+        assert!(clear.judge(20, 1).0, "exactly 5% passes");
+        assert!(!clear.judge(19, 1).0);
+        for a in [
+            Action::DemoFaultsClear { service: DemoService::Orders },
+            Action::DemoFaultsInject { service: DemoService::Orders, latency_ms: 1, error_rate: 0.0 },
+            Action::DemoRestartDatabase,
+        ] {
+            let v = a.verification();
+            assert!(v.min_requests >= 1, "a silent service never counts as verified");
+            assert!(v.observe_secs > 0);
+        }
+    }
+
+    #[test]
+    fn actions_serialize_with_a_type_tag() {
+        let a = Action::DemoFaultsInject { service: DemoService::Gateway, latency_ms: 5, error_rate: 0.5 };
+        let v = serde_json::to_value(&a).unwrap();
+        assert_eq!(v["type"], "demo_faults_inject");
+        assert_eq!(v["service"], "gateway");
+        assert_eq!(serde_json::from_value::<Action>(v).unwrap(), a);
+        assert!(serde_json::from_value::<Action>(json!({ "type": "shell_exec", "cmd": "id" })).is_err());
+        assert!(serde_json::from_value::<Action>(json!({ "type": "demo_faults_clear", "service": "db" })).is_err());
+    }
 }

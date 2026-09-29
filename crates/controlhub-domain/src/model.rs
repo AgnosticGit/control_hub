@@ -102,3 +102,75 @@ pub mod limits {
     pub const MAX_ATTRIBUTE_VALUE_LEN: usize = 4_096;
     pub const MAX_LOG_BODY_LEN: usize = 16_384;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn health_status_codes_and_ordering() {
+        let all = [HealthStatus::Unknown, HealthStatus::Healthy, HealthStatus::Degraded, HealthStatus::Failing];
+        for (i, h) in all.iter().enumerate() {
+            assert_eq!(usize::from(h.as_u8()), i);
+        }
+        assert!(HealthStatus::Unknown < HealthStatus::Healthy);
+        assert!(HealthStatus::Degraded < HealthStatus::Failing);
+        assert_eq!(all.iter().max(), Some(&HealthStatus::Failing));
+    }
+
+    #[test]
+    fn enums_serialize_as_snake_case() {
+        let s = |v: serde_json::Value| v.as_str().map(str::to_owned);
+        assert_eq!(
+            s(serde_json::json!(EntityKind::InfrastructureResource)).as_deref(),
+            Some("infrastructure_resource")
+        );
+        assert_eq!(s(serde_json::json!(EntityKind::ExternalDependency)).as_deref(), Some("external_dependency"));
+        assert_eq!(s(serde_json::json!(RelationKind::DependsOn)).as_deref(), Some("depends_on"));
+        assert_eq!(s(serde_json::json!(RelationKind::ConsumesFrom)).as_deref(), Some("consumes_from"));
+        assert_eq!(s(serde_json::json!(Provenance::Inferred)).as_deref(), Some("inferred"));
+        assert_eq!(s(serde_json::json!(HealthStatus::Unknown)).as_deref(), Some("unknown"));
+        assert_eq!(s(serde_json::json!(Signal::Events)).as_deref(), Some("events"));
+        assert_eq!(serde_json::from_str::<Signal>("\"traces\"").unwrap(), Signal::Traces);
+        assert!(serde_json::from_str::<Signal>("\"Traces\"").is_err());
+        assert!(serde_json::from_str::<HealthStatus>("\"ok\"").is_err());
+    }
+
+    #[test]
+    fn well_known_event_types_are_valid() {
+        for t in [
+            event_types::REQUEST_STARTED,
+            event_types::REQUEST_COMPLETED,
+            event_types::SERVICE_STARTED,
+            event_types::SERVICE_STOPPED,
+            event_types::DEPLOYMENT_STARTED,
+            event_types::DEPLOYMENT_COMPLETED,
+            event_types::CONFIG_CHANGED,
+            event_types::ACTION_AUDIT,
+        ] {
+            assert!(event_types::is_valid(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn event_type_validation_edges() {
+        assert!(event_types::is_valid("a"));
+        assert!(event_types::is_valid("order_v2.created"));
+        assert!(event_types::is_valid(&"a".repeat(96)));
+        assert!(!event_types::is_valid(&"a".repeat(97)));
+        for bad in ["", "Request.Started", "request started", "request-started", "a/b", "<script>", "é"] {
+            assert!(!event_types::is_valid(bad), "{bad}");
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn event_type_validity_matches_definition(t in any::<String>()) {
+            let expected = !t.is_empty()
+                && t.len() <= 96
+                && t.chars().all(|c| matches!(c, 'a'..='z' | '0'..='9' | '.' | '_'));
+            prop_assert_eq!(event_types::is_valid(&t), expected);
+        }
+    }
+}

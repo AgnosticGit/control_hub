@@ -422,4 +422,454 @@ mod tests {
         env.schema_version = 99;
         assert!(matches!(convert(&env, 1), Err(ConvertError::UnsupportedVersion(99))));
     }
+
+    use controlhub_protocol::otlp::common::v1::{ArrayValue, KeyValueList};
+    use controlhub_protocol::otlp::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+    use controlhub_protocol::otlp::trace::v1::Status;
+    use controlhub_protocol::v1::{CustomEvent, CustomEventBatch};
+
+    fn anyv(v: Value) -> AnyValue {
+        AnyValue { value: Some(v) }
+    }
+
+    fn traces_env(resource_attrs: Vec<KeyValue>, spans: Vec<Span>) -> IngestEnvelope {
+        let req = ExportTraceServiceRequest {
+            resource_spans: vec![ResourceSpans {
+                resource: Some(Resource { attributes: resource_attrs, ..Default::default() }),
+                scope_spans: vec![ScopeSpans { spans, ..Default::default() }],
+                ..Default::default()
+            }],
+        };
+        let mut env = envelope("t1", vec![]);
+        env.payload = Some(Payload::OtlpTraces(req.encode_to_vec()));
+        env
+    }
+
+    fn logs_env(resource_attrs: Vec<KeyValue>, records: Vec<LogRecord>) -> IngestEnvelope {
+        let req = ExportLogsServiceRequest {
+            resource_logs: vec![ResourceLogs {
+                resource: Some(Resource { attributes: resource_attrs, ..Default::default() }),
+                scope_logs: vec![ScopeLogs { log_records: records, ..Default::default() }],
+                ..Default::default()
+            }],
+        };
+        let mut env = envelope("t1", vec![]);
+        env.payload = Some(Payload::OtlpLogs(req.encode_to_vec()));
+        env
+    }
+
+    fn events_env(events: Vec<CustomEvent>) -> IngestEnvelope {
+        let mut env = envelope("t1", vec![]);
+        env.received_time_unix_nano = 777;
+        env.payload = Some(Payload::CustomEvents(CustomEventBatch { events }));
+        env
+    }
+
+    fn scope() -> Scope {
+        Scope {
+            tenant_id: TenantId::parse("t1").unwrap(),
+            project_id: ProjectId::parse("p1").unwrap(),
+            environment_id: EnvironmentId::parse("dev").unwrap(),
+        }
+    }
+
+    #[test]
+    fn span_fields_are_mapped_one_to_one() {
+        let span = Span {
+            trace_id: vec![0xab; 16],
+            span_id: vec![0xcd; 8],
+            parent_span_id: vec![0xef; 8],
+            kind: 2,
+            name: "GET /orders".into(),
+            start_time_unix_nano: 1_000,
+            end_time_unix_nano: 4_500,
+            status: Some(Status { code: 2, message: "boom".into() }),
+            attributes: vec![kv("http.route", "/orders"), kv("http.response.status_code", "500")],
+            ..Default::default()
+        };
+        let resource = vec![
+            kv("service.name", "orders"),
+            kv("service.namespace", "shop"),
+            kv("service.instance.id", "pod-1"),
+            kv("service.version", "1.2.3"),
+        ];
+        let mut env = traces_env(resource.clone(), vec![span]);
+        env.batch_id = "batch-9".into();
+        let out = convert(&env, 42).unwrap();
+        assert!(out.logs.is_empty() && out.events.is_empty());
+        let s = &out.spans[0];
+        assert_eq!((s.tenant_id.as_str(), s.project_id.as_str(), s.environment_id.as_str()), ("t1", "p1", "dev"));
+        assert_eq!(s.service_id, ServiceId::derive(&scope(), "shop", "orders").to_string());
+        assert_eq!(s.service_name, "orders");
+        assert_eq!(s.service_namespace, "shop");
+        assert_eq!(s.service_instance_id, "pod-1");
+        assert_eq!(s.service_version, "1.2.3");
+        assert_eq!(s.trace_id, "ab".repeat(16));
+        assert_eq!(s.span_id, "cd".repeat(8));
+        assert_eq!(s.parent_span_id, "ef".repeat(8));
+        assert_eq!(s.name, "GET /orders");
+        assert_eq!(s.kind, 2);
+        assert_eq!((s.start_time, s.end_time, s.duration_ns), (1_000, 4_500, 3_500));
+        assert_eq!(s.status_code, 2);
+        assert_eq!(s.status_message, "boom");
+        assert!(s.target_entity_id.is_empty() && s.target_name.is_empty() && s.target_kind.is_empty());
+        assert_eq!(
+            s.attributes,
+            vec![("http.route".into(), "/orders".into()), ("http.response.status_code".into(), "500".into())]
+        );
+        assert_eq!(s.resource_attributes.len(), 4);
+        assert_eq!(s.batch_id, "batch-9");
+        assert_eq!(s.ingested_at, 42);
+    }
+
+    #[test]
+    fn missing_resource_and_status_use_safe_defaults() {
+        let req = ExportTraceServiceRequest {
+            resource_spans: vec![ResourceSpans {
+                resource: None,
+                scope_spans: vec![ScopeSpans {
+                    spans: vec![Span { trace_id: vec![1; 16], span_id: vec![2; 8], ..Default::default() }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        };
+        let mut env = envelope("t1", vec![]);
+        env.payload = Some(Payload::OtlpTraces(req.encode_to_vec()));
+        let s = &convert(&env, 1).unwrap().spans[0];
+        assert_eq!(s.service_name, "unknown_service");
+        assert_eq!(s.service_id, ServiceId::derive(&scope(), "", "unknown_service").to_string());
+        assert!(s.parent_span_id.is_empty());
+        assert_eq!((s.status_code, s.status_message.as_str()), (0, ""));
+        assert!(s.resource_attributes.is_empty());
+    }
+
+    #[test]
+    fn empty_service_name_falls_back_to_unknown() {
+        let env = traces_env(vec![kv("service.name", "")], vec![Span::default()]);
+        assert_eq!(convert(&env, 1).unwrap().spans[0].service_name, "unknown_service");
+    }
+
+    #[test]
+    fn out_of_range_numbers_are_clamped_not_wrapped() {
+        let span = Span {
+            kind: 300,
+            start_time_unix_nano: u64::MAX,
+            end_time_unix_nano: u64::MAX,
+            status: Some(Status { code: -1, message: String::new() }),
+            ..Default::default()
+        };
+        let s = &convert(&traces_env(vec![], vec![span]), 1).unwrap().spans[0];
+        assert_eq!(s.kind, 0);
+        assert_eq!(s.status_code, 0);
+        assert_eq!((s.start_time, s.end_time, s.duration_ns), (i64::MAX, i64::MAX, 0));
+        assert_eq!(clamp_ns(0), 0);
+        assert_eq!(clamp_ns(i64::MAX as u64), i64::MAX);
+        assert_eq!(clamp_ns(i64::MAX as u64 + 1), i64::MAX);
+    }
+
+    #[test]
+    fn inverted_span_times_do_not_panic() {
+        let span = Span { start_time_unix_nano: 100, end_time_unix_nano: 50, ..Default::default() };
+        let s = &convert(&traces_env(vec![], vec![span]), 1).unwrap().spans[0];
+        assert_eq!(s.duration_ns, -50);
+    }
+
+    #[test]
+    fn span_targets_follow_semantic_conventions() {
+        let s = scope();
+        let attrs = |pairs: &[(&str, &str)]| -> Vec<(String, String)> {
+            pairs.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect()
+        };
+        // Only client (3) and producer (4) spans have targets.
+        for kind in [0, 1, 2, 5] {
+            assert!(span_target(&s, kind, &attrs(&[("db.system", "postgresql")])).is_none());
+        }
+        let (id, name, kind) = span_target(
+            &s,
+            3,
+            &attrs(&[("db.system.name", "postgresql"), ("db.system", "mysql"), ("db.namespace", "orders")]),
+        )
+        .unwrap();
+        assert_eq!((name.as_str(), kind.as_str()), ("postgresql: orders", "database"));
+        assert_eq!(id, EntityId::derive_resource(&s, "database", "postgresql", "orders").to_string());
+        let name_of = |pairs: &[(&str, &str)]| span_target(&s, 3, &attrs(pairs)).map(|t| t.1);
+        assert_eq!(
+            name_of(&[("db.system", "redis"), ("server.address", "cache-1")]).as_deref(),
+            Some("redis: cache-1")
+        );
+        assert_eq!(name_of(&[("db.system", "redis"), ("net.peer.name", "cache-2")]).as_deref(), Some("redis: cache-2"));
+        assert_eq!(name_of(&[("db.system", "redis")]).as_deref(), Some("redis: redis"));
+        assert_eq!(name_of(&[("db.system", ""), ("db.name", "x")]), None, "empty system is ignored");
+        let (_, name, kind) = span_target(
+            &s,
+            4,
+            &attrs(&[("messaging.system", "kafka"), ("messaging.destination.name", "orders.created")]),
+        )
+        .unwrap();
+        assert_eq!((name.as_str(), kind.as_str()), ("kafka: orders.created", "queue"));
+        assert_eq!(
+            span_target(&s, 4, &attrs(&[("messaging.system", "rabbitmq")])).map(|t| t.1).as_deref(),
+            Some("rabbitmq: rabbitmq")
+        );
+        assert!(span_target(&s, 3, &attrs(&[("http.url", "https://x")])).is_none());
+    }
+
+    #[test]
+    fn any_values_are_stringified_deterministically() {
+        assert_eq!(any_to_string(&anyv(Value::StringValue("s".into()))), "s");
+        assert_eq!(any_to_string(&anyv(Value::BoolValue(false))), "false");
+        assert_eq!(any_to_string(&anyv(Value::IntValue(-7))), "-7");
+        assert_eq!(any_to_string(&anyv(Value::DoubleValue(1.5))), "1.5");
+        assert_eq!(any_to_string(&anyv(Value::BytesValue(vec![0xde, 0xad]))), "dead");
+        let arr = anyv(Value::ArrayValue(ArrayValue {
+            values: vec![anyv(Value::IntValue(1)), anyv(Value::StringValue("a\"b".into()))],
+        }));
+        assert_eq!(any_to_string(&arr), r#"["1","a\"b"]"#);
+        let kvl = anyv(Value::KvlistValue(KeyValueList {
+            values: vec![kv("k", "v"), KeyValue { key: "none".into(), value: None, ..Default::default() }],
+        }));
+        assert_eq!(any_to_string(&kvl), r#"{"k":"v","none":""}"#);
+        assert_eq!(any_to_string(&AnyValue { value: None }), "");
+    }
+
+    #[test]
+    fn attributes_without_values_become_empty_strings() {
+        let flat = flatten(&[KeyValue { key: "k".into(), value: None, ..Default::default() }]);
+        assert_eq!(flat, vec![("k".to_owned(), String::new())]);
+        assert_eq!(attr(&flat, "k"), None, "empty values are treated as missing");
+        assert_eq!(attr(&flat, "missing"), None);
+    }
+
+    #[test]
+    fn log_fields_are_mapped() {
+        let lr = LogRecord {
+            time_unix_nano: 2_000,
+            observed_time_unix_nano: 2_100,
+            severity_number: 17,
+            severity_text: "ERROR".into(),
+            body: Some(anyv(Value::StringValue("payment declined".into()))),
+            trace_id: vec![1; 16],
+            span_id: vec![2; 8],
+            attributes: vec![kv("order.id", "7")],
+            ..Default::default()
+        };
+        let out =
+            convert(&logs_env(vec![kv("service.name", "payments"), kv("service.instance.id", "i-1")], vec![lr]), 9)
+                .unwrap();
+        assert!(out.spans.is_empty() && out.events.is_empty());
+        let l = &out.logs[0];
+        assert_eq!(l.service_name, "payments");
+        assert_eq!(l.service_instance_id, "i-1");
+        assert_eq!((l.time, l.observed_time), (2_000, 2_100));
+        assert_eq!(l.severity_number, 17);
+        assert_eq!(l.severity_text, "ERROR");
+        assert_eq!(l.body, "payment declined");
+        assert_eq!(l.trace_id, "01".repeat(16));
+        assert_eq!(l.span_id, "02".repeat(8));
+        assert_eq!(l.attributes, vec![("order.id".into(), "7".into())]);
+        assert_eq!(l.ingested_at, 9);
+        assert_eq!(l.tenant_id, "t1");
+    }
+
+    #[test]
+    fn log_time_falls_back_to_observed_time() {
+        let lr = LogRecord { time_unix_nano: 0, observed_time_unix_nano: 5_000, ..Default::default() };
+        let l = &convert(&logs_env(vec![], vec![lr]), 1).unwrap().logs[0];
+        assert_eq!((l.time, l.observed_time), (5_000, 5_000));
+        assert_eq!(l.service_name, "unknown_service");
+        assert!(l.body.is_empty() && l.trace_id.is_empty());
+        let big = LogRecord { time_unix_nano: u64::MAX, severity_number: 1_000, ..Default::default() };
+        let l = &convert(&logs_env(vec![], vec![big]), 1).unwrap().logs[0];
+        assert_eq!(l.time, i64::MAX);
+        assert_eq!(l.severity_number, 0);
+    }
+
+    #[test]
+    fn structured_log_bodies_are_stringified() {
+        let lr = LogRecord {
+            time_unix_nano: 1,
+            body: Some(anyv(Value::KvlistValue(KeyValueList { values: vec![kv("msg", "hi")] }))),
+            ..Default::default()
+        };
+        assert_eq!(convert(&logs_env(vec![], vec![lr]), 1).unwrap().logs[0].body, r#"{"msg":"hi"}"#);
+    }
+
+    #[test]
+    fn log_ids_ignore_attribute_order_but_not_content() {
+        let rec = |attrs: Vec<KeyValue>, severity: i32| LogRecord {
+            time_unix_nano: 1,
+            severity_number: severity,
+            attributes: attrs,
+            ..Default::default()
+        };
+        let id = |r: LogRecord, instance: &str| {
+            convert(&logs_env(vec![kv("service.name", "s"), kv("service.instance.id", instance)], vec![r]), 1)
+                .unwrap()
+                .logs[0]
+                .log_id
+                .clone()
+        };
+        let a = id(rec(vec![kv("a", "1"), kv("b", "2")], 9), "i1");
+        assert_eq!(a, id(rec(vec![kv("b", "2"), kv("a", "1")], 9), "i1"));
+        assert_ne!(a, id(rec(vec![kv("a", "1"), kv("b", "3")], 9), "i1"));
+        assert_ne!(a, id(rec(vec![kv("a", "1"), kv("b", "2")], 10), "i1"));
+        assert_ne!(a, id(rec(vec![kv("a", "1"), kv("b", "2")], 9), "i2"));
+        // Field boundaries are length-prefixed: ("ab","") != ("a","b").
+        assert_ne!(id(rec(vec![kv("ab", "")], 9), "i1"), id(rec(vec![kv("a", "b")], 9), "i1"));
+        assert!(a.bytes().all(|b| b.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn log_ids_differ_across_tenants() {
+        let lr = || LogRecord { time_unix_nano: 1, ..Default::default() };
+        let a = convert(&logs_env(vec![kv("service.name", "s")], vec![lr()]), 1).unwrap();
+        let mut other = logs_env(vec![kv("service.name", "s")], vec![lr()]);
+        other.scope.as_mut().unwrap().tenant_id = "t2".into();
+        let b = convert(&other, 1).unwrap();
+        assert_ne!(a.logs[0].log_id, b.logs[0].log_id);
+    }
+
+    #[test]
+    fn event_fields_are_mapped() {
+        let mut ev = CustomEvent {
+            event_id: "e1".into(),
+            event_type: "deployment.started".into(),
+            service_name: "orders".into(),
+            service_namespace: "shop".into(),
+            service_instance_id: "pod-1".into(),
+            entity_id: "svc_x".into(),
+            event_time_unix_nano: 1_000,
+            observed_time_unix_nano: 1_100,
+            trace_id: "ab".repeat(16),
+            span_id: "cd".repeat(8),
+            source_id: "sdk".into(),
+            source_epoch: "boot".into(),
+            source_sequence: Some(3),
+            payload_json: "{}".into(),
+            ..Default::default()
+        };
+        ev.attributes.insert("z".into(), "1".into());
+        ev.attributes.insert("a".into(), "2".into());
+        let out = convert(&events_env(vec![ev]), 5).unwrap();
+        assert!(out.spans.is_empty() && out.logs.is_empty());
+        let e = &out.events[0];
+        assert_eq!(e.event_id, "e1");
+        assert_eq!(e.event_type, "deployment.started");
+        assert_eq!(e.service_id, ServiceId::derive(&scope(), "shop", "orders").to_string());
+        assert_eq!((e.service_name.as_str(), e.service_instance_id.as_str()), ("orders", "pod-1"));
+        assert_eq!(e.entity_id, "svc_x");
+        assert_eq!((e.event_time, e.observed_time), (1_000, 1_100));
+        assert_eq!((e.trace_id.len(), e.span_id.len()), (32, 16));
+        assert_eq!((e.source_id.as_str(), e.source_epoch.as_str(), e.source_sequence), ("sdk", "boot", Some(3)));
+        assert_eq!(e.attributes, vec![("a".into(), "2".into()), ("z".into(), "1".into())], "sorted");
+        assert_eq!(e.payload_json, "{}");
+        assert_eq!(e.ingested_at, 5);
+    }
+
+    #[test]
+    fn event_observed_time_defaults_to_receive_time() {
+        let ev = CustomEvent { event_id: "e".into(), event_time_unix_nano: 1, ..Default::default() };
+        assert_eq!(convert(&events_env(vec![ev]), 1).unwrap().events[0].observed_time, 777);
+    }
+
+    #[test]
+    fn empty_batches_convert_to_nothing() {
+        assert!(convert(&events_env(vec![]), 1).unwrap().is_empty());
+        assert!(convert(&traces_env(vec![], vec![]), 1).unwrap().is_empty());
+        assert!(convert(&logs_env(vec![], vec![]), 1).unwrap().is_empty());
+        let mut env = envelope("t1", vec![]);
+        env.payload = Some(Payload::OtlpTraces(vec![]));
+        assert!(convert(&env, 1).unwrap().is_empty());
+    }
+
+    #[test]
+    fn envelope_errors_are_classified() {
+        let mut env = envelope("t1", vec![]);
+        env.schema_version = 0;
+        assert_eq!(convert(&env, 1).unwrap_err().kind(), "unsupported_version");
+
+        let mut env = envelope("t1", vec![]);
+        env.scope = None;
+        assert_eq!(convert(&env, 1).unwrap_err().kind(), "invalid_scope");
+
+        for bad in ["", "a b", "t'; DROP TABLE spans"] {
+            let env = envelope(bad, vec![]);
+            assert_eq!(convert(&env, 1).unwrap_err().kind(), "invalid_scope", "{bad:?}");
+        }
+        let mut env = envelope("t1", vec![]);
+        env.scope.as_mut().unwrap().environment_id = String::new();
+        assert!(matches!(convert(&env, 1), Err(ConvertError::Scope(_))));
+
+        let mut env = envelope("t1", vec![]);
+        env.payload = None;
+        assert_eq!(convert(&env, 1).unwrap_err().kind(), "empty_payload");
+
+        let mut env = envelope("t1", vec![]);
+        env.payload = Some(Payload::OtlpTraces(vec![0xff, 0xff]));
+        assert_eq!(convert(&env, 1).unwrap_err().kind(), "decode");
+        env.payload = Some(Payload::OtlpLogs(vec![0x0a, 0x05]));
+        assert_eq!(convert(&env, 1).unwrap_err().kind(), "decode");
+    }
+
+    #[test]
+    fn decode_envelope_rejects_garbage() {
+        assert!(matches!(decode_envelope(&[0x0f]), Err(ConvertError::Decode(_))));
+        let env = envelope("t1", vec![]);
+        assert_eq!(decode_envelope(&env.encode_to_vec()).unwrap(), env);
+        // An empty record decodes to a default envelope, which convert then rejects.
+        let empty = decode_envelope(&[]).unwrap();
+        assert!(matches!(convert(&empty, 1), Err(ConvertError::UnsupportedVersion(0))));
+    }
+
+    #[test]
+    fn converted_extend_and_is_empty() {
+        let mut a = Converted::default();
+        assert!(a.is_empty());
+        a.extend(convert(&envelope("t1", vec![]), 1).unwrap());
+        a.extend(convert(&log_envelope("b", "x"), 1).unwrap());
+        a.extend(Converted::default());
+        assert!(!a.is_empty());
+        assert_eq!((a.spans.len(), a.logs.len(), a.events.len()), (1, 1, 0));
+    }
+
+    #[test]
+    fn error_messages_carry_context() {
+        assert!(ConvertError::UnsupportedVersion(7).to_string().contains('7'));
+        assert!(ConvertError::Scope("missing".into()).to_string().contains("missing"));
+        assert_eq!(ConvertError::EmptyPayload.to_string(), "envelope has no payload");
+    }
+
+    mod props {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn arbitrary_bytes_never_panic(bytes in prop::collection::vec(any::<u8>(), 0..256)) {
+                if let Ok(env) = decode_envelope(&bytes) {
+                    let _ = convert(&env, 1);
+                }
+            }
+
+            #[test]
+            fn arbitrary_otlp_payload_bytes_never_panic(bytes in prop::collection::vec(any::<u8>(), 0..256), logs in any::<bool>()) {
+                let mut env = envelope("t1", vec![]);
+                env.payload = Some(if logs { Payload::OtlpLogs(bytes) } else { Payload::OtlpTraces(bytes) });
+                let _ = convert(&env, 1);
+            }
+
+            #[test]
+            fn span_times_are_never_negative_and_ids_are_hex(
+                start in any::<u64>(), end in any::<u64>(), trace in prop::collection::vec(any::<u8>(), 0..20)
+            ) {
+                let span = Span { trace_id: trace.clone(), start_time_unix_nano: start, end_time_unix_nano: end, ..Default::default() };
+                let out = convert(&traces_env(vec![], vec![span]), 1).unwrap();
+                let s = &out.spans[0];
+                prop_assert!(s.start_time >= 0 && s.end_time >= 0);
+                prop_assert_eq!(s.trace_id.len(), trace.len() * 2);
+                prop_assert!(s.trace_id.bytes().all(|b| b.is_ascii_hexdigit()));
+            }
+        }
+    }
 }

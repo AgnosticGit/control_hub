@@ -14,6 +14,8 @@ mod discover;
 mod doctor;
 mod mcp;
 mod plan;
+#[cfg(test)]
+mod test_http;
 mod verify;
 
 use std::path::PathBuf;
@@ -169,5 +171,110 @@ fn main() -> ExitCode {
             eprintln!("error: {e:#}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
+        Cli::try_parse_from(std::iter::once("controlhub").chain(args.iter().copied()))
+    }
+
+    #[test]
+    fn the_cli_definition_is_consistent() {
+        use clap::CommandFactory;
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn tokens_cannot_be_passed_as_flags() {
+        for cmd in ["doctor", "verify", "context", "mcp"] {
+            for flag in ["--token", "--api-token", "--ingest-token"] {
+                assert!(parse(&[cmd, flag, "cha_x"]).is_err(), "{cmd} {flag}");
+            }
+        }
+    }
+
+    #[test]
+    fn context_minutes_are_bounded() {
+        for bad in ["0", "1441", "-1", "abc"] {
+            assert!(parse(&["context", "--minutes", bad]).is_err(), "{bad}");
+        }
+        for (arg, want) in [("1", 1), ("1440", 1440)] {
+            match parse(&["context", "--minutes", arg]).unwrap().command {
+                Command::Context { minutes, .. } => assert_eq!(minutes, want),
+                c => panic!("{c:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn apply_needs_an_explicit_yes() {
+        match parse(&["apply"]).unwrap().command {
+            Command::Apply { yes, plan, path, .. } => {
+                assert!(!yes);
+                assert!(plan.is_none());
+                assert_eq!(path, PathBuf::from("."));
+            }
+            c => panic!("{c:?}"),
+        }
+        match parse(&["apply", "--yes", "--plan", "p.json"]).unwrap().command {
+            Command::Apply { yes, plan, .. } => assert!(yes && plan == Some(PathBuf::from("p.json"))),
+            c => panic!("{c:?}"),
+        }
+        assert!(parse(&["apply", "--yes=false"]).is_err(), "--yes is a flag, not a value");
+    }
+
+    #[test]
+    fn verify_and_plan_defaults() {
+        match parse(&["verify", "--api-url", "https://hub.example.com"]).unwrap().command {
+            Command::Verify { timeout_secs, require_app, service_name, conn, .. } => {
+                assert_eq!((timeout_secs, require_app, service_name), (60, false, None));
+                assert_eq!(conn.api_url, "https://hub.example.com");
+            }
+            c => panic!("{c:?}"),
+        }
+        match parse(&["plan"]).unwrap().command {
+            Command::Plan { plan, out, .. } => {
+                assert_eq!((plan.environment.as_str(), plan.sdk_spec.as_str()), ("local", "^0.1.0"));
+                assert!(out.is_none() && plan.service_name.is_none());
+            }
+            c => panic!("{c:?}"),
+        }
+        assert!(parse(&["verify", "--timeout-secs", "-5"]).is_err());
+        assert!(parse(&[]).is_err(), "a subcommand is required");
+        assert!(parse(&["shell"]).is_err());
+    }
+
+    #[test]
+    fn discover_and_plan_run_without_the_network() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"name":"@acme/shop","scripts":{"start":"node server.js"}}"#,
+        )
+        .unwrap();
+        let p = dir.path().to_str().unwrap();
+        let o = run(parse(&["discover", "--path", p]).unwrap()).unwrap();
+        assert_eq!((o.code, &o.json["package_name"]), (0, &serde_json::json!("@acme/shop")));
+
+        let out = dir.path().join("plan.json");
+        let o = run(parse(&["plan", "--path", p, "--out", out.to_str().unwrap()]).unwrap()).unwrap();
+        assert_eq!(o.code, 0);
+        let written: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+        assert_eq!(written, o.json, "--out writes exactly the printed plan");
+
+        let before = std::fs::read_to_string(dir.path().join("package.json")).unwrap();
+        let o = run(parse(&["apply", "--path", p, "--plan", out.to_str().unwrap()]).unwrap()).unwrap();
+        assert_eq!(o.code, 2, "without --yes apply only previews");
+        assert_eq!(std::fs::read_to_string(dir.path().join("package.json")).unwrap(), before);
+    }
+
+    #[test]
+    fn discover_of_a_missing_directory_is_an_error() {
+        assert!(run(parse(&["discover", "--path", "does/not/exist/anywhere"]).unwrap()).is_err());
     }
 }

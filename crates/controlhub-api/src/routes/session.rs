@@ -188,3 +188,73 @@ pub async fn logout(State(state): State<AppState>, user: CurrentUser) -> ApiResu
 pub async fn projects(State(state): State<AppState>, user: CurrentUser) -> ApiResult<Json<Vec<ProjectDto>>> {
     Ok(Json(projects_for(&state, &user).await?))
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    fn attrs(v: &HeaderValue) -> Vec<String> {
+        v.to_str().unwrap().split(';').map(|s| s.trim().to_owned()).collect()
+    }
+
+    #[test]
+    fn session_cookie_is_http_only_strict_and_secure_outside_dev() {
+        let a = attrs(&cookie(SESSION_COOKIE, "chs_x", true, true, 43_200).unwrap());
+        assert_eq!(a[0], "controlhub_session=chs_x");
+        for want in ["Path=/", "SameSite=Strict", "Max-Age=43200", "HttpOnly", "Secure"] {
+            assert!(a.iter().any(|x| x == want), "missing {want}: {a:?}");
+        }
+        assert!(!a.iter().any(|x| x.starts_with("Domain")), "host-only cookie");
+    }
+
+    #[test]
+    fn csrf_cookie_is_readable_by_js_but_still_strict() {
+        let a = attrs(&cookie(CSRF_COOKIE, "chc_x", false, true, 60).unwrap());
+        assert!(!a.iter().any(|x| x == "HttpOnly"), "double-submit needs JS access");
+        assert!(a.iter().any(|x| x == "SameSite=Strict") && a.iter().any(|x| x == "Secure"));
+    }
+
+    #[test]
+    fn dev_mode_only_drops_secure() {
+        let a = attrs(&cookie(SESSION_COOKIE, "chs_x", true, false, 60).unwrap());
+        assert!(!a.iter().any(|x| x == "Secure"));
+        assert!(a.iter().any(|x| x == "HttpOnly") && a.iter().any(|x| x == "SameSite=Strict"));
+    }
+
+    #[test]
+    fn logout_cookies_expire_immediately() {
+        let a = attrs(&cookie(SESSION_COOKIE, "", true, true, 0).unwrap());
+        assert_eq!(a[0], "controlhub_session=");
+        assert!(a.iter().any(|x| x == "Max-Age=0"));
+    }
+
+    #[test]
+    fn cookie_values_cannot_inject_attributes_or_headers() {
+        assert!(cookie(SESSION_COOKIE, "x\r\nSet-Cookie: evil=1", true, true, 1).is_err());
+        // Generated tokens are base64url, so they never contain `;`; the header stays one cookie.
+        let t = controlhub_storage::secrets::generate_token("chs_").unwrap();
+        assert_eq!(attrs(&cookie(SESSION_COOKIE, &t, true, true, 1).unwrap())[0], format!("{SESSION_COOKIE}={t}"));
+    }
+
+    #[test]
+    fn dummy_hash_never_verifies() {
+        for pw in ["", "password", "admin", "x"] {
+            assert!(!verify_password(pw, DUMMY_HASH), "{pw:?}");
+        }
+    }
+
+    /// Unknown users are checked against the dummy hash so both paths cost the same. That only
+    /// holds if it parses (otherwise verification returns instantly) and uses the real parameters.
+    #[test]
+    fn dummy_hash_costs_the_same_as_a_real_hash() {
+        use argon2::password_hash::PasswordHash;
+        let dummy = PasswordHash::new(DUMMY_HASH).unwrap();
+        let real_s = controlhub_storage::secrets::hash_password("x").unwrap();
+        let real = PasswordHash::new(&real_s).unwrap();
+        assert_eq!(dummy.algorithm, real.algorithm);
+        assert_eq!(dummy.version, real.version);
+        assert_eq!(dummy.params, real.params);
+        assert_eq!(dummy.hash.map(|h| h.len()), real.hash.map(|h| h.len()));
+    }
+}

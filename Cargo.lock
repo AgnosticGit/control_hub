@@ -479,6 +479,7 @@ name = "controlhub-api"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "argon2",
  "axum",
  "base64 0.22.1",
  "chrono",
@@ -489,6 +490,7 @@ dependencies = [
  "controlhub-runtime",
  "controlhub-storage",
  "futures",
+ "proptest",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -576,6 +578,7 @@ dependencies = [
  "controlhub-storage",
  "flate2",
  "opentelemetry-proto",
+ "proptest",
  "prost",
  "rskafka",
  "serde",
@@ -602,6 +605,7 @@ dependencies = [
  "controlhub-runtime",
  "controlhub-storage",
  "hex",
+ "proptest",
  "prost",
  "rskafka",
  "serde_json",

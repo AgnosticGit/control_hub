@@ -6,7 +6,7 @@ import { useCallback, useSyncExternalStore } from "react";
 const listeners = new Map<string, Set<() => void>>();
 const memory = new Map<string, string>();
 
-function readRaw(key: string): string | null {
+export function readPersisted(key: string): string | null {
   try {
     return window.localStorage.getItem(key) ?? memory.get(key) ?? null;
   } catch {
@@ -24,7 +24,7 @@ export function writePersisted(key: string, value: string) {
   for (const fn of listeners.get(key) ?? []) fn();
 }
 
-function subscribe(key: string, fn: () => void) {
+export function subscribePersisted(key: string, fn: () => void) {
   const set = listeners.get(key) ?? new Set();
   set.add(fn);
   listeners.set(key, set);
@@ -40,8 +40,8 @@ function subscribe(key: string, fn: () => void) {
 
 /** A remembered string preference; `parse` returns null for invalid stored values. */
 export function usePersisted<T>(key: string, fallback: T, parse: (raw: string) => T | null): T {
-  const sub = useCallback((fn: () => void) => subscribe(key, fn), [key]);
-  const raw = useSyncExternalStore(sub, () => readRaw(key), () => null);
+  const sub = useCallback((fn: () => void) => subscribePersisted(key, fn), [key]);
+  const raw = useSyncExternalStore(sub, () => readPersisted(key), () => null);
   if (raw === null) return fallback;
   return parse(raw) ?? fallback;
 }

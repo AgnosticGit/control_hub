@@ -101,7 +101,8 @@ fn accept_error_response(e: AcceptError) -> Response {
 #[allow(clippy::result_large_err)]
 fn decode_body(headers: &HeaderMap, body: &Bytes) -> Result<Vec<u8>, Response> {
     let ct = headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
-    let mime = ct.split(';').next().unwrap_or("").trim();
+    // Media types are case-insensitive (RFC 9110 §8.3.1).
+    let mime = ct.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
     if mime == "application/json" {
         return Err(protobuf_error(
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
@@ -166,6 +167,7 @@ async fn export_traces(State(st): State<AppState>, headers: HeaderMap, body: Byt
     };
     let stats = sanitize_traces(&mut req);
     Metrics::inc(&st.metrics.attributes_redacted, stats.redacted);
+    Metrics::inc(&st.metrics.attributes_truncated, stats.truncated_attrs);
     Metrics::inc(&st.metrics.spans_rejected, stats.rejected);
     if stats.accepted > 0 {
         if let Err(e) = st.publish(&cred, Payload::OtlpTraces(req.encode_to_vec())).await {
@@ -203,6 +205,7 @@ async fn export_logs(State(st): State<AppState>, headers: HeaderMap, body: Bytes
     };
     let stats = sanitize_logs(&mut req);
     Metrics::inc(&st.metrics.attributes_redacted, stats.redacted);
+    Metrics::inc(&st.metrics.attributes_truncated, stats.truncated_attrs);
     Metrics::inc(&st.metrics.logs_rejected, stats.rejected);
     if stats.accepted > 0 {
         if let Err(e) = st.publish(&cred, Payload::OtlpLogs(req.encode_to_vec())).await {
@@ -243,7 +246,7 @@ async fn events_batch(State(st): State<AppState>, headers: HeaderMap, body: Byte
     let is_json = headers
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.starts_with("application/json"));
+        .is_some_and(|v| v.split(';').next().unwrap_or("").trim().eq_ignore_ascii_case("application/json"));
     if !is_json {
         return json_err(StatusCode::UNSUPPORTED_MEDIA_TYPE, "expected application/json");
     }
@@ -283,5 +286,591 @@ async fn events_batch(State(st): State<AppState>, headers: HeaderMap, body: Byte
             r.headers_mut().insert(header::RETRY_AFTER, HeaderValue::from_static("2"));
             r
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use super::*;
+    use crate::broker::fake::Mode;
+    use crate::testing::{Harness, TOKEN, TRACES_ONLY, get, harness};
+    use axum::body::Body;
+    use axum::http::Request;
+    use controlhub_protocol::otlp::common::v1::{AnyValue, KeyValue, any_value::Value};
+    use controlhub_protocol::otlp::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+    use controlhub_protocol::otlp::resource::v1::Resource;
+    use controlhub_protocol::otlp::trace::v1::{ResourceSpans, ScopeSpans, Span};
+    use serde_json::{Value as Json, json};
+    use tower::ServiceExt;
+
+    const PB: &str = "application/x-protobuf";
+
+    fn kv(k: &str, v: &str) -> KeyValue {
+        KeyValue {
+            key: k.into(),
+            value: Some(AnyValue { value: Some(Value::StringValue(v.into())) }),
+            ..Default::default()
+        }
+    }
+
+    fn good_span() -> Span {
+        Span {
+            trace_id: vec![1; 16],
+            span_id: vec![2; 8],
+            name: "GET /orders".into(),
+            start_time_unix_nano: 10,
+            end_time_unix_nano: 20,
+            attributes: vec![kv("http.request.header.authorization", "Bearer leaked-token"), kv("http.route", "/o")],
+            ..Default::default()
+        }
+    }
+
+    fn bad_span() -> Span {
+        Span { trace_id: vec![0; 16], ..good_span() }
+    }
+
+    fn traces(spans: Vec<Span>) -> ExportTraceServiceRequest {
+        ExportTraceServiceRequest {
+            resource_spans: vec![ResourceSpans {
+                resource: Some(Resource {
+                    attributes: vec![kv("service.name", "orders"), kv("tenant_id", "someone-else")],
+                    ..Default::default()
+                }),
+                scope_spans: vec![ScopeSpans { spans, ..Default::default() }],
+                ..Default::default()
+            }],
+        }
+    }
+
+    fn logs(records: Vec<LogRecord>) -> ExportLogsServiceRequest {
+        ExportLogsServiceRequest {
+            resource_logs: vec![ResourceLogs {
+                scope_logs: vec![ScopeLogs { log_records: records, ..Default::default() }],
+                ..Default::default()
+            }],
+        }
+    }
+
+    fn good_log() -> LogRecord {
+        LogRecord {
+            time_unix_nano: 5,
+            body: Some(AnyValue { value: Some(Value::StringValue("login with Bearer abc123".into())) }),
+            attributes: vec![kv("user.password", "hunter2")],
+            ..Default::default()
+        }
+    }
+
+    fn post(path: &str, token: Option<&str>, content_type: Option<&str>, body: impl Into<Body>) -> Request<Body> {
+        let mut b = Request::post(path);
+        if let Some(t) = token {
+            b = b.header(header::AUTHORIZATION, format!("Bearer {t}"));
+        }
+        if let Some(ct) = content_type {
+            b = b.header(header::CONTENT_TYPE, ct);
+        }
+        b.body(body.into()).unwrap()
+    }
+
+    async fn send(h: &Harness, req: Request<Body>) -> (StatusCode, HeaderMap, Vec<u8>) {
+        let resp = router(h.state.clone(), 16).oneshot(req).await.unwrap();
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap().to_vec();
+        (status, headers, body)
+    }
+
+    fn rpc_status(headers: &HeaderMap, body: &[u8]) -> RpcStatus {
+        assert_eq!(headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()), Some(PB));
+        RpcStatus::decode(body).unwrap()
+    }
+
+    fn retry_after(headers: &HeaderMap) -> Option<&str> {
+        headers.get(header::RETRY_AFTER).and_then(|v| v.to_str().ok())
+    }
+
+    fn gzip(bytes: &[u8]) -> Vec<u8> {
+        let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        enc.write_all(bytes).unwrap();
+        enc.finish().unwrap()
+    }
+
+    fn published_traces(h: &Harness) -> Vec<ExportTraceServiceRequest> {
+        h.envelopes()
+            .into_iter()
+            .map(|e| match e.payload {
+                Some(Payload::OtlpTraces(b)) => ExportTraceServiceRequest::decode(b.as_slice()).unwrap(),
+                other => panic!("unexpected payload {other:?}"),
+            })
+            .collect()
+    }
+
+    // ---- plumbing ----
+
+    #[tokio::test]
+    async fn health_is_public() {
+        let h = harness();
+        let (status, _, body) = send(&h, Request::get("/health").body(Body::empty()).unwrap()).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, b"ok");
+    }
+
+    #[tokio::test]
+    async fn metrics_signal_is_explicitly_not_implemented() {
+        let h = harness();
+        let (status, headers, body) = send(&h, post("/v1/metrics", Some(TOKEN), Some(PB), vec![])).await;
+        assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+        let s = rpc_status(&headers, &body);
+        assert_eq!(s.code, 12);
+        assert!(s.message.contains("NOT accepted"));
+    }
+
+    #[tokio::test]
+    async fn unknown_routes_and_methods_are_rejected() {
+        let h = harness();
+        let (status, _, _) = send(&h, post("/v1/profiles", Some(TOKEN), Some(PB), vec![])).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, _, _) = send(&h, Request::get("/v1/traces").body(Body::empty()).unwrap()).await;
+        assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    // ---- authentication ----
+
+    #[tokio::test]
+    async fn missing_token_is_401_and_nothing_is_published() {
+        let h = harness();
+        let body = traces(vec![good_span()]).encode_to_vec();
+        let (status, headers, resp) = send(&h, post("/v1/traces", None, Some(PB), body)).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(rpc_status(&headers, &resp).code, 16);
+        assert_eq!(get(&h.metrics().requests_rejected_auth), 1);
+        assert!(h.broker.records().is_empty());
+    }
+
+    #[tokio::test]
+    async fn invalid_token_is_401() {
+        let h = harness();
+        let (status, headers, resp) = send(&h, post("/v1/logs", Some("nope"), Some(PB), vec![])).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(rpc_status(&headers, &resp).code, 16);
+        let req = Request::post("/v1/traces").header(header::AUTHORIZATION, "Basic dXNlcjpwdw==").body(Body::empty());
+        let (status, _, _) = send(&h, req.unwrap()).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(get(&h.metrics().requests_rejected_auth), 2);
+    }
+
+    #[tokio::test]
+    async fn signal_not_granted_is_403() {
+        let h = harness();
+        let body = logs(vec![good_log()]).encode_to_vec();
+        let (status, headers, resp) = send(&h, post("/v1/logs", Some(TRACES_ONLY), Some(PB), body)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        let s = rpc_status(&headers, &resp);
+        assert_eq!(s.code, 7);
+        assert!(s.message.contains("logs"));
+        assert!(h.broker.records().is_empty());
+    }
+
+    #[tokio::test]
+    async fn credential_store_outage_is_503_with_retry_after() {
+        let h = harness();
+        h.store.lock().unwrap().unavailable = true;
+        let (status, headers, resp) = send(&h, post("/v1/traces", Some(TOKEN), Some(PB), vec![])).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(rpc_status(&headers, &resp).code, 14);
+        assert_eq!(retry_after(&headers), Some("2"));
+    }
+
+    #[tokio::test]
+    async fn auth_is_checked_before_the_body_is_parsed() {
+        let h = harness();
+        let (status, _, _) = send(&h, post("/v1/traces", None, Some("text/plain"), "garbage")).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(get(&h.metrics().requests_rejected_invalid), 0);
+    }
+
+    // ---- content negotiation and decoding ----
+
+    #[tokio::test]
+    async fn json_encoding_is_415_not_silently_accepted() {
+        let h = harness();
+        let (status, headers, resp) = send(&h, post("/v1/traces", Some(TOKEN), Some("application/json"), "{}")).await;
+        assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        let s = rpc_status(&headers, &resp);
+        assert_eq!(s.code, 3);
+        assert!(s.message.contains("JSON"));
+        assert_eq!(get(&h.metrics().requests_rejected_invalid), 1);
+    }
+
+    #[tokio::test]
+    async fn missing_or_wrong_content_type_is_415() {
+        let h = harness();
+        for ct in [None, Some("text/plain"), Some("application/protobuf")] {
+            let (status, _, _) = send(&h, post("/v1/logs", Some(TOKEN), ct, vec![])).await;
+            assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE, "{ct:?}");
+        }
+        assert_eq!(get(&h.metrics().requests_rejected_invalid), 3);
+    }
+
+    #[tokio::test]
+    async fn content_type_is_case_insensitive() {
+        let h = harness();
+        let body = traces(vec![good_span()]).encode_to_vec();
+        let (status, _, _) = send(&h, post("/v1/traces", Some(TOKEN), Some("Application/X-Protobuf"), body)).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _, _) = send(&h, events_req(Some(TOKEN), Some("APPLICATION/JSON"), json!({"events": []}))).await;
+        assert_ne!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        // A type that merely starts with application/json is not JSON.
+        let (status, _, _) = send(&h, events_req(Some(TOKEN), Some("application/jsonx"), json!({"events": []}))).await;
+        assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    #[tokio::test]
+    async fn content_type_parameters_are_allowed() {
+        let h = harness();
+        let body = traces(vec![good_span()]).encode_to_vec();
+        let (status, _, _) =
+            send(&h, post("/v1/traces", Some(TOKEN), Some("application/x-protobuf; charset=binary"), body)).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn malformed_protobuf_is_400() {
+        let h = harness();
+        for path in ["/v1/traces", "/v1/logs"] {
+            let (status, headers, resp) = send(&h, post(path, Some(TOKEN), Some(PB), vec![0xff, 0xff, 0xff])).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{path}");
+            let s = rpc_status(&headers, &resp);
+            assert_eq!(s.code, 3);
+            assert!(s.message.starts_with("malformed"));
+        }
+        assert_eq!(get(&h.metrics().requests_rejected_invalid), 2);
+        assert!(h.broker.records().is_empty());
+    }
+
+    #[tokio::test]
+    async fn gzip_bodies_are_accepted() {
+        let h = harness();
+        let body = gzip(&traces(vec![good_span()]).encode_to_vec());
+        let req = Request::post("/v1/traces")
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .header(header::CONTENT_TYPE, PB)
+            .header(header::CONTENT_ENCODING, "gzip")
+            .body(Body::from(body))
+            .unwrap();
+        let (status, _, _) = send(&h, req).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(published_traces(&h).len(), 1);
+    }
+
+    fn with_encoding(encoding: &str, body: Vec<u8>) -> Request<Body> {
+        Request::post("/v1/traces")
+            .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+            .header(header::CONTENT_TYPE, PB)
+            .header(header::CONTENT_ENCODING, encoding)
+            .body(Body::from(body))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn invalid_gzip_is_400_and_unknown_encoding_is_415() {
+        let h = harness();
+        let (status, headers, resp) = send(&h, with_encoding("gzip", b"not gzip".to_vec())).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(rpc_status(&headers, &resp).message.contains("gzip"));
+        let (status, _, _) = send(&h, with_encoding("br", vec![])).await;
+        assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        assert_eq!(get(&h.metrics().requests_rejected_invalid), 2);
+    }
+
+    #[tokio::test]
+    async fn gzip_bomb_is_rejected_by_the_decompressed_limit() {
+        let h = harness();
+        let bomb = gzip(&vec![0u8; MAX_DECOMPRESSED_BODY + 1]);
+        assert!(bomb.len() < MAX_COMPRESSED_BODY);
+        let (status, headers, resp) = send(&h, with_encoding("gzip", bomb)).await;
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(rpc_status(&headers, &resp).message.contains("too large"));
+        assert_eq!(get(&h.metrics().requests_rejected_invalid), 1);
+    }
+
+    #[tokio::test]
+    async fn oversized_compressed_body_is_413() {
+        let h = harness();
+        let (status, _, _) =
+            send(&h, post("/v1/traces", Some(TOKEN), Some(PB), vec![0u8; MAX_COMPRESSED_BODY + 1])).await;
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(h.broker.records().is_empty());
+    }
+
+    #[test]
+    fn decode_body_unit_cases() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(PB));
+        assert_eq!(decode_body(&headers, &Bytes::from_static(b"abc")).unwrap(), b"abc");
+        headers.insert(header::CONTENT_ENCODING, HeaderValue::from_static("identity"));
+        assert_eq!(decode_body(&headers, &Bytes::from_static(b"abc")).unwrap(), b"abc");
+        headers.insert(header::CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+        assert_eq!(decode_body(&headers, &Bytes::from(gzip(b"hello"))).unwrap(), b"hello");
+        let exact = gzip(&vec![1u8; MAX_DECOMPRESSED_BODY]);
+        assert_eq!(decode_body(&headers, &Bytes::from(exact)).unwrap().len(), MAX_DECOMPRESSED_BODY);
+        headers.insert(header::CONTENT_ENCODING, HeaderValue::from_static("deflate"));
+        assert_eq!(decode_body(&headers, &Bytes::new()).unwrap_err().status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    // ---- accept path ----
+
+    #[tokio::test]
+    async fn accepted_traces_are_sanitised_and_scoped_by_the_token() {
+        let h = harness();
+        let body = traces(vec![good_span()]).encode_to_vec();
+        let (status, headers, resp) = send(&h, post("/v1/traces", Some(TOKEN), Some(PB), body)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()), Some(PB));
+        let parsed = ExportTraceServiceResponse::decode(resp.as_slice()).unwrap();
+        assert!(parsed.partial_success.is_none());
+
+        let env = &h.envelopes()[0];
+        assert_eq!(env.scope.as_ref().unwrap().tenant_id, "t1");
+        let dump = format!("{:?}", published_traces(&h));
+        assert!(!dump.contains("leaked-token"), "{dump}");
+        assert_eq!(get(&h.metrics().spans_accepted), 1);
+        assert_eq!(get(&h.metrics().attributes_redacted), 1);
+        assert_eq!(get(&h.metrics().requests_accepted), 1);
+    }
+
+    #[tokio::test]
+    async fn invalid_spans_yield_partial_success_and_are_counted() {
+        let h = harness();
+        let body = traces(vec![good_span(), bad_span(), bad_span()]).encode_to_vec();
+        let (status, _, resp) = send(&h, post("/v1/traces", Some(TOKEN), Some(PB), body)).await;
+        assert_eq!(status, StatusCode::OK);
+        let ps = ExportTraceServiceResponse::decode(resp.as_slice()).unwrap().partial_success.unwrap();
+        assert_eq!(ps.rejected_spans, 2);
+        assert!(!ps.error_message.is_empty());
+        assert_eq!(get(&h.metrics().spans_accepted), 1);
+        assert_eq!(get(&h.metrics().spans_rejected), 2);
+        let published = published_traces(&h);
+        assert_eq!(published[0].resource_spans[0].scope_spans[0].spans.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn all_invalid_spans_are_not_published() {
+        let h = harness();
+        let body = traces(vec![bad_span()]).encode_to_vec();
+        let (status, _, resp) = send(&h, post("/v1/traces", Some(TOKEN), Some(PB), body)).await;
+        assert_eq!(status, StatusCode::OK);
+        let ps = ExportTraceServiceResponse::decode(resp.as_slice()).unwrap().partial_success.unwrap();
+        assert_eq!(ps.rejected_spans, 1);
+        assert!(h.broker.records().is_empty());
+        assert_eq!(get(&h.metrics().spans_rejected), 1);
+    }
+
+    #[tokio::test]
+    async fn empty_export_is_ok_and_not_published() {
+        let h = harness();
+        let (status, _, resp) = send(&h, post("/v1/traces", Some(TOKEN), Some(PB), vec![])).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(ExportTraceServiceResponse::decode(resp.as_slice()).unwrap().partial_success.is_none());
+        assert!(h.broker.records().is_empty());
+    }
+
+    #[tokio::test]
+    async fn dropped_attributes_over_the_limit_are_counted() {
+        let h = harness();
+        let mut span = good_span();
+        span.attributes = (0..70).map(|i| kv(&format!("k{i}"), "v")).collect();
+        let body = traces(vec![span]).encode_to_vec();
+        let (status, _, _) = send(&h, post("/v1/traces", Some(TOKEN), Some(PB), body)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(get(&h.metrics().attributes_truncated), 6);
+    }
+
+    #[tokio::test]
+    async fn broker_failure_is_503_never_200() {
+        let h = harness();
+        for mode in [Mode::Fail(PublishError::Unavailable("down".into())), Mode::Hang, Mode::Drop] {
+            h.broker.set_mode(mode.clone());
+            let body = traces(vec![good_span()]).encode_to_vec();
+            let (status, headers, resp) = send(&h, post("/v1/traces", Some(TOKEN), Some(PB), body)).await;
+            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{mode:?}");
+            let s = rpc_status(&headers, &resp);
+            assert_eq!(s.code, 14);
+            assert!(s.message.contains("NOT accepted"));
+            assert_eq!(retry_after(&headers), Some("2"));
+        }
+        assert_eq!(get(&h.metrics().requests_failed_broker), 3);
+        assert_eq!(get(&h.metrics().spans_accepted), 0);
+        assert_eq!(get(&h.metrics().requests_accepted), 0);
+    }
+
+    #[tokio::test]
+    async fn overload_is_429_with_retry_after() {
+        let h = harness();
+        h.broker.set_mode(Mode::Fail(PublishError::Overloaded));
+        let body = logs(vec![good_log()]).encode_to_vec();
+        let (status, headers, resp) = send(&h, post("/v1/logs", Some(TOKEN), Some(PB), body)).await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(rpc_status(&headers, &resp).code, 8);
+        assert_eq!(retry_after(&headers), Some("1"));
+        assert_eq!(get(&h.metrics().requests_rejected_overload), 1);
+        assert_eq!(get(&h.metrics().logs_accepted), 0);
+    }
+
+    #[tokio::test]
+    async fn logs_are_sanitised_and_partially_rejected() {
+        let h = harness();
+        let body = logs(vec![good_log(), LogRecord::default()]).encode_to_vec();
+        let (status, _, resp) = send(&h, post("/v1/logs", Some(TOKEN), Some(PB), body)).await;
+        assert_eq!(status, StatusCode::OK);
+        let ps = ExportLogsServiceResponse::decode(resp.as_slice()).unwrap().partial_success.unwrap();
+        assert_eq!(ps.rejected_log_records, 1);
+        assert_eq!(get(&h.metrics().logs_accepted), 1);
+        assert_eq!(get(&h.metrics().logs_rejected), 1);
+        let Some(Payload::OtlpLogs(bytes)) = h.envelopes().remove(0).payload else { panic!("expected logs") };
+        let dump = format!("{:?}", ExportLogsServiceRequest::decode(bytes.as_slice()).unwrap());
+        assert!(!dump.contains("hunter2") && !dump.contains("abc123"), "{dump}");
+    }
+
+    #[tokio::test]
+    async fn logs_broker_failure_is_503() {
+        let h = harness();
+        h.broker.set_mode(Mode::Fail(PublishError::Timeout));
+        let body = logs(vec![good_log()]).encode_to_vec();
+        let (status, _, _) = send(&h, post("/v1/logs", Some(TOKEN), Some(PB), body)).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(get(&h.metrics().logs_accepted), 0);
+    }
+
+    #[tokio::test]
+    async fn accept_errors_map_to_otlp_status_codes() {
+        let cases: [(AcceptError, StatusCode, i32, Option<&str>); 7] = [
+            (AuthError::Missing.into(), StatusCode::UNAUTHORIZED, 16, None),
+            (AuthError::Invalid.into(), StatusCode::UNAUTHORIZED, 16, None),
+            (AuthError::SignalNotAllowed("logs").into(), StatusCode::FORBIDDEN, 7, None),
+            (AuthError::Unavailable.into(), StatusCode::SERVICE_UNAVAILABLE, 14, Some("2")),
+            (PublishError::Overloaded.into(), StatusCode::TOO_MANY_REQUESTS, 8, Some("1")),
+            (PublishError::Timeout.into(), StatusCode::SERVICE_UNAVAILABLE, 14, Some("2")),
+            (PublishError::Unavailable("x".into()).into(), StatusCode::SERVICE_UNAVAILABLE, 14, Some("2")),
+        ];
+        for (err, status, code, retry) in cases {
+            let resp = accept_error_response(err);
+            assert_eq!(resp.status(), status);
+            assert_eq!(retry_after(resp.headers()), retry);
+            let headers = resp.headers().clone();
+            let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+            assert_eq!(rpc_status(&headers, &body).code, code);
+        }
+    }
+
+    // ---- events API ----
+
+    fn event(id: &str) -> Json {
+        json!({
+            "event_id": id,
+            "event_type": "deployment.started",
+            "service": {"name": "orders"},
+            "event_time": "1790000000000000000",
+            "attributes": {"api_key": "sk-live"}
+        })
+    }
+
+    fn events_req(token: Option<&str>, ct: Option<&str>, body: Json) -> Request<Body> {
+        post("/api/v1/events/batch", token, ct, serde_json::to_vec(&body).unwrap())
+    }
+
+    fn json_body(body: &[u8]) -> Json {
+        serde_json::from_slice(body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn events_are_published_with_broker_durability() {
+        let h = harness();
+        let body = json!({"events": [event("e1"), event("e2"), {"event_id": "bad"}]});
+        let (status, _, resp) = send(&h, events_req(Some(TOKEN), Some("application/json"), body)).await;
+        assert_eq!(status, StatusCode::OK);
+        let v = json_body(&resp);
+        assert_eq!(v["accepted"], 2);
+        assert_eq!(v["rejected"][0]["index"], 2);
+        assert_eq!(v["durability"], "broker_acknowledged");
+        assert_eq!(v["batch_id"], h.envelopes()[0].batch_id.as_str());
+        assert_eq!(get(&h.metrics().events_accepted), 2);
+        assert_eq!(get(&h.metrics().events_rejected), 1);
+        let Some(Payload::CustomEvents(batch)) = h.envelopes().remove(0).payload else { panic!("expected events") };
+        assert_eq!(batch.events.len(), 2);
+        assert!(!format!("{batch:?}").contains("sk-live"));
+    }
+
+    #[tokio::test]
+    async fn events_charset_parameter_is_allowed() {
+        let h = harness();
+        let body = json!({"events": [event("e1")]});
+        let (status, _, _) = send(&h, events_req(Some(TOKEN), Some("application/json; charset=utf-8"), body)).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn events_auth_errors_are_json() {
+        let h = harness();
+        let body = json!({"events": [event("e1")]});
+        let (status, _, resp) = send(&h, events_req(None, Some("application/json"), body.clone())).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(json_body(&resp)["error"].is_string());
+        let (status, _, _) = send(&h, events_req(Some(TRACES_ONLY), Some("application/json"), body.clone())).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        h.store.lock().unwrap().unavailable = true;
+        let (status, _, _) = send(&h, events_req(Some("other"), Some("application/json"), body)).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(h.broker.records().is_empty());
+    }
+
+    #[tokio::test]
+    async fn events_require_json_content_type() {
+        let h = harness();
+        let (status, _, _) = send(&h, events_req(Some(TOKEN), Some("text/plain"), json!({"events": []}))).await;
+        assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        let (status, _, _) = send(&h, events_req(Some(TOKEN), None, json!({"events": []}))).await;
+        assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    #[tokio::test]
+    async fn malformed_events_body_is_400_and_counted() {
+        let h = harness();
+        let req = post("/api/v1/events/batch", Some(TOKEN), Some("application/json"), "{not json");
+        let (status, _, resp) = send(&h, req).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(json_body(&resp)["error"].as_str().unwrap().starts_with("malformed JSON"));
+        assert_eq!(get(&h.metrics().requests_rejected_invalid), 1);
+    }
+
+    #[tokio::test]
+    async fn batch_with_no_valid_events_is_400_and_not_published() {
+        let h = harness();
+        let body = json!({"events": [{"event_id": "x"}, {"event_id": "y"}]});
+        let (status, _, resp) = send(&h, events_req(Some(TOKEN), Some("application/json"), body)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let v = json_body(&resp);
+        assert_eq!(v["accepted"], 0);
+        assert_eq!(v["rejected"].as_array().map(Vec::len), Some(2));
+        assert_eq!(get(&h.metrics().events_rejected), 2);
+        assert!(h.broker.records().is_empty());
+    }
+
+    #[tokio::test]
+    async fn events_broker_failures_never_report_success() {
+        let h = harness();
+        h.broker.set_mode(Mode::Fail(PublishError::Unavailable("down".into())));
+        let body = json!({"events": [event("e1")]});
+        let (status, headers, resp) = send(&h, events_req(Some(TOKEN), Some("application/json"), body.clone())).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(retry_after(&headers), Some("2"));
+        assert!(json_body(&resp)["error"].as_str().unwrap().contains("NOT accepted"));
+
+        h.broker.set_mode(Mode::Fail(PublishError::Overloaded));
+        let (status, headers, _) = send(&h, events_req(Some(TOKEN), Some("application/json"), body)).await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(retry_after(&headers), Some("1"));
+        assert_eq!(get(&h.metrics().events_accepted), 0);
     }
 }

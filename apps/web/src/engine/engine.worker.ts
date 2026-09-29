@@ -16,11 +16,9 @@ import {
   type WorkerResponse,
 } from "@controlhub/web-engine";
 import { WASM_BYTES, WASM_URL } from "@/generated/wasm-manifest";
+import { MAX_RESPONSE_BYTES, countItems, liveRetryDelayMs, newerSeek, parseLiveHead, timelineTail } from "./worker-utils";
 
 declare const self: DedicatedWorkerGlobalScope;
-
-/** Refuse responses above this size instead of exhausting Worker memory. */
-const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
 let engine: WebEngine | null = null;
 let pendingSeek: { timeNs: string; generation: number } | null = null;
@@ -100,34 +98,6 @@ async function fetchText(url: string): Promise<{ text: string; ms: number }> {
   return { text, ms: performance.now() - t0 };
 }
 
-interface TimelineTail {
-  from_ns?: string;
-  to_ns?: string;
-  spans_truncated?: boolean;
-  logs_truncated?: boolean;
-  events_truncated?: boolean;
-  completeness?: unknown;
-}
-
-/**
- * Reads the small metadata tail of a timeline response without parsing the
- * (potentially huge) `items` array in JS. Relies on the server emitting
- * `items` first (TimelineResponse field order); falls back to a full parse.
- */
-function timelineTail(text: string): TimelineTail {
-  const marker = '],"from_ns":';
-  const at = text.lastIndexOf(marker);
-  if (at !== -1) {
-    try {
-      return JSON.parse(`{${text.slice(at + 2)}`) as TimelineTail;
-    } catch {
-      // fall through
-    }
-  }
-  const full = JSON.parse(text) as TimelineTail;
-  return full;
-}
-
 // ------------------------------------------------------------------ live channel
 
 interface LiveState {
@@ -166,19 +136,17 @@ function liveConnect() {
     if (live !== l) return;
     l.ws = null;
     l.attempt += 1;
-    const base = Math.min(30_000, 500 * 2 ** Math.min(l.attempt, 6));
-    const retryInMs = Math.round(base * (0.5 + Math.random() / 2));
+    const retryInMs = liveRetryDelayMs(l.attempt);
     postLive({ type: "closed", attempt: l.attempt, retryInMs, code: ev.code });
     l.timer = setTimeout(liveConnect, retryInMs);
   };
 }
 
-/** Server messages start with `{"type":"…","resume":"…"`; batches go to WASM as raw text. */
+/** Batches go to WASM as raw text; only the message head is read in JS. */
 function onLiveMessage(l: LiveState, text: string) {
-  const head = /^\{"type":"(\w+)"(?:,"resume":"(\d+)")?/.exec(text.slice(0, 128));
+  const head = parseLiveHead(text);
   if (!head) return;
-  const type = head[1];
-  const resume = head[2];
+  const { type, resume } = head;
   if (resume) l.resume = resume;
   switch (type) {
     case "batch": {
@@ -219,16 +187,6 @@ function liveStop() {
     l.ws.onclose = null;
     l.ws.close(1000, "stopped");
   }
-}
-
-function countItems(text: string): number {
-  let n = 0;
-  let i = text.indexOf('"type":"');
-  while (i !== -1) {
-    n++;
-    i = text.indexOf('"type":"', i + 8);
-  }
-  return n;
 }
 
 async function handle(msg: WorkerRequest): Promise<unknown> {
@@ -286,7 +244,7 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       schedule();
       return null;
     case "seek":
-      if (!pendingSeek || msg.generation >= pendingSeek.generation) pendingSeek = msg;
+      pendingSeek = newerSeek(pendingSeek, msg);
       schedule();
       return undefined;
     case "setViewport":

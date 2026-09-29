@@ -23,6 +23,8 @@ export function proxy(request: NextRequest) {
   headers.set("Content-Security-Policy", csp);
   const response = NextResponse.next({ request: { headers } });
   response.headers.set("Content-Security-Policy", csp);
+  // Next.js replaces the `headers()` Cache-Control on rendered pages; private pages must never be stored.
+  response.headers.set("Cache-Control", "no-store");
   return response;
 }
 

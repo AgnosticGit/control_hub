@@ -369,3 +369,73 @@ impl PgStore {
         Ok(true)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row() -> ActionPlanRow {
+        let now = OffsetDateTime::UNIX_EPOCH;
+        ActionPlanRow {
+            id: Uuid::nil(),
+            tenant_id: "tenant-a".into(),
+            project_id: "project-a".into(),
+            environment_id: "env-a".into(),
+            action_type: "demo.faults.clear".into(),
+            target: "orders".into(),
+            params: serde_json::json!({}),
+            reason: "user supplied reason".into(),
+            state: "running".into(),
+            policy: serde_json::json!({}),
+            created_by: Uuid::nil(),
+            created_by_email: "a@example.test".into(),
+            created_at: now,
+            expires_at: now,
+            decided_by: None,
+            decided_by_email: None,
+            decided_at: None,
+            decision_comment: Some("comment".into()),
+            executor_id: Some("executor-1".into()),
+            lease_until: None,
+            started_at: None,
+            finished_at: None,
+            result: None,
+            verification: None,
+        }
+    }
+
+    #[test]
+    fn system_audit_is_scoped_to_the_plan_and_attributed_to_the_system() {
+        let r = row();
+        let e = system_audit(&r, "executor-1", "action.start", serde_json::json!({ "state": "running" }));
+        assert_eq!(e.tenant_id, Some("tenant-a"));
+        assert_eq!(e.project_id, Some("project-a"));
+        assert_eq!(e.actor_id, "executor-1");
+        assert_eq!(e.actor_kind, "system");
+        assert_eq!(e.action, "action.start");
+        assert_eq!(e.outcome, "succeeded");
+        assert_eq!(e.after, Some(serde_json::json!({ "state": "running" })));
+        // The user-written reason and comment are never copied into system entries.
+        assert!(e.reason.is_none() && e.before.is_none() && e.target.is_none() && e.request_id.is_none());
+    }
+
+    #[test]
+    fn plan_queries_always_join_both_users_and_select_all_row_columns() {
+        for col in [
+            "p.id",
+            "p.tenant_id",
+            "p.project_id",
+            "p.environment_id",
+            "p.state",
+            "cu.email AS created_by_email",
+            "du.email AS decided_by_email",
+            "p.lease_until",
+            "p.verification",
+        ] {
+            assert!(PLAN_COLUMNS.contains(col), "{col}");
+        }
+        assert_eq!(PLAN_COLUMNS.split(',').count(), 24, "one column per ActionPlanRow field");
+        assert!(PLAN_FROM.contains("JOIN users cu ON cu.id = p.created_by"));
+        assert!(PLAN_FROM.contains("LEFT JOIN users du ON du.id = p.decided_by"), "undecided plans are listed too");
+    }
+}

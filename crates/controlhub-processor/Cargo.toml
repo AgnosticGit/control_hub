@@ -25,5 +25,8 @@ tokio.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 
+[dev-dependencies]
+proptest.workspace = true
+
 [lints]
 workspace = true

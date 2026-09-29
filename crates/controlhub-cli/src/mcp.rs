@@ -423,4 +423,188 @@ mod tests {
             assert!(!text.contains("cannot reach"), "rejected before any HTTP call: {text}");
         }
     }
+
+    fn request(s: &mut Server, id: Value, method: &str, params: Value) -> Value {
+        s.handle(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params })).unwrap_or(Value::Null)
+    }
+
+    #[test]
+    fn unknown_protocol_versions_get_the_newest_supported_one() {
+        let mut s = server();
+        for requested in [json!("1999-01-01"), json!(42), Value::Null] {
+            let r = request(&mut s, json!(1), "initialize", json!({ "protocolVersion": requested }));
+            assert_eq!(r["result"]["protocolVersion"], PROTOCOL_VERSIONS[0]);
+        }
+        let r = request(&mut s, json!("abc"), "initialize", json!({ "protocolVersion": "2024-11-05" }));
+        assert_eq!((&r["id"], &r["result"]["protocolVersion"]), (&json!("abc"), &json!("2024-11-05")));
+        assert!(r["result"]["instructions"].as_str().unwrap_or_default().contains("untrusted"));
+    }
+
+    #[test]
+    fn ping_notifications_and_client_responses() {
+        let mut s = server();
+        assert_eq!(request(&mut s, json!(7), "ping", Value::Null)["result"], json!({}));
+        assert_eq!(
+            s.handle(&json!({ "jsonrpc": "2.0", "method": "tools/call", "params": { "name": "list_services" } })),
+            None
+        );
+        assert_eq!(s.handle(&json!({ "jsonrpc": "2.0", "method": "unknown/notification" })), None);
+        let r = s.handle(&json!({ "jsonrpc": "2.0", "id": 5, "result": {} })).unwrap_or(Value::Null);
+        assert_eq!((&r["id"], &r["error"]["code"]), (&json!(5), &json!(-32600)));
+        assert_eq!(s.handle(&json!({ "jsonrpc": "2.0", "result": {} })), None);
+        assert_eq!(
+            s.handle(&json!({ "jsonrpc": "2.0", "id": 1, "method": 5 })).map(|r| r["error"]["code"].clone()),
+            Some(json!(-32600))
+        );
+    }
+
+    #[test]
+    fn tools_call_parameter_errors() {
+        let mut s = server();
+        let code = |r: Value| r["error"]["code"].clone();
+        assert_eq!(code(request(&mut s, json!(1), "tools/call", json!({}))), -32602);
+        assert_eq!(code(request(&mut s, json!(1), "tools/call", json!({ "name": 3 }))), -32602);
+        let r = request(&mut s, json!(1), "tools/call", json!({ "name": "list_services", "arguments": [1] }));
+        assert_eq!(r["error"]["message"], "arguments must be an object");
+        let r = request(&mut s, json!(1), "tools/call", json!({ "name": "list_services", "arguments": "minutes=5" }));
+        assert_eq!(code(r), -32602);
+    }
+
+    #[test]
+    fn every_argument_type_is_checked() {
+        let mut s = server();
+        let bad = [
+            ("list_services", json!({ "minutes": 1441 })),
+            ("list_services", json!({ "minutes": "15" })),
+            ("list_services", json!({ "minutes": 1.5 })),
+            ("search_traces", json!({ "only_errors": "yes" })),
+            ("search_traces", json!({ "service_id": "a\nb" })),
+            ("search_traces", json!({ "service_id": "x".repeat(129) })),
+            ("search_traces", json!({ "limit": 0 })),
+            ("get_trace", json!({})),
+            ("get_trace", json!({ "trace_id": "ABCDEF0123456789ABCDEF0123456789" })),
+            ("get_trace", json!({ "trace_id": "0".repeat(31) })),
+            ("search_logs", json!({ "min_severity": 25 })),
+            ("search_logs", json!({ "query": "x".repeat(201) })),
+            ("search_logs", json!({ "query": "a\u{0}b" })),
+            ("search_logs", json!({ "trace_id": "g".repeat(32) })),
+            ("list_action_plans", json!({ "minutes": 5 })),
+        ];
+        for (tool, args) in bad {
+            let r = request(&mut s, json!(1), "tools/call", json!({ "name": tool, "arguments": args }));
+            let text = r["result"]["content"][0]["text"].as_str().unwrap_or_default().to_owned();
+            assert_eq!(r["result"]["isError"], true, "{tool} {args}");
+            assert!(!text.contains("cannot reach"), "{tool} {args}: {text}");
+        }
+        assert!(is_trace_id(&"0123456789abcdef".repeat(2)));
+    }
+
+    #[test]
+    fn oversized_messages_are_dropped_and_the_stream_continues() {
+        let big = format!("{{\"x\":\"{}\"}}\n", "a".repeat(MAX_MESSAGE as usize + 10));
+        let input = format!("{big}{}\n", r#"{"jsonrpc":"2.0","id":9,"method":"ping"}"#);
+        let r = exchange(&input);
+        assert_eq!(r.len(), 2, "{r:?}");
+        assert_eq!((&r[0]["error"]["code"], &r[0]["id"]), (&json!(-32700), &Value::Null));
+        assert_eq!(r[0]["error"]["message"], "message too large");
+        assert_eq!(r[1]["id"], 9);
+        assert_eq!(exchange(r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#)[0]["id"], 1, "last line without newline");
+    }
+
+    fn live_server() -> (Server, crate::test_http::Log) {
+        let (url, log) = crate::test_http::serve(|r| {
+            let path = r.target.split('?').next().unwrap_or_default();
+            match path {
+                "/api/v1/session" => (200, crate::test_http::session_json()),
+                "/api/v1/projects/demo/environments/local-demo/services" => (
+                    200,
+                    json!({ "services": [{ "name": "x\u{1b}]0;pwn\u{7}", "rows": (0..80).collect::<Vec<_>>() }] })
+                        .to_string(),
+                ),
+                "/api/v1/projects/demo/environments/local-demo/actions" => (200, json!([{ "id": "p1" }]).to_string()),
+                p if p.starts_with("/api/v1/projects/demo/environments/local-demo/") => (200, "{}".into()),
+                _ => (404, "{}".into()),
+            }
+        });
+        let conn = Conn { api_url: url.clone(), ingest_url: url };
+        let token = Secret::for_test("cha_mcp_secret");
+        (Server { client: Client::new(&conn).unwrap_or_else(|e| panic!("{e}")), token, scope: None }, log)
+    }
+
+    fn call_ok(s: &mut Server, name: &str, args: Value) -> Value {
+        let r = request(s, json!(1), "tools/call", json!({ "name": name, "arguments": args }));
+        assert_eq!(r["result"]["isError"], false, "{name}: {r}");
+        r["result"]["structuredContent"].clone()
+    }
+
+    #[test]
+    fn tool_results_are_scoped_sanitized_and_marked_untrusted() {
+        let (mut s, log) = live_server();
+        let v = call_ok(&mut s, "list_services", json!({ "minutes": 5 }));
+        assert_eq!(v["notice"], NOTICE);
+        assert_eq!(v["window_minutes"], 5);
+        assert_eq!(v["scope"], json!({ "project_id": "demo", "environment_id": "local-demo" }));
+        assert_eq!(v["data"]["services"][0]["name"], "x ]0;pwn ", "escape sequences are neutralised");
+        assert_eq!(v["data"]["services"][0]["rows"].as_array().map(Vec::len), Some(MAX_ITEMS));
+
+        let plans = call_ok(&mut s, "list_action_plans", Value::Null);
+        assert_eq!(plans["data"], json!({ "plans": [{ "id": "p1" }] }));
+
+        let log = log.lock().map(|l| l.clone()).unwrap_or_default();
+        assert_eq!(log.iter().filter(|r| r.target == "/api/v1/session").count(), 1, "scope is cached");
+        assert!(log.iter().all(|r| r.method == "GET" && r.authorization.as_deref() == Some("Bearer cha_mcp_secret")));
+        assert!(
+            log.iter().any(|r| r.target == "/api/v1/projects/demo/environments/local-demo/actions"),
+            "no range query"
+        );
+    }
+
+    #[test]
+    fn tool_arguments_become_query_parameters() {
+        let (mut s, log) = live_server();
+        let trace = "0123456789abcdef0123456789abcdef";
+        call_ok(&mut s, "search_traces", json!({ "service_id": "svc 1", "only_errors": true, "limit": 7 }));
+        call_ok(&mut s, "search_logs", json!({ "min_severity": 17, "trace_id": trace, "query": "a&b" }));
+        call_ok(&mut s, "get_trace", json!({ "trace_id": trace }));
+        call_ok(&mut s, "list_events", json!({}));
+        let log = log.lock().map(|l| l.clone()).unwrap_or_default();
+        let find = |p: &str| log.iter().find(|r| r.target.contains(p)).map(|r| r.target.clone()).unwrap_or_default();
+        let traces = find("/traces?");
+        assert!(
+            traces.contains("service_id=svc") && traces.contains("only_errors=true") && traces.contains("limit=7"),
+            "{traces}"
+        );
+        let logs = find("/logs?");
+        assert!(
+            logs.contains("min_severity=17")
+                && logs.contains(&format!("trace_id={trace}"))
+                && logs.contains("limit=20"),
+            "{logs}"
+        );
+        assert!(!logs.contains("q=a&b"), "the query is encoded: {logs}");
+        assert_eq!(
+            find(&format!("/traces/{trace}")),
+            format!("/api/v1/projects/demo/environments/local-demo/traces/{trace}")
+        );
+        assert!(find("/events?").contains("limit=20"));
+    }
+
+    #[test]
+    fn api_failures_become_tool_errors_without_the_token() {
+        let (url, _) = crate::test_http::serve(|r| match r.target.as_str() {
+            "/api/v1/session" => (200, crate::test_http::session_json()),
+            _ => (500, r#"{"message":"storage unavailable"}"#.into()),
+        });
+        let conn = Conn { api_url: url.clone(), ingest_url: url };
+        let mut s = Server {
+            client: Client::new(&conn).unwrap_or_else(|e| panic!("{e}")),
+            token: Secret::for_test("cha_hidden"),
+            scope: None,
+        };
+        let r = request(&mut s, json!(1), "tools/call", json!({ "name": "get_topology" }));
+        assert_eq!(r["result"]["isError"], true);
+        let text = r["result"]["content"][0]["text"].as_str().unwrap_or_default();
+        assert!(text.contains("storage unavailable") && !text.contains("cha_hidden"), "{text}");
+        assert!(r.get("error").is_none(), "tool failures are results, not protocol errors");
+    }
 }

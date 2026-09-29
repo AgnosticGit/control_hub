@@ -24,7 +24,7 @@ export function loadEnvFile(rel) {
 // npm/pnpm are .cmd shims on Windows and need a shell; native executables do not.
 export const needsShell = (cmd) => process.platform === "win32" && ["pnpm", "npm", "npx"].includes(cmd);
 
-const quote = (a) => (/^[\w.:/\\@=+-]+$/.test(a) ? a : `"${a.replace(/"/g, '\\"')}"`);
+export const quote = (a) => (/^[\w.:/\\@=+-]+$/.test(a) ? a : `"${a.replace(/"/g, '\\"')}"`);
 
 /** spawn() that handles Windows .cmd shims without passing an args array to a shell. */
 export function spawnCmd(cmd, args, opts) {

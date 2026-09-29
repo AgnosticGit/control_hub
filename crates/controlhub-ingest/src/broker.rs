@@ -113,12 +113,10 @@ impl Publisher {
         // Bounded memory: reject instead of buffering without limit.
         let _permit =
             inner.bytes.clone().try_acquire_many_owned(permits.max(1)).map_err(|_| PublishError::Overloaded)?;
-        Metrics::inc(&inner.metrics.queued_bytes, size as u64);
 
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        key.hash(&mut h);
-        let idx = (h.finish() % inner.queues.len().max(1) as u64) as usize;
+        let idx = partition_for(key, inner.queues.len());
         let queue = inner.queues.get(idx).ok_or_else(|| PublishError::Unavailable("no partitions".into()))?;
+        Metrics::inc(&inner.metrics.queued_bytes, size as u64);
 
         let (tx, rx) = oneshot::channel();
         let job = Job {
@@ -142,6 +140,13 @@ impl Publisher {
         inner.metrics.queued_bytes.fetch_sub(size as u64, std::sync::atomic::Ordering::Relaxed);
         result
     }
+}
+
+/// Stable queue index for a record key (per-scope ordering).
+fn partition_for(key: &str, partitions: usize) -> usize {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    key.hash(&mut h);
+    (h.finish() % partitions.max(1) as u64) as usize
 }
 
 async fn run_partition(pc: PartitionClient, mut rx: mpsc::Receiver<Job>, cfg: PublisherConfig, metrics: Arc<Metrics>) {
@@ -206,4 +211,224 @@ async fn produce_with_retry(
         }
     }
     Err(PublishError::Unavailable(last))
+}
+
+/// In-process broker stand-in: partition workers answer jobs according to [`fake::Mode`]
+/// instead of talking to Kafka.
+#[cfg(test)]
+pub(crate) mod fake {
+    use super::*;
+    use std::sync::Mutex;
+
+    #[derive(Debug, Clone)]
+    pub(crate) enum Mode {
+        Ack,
+        Fail(PublishError),
+        /// Keep the job (and its responder) forever: the caller hits its ack timeout.
+        Hang,
+        /// Drop the responder without answering, as a crashed partition worker would.
+        Drop,
+    }
+
+    #[derive(Debug, Clone)]
+    pub(crate) struct FakeBroker {
+        mode: Arc<Mutex<Mode>>,
+        records: Arc<Mutex<Vec<(usize, Record)>>>,
+    }
+
+    impl FakeBroker {
+        pub fn set_mode(&self, mode: Mode) {
+            *self.mode.lock().unwrap() = mode;
+        }
+
+        /// Records the broker acknowledged, with the partition they landed on.
+        pub fn records(&self) -> Vec<(usize, Record)> {
+            self.records.lock().unwrap().clone()
+        }
+    }
+
+    pub(crate) fn publisher(partitions: usize, cfg: PublisherConfig, metrics: Arc<Metrics>) -> (Publisher, FakeBroker) {
+        let broker = FakeBroker { mode: Arc::new(Mutex::new(Mode::Ack)), records: Arc::new(Mutex::new(Vec::new())) };
+        let mut queues = Vec::new();
+        for p in 0..partitions {
+            let (tx, mut rx) = mpsc::channel::<Job>(cfg.queue_capacity);
+            queues.push(tx);
+            let b = broker.clone();
+            tokio::spawn(async move {
+                let mut held = Vec::new();
+                let mut offset = 0i64;
+                while let Some(job) = rx.recv().await {
+                    let mode = b.mode.lock().unwrap().clone();
+                    match mode {
+                        Mode::Ack => {
+                            b.records.lock().unwrap().push((p, job.record));
+                            let _ = job.respond.send(Ok(offset));
+                            offset += 1;
+                        }
+                        Mode::Fail(e) => {
+                            let _ = job.respond.send(Err(e));
+                        }
+                        Mode::Hang => held.push(job),
+                        Mode::Drop => drop(job),
+                    }
+                }
+            });
+        }
+        let bytes = Arc::new(Semaphore::new(cfg.max_queued_bytes));
+        (Publisher { inner: Arc::new(Inner { queues, bytes, cfg, metrics }) }, broker)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fake::{Mode, publisher};
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    fn cfg() -> PublisherConfig {
+        PublisherConfig { ack_timeout: Duration::from_millis(200), ..PublisherConfig::default() }
+    }
+
+    fn headers() -> BTreeMap<String, Vec<u8>> {
+        BTreeMap::from([("schema_version".to_owned(), b"1".to_vec())])
+    }
+
+    #[test]
+    fn default_config_is_bounded() {
+        let c = PublisherConfig::default();
+        assert!(c.queue_capacity > 0 && c.max_batch_records > 0 && c.max_attempts > 0);
+        assert!(c.max_batch_bytes <= c.max_queued_bytes);
+        assert!(c.ack_timeout >= c.attempt_timeout);
+        // Byte permits are u32; the budget must fit.
+        assert!(u32::try_from(c.max_queued_bytes).is_ok());
+    }
+
+    #[test]
+    fn partition_for_is_stable_and_in_range() {
+        for n in 1..16 {
+            for key in ["t1/p1/dev", "t2/p1/dev", "", "ключ"] {
+                let p = partition_for(key, n);
+                assert!(p < n);
+                assert_eq!(p, partition_for(key, n));
+            }
+        }
+        assert_eq!(partition_for("anything", 0), 0);
+        let used: std::collections::BTreeSet<_> = (0..200).map(|i| partition_for(&format!("t{i}/p/e"), 4)).collect();
+        assert_eq!(used.len(), 4, "keys spread over all partitions");
+    }
+
+    #[tokio::test]
+    async fn acked_publish_returns_offset_and_releases_queue_bytes() {
+        let metrics = Arc::new(Metrics::default());
+        let (p, broker) = publisher(1, cfg(), metrics.clone());
+        assert_eq!(p.publish("t/p/e", b"abc".to_vec(), headers()).await.unwrap(), 0);
+        assert_eq!(p.publish("t/p/e", b"def".to_vec(), headers()).await.unwrap(), 1);
+        assert_eq!(metrics.queued_bytes.load(Ordering::Relaxed), 0);
+        let recs = broker.records();
+        assert_eq!(recs.len(), 2);
+        let r = &recs[0].1;
+        assert_eq!(r.key.as_deref(), Some(&b"t/p/e"[..]));
+        assert_eq!(r.value.as_deref(), Some(&b"abc"[..]));
+        assert_eq!(r.headers, headers());
+    }
+
+    #[tokio::test]
+    async fn same_key_always_lands_on_the_same_partition() {
+        let (p, broker) = publisher(4, cfg(), Arc::new(Metrics::default()));
+        for i in 0..40 {
+            let key = format!("t{}/p/e", i % 5);
+            p.publish(&key, vec![1], BTreeMap::new()).await.unwrap();
+        }
+        let mut seen = std::collections::HashMap::new();
+        for (partition, r) in broker.records() {
+            let key = r.key.unwrap();
+            assert_eq!(*seen.entry(key).or_insert(partition), partition);
+        }
+        assert_eq!(seen.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn broker_failure_is_an_error_never_success() {
+        let metrics = Arc::new(Metrics::default());
+        let (p, broker) = publisher(2, cfg(), metrics.clone());
+        broker.set_mode(Mode::Fail(PublishError::Unavailable("leader not available".into())));
+        let err = p.publish("k", vec![1; 10], BTreeMap::new()).await.unwrap_err();
+        assert!(matches!(err, PublishError::Unavailable(ref m) if m.contains("leader")));
+        assert!(broker.records().is_empty());
+        assert_eq!(metrics.queued_bytes.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn missing_ack_times_out() {
+        let metrics = Arc::new(Metrics::default());
+        let (p, broker) = publisher(1, cfg(), metrics.clone());
+        broker.set_mode(Mode::Hang);
+        assert!(matches!(p.publish("k", vec![1; 10], BTreeMap::new()).await, Err(PublishError::Timeout)));
+        assert_eq!(metrics.queued_bytes.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn dropped_responder_is_unavailable() {
+        let (p, broker) = publisher(1, cfg(), Arc::new(Metrics::default()));
+        broker.set_mode(Mode::Drop);
+        let err = p.publish("k", vec![1], BTreeMap::new()).await.unwrap_err();
+        assert!(matches!(err, PublishError::Unavailable(ref m) if m.contains("stopped")));
+    }
+
+    #[tokio::test]
+    async fn full_queue_is_overloaded_not_buffered() {
+        let metrics = Arc::new(Metrics::default());
+        let (tx, _rx) = mpsc::channel::<Job>(1);
+        let c = PublisherConfig { queue_capacity: 1, ..cfg() };
+        let bytes = Arc::new(Semaphore::new(c.max_queued_bytes));
+        let p = Publisher { inner: Arc::new(Inner { queues: vec![tx], bytes, cfg: c, metrics: metrics.clone() }) };
+        let first = {
+            let p = p.clone();
+            tokio::spawn(async move { p.publish("k", vec![1], BTreeMap::new()).await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(matches!(p.publish("k", vec![2], BTreeMap::new()).await, Err(PublishError::Overloaded)));
+        assert!(matches!(first.await.unwrap(), Err(PublishError::Timeout)));
+        assert_eq!(metrics.queued_bytes.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn byte_budget_rejects_when_exhausted() {
+        let c = PublisherConfig { max_queued_bytes: 16, ..cfg() };
+        let (p, broker) = publisher(1, c, Arc::new(Metrics::default()));
+        broker.set_mode(Mode::Hang);
+        let first = {
+            let p = p.clone();
+            tokio::spawn(async move { p.publish("k", vec![0; 15], BTreeMap::new()).await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(matches!(p.publish("k", vec![0; 4], BTreeMap::new()).await, Err(PublishError::Overloaded)));
+        assert!(matches!(first.await.unwrap(), Err(PublishError::Timeout)));
+        // Permits are released after the first request finished.
+        broker.set_mode(Mode::Ack);
+        assert!(p.publish("k", vec![0; 4], BTreeMap::new()).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn oversized_record_is_capped_to_the_budget_not_rejected() {
+        let c = PublisherConfig { max_queued_bytes: 8, ..cfg() };
+        let (p, _broker) = publisher(1, c, Arc::new(Metrics::default()));
+        assert!(p.publish("k", vec![0; 100], BTreeMap::new()).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn no_partitions_is_unavailable_without_leaking_the_queue_gauge() {
+        let metrics = Arc::new(Metrics::default());
+        let (p, _broker) = publisher(0, cfg(), metrics.clone());
+        let err = p.publish("k", vec![1; 32], BTreeMap::new()).await.unwrap_err();
+        assert!(matches!(err, PublishError::Unavailable(ref m) if m.contains("no partitions")));
+        assert_eq!(metrics.queued_bytes.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn publish_errors_have_actionable_messages() {
+        assert_eq!(PublishError::Overloaded.to_string(), "ingest queue is full");
+        assert_eq!(PublishError::Timeout.to_string(), "timed out waiting for broker acknowledgement");
+        assert_eq!(PublishError::Unavailable("x".into()).to_string(), "broker unavailable: x");
+    }
 }

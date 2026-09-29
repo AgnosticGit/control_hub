@@ -209,6 +209,72 @@ pub struct TraceQuery {
 }
 
 const SCOPE_WHERE: &str = "tenant_id = ? AND project_id = ? AND environment_id = ?";
+/// How far before a window parent/overlapping spans may start (5 min).
+const SPAN_LOOKBACK_NS: i64 = 300_000_000_000;
+
+fn traces_sql(tq: &TraceQuery) -> String {
+    let mut sql = format!(
+        "SELECT trace_id, min(start_time) AS trace_start, max(end_time) AS trace_end, count() AS span_count,
+                countIf(status_code = 2) AS error_count,
+                argMin(name, start_time) AS root_name, argMin(service_name, start_time) AS root_service,
+                arraySort(groupUniqArray(toString(service_name))) AS services
+         FROM spans FINAL
+         WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)"
+    );
+    if tq.service_id.is_some() {
+        sql.push_str(" AND trace_id IN (SELECT trace_id FROM spans WHERE tenant_id = ? AND project_id = ? AND environment_id = ? AND service_id = ? AND start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?))");
+    }
+    sql.push_str(" GROUP BY trace_id");
+    let mut having = Vec::new();
+    if tq.only_errors {
+        having.push("error_count > 0");
+    }
+    if tq.before.is_some() {
+        having.push("(trace_start, trace_id) < (fromUnixTimestamp64Nano(?), ?)");
+    }
+    if !having.is_empty() {
+        sql.push_str(" HAVING ");
+        sql.push_str(&having.join(" AND "));
+    }
+    sql.push_str(" ORDER BY trace_start DESC, trace_id DESC LIMIT ?");
+    sql
+}
+
+fn logs_sql(lq: &LogQuery) -> String {
+    let mut sql = format!(
+        "SELECT ?fields FROM logs FINAL
+         WHERE {SCOPE_WHERE} AND time >= fromUnixTimestamp64Nano(?) AND time < fromUnixTimestamp64Nano(?)"
+    );
+    if lq.service_id.is_some() {
+        sql.push_str(" AND service_id = ?");
+    }
+    if lq.min_severity.is_some() {
+        sql.push_str(" AND severity_number >= ?");
+    }
+    if lq.trace_id.is_some() {
+        sql.push_str(" AND trace_id = ?");
+    }
+    if lq.text.is_some() {
+        sql.push_str(" AND positionCaseInsensitive(body, ?) > 0");
+    }
+    if lq.before.is_some() {
+        sql.push_str(" AND (time, log_id) < (fromUnixTimestamp64Nano(?), ?)");
+    }
+    sql.push_str(" ORDER BY time DESC, log_id DESC LIMIT ?");
+    sql
+}
+
+fn events_sql(with_trace: bool) -> String {
+    let mut sql = format!(
+        "SELECT ?fields FROM events FINAL
+         WHERE {SCOPE_WHERE} AND event_time >= fromUnixTimestamp64Nano(?) AND event_time < fromUnixTimestamp64Nano(?)"
+    );
+    if with_trace {
+        sql.push_str(" AND trace_id = ?");
+    }
+    sql.push_str(" ORDER BY event_time DESC, event_id DESC LIMIT ?");
+    sql
+}
 
 fn bind_scope(q: clickhouse::query::Query, s: &Scope) -> clickhouse::query::Query {
     q.bind(s.tenant_id.as_str()).bind(s.project_id.as_str()).bind(s.environment_id.as_str())
@@ -352,7 +418,7 @@ impl ChStore {
              WHERE p.service_id != c.service_id
              GROUP BY source_service_id, target_service_id"
         ));
-        let q = bind_scope(q, s).bind(from - 300_000_000_000).bind(to);
+        let q = bind_scope(q, s).bind(from.saturating_sub(SPAN_LOOKBACK_NS)).bind(to);
         Ok(bind_scope(q, s).bind(from).bind(to).fetch_all().await?)
     }
 
@@ -370,30 +436,7 @@ impl ChStore {
     }
 
     pub async fn traces(&self, s: &Scope, tq: &TraceQuery) -> Result<Vec<TraceSummaryRow>> {
-        let mut sql = format!(
-            "SELECT trace_id, min(start_time) AS trace_start, max(end_time) AS trace_end, count() AS span_count,
-                    countIf(status_code = 2) AS error_count,
-                    argMin(name, start_time) AS root_name, argMin(service_name, start_time) AS root_service,
-                    arraySort(groupUniqArray(toString(service_name))) AS services
-             FROM spans FINAL
-             WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)"
-        );
-        if tq.service_id.is_some() {
-            sql.push_str(" AND trace_id IN (SELECT trace_id FROM spans WHERE tenant_id = ? AND project_id = ? AND environment_id = ? AND service_id = ? AND start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?))");
-        }
-        sql.push_str(" GROUP BY trace_id");
-        let mut having = Vec::new();
-        if tq.only_errors {
-            having.push("error_count > 0");
-        }
-        if tq.before.is_some() {
-            having.push("(trace_start, trace_id) < (fromUnixTimestamp64Nano(?), ?)");
-        }
-        if !having.is_empty() {
-            sql.push_str(" HAVING ");
-            sql.push_str(&having.join(" AND "));
-        }
-        sql.push_str(" ORDER BY trace_start DESC, trace_id DESC LIMIT ?");
+        let sql = traces_sql(tq);
         let mut q = bind_scope(self.client.query(&sql), s).bind(tq.from_ns).bind(tq.to_ns);
         if let Some(svc) = &tq.service_id {
             q = bind_scope(q, s).bind(svc.as_str()).bind(tq.from_ns).bind(tq.to_ns);
@@ -412,26 +455,7 @@ impl ChStore {
     }
 
     pub async fn logs(&self, s: &Scope, lq: &LogQuery) -> Result<Vec<LogRow>> {
-        let mut sql = format!(
-            "SELECT ?fields FROM logs FINAL
-             WHERE {SCOPE_WHERE} AND time >= fromUnixTimestamp64Nano(?) AND time < fromUnixTimestamp64Nano(?)"
-        );
-        if lq.service_id.is_some() {
-            sql.push_str(" AND service_id = ?");
-        }
-        if lq.min_severity.is_some() {
-            sql.push_str(" AND severity_number >= ?");
-        }
-        if lq.trace_id.is_some() {
-            sql.push_str(" AND trace_id = ?");
-        }
-        if lq.text.is_some() {
-            sql.push_str(" AND positionCaseInsensitive(body, ?) > 0");
-        }
-        if lq.before.is_some() {
-            sql.push_str(" AND (time, log_id) < (fromUnixTimestamp64Nano(?), ?)");
-        }
-        sql.push_str(" ORDER BY time DESC, log_id DESC LIMIT ?");
+        let sql = logs_sql(lq);
         let mut q = bind_scope(self.client.query(&sql), s).bind(lq.from_ns).bind(lq.to_ns);
         if let Some(v) = &lq.service_id {
             q = q.bind(v.as_str());
@@ -459,14 +483,7 @@ impl ChStore {
         trace_id: Option<&str>,
         limit: u32,
     ) -> Result<Vec<EventRow>> {
-        let mut sql = format!(
-            "SELECT ?fields FROM events FINAL
-             WHERE {SCOPE_WHERE} AND event_time >= fromUnixTimestamp64Nano(?) AND event_time < fromUnixTimestamp64Nano(?)"
-        );
-        if trace_id.is_some() {
-            sql.push_str(" AND trace_id = ?");
-        }
-        sql.push_str(" ORDER BY event_time DESC, event_id DESC LIMIT ?");
+        let sql = events_sql(trace_id.is_some());
         let mut q = bind_scope(self.client.query(&sql), s).bind(from).bind(to);
         if let Some(t) = trace_id {
             q = q.bind(t);
@@ -484,7 +501,13 @@ impl ChStore {
              ORDER BY start_time, trace_id, span_id LIMIT ?"
         ));
         // Spans are bounded in length by the 5 min look-back used for overlap.
-        Ok(bind_scope(q, s).bind(from - 300_000_000_000).bind(to).bind(from).bind(limit).fetch_all().await?)
+        Ok(bind_scope(q, s)
+            .bind(from.saturating_sub(SPAN_LOOKBACK_NS))
+            .bind(to)
+            .bind(from)
+            .bind(limit)
+            .fetch_all()
+            .await?)
     }
 
     pub async fn timeline_logs(&self, s: &Scope, from: i64, to: i64, limit: u32) -> Result<Vec<TimelineLogRow>> {
@@ -585,7 +608,8 @@ fn split_statements(sql: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::split_statements;
+    #![allow(clippy::unwrap_used)]
+    use super::*;
 
     #[test]
     fn splits_migration_statements() {
@@ -593,5 +617,178 @@ mod tests {
         let s = split_statements(sql);
         assert_eq!(s.len(), 2);
         assert!(s[1].starts_with("CREATE TABLE b"));
+    }
+
+    #[test]
+    fn split_statements_edge_cases() {
+        assert!(split_statements("").is_empty());
+        assert!(split_statements("-- only a comment\n\n   \n").is_empty());
+        assert!(split_statements(";\n  ;  \n").is_empty(), "empty statements are dropped");
+        assert_eq!(split_statements("SELECT 1"), ["SELECT 1"], "trailing statement without ;");
+        assert_eq!(split_statements("SELECT 1;\r\nSELECT 2;\r\n"), ["SELECT 1", "SELECT 2"], "CRLF files");
+        // Indented comments are skipped too; `;` inside a line does not split.
+        let s = split_statements("  -- x\nSELECT 'a;b' AS v;\n");
+        assert_eq!(s, ["SELECT 'a;b' AS v"]);
+    }
+
+    #[test]
+    fn real_clickhouse_migration_splits_into_statements() {
+        let sql = include_str!("../../../infra/migrations/clickhouse/0001_telemetry.sql");
+        let stmts = split_statements(sql);
+        assert!(!stmts.is_empty());
+        for s in &stmts {
+            assert!(!s.ends_with(';') && !s.trim().is_empty(), "{s}");
+            assert!(!s.lines().any(|l| l.trim_start().starts_with("--")), "comments stripped: {s}");
+        }
+    }
+
+    /// `?` placeholders, excluding the crate's `?fields` column expansion.
+    fn placeholders(sql: &str) -> usize {
+        sql.match_indices('?').filter(|(i, _)| !sql[*i + 1..].starts_with("fields")).count()
+    }
+
+    fn scoped_where_count(sql: &str) -> usize {
+        sql.matches("tenant_id = ? AND project_id = ? AND environment_id = ?").count()
+    }
+
+    #[test]
+    fn log_sql_placeholders_match_binds_for_every_filter_combination() {
+        for mask in 0u8..32 {
+            let lq = LogQuery {
+                from_ns: 1,
+                to_ns: 2,
+                service_id: (mask & 1 != 0).then(|| "svc".into()),
+                min_severity: (mask & 2 != 0).then_some(17),
+                trace_id: (mask & 4 != 0).then(|| "a".repeat(32)),
+                text: (mask & 8 != 0).then(|| "needle".into()),
+                before: (mask & 16 != 0).then(|| (5, "id".into())),
+                limit: 10,
+            };
+            let sql = logs_sql(&lq);
+            // scope (3) + range (2) + one per optional filter + cursor (2) + limit (1)
+            let expected = 3
+                + 2
+                + usize::from(lq.service_id.is_some())
+                + usize::from(lq.min_severity.is_some())
+                + usize::from(lq.trace_id.is_some())
+                + usize::from(lq.text.is_some())
+                + 2 * usize::from(lq.before.is_some())
+                + 1;
+            assert_eq!(placeholders(&sql), expected, "mask {mask}: {sql}");
+            assert_eq!(scoped_where_count(&sql), 1);
+            assert!(sql.contains("?fields"));
+            assert!(sql.trim_end().ends_with("LIMIT ?"));
+        }
+    }
+
+    #[test]
+    fn trace_sql_placeholders_match_binds_and_scope_the_subquery() {
+        for mask in 0u8..8 {
+            let tq = TraceQuery {
+                from_ns: 1,
+                to_ns: 2,
+                service_id: (mask & 1 != 0).then(|| "svc".into()),
+                only_errors: mask & 2 != 0,
+                before: (mask & 4 != 0).then(|| (5, "t".into())),
+                limit: 10,
+            };
+            let sql = traces_sql(&tq);
+            let svc = usize::from(tq.service_id.is_some());
+            let expected = 3 + 2 + svc * (3 + 1 + 2) + 2 * usize::from(tq.before.is_some()) + 1;
+            assert_eq!(placeholders(&sql), expected, "mask {mask}: {sql}");
+            // The service subquery is scoped as well, so it cannot pull trace IDs from another tenant.
+            assert_eq!(scoped_where_count(&sql), 1 + svc, "{sql}");
+            assert_eq!(sql.contains("HAVING"), tq.only_errors || tq.before.is_some());
+            assert_eq!(sql.contains("error_count > 0"), tq.only_errors);
+        }
+    }
+
+    #[test]
+    fn event_sql_placeholders_match_binds() {
+        assert_eq!(placeholders(&events_sql(false)), 3 + 2 + 1);
+        assert_eq!(placeholders(&events_sql(true)), 3 + 2 + 1 + 1);
+        assert_eq!(scoped_where_count(&events_sql(true)), 1);
+    }
+
+    #[test]
+    fn user_supplied_strings_never_reach_the_sql_text() {
+        let evil = "x' OR 1=1; DROP TABLE logs; --";
+        let lq = LogQuery {
+            service_id: Some(evil.into()),
+            trace_id: Some(evil.into()),
+            text: Some(evil.into()),
+            before: Some((1, evil.into())),
+            ..LogQuery::default()
+        };
+        let tq = TraceQuery { service_id: Some(evil.into()), before: Some((1, evil.into())), ..TraceQuery::default() };
+        for sql in [logs_sql(&lq), traces_sql(&tq)] {
+            assert!(!sql.contains("DROP") && !sql.contains("1=1") && !sql.contains('\''), "{sql}");
+        }
+    }
+
+    #[test]
+    fn timeline_column_lists_match_row_structs() {
+        let span_cols: Vec<_> = TIMELINE_SPAN_COLUMNS.split(',').map(str::trim).collect();
+        assert_eq!(
+            span_cols,
+            [
+                "trace_id",
+                "span_id",
+                "parent_span_id",
+                "service_id",
+                "service_name",
+                "target_entity_id",
+                "name",
+                "kind",
+                "start_time",
+                "end_time",
+                "status_code",
+                "ingested_at"
+            ]
+        );
+        let log_cols: Vec<_> = TIMELINE_LOG_COLUMNS.split(',').map(str::trim).collect();
+        assert_eq!(
+            log_cols,
+            ["log_id", "service_id", "service_name", "time", "severity_number", "trace_id", "ingested_at"]
+        );
+    }
+
+    #[test]
+    fn span_lookback_does_not_overflow() {
+        assert_eq!(i64::MIN.saturating_sub(SPAN_LOOKBACK_NS), i64::MIN);
+        assert_eq!(1_000_000_000_000i64.saturating_sub(SPAN_LOOKBACK_NS), 700_000_000_000);
+    }
+
+    fn store() -> ChStore {
+        ChStore::new(&ChConfig {
+            url: "http://127.0.0.1:1".into(),
+            database: "controlhub".into(),
+            user: "u".into(),
+            password: "p".into(),
+        })
+    }
+
+    #[tokio::test]
+    async fn ensure_user_rejects_injection_before_any_query() {
+        let s = store();
+        for (user, pw) in [
+            ("controlhub_api", "pw' ; DROP USER default; --"),
+            ("x; DROP DATABASE controlhub", "pw"),
+            ("", "pw"),
+            ("user", ""),
+            ("user name", "pw"),
+            ("user", "p\\w"),
+            ("ünïcode", "pw"),
+        ] {
+            match s.ensure_user(user, pw, &[]).await {
+                Err(StorageError::Other(m)) => assert!(m.contains("charset"), "{m}"),
+                other => panic!("{user:?}/{pw:?} must be refused before any query, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn debug_output_does_not_expose_credentials() {
+        assert_eq!(format!("{:?}", store()), "ChStore { .. }");
     }
 }

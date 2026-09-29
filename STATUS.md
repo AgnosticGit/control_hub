@@ -245,6 +245,52 @@ Spec: `docs/superpowers/specs/2026-09-29-map-focus-range-design.md`.
   window edges. It flips below the pointer near the top of the window.
 - **PAUSED** is now a neutral grey instead of the amber used for degraded services.
 
+### Test coverage pass (2026-09-29)
+Every crate and package now has unit tests, and the e2e and integration suites cover every page,
+user flow and API route found. Test counts:
+
+| Area | Before | After |
+|---|---|---|
+| Rust (`cargo test --workspace`) | 83 | 514 (proptests included) |
+| Web vitest | 44 | 165 |
+| SDK (`node --test`) | 11 | 18 |
+| Demo system + scripts (`node --test`, now part of `just test`) | 0 | 24 |
+| Integration | 32 | 71 |
+| e2e (Playwright) | 24 | 91 |
+
+Real bugs these tests found, all fixed and covered by a regression test:
+- **Ingestion redaction:**
+  - A token after two spaces or a tab (`Bearer  <token>`) was not masked.
+  - A sensitive fragment past the 128-byte key limit escaped redaction; custom events had the
+    same leak.
+  - Nested secrets and payloads in custom events were stored verbatim.
+  - URL query strings (`url.full`, `url.query`, `http.url`, `http.target`) were kept. Their
+    query part is now `[REDACTED]`.
+- **Ingestion counting and limits:**
+  - Attributes over the per-item limit were dropped without a counter. The new counter is
+    `controlhub_ingest_attributes_truncated_total`.
+  - The queued-bytes gauge leaked when there were no partitions.
+  - Content types were case-sensitive, and for events any `application/json*` prefix was
+    accepted as JSON.
+- **Startup:** it could hang forever when Kafka was down, because rskafka's first connection had
+  no deadline.
+- **API:** the 7-day range check could overflow, so `from=i64::MIN&to=i64::MAX` passed in release
+  builds. The ClickHouse span lookback had the same kind of overflow.
+- **Engine:**
+  - Timestamps near `i64` limits overflowed in several places.
+  - A rejected batch was half-applied.
+  - The `only_problems` filter kept edges to hidden nodes.
+  - A negative rolling window gave negative counts.
+- **Demo tools:** a non-numeric `DEMO_RPS` flooded the gateway, and a typo in a
+  `demo-fault --latency` value silently cleared the fault.
+- **Web:**
+  - The workspace page had no `<h1>`; the "System Map" title is now one.
+  - Private `/app` pages now send `Cache-Control: no-store` from `proxy.ts`.
+
+  `next dev` still forces `no-cache, must-revalidate` on rendered pages, so that e2e test skips
+  itself against a dev server. Against `next start` every `/app` page, logged in or not,
+  returned `no-store` (checked by hand on port 3001).
+
 ## Checks run in this session (real results)
 
 Machine: Windows 11 (10.0.26200), Rust 1.98.1, Node 24.16.0, pnpm 10, Docker Desktop.
@@ -330,6 +376,17 @@ Seventh pass: map routing, service focus and replay range, against `just dev` + 
 | `just test-e2e` | first run 23/24: the new range test used a label that also matched the ✕ button. After fixing the test: **24/24**, including 4 new tests (service switches with All on/off and show-only, replay range with looping play and ✕ reset, a click on the tracks plus the tooltip above the pointer at the right edge, the PAUSED colour) |
 | `just test-integration` | **31 pass, 1 skipped** (broker outage), 0 fail |
 | Visual check (temporary Playwright screenshots at 1600×1000; spec deleted) | curved, square and metro: no crossings, and no line under a card. Gateway + orders focused with the rest dimmed on the map and the timeline. Range chip, shading and the grey PAUSED badge render |
+
+Eighth pass: test coverage, against `just dev` + `just demo`.
+
+| Command | Result |
+|---|---|
+| `just wasm`, `just codegen` | pass (WASM 588 KiB, no contract drift) |
+| `just check` | pass (after two clippy fixes in the new redaction code) |
+| `just test` | pass: **514** Rust tests, web vitest **165/165**, SDK **18/18**, demo system + scripts **24/24** (`node --test`) |
+| `just test-integration` | first run 69 pass, 1 fail, 1 skipped (broker outage). The failure was `actions.test.mjs` refused by the policy rate limit (`30 plan(s) in the last hour`). After the window freed, `node --test tests/integration/actions.test.mjs` **5/5** (incl. the DB restart) |
+| `just test-e2e` | first run 88 pass, 1 fail, 2 skipped. The failure was the actions spec (same rate limit); one skip is the dependent reject test, the other is the Cache-Control test, which skips on `next dev`. After the window freed, `specs/actions.spec.ts` **3/3** |
+| Cache-Control on `next start` (by hand, port 3001 with a session from port 3000) | every `/app` page returns `no-store` |
 
 ## Not run, and why
 

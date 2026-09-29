@@ -78,7 +78,13 @@ pub async fn connect_broker(brokers: &str, deadline: Duration) -> anyhow::Result
     let mut attempt = 0;
     loop {
         let list: Vec<String> = brokers.split(',').map(|s| s.trim().to_owned()).collect();
-        match ClientBuilder::new(list).build().await {
+        // rskafka retries the bootstrap connection internally without a deadline.
+        let budget = deadline.saturating_sub(start.elapsed()).max(Duration::from_secs(1));
+        let built = match tokio::time::timeout(budget, ClientBuilder::new(list).build()).await {
+            Ok(r) => r.map_err(|e| e.to_string()),
+            Err(_) => Err("connection attempt timed out".to_owned()),
+        };
+        match built {
             Ok(c) => return Ok(Arc::new(c)),
             Err(e) if start.elapsed() < deadline => {
                 tracing::warn!(error = %e, attempt, "broker not reachable yet, retrying");
@@ -108,5 +114,69 @@ pub async fn ensure_topic(client: &Client, topic: &str, partitions: i32) -> anyh
                 .map(|t| t.partitions.len() as i32)
                 .ok_or_else(|| anyhow::anyhow!("failed to create topic {topic}: {e}"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const UNSET: &str = "CONTROLHUB_RUNTIME_TEST_SURELY_UNSET_7f3a";
+
+    #[test]
+    fn env_or_falls_back_to_default() {
+        assert_eq!(env_or(UNSET, "fallback"), "fallback");
+        assert_eq!(env_or(UNSET, ""), "");
+    }
+
+    #[test]
+    fn env_or_prefers_the_real_environment() {
+        let (key, value) = std::env::vars().next().expect("test process has at least one env var");
+        assert_eq!(env_or(&key, "fallback"), value);
+        assert_eq!(env_required(&key).unwrap(), value);
+    }
+
+    #[test]
+    fn env_required_names_the_missing_variable() {
+        let err = env_required(UNSET).unwrap_err().to_string();
+        assert!(err.contains(UNSET), "{err}");
+        assert!(err.contains("just bootstrap"), "{err}");
+    }
+
+    #[test]
+    fn backoff_stays_within_jittered_cap() {
+        let base = Duration::from_millis(100);
+        let max = Duration::from_secs(2);
+        for attempt in 0..40 {
+            let cap = base.saturating_mul(1u32 << attempt.min(16)).min(max);
+            for _ in 0..50 {
+                let d = backoff(attempt, base, max);
+                assert!(d <= cap, "attempt {attempt}: {d:?} > {cap:?}");
+                assert!(d >= cap.mul_f64(0.1), "attempt {attempt}: {d:?} below the 10% floor");
+            }
+        }
+    }
+
+    #[test]
+    fn backoff_never_overflows() {
+        for attempt in [16, 17, 31, 32, 1_000, u32::MAX] {
+            let day = Duration::from_secs(86_400);
+            assert!(backoff(attempt, Duration::from_secs(3_600), day) <= day);
+            assert!(backoff(attempt, Duration::from_millis(1), Duration::from_secs(1)) <= Duration::from_secs(1));
+        }
+        assert_eq!(backoff(3, Duration::ZERO, Duration::from_secs(1)), Duration::ZERO);
+        assert_eq!(backoff(3, Duration::from_secs(1), Duration::ZERO), Duration::ZERO);
+    }
+
+    #[tokio::test]
+    async fn connect_broker_gives_up_after_deadline_with_context() {
+        // Port 1 on loopback refuses connections; a zero deadline means no retries.
+        let res = tokio::time::timeout(Duration::from_secs(30), connect_broker("127.0.0.1:1", Duration::ZERO)).await;
+        let err = match res {
+            Ok(Err(e)) => e.to_string(),
+            Ok(Ok(_)) => panic!("connected to a closed port"),
+            Err(_) => panic!("connect_broker did not respect its deadline"),
+        };
+        assert!(err.contains("127.0.0.1:1"), "{err}");
     }
 }

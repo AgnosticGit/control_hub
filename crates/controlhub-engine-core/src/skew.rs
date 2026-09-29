@@ -24,7 +24,7 @@ pub(crate) fn fit(start: i64, end: i64, parent_start: i64, parent_end: i64) -> i
     if start >= parent_start && end <= parent_end {
         return 0;
     }
-    if end - start <= parent_end - parent_start {
+    if i128::from(end) - i128::from(start) <= i128::from(parent_end) - i128::from(parent_start) {
         let twice = i128::from(parent_start) + i128::from(parent_end) - i128::from(start) - i128::from(end);
         i64::try_from(twice / 2).unwrap_or(0)
     } else {

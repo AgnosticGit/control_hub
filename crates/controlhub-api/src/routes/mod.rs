@@ -71,3 +71,27 @@ pub async fn audit(
     let rows = state.pg.audit_entries(scope.tenant_id.as_str(), scope.project_id.as_str(), 200).await?;
     Ok(Json(rows.into_iter().map(Into::into).collect()))
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    #[test]
+    fn audit_rows_map_to_rfc3339_dtos() {
+        let r = AuditRow {
+            id: uuid::Uuid::nil(),
+            occurred_at: time::OffsetDateTime::from_unix_timestamp(0).unwrap(),
+            actor_id: "u1".into(),
+            actor_kind: "user".into(),
+            action: "token.create".into(),
+            target: Some("t1".into()),
+            reason: None,
+            outcome: "succeeded".into(),
+        };
+        let d = AuditEntryDto::from(r);
+        assert_eq!(d.id, "00000000-0000-0000-0000-000000000000");
+        assert_eq!(d.occurred_at, "1970-01-01T00:00:00Z");
+        assert_eq!((d.action.as_str(), d.target.as_deref(), d.reason), ("token.create", Some("t1"), None));
+    }
+}

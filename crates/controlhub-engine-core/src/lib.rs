@@ -146,7 +146,13 @@ fn push_span_deltas(out: &mut Vec<Delta>, s: &SpanItem, node: u32, edge: Option<
         time: s.end_ns,
         tiebreak: tb ^ 1,
         evict_at: s.end_ns,
-        kind: DeltaKind::SpanEnd { node, edge, entry, error: s.is_error, duration_ns: s.end_ns - s.start_ns },
+        kind: DeltaKind::SpanEnd {
+            node,
+            edge,
+            entry,
+            error: s.is_error,
+            duration_ns: s.end_ns.saturating_sub(s.start_ns),
+        },
     });
 }
 
@@ -253,15 +259,20 @@ impl Engine {
         Ok(())
     }
 
-    /// Apply a batch of items. Idempotent per item ID; order-independent.
+    /// Apply a batch of items. Idempotent per item ID; order-independent. A batch with an
+    /// invalid item is rejected as a whole.
     pub fn apply_batch(&mut self, batch: Batch) -> Result<(), EngineError> {
+        for item in &batch.items {
+            if let TimelineItem::Span(s) = item
+                && s.end_ns < s.start_ns
+            {
+                return Err(EngineError::InvalidInput(format!("span {} ends before it starts", s.span_id)));
+            }
+        }
         let before_nodes = self.nodes.len();
         for item in batch.items {
             match item {
                 TimelineItem::Span(s) => {
-                    if s.end_ns < s.start_ns {
-                        return Err(EngineError::InvalidInput(format!("span {} ends before it starts", s.span_id)));
-                    }
                     self.ensure_node(&s.service_id, &s.service_name, EntityKind::Service, Provenance::Observed);
                     let key = (s.trace_id.clone(), s.span_id.clone());
                     match self.spans.get(&key) {
@@ -448,6 +459,8 @@ impl Engine {
         let dimmed = self.dimmed_nodes();
         let mut dimmed_edges: HashSet<u32> = HashSet::new();
         let mut node_visible = vec![false; self.nodes.len()];
+        // Passed every filter (before viewport culling).
+        let mut node_passes = vec![false; self.nodes.len()];
         let mut out = VisibleState::default();
         let mut statuses = vec![0u8; self.nodes.len()];
         let (mut total_active, mut win_req, mut win_err) = (0i64, 0i64, 0i64);
@@ -469,6 +482,7 @@ impl Engine {
             if self.filters.only_problems && !problem {
                 continue;
             }
+            node_passes[i] = true;
             let (x, y) = self.layout.position(&n.id).unwrap_or((0.0, 0.0));
             let radius = if n.kind == EntityKind::Service { 26.0 } else { 20.0 };
             if !self.in_viewport(x, y, radius) {
@@ -511,9 +525,12 @@ impl Engine {
             let (Some(&sv), Some(&tv)) = (node_visible.get(s), node_visible.get(tg)) else {
                 continue;
             };
+            let (Some(&sp), Some(&tp)) = (node_passes.get(s), node_passes.get(tg)) else {
+                continue;
+            };
             let hidden_by_filter = self.filters.hide_inferred && e.provenance == Provenance::Inferred;
             // Keep edges whose both endpoints pass filters; culling allows one end off-screen.
-            if hidden_by_filter || !(sv || tv) || !self.passes_filter(s) || !self.passes_filter(tg) {
+            if hidden_by_filter || !(sv || tv) || !sp || !tp {
                 continue;
             }
             let (Some(sn), Some(tn)) = (self.nodes.get(s), self.nodes.get(tg)) else {
@@ -591,7 +608,7 @@ impl Engine {
         let selected = self.filters.selected_trace_id.as_deref().map(|id| stable_hash(&[id]));
         let (before, after) = self.hop_window;
         let max = self.config.max_hops as usize;
-        let rel = |ns: i64| ((ns - t) as f64 / 1e6) as f32;
+        let rel = |ns: i64| ((i128::from(ns) - i128::from(t)) as f64 / 1e6) as f32;
         let (mut total, mut shown) = (0u32, 0u32);
         for h in index.overlapping(t.saturating_sub(before), t.saturating_add(after)) {
             if !visible.contains(&h.edge) {
@@ -1010,13 +1027,15 @@ impl Engine {
 
     fn states_at(&self, t: Option<i64>) -> (StateVec, StateVec) {
         match (t, self.timeline.as_ref()) {
-            (Some(t), Some(tl)) => (tl.state_at(t), tl.state_at(t.saturating_sub(self.config.rolling_window_ns))),
+            (Some(t), Some(tl)) => {
+                (tl.state_at(t), tl.state_at(t.saturating_sub(self.config.rolling_window_ns.max(0))))
+            }
             _ => (StateVec::new(self.nodes.len(), self.edges.len()), StateVec::new(self.nodes.len(), self.edges.len())),
         }
     }
 
     fn window_for(&self, now: &StateVec, past: &StateVec) -> Vec<WindowMetrics> {
-        let d = |n: usize, f: usize| now.node(n, f) - past.node(n, f);
+        let d = |n: usize, f: usize| now.node(n, f).wrapping_sub(past.node(n, f));
         let mut incoming: Vec<(i64, i64, i64)> = vec![(0, 0, 0); self.nodes.len()];
         for (i, e) in self.edges.iter().enumerate() {
             if let Some(slot) = incoming.get_mut(e.target as usize) {
@@ -1150,5 +1169,7 @@ fn classify(completed: i64, errors: i64, cfg: &EngineConfig) -> (HealthStatus, S
     }
 }
 
+#[cfg(test)]
+mod robustness_tests;
 #[cfg(test)]
 mod tests;

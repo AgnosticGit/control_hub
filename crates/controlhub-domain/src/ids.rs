@@ -239,4 +239,133 @@ mod tests {
         assert!(TenantId::parse("").is_err());
         assert!(TenantId::parse("x'; drop table").is_err());
     }
+
+    #[test]
+    fn string_id_errors_are_specific() {
+        assert_eq!(ProjectId::parse(""), Err(IdError::Empty { kind: "project_id" }));
+        assert_eq!(
+            EnvironmentId::parse("a".repeat(MAX_ID_LEN + 1)),
+            Err(IdError::TooLong { kind: "environment_id", max: MAX_ID_LEN })
+        );
+        assert!(EnvironmentId::parse("a".repeat(MAX_ID_LEN)).is_ok());
+        assert_eq!(EventId::parse("a/b"), Err(IdError::InvalidChars { kind: "event_id" }));
+        assert_eq!(IdError::Empty { kind: "tenant_id" }.to_string(), "tenant_id must not be empty");
+    }
+
+    #[test]
+    fn string_ids_allow_documented_punctuation_only() {
+        assert!(TenantId::parse("Acme-1_prod.eu:blue").is_ok());
+        for bad in ["a\0b", "a\nb", "ü", "a;b", "a\"b", "a%b", "a\\b", "a\u{202e}b", " a"] {
+            assert!(TenantId::parse(bad).is_err(), "{bad:?} must be rejected");
+        }
+    }
+
+    #[test]
+    fn string_ids_deserialize_through_validation() {
+        let ok: TenantId = serde_json::from_str("\"t1\"").unwrap();
+        assert_eq!(ok.as_str(), "t1");
+        assert_eq!(serde_json::to_string(&ok).unwrap(), "\"t1\"");
+        assert!(serde_json::from_str::<TenantId>("\"bad id\"").is_err());
+        assert!(serde_json::from_str::<TenantId>("\"\"").is_err());
+        assert!(serde_json::from_str::<TraceId>("\"ABCDEF0123456789abcdef0123456789\"").is_err());
+        let scope: Scope = serde_json::from_str(r#"{"tenant_id":"t","project_id":"p","environment_id":"e"}"#).unwrap();
+        assert_eq!(scope, self::scope("t", "p", "e"));
+        assert!(serde_json::from_str::<Scope>(r#"{"tenant_id":"t x","project_id":"p","environment_id":"e"}"#).is_err());
+    }
+
+    #[test]
+    fn hex_ids_validate_length_and_case() {
+        assert_eq!(SpanId::HEX_LEN, 16);
+        assert_eq!(TraceId::HEX_LEN, 32);
+        assert!(SpanId::parse("0123456789abcdef").is_ok());
+        assert_eq!(SpanId::parse("0123456789abcde"), Err(IdError::InvalidHex { kind: "span_id", expected: 16 }));
+        assert!(SpanId::parse("0123456789abcdef0").is_err());
+        assert!(SpanId::parse("0123456789abcdeg").is_err());
+        assert!(SpanId::parse("").is_err());
+        // Multibyte chars whose byte length matches must still be rejected.
+        assert_eq!("аааааааа".len(), 16);
+        assert!(SpanId::parse("аааааааа").is_err());
+    }
+
+    #[test]
+    fn hex_ids_from_bytes() {
+        assert_eq!(SpanId::from_bytes(&[0xab; 8]).unwrap().as_str(), "abababababababab");
+        assert!(SpanId::from_bytes(&[1; 7]).is_none());
+        assert!(SpanId::from_bytes(&[1; 16]).is_none());
+        assert!(SpanId::from_bytes(&[]).is_none());
+        assert!(SpanId::from_bytes(&[0; 8]).is_none());
+        let mut almost_zero = [0u8; 16];
+        almost_zero[15] = 1;
+        assert_eq!(TraceId::from_bytes(&almost_zero).unwrap().as_str(), format!("{}01", "0".repeat(30)));
+    }
+
+    #[test]
+    fn derived_ids_have_stable_shape() {
+        let s = scope("t", "p", "e");
+        let svc = ServiceId::derive(&s, "ns", "api");
+        assert!(svc.as_str().starts_with("svc_"));
+        assert_eq!(svc.as_str().len(), 4 + 24);
+        // Derived IDs are themselves valid IDs (they round-trip through parse).
+        assert_eq!(ServiceId::parse(svc.to_string()).unwrap(), svc);
+        assert_eq!(EntityId::for_service(&svc).as_str(), svc.as_str());
+        let res = EntityId::derive_resource(&s, "database", "postgresql", "orders");
+        assert!(res.as_str().starts_with("res_"));
+        assert_ne!(res, EntityId::derive_resource(&s, "database", "postgresql", "orders2"));
+        assert_ne!(res, EntityId::derive_resource(&scope("t2", "p", "e"), "database", "postgresql", "orders"));
+        // Namespace is part of the identity.
+        assert_ne!(svc, ServiceId::derive(&s, "", "api"));
+    }
+
+    mod props {
+        use super::super::*;
+        use super::scope;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn valid_string_ids_round_trip(v in "[A-Za-z0-9._:-]{1,128}") {
+                let id = TenantId::parse(v.clone()).unwrap();
+                prop_assert_eq!(id.as_str(), v.as_str());
+                prop_assert_eq!(id.to_string(), v.clone());
+                let json = serde_json::to_string(&id).unwrap();
+                prop_assert_eq!(serde_json::from_str::<TenantId>(&json).unwrap(), id.clone());
+                prop_assert_eq!(String::from(id), v);
+            }
+
+            #[test]
+            fn arbitrary_strings_parse_iff_valid(v in any::<String>()) {
+                let valid = !v.is_empty()
+                    && v.len() <= 128
+                    && v.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b':'));
+                prop_assert_eq!(ProjectId::parse(v).is_ok(), valid);
+            }
+
+            #[test]
+            fn hex_ids_round_trip_bytes(bytes in prop::array::uniform16(any::<u8>())) {
+                match TraceId::from_bytes(&bytes) {
+                    None => prop_assert!(bytes.iter().all(|b| *b == 0)),
+                    Some(id) => {
+                        prop_assert_eq!(hex::decode(id.as_str()).unwrap(), bytes.to_vec());
+                        prop_assert_eq!(TraceId::parse(id.to_string()).unwrap(), id);
+                    }
+                }
+            }
+
+            #[test]
+            fn service_ids_are_deterministic_and_scope_sensitive(
+                t in "[a-z0-9]{1,8}", p in "[a-z0-9]{1,8}", e in "[a-z0-9]{1,8}",
+                ns in ".{0,16}", name in ".{0,16}", other in "[a-z0-9]{1,8}",
+            ) {
+                let s = scope(&t, &p, &e);
+                let a = ServiceId::derive(&s, &ns, &name);
+                prop_assert_eq!(&a, &ServiceId::derive(&s, &ns, &name));
+                if other != t {
+                    prop_assert_ne!(&a, &ServiceId::derive(&scope(&other, &p, &e), &ns, &name));
+                }
+                if other != e {
+                    prop_assert_ne!(&a, &ServiceId::derive(&scope(&t, &p, &other), &ns, &name));
+                }
+            }
+        }
+    }
 }

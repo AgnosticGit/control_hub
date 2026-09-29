@@ -1,0 +1,139 @@
+import { test, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { createServer } from 'node:http';
+
+const require = createRequire(import.meta.url);
+const { createFaults, readJson, sendJson, callJson, getJson, serve } = require('../src/common.cjs');
+
+const saved = process.env.CONTROLHUB_DEMO_FAULTS;
+afterEach(() => {
+  if (saved === undefined) delete process.env.CONTROLHUB_DEMO_FAULTS;
+  else process.env.CONTROLHUB_DEMO_FAULTS = saved;
+});
+
+async function listen(server) {
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  return {
+    url: `http://127.0.0.1:${server.address().port}`,
+    close: () => new Promise((r) => server.close(() => r())),
+  };
+}
+
+async function faultServer(enabled) {
+  if (enabled) process.env.CONTROLHUB_DEMO_FAULTS = '1';
+  else delete process.env.CONTROLHUB_DEMO_FAULTS;
+  const faults = createFaults();
+  const srv = await listen(
+    createServer(async (req, res) => {
+      if (!(await faults.handle(req, res))) sendJson(res, 200, { passthrough: true });
+    }),
+  );
+  return { faults, ...srv };
+}
+
+test('fault endpoint is hidden (404) unless CONTROLHUB_DEMO_FAULTS=1', async () => {
+  const s = await faultServer(false);
+  try {
+    const r = await callJson('POST', `${s.url}/__demo/faults`, { latencyMs: 100, errorRate: 1 });
+    assert.equal(r.status, 404);
+    assert.equal(s.faults.enabled, false);
+    assert.deepEqual(s.faults.state, { latencyMs: 0, errorRate: 0 });
+    assert.equal(await s.faults.apply(), false);
+  } finally {
+    await s.close();
+  }
+});
+
+test('fault endpoint reads and updates state when enabled', async () => {
+  const s = await faultServer(true);
+  try {
+    assert.deepEqual((await getJson(`${s.url}/__demo/faults`)).body, { latencyMs: 0, errorRate: 0 });
+    const r = await callJson('POST', `${s.url}/__demo/faults`, { latencyMs: 5, errorRate: 1 });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body, { latencyMs: 5, errorRate: 1 });
+    assert.equal(await s.faults.apply(), true);
+    assert.equal((await getJson(`${s.url}/other`)).body.passthrough, true);
+  } finally {
+    await s.close();
+  }
+});
+
+test('fault endpoint validates ranges and rejects bad input without changing state', async () => {
+  const s = await faultServer(true);
+  try {
+    for (const body of [{ latencyMs: -1 }, { latencyMs: 30_001 }, { errorRate: 1.5 }, { errorRate: -0.1 }, { latencyMs: 'x' }]) {
+      const r = await callJson('POST', `${s.url}/__demo/faults`, body);
+      assert.equal(r.status, 400, JSON.stringify(body));
+    }
+    const bad = await fetch(`${s.url}/__demo/faults`, { method: 'POST', body: '{not json' });
+    assert.equal(bad.status, 400);
+    const put = await fetch(`${s.url}/__demo/faults`, { method: 'PUT' });
+    assert.equal(put.status, 405);
+    assert.deepEqual(s.faults.state, { latencyMs: 0, errorRate: 0 });
+  } finally {
+    await s.close();
+  }
+});
+
+test('readJson enforces the size limit', async () => {
+  const srv = await listen(
+    createServer(async (req, res) => {
+      try {
+        sendJson(res, 200, await readJson(req, 16));
+      } catch (e) {
+        if (!res.headersSent && !res.destroyed) sendJson(res, 413, { error: e.message });
+      }
+    }),
+  );
+  try {
+    const ok = await callJson('POST', srv.url, { a: 1 });
+    assert.deepEqual(ok.body, { a: 1 });
+    const empty = await callJson('POST', srv.url);
+    assert.deepEqual(empty.body, {});
+    await assert.rejects(callJson('POST', srv.url, { big: 'x'.repeat(1024) }));
+  } finally {
+    await srv.close();
+  }
+});
+
+test('getJson keeps a short excerpt of non-JSON bodies', async () => {
+  const srv = await listen(
+    createServer((_req, res) => {
+      res.writeHead(502);
+      res.end('<html>' + 'x'.repeat(500));
+    }),
+  );
+  try {
+    const r = await getJson(srv.url);
+    assert.equal(r.status, 502);
+    assert.equal(r.body.raw.length, 200);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('serve() answers health, 404 for unknown routes and 500 on handler errors', async () => {
+  delete process.env.CONTROLHUB_DEMO_FAULTS;
+  const log = console.log;
+  console.log = () => {};
+  const server = serve('unit', 0, async (_req, res, url) => {
+    if (url.pathname === '/boom') throw new TypeError('secret detail');
+    if (url.pathname === '/hello') return void (res.writeHead(200), res.end('hi'));
+    return false;
+  });
+  try {
+    await new Promise((r) => (server.listening ? r() : server.once('listening', r)));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    assert.deepEqual((await getJson(`${base}/health`)).body, { ok: true });
+    assert.equal((await getJson(`${base}/nope`)).status, 404);
+    assert.equal(await (await fetch(`${base}/hello`)).text(), 'hi');
+    const boom = await getJson(`${base}/boom`);
+    assert.equal(boom.status, 500);
+    assert.deepEqual(boom.body, { error: 'internal error' });
+    assert.equal((await getJson(`${base}/__demo/faults`)).status, 404);
+  } finally {
+    await new Promise((r) => server.close(() => r()));
+    console.log = log;
+  }
+});

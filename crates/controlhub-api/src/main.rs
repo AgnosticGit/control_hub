@@ -106,7 +106,16 @@ fn router(state: state::AppState) -> Router {
         .with_state(state)
 }
 
+fn api_config(args: &ServeArgs) -> state::ApiConfig {
+    state::ApiConfig {
+        allowed_origins: args.allowed_origins.split(',').map(|s| s.trim().to_owned()).collect(),
+        secure_cookies: args.env != "dev",
+        session_ttl: time::Duration::hours(12),
+    }
+}
+
 async fn serve(args: ServeArgs) -> anyhow::Result<()> {
+    let config = api_config(&args);
     let pg = PgStore::connect(&args.database_url, 16).await?;
     let ch = ChStore::new(&ChConfig {
         url: args.clickhouse_url,
@@ -114,18 +123,13 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         user: args.clickhouse_user,
         password: args.clickhouse_password,
     });
-    let dev = args.env == "dev";
-    if dev {
+    if !config.secure_cookies {
         tracing::warn!("CONTROLHUB_ENV=dev: Secure cookie flag disabled for local http. Never use in production.");
     }
     let state = state::AppState {
         pg,
         ch,
-        config: state::ApiConfig {
-            allowed_origins: args.allowed_origins.split(',').map(|s| s.trim().to_owned()).collect(),
-            secure_cookies: !dev,
-            session_ttl: time::Duration::hours(12),
-        },
+        config,
         login_throttle: auth::LoginThrottle::default(),
         live_slots: std::sync::Arc::new(tokio::sync::Semaphore::new(args.max_live_connections)),
     };
@@ -185,5 +189,306 @@ mod tests {
         let mut e = controlhub_engine_core::Engine::new(Default::default());
         e.apply_batch_json(json).unwrap();
         assert_eq!(e.item_count(), 1);
+    }
+
+    use axum::body::Body;
+    use axum::http::{HeaderMap, Method, Request, StatusCode};
+    use clap::Parser as _;
+    use serde_json::Value;
+    use tower::ServiceExt as _;
+
+    const SCOPED: &str = "/api/v1/projects/demo/environments/local-demo";
+    const PLAN: &str = "00000000-0000-0000-0000-000000000000";
+
+    fn get_routes() -> Vec<String> {
+        [
+            "/services",
+            "/topology",
+            "/traces",
+            "/traces/0123456789abcdef0123456789abcdef",
+            "/logs",
+            "/events",
+            "/timeline",
+            "/coverage",
+            "/live",
+            "/audit",
+            "/tokens",
+            "/actions",
+            "/actions/catalog",
+        ]
+        .iter()
+        .map(|p| format!("{SCOPED}{p}"))
+        .chain(["/api/v1/session".to_owned(), "/api/v1/projects".to_owned()])
+        .collect()
+    }
+
+    fn post_routes() -> Vec<String> {
+        [
+            "/tokens".to_owned(),
+            format!("/tokens/{PLAN}/revoke"),
+            format!("/tokens/{PLAN}/rotate"),
+            "/actions".to_owned(),
+            format!("/actions/{PLAN}/approve"),
+            format!("/actions/{PLAN}/reject"),
+            format!("/actions/{PLAN}/cancel"),
+        ]
+        .iter()
+        .map(|p| format!("{SCOPED}{p}"))
+        .chain(["/api/v1/session/logout".to_owned()])
+        .collect()
+    }
+
+    async fn send(state: crate::state::AppState, req: Request<Body>) -> (StatusCode, HeaderMap, Value) {
+        let res = crate::router(state).oneshot(req).await.unwrap();
+        let (status, headers) = (res.status(), res.headers().clone());
+        let body = axum::body::to_bytes(res.into_body(), 1024 * 1024).await.unwrap();
+        (status, headers, serde_json::from_slice(&body).unwrap_or(Value::Null))
+    }
+
+    fn req(method: Method, uri: &str, headers: &[(&str, &str)], body: &str) -> Request<Body> {
+        let mut b = Request::builder().method(method).uri(uri).header("content-type", "application/json");
+        for (k, v) in headers {
+            b = b.header(*k, *v);
+        }
+        b.body(Body::from(body.to_owned())).unwrap()
+    }
+
+    fn state() -> crate::state::AppState {
+        crate::state::test_state(true)
+    }
+
+    #[tokio::test]
+    async fn health_is_public_and_responses_carry_security_headers() {
+        let (s, h, body) = send(state(), req(Method::GET, "/api/v1/health", &[], "")).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(body["status"], "ok");
+        assert_eq!(h.get("cache-control").unwrap(), "no-store");
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
+    }
+
+    #[tokio::test]
+    async fn error_responses_carry_security_headers_too() {
+        let (s, h, _) = send(state(), req(Method::GET, &format!("{SCOPED}/services"), &[], "")).await;
+        assert_eq!(s, StatusCode::UNAUTHORIZED);
+        assert_eq!(h.get("cache-control").unwrap(), "no-store");
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
+    }
+
+    #[tokio::test]
+    async fn every_protected_route_requires_a_credential() {
+        for uri in get_routes() {
+            let (s, _, body) = send(state(), req(Method::GET, &uri, &[], "")).await;
+            assert_eq!(s, StatusCode::UNAUTHORIZED, "GET {uri}");
+            assert_eq!(body["code"], "unauthenticated", "GET {uri}");
+        }
+        for uri in post_routes() {
+            let (s, _, _) = send(state(), req(Method::POST, &uri, &[], r#"{"comment":"x"}"#)).await;
+            assert_eq!(s, StatusCode::UNAUTHORIZED, "POST {uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn api_tokens_can_never_mutate() {
+        for uri in post_routes() {
+            let (s, _, body) =
+                send(state(), req(Method::POST, &uri, &[("authorization", "Bearer cha_anything")], "{}")).await;
+            assert_eq!(s, StatusCode::FORBIDDEN, "POST {uri}");
+            assert_eq!(body["message"], "forbidden: API tokens are read-only", "POST {uri}");
+        }
+        // Rejected before any lookup, even with a cookie present as well.
+        let (s, _, _) = send(
+            state(),
+            req(
+                Method::POST,
+                &format!("{SCOPED}/tokens"),
+                &[("authorization", "Bearer cha_x"), ("cookie", "controlhub_session=chs_x")],
+                "{}",
+            ),
+        )
+        .await;
+        assert_eq!(s, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn bearer_values_that_are_not_api_tokens_are_401() {
+        for token in ["chs_session_token", "chi_ingest_token", "chc_csrf", "", "cha"] {
+            let auth = format!("Bearer {token}");
+            let (s, _, _) =
+                send(state(), req(Method::GET, &format!("{SCOPED}/services"), &[("authorization", &auth)], "")).await;
+            assert_eq!(s, StatusCode::UNAUTHORIZED, "{token:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn storage_outage_fails_closed_without_leaking_details() {
+        for headers in [vec![("cookie", "controlhub_session=chs_x")], vec![("authorization", "Bearer cha_x")]] {
+            let (s, _, body) = send(state(), req(Method::GET, &format!("{SCOPED}/services"), &headers, "")).await;
+            assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "{headers:?}");
+            assert_eq!(body, serde_json::json!({ "code": "storage_unavailable", "message": "storage unavailable" }));
+        }
+        let (s, _, _) = send(state(), req(Method::GET, "/api/v1/ready", &[], "")).await;
+        assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "ready reports storage state");
+    }
+
+    #[tokio::test]
+    async fn login_checks_origin_and_input_before_touching_storage() {
+        let login = "/api/v1/session/login";
+        let body = r#"{"email":"admin@controlhub.local","password":"pw"}"#;
+        let (s, _, b) = send(state(), req(Method::POST, login, &[("origin", "http://evil.example")], body)).await;
+        assert_eq!((s, b["message"].as_str()), (StatusCode::FORBIDDEN, Some("forbidden: origin not allowed")));
+
+        let long_pw = format!(r#"{{"email":"a@b","password":"{}"}}"#, "x".repeat(1025));
+        let long_email = format!(r#"{{"email":"{}@b","password":"x"}}"#, "a".repeat(260));
+        for body in [r#"{"email":"   ","password":"x"}"#.to_owned(), long_pw, long_email] {
+            let (s, _, _) = send(state(), req(Method::POST, login, &[], &body)).await;
+            assert_eq!(s, StatusCode::UNAUTHORIZED, "invalid input is a plain 401");
+        }
+
+        // Plausible credentials reach storage, which is down: an error, never a session.
+        let (s, h, _) = send(state(), req(Method::POST, login, &[("origin", "http://localhost:3000")], body)).await;
+        assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(h.get("set-cookie").is_none());
+    }
+
+    #[tokio::test]
+    async fn login_throttle_applies_to_the_normalised_email() {
+        let st = state();
+        for _ in 0..10 {
+            st.login_throttle.failure("victim@example.test").await;
+        }
+        let body = r#"{"email":"  Victim@Example.TEST ","password":"pw"}"#;
+        let (s, _, b) = send(st, req(Method::POST, "/api/v1/session/login", &[], body)).await;
+        assert_eq!(s, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(b["code"], "too_many_requests");
+    }
+
+    #[tokio::test]
+    async fn malformed_and_oversized_bodies_are_rejected() {
+        let login = "/api/v1/session/login";
+        let (s, _, _) = send(state(), req(Method::POST, login, &[], "{not json")).await;
+        assert!(s.is_client_error(), "{s}");
+        let (s, _, _) = send(state(), req(Method::POST, login, &[], r#"{"email":"a@b"}"#)).await;
+        assert!(s.is_client_error(), "{s}");
+        let big = format!(r#"{{"email":"a@b","password":"{}"}}"#, "x".repeat(1024 * 1024 + 1));
+        let (s, _, _) = send(state(), req(Method::POST, login, &[], &big)).await;
+        assert_eq!(s, StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn unknown_routes_and_methods() {
+        let (s, _, _) = send(state(), req(Method::GET, "/api/v1/admin", &[], "")).await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+        let (s, _, _) = send(state(), req(Method::DELETE, &format!("{SCOPED}/tokens"), &[], "")).await;
+        assert_eq!(s, StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    #[test]
+    fn openapi_documents_every_route_and_both_credentials() {
+        let spec: Value = serde_json::from_str(&crate::openapi::spec_json().unwrap()).unwrap();
+        let tpl = "/api/v1/projects/{project_id}/environments/{environment_id}";
+        let mut expected: Vec<(String, &str)> = vec![
+            ("/api/v1/health".into(), "get"),
+            ("/api/v1/ready".into(), "get"),
+            ("/api/v1/session/login".into(), "post"),
+            ("/api/v1/session/logout".into(), "post"),
+            ("/api/v1/session".into(), "get"),
+            ("/api/v1/projects".into(), "get"),
+        ];
+        for (p, m) in [
+            ("/services", "get"),
+            ("/topology", "get"),
+            ("/traces", "get"),
+            ("/traces/{trace_id}", "get"),
+            ("/logs", "get"),
+            ("/events", "get"),
+            ("/timeline", "get"),
+            ("/coverage", "get"),
+            ("/live", "get"),
+            ("/audit", "get"),
+            ("/tokens", "get"),
+            ("/tokens", "post"),
+            ("/tokens/{token_id}/revoke", "post"),
+            ("/tokens/{token_id}/rotate", "post"),
+            ("/actions", "get"),
+            ("/actions", "post"),
+            ("/actions/catalog", "get"),
+            ("/actions/{plan_id}", "get"),
+            ("/actions/{plan_id}/approve", "post"),
+            ("/actions/{plan_id}/reject", "post"),
+            ("/actions/{plan_id}/cancel", "post"),
+        ] {
+            expected.push((format!("{tpl}{p}"), m));
+        }
+        let paths = spec["paths"].as_object().unwrap();
+        for (p, m) in &expected {
+            assert!(paths.get(p).and_then(|x| x.get(*m)).is_some(), "{m} {p} missing from OpenAPI");
+        }
+        let documented: usize = paths.values().map(|v| v.as_object().map_or(0, |o| o.len())).sum();
+        assert_eq!(documented, expected.len(), "every documented operation is routed");
+        let schemes = &spec["components"]["securitySchemes"];
+        assert_eq!(schemes["api_token"]["scheme"], "bearer");
+        assert_eq!(schemes["session"]["in"], "cookie");
+        assert_eq!(schemes["session"]["name"], "controlhub_session");
+    }
+
+    fn serve_args(extra: &[&str]) -> super::ServeArgs {
+        let mut argv = vec![
+            "controlhub-api",
+            "--database-url",
+            "postgres://x@127.0.0.1/db",
+            "--clickhouse-user",
+            "u",
+            "--clickhouse-password",
+            "p",
+        ];
+        argv.extend_from_slice(extra);
+        super::ServeArgs::try_parse_from(argv).unwrap()
+    }
+
+    #[test]
+    fn cookies_are_secure_unless_explicitly_in_dev_mode() {
+        assert!(super::api_config(&serve_args(&["--env", "production"])).secure_cookies);
+        assert!(super::api_config(&serve_args(&["--env", "staging"])).secure_cookies);
+        assert!(super::api_config(&serve_args(&["--env", "Dev"])).secure_cookies, "exact match only");
+        assert!(super::api_config(&serve_args(&["--env", "dev "])).secure_cookies);
+        assert!(!super::api_config(&serve_args(&["--env", "dev"])).secure_cookies);
+        if std::env::var_os("CONTROLHUB_ENV").is_none() {
+            assert!(super::api_config(&serve_args(&[])).secure_cookies, "default is production");
+        }
+    }
+
+    #[test]
+    fn allowed_origins_are_split_and_trimmed() {
+        let c = super::api_config(&serve_args(&["--allowed-origins", " https://a.example , https://b.example"]));
+        assert_eq!(c.allowed_origins, ["https://a.example", "https://b.example"]);
+        assert_eq!(c.session_ttl, time::Duration::hours(12));
+    }
+
+    #[test]
+    fn cli_subcommands_parse() {
+        assert!(matches!(
+            super::Cli::try_parse_from(["controlhub-api", "openapi"]).unwrap().command,
+            Some(super::Command::Openapi)
+        ));
+        assert!(super::Cli::try_parse_from(["controlhub-api"]).unwrap().command.is_none());
+        assert!(super::Cli::try_parse_from(["controlhub-api", "drop-database"]).is_err());
+        match super::Cli::try_parse_from(["controlhub-api", "bootstrap"]).unwrap().command {
+            Some(super::Command::Bootstrap { out_dir }) => assert_eq!(out_dir, std::path::PathBuf::from(".controlhub")),
+            other => panic!("{other:?}"),
+        }
+        assert!(
+            super::ServeArgs::try_parse_from([
+                "x",
+                "--addr",
+                "not-an-addr",
+                "--database-url",
+                "d",
+                "--clickhouse-user",
+                "u",
+                "--clickhouse-password",
+                "p"
+            ])
+            .is_err()
+        );
     }
 }

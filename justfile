@@ -62,6 +62,7 @@ test:
     cargo test --workspace
     pnpm --filter @controlhub/sdk-node test
     pnpm --filter @controlhub/web test
+    node --test "examples/demo-system/test/*.test.mjs" "scripts/test/*.test.mjs"
 
 # Integration tests against the running stack (needs: just dev + just demo)
 test-integration:

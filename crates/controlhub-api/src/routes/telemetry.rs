@@ -11,7 +11,11 @@ use controlhub_domain::{Scope, TraceId};
 use controlhub_engine_core::{
     EntityKindDto, EventItem, LogItem, ProvenanceDto, RelationKindDto, SpanItem, TimelineItem,
 };
-use controlhub_storage::ch::{EventRow, LogQuery, LogRow, TimelineLogRow, TimelineSpanRow, TraceQuery};
+use controlhub_storage::ch::{
+    CallEdgeRow, EventRow, LogQuery, LogRow, LogServiceRow, ResourceEdgeRow, ServiceSummaryRow, SpanRow,
+    TimelineLogRow, TimelineSpanRow, TraceQuery, TraceSummaryRow,
+};
+use controlhub_storage::pg::WatermarkRow;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -58,15 +62,20 @@ pub(crate) fn parse_ns(v: &Option<String>, name: &str) -> ApiResult<Option<i64>>
 impl RangeParams {
     pub fn resolve(&self) -> ApiResult<Range> {
         let to = parse_ns(&self.to, "to")?.unwrap_or_else(now_ns);
-        let from = parse_ns(&self.from, "from")?.unwrap_or(to - 15 * NS_PER_MIN);
+        let from = parse_ns(&self.from, "from")?.unwrap_or(to.saturating_sub(15 * NS_PER_MIN));
         if from >= to {
             return Err(ApiError::BadRequest("from must be before to".into()));
         }
-        if to - from > MAX_RANGE_NS {
+        // Checked: extreme inputs must not wrap around into a "short" range.
+        if to.checked_sub(from).is_none_or(|d| d > MAX_RANGE_NS) {
             return Err(ApiError::BadRequest("time range may not exceed 7 days".into()));
         }
         Ok(Range { from, to })
     }
+}
+
+fn limit(v: Option<u32>, default: u32, max: u32) -> u32 {
+    v.unwrap_or(default).clamp(1, max)
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -86,9 +95,14 @@ pub struct Completeness {
 
 async fn completeness(state: &AppState, scope: &Scope, truncated: bool) -> ApiResult<Completeness> {
     let wms = state.pg.watermarks(PROCESSOR, TOPIC).await?;
+    let dead = state.pg.count_unresolved_processing_errors(scope.tenant_id.as_str()).await?;
+    Ok(completeness_from(&wms, dead, truncated))
+}
+
+fn completeness_from(wms: &[WatermarkRow], dead: i64, truncated: bool) -> Completeness {
     let mut caught_up = !wms.is_empty();
     let mut watermark: Option<i64> = None;
-    for w in &wms {
+    for w in wms {
         let at = if w.next_offset >= w.high_watermark {
             (w.updated_at.unix_timestamp_nanos()).clamp(0, i64::MAX as i128) as i64
         } else {
@@ -97,7 +111,6 @@ async fn completeness(state: &AppState, scope: &Scope, truncated: bool) -> ApiRe
         };
         watermark = Some(watermark.map_or(at, |m| m.min(at)));
     }
-    let dead = state.pg.count_unresolved_processing_errors(scope.tenant_id.as_str()).await?;
     let mut notes = vec!["Only instrumented components are visible.".to_owned()];
     if !caught_up {
         notes.push("Processing is behind ingestion; recent data may be missing.".into());
@@ -105,14 +118,14 @@ async fn completeness(state: &AppState, scope: &Scope, truncated: bool) -> ApiRe
     if dead > 0 {
         notes.push(format!("{dead} record(s) failed processing and are not included."));
     }
-    Ok(Completeness {
+    Completeness {
         watermark_ns: watermark.map(ns),
         processing_caught_up: caught_up,
         unresolved_processing_errors: dead,
         truncated,
         sampling: "unknown".into(),
         notes,
-    })
+    }
 }
 
 fn nonempty(s: String) -> Option<String> {
@@ -161,6 +174,17 @@ pub async fn services(
         state.ch.service_summaries(&scope, r.from, r.to),
         state.ch.log_services(&scope, r.from, r.to)
     )?;
+    Ok(Json(ServicesResponse {
+        services: merge_services(spans, logs),
+        from_ns: ns(r.from),
+        to_ns: ns(r.to),
+        is_demo,
+        completeness: completeness(&state, &scope, false).await?,
+    }))
+}
+
+/// One entry per service seen in spans and/or logs, sorted by service ID.
+fn merge_services(spans: Vec<ServiceSummaryRow>, logs: Vec<LogServiceRow>) -> Vec<ServiceDto> {
     let mut out: BTreeMap<String, ServiceDto> = BTreeMap::new();
     for s in spans {
         out.insert(
@@ -200,13 +224,7 @@ pub async fn services(
         let last = e.last_seen_ns.as_ref().and_then(|v| v.parse::<i64>().ok()).unwrap_or(0).max(l.last_seen);
         e.last_seen_ns = Some(ns(last));
     }
-    Ok(Json(ServicesResponse {
-        services: out.into_values().collect(),
-        from_ns: ns(r.from),
-        to_ns: ns(r.to),
-        is_demo,
-        completeness: completeness(&state, &scope, false).await?,
-    }))
+    out.into_values().collect()
 }
 
 // ---------------------------------------------------------------- topology
@@ -259,6 +277,22 @@ pub async fn topology(
         state.ch.call_edges(&scope, r.from, r.to),
         state.ch.resource_edges(&scope, r.from, r.to),
     )?;
+    let (nodes, edges) = build_topology(&services, &logs, calls, resources);
+    Ok(Json(TopologyResponse {
+        nodes,
+        edges,
+        from_ns: ns(r.from),
+        to_ns: ns(r.to),
+        completeness: completeness(&state, &scope, false).await?,
+    }))
+}
+
+fn build_topology(
+    services: &[ServiceSummaryRow],
+    logs: &[LogServiceRow],
+    calls: Vec<CallEdgeRow>,
+    resources: Vec<ResourceEdgeRow>,
+) -> (Vec<TopologyNodeDto>, Vec<TopologyEdgeDto>) {
     let mut nodes: BTreeMap<String, TopologyNodeDto> = BTreeMap::new();
     for (id, name) in services
         .iter()
@@ -311,13 +345,7 @@ pub async fn topology(
             last_seen_ns: ns(rsc.last_seen),
         });
     }
-    Ok(Json(TopologyResponse {
-        nodes: nodes.into_values().collect(),
-        edges,
-        from_ns: ns(r.from),
-        to_ns: ns(r.to),
-        completeness: completeness(&state, &scope, false).await?,
-    }))
+    (nodes.into_values().collect(), edges)
 }
 
 // ---------------------------------------------------------------- traces
@@ -387,22 +415,30 @@ pub async fn traces(
     Query(q): Query<TraceListParams>,
 ) -> ApiResult<Json<TraceListResponse>> {
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
-    let r = RangeParams { from: q.from.clone(), to: q.to.clone() }.resolve()?;
-    let limit = q.limit.unwrap_or(50).clamp(1, 500);
-    let rows = state
-        .ch
-        .traces(
-            &scope,
-            &TraceQuery {
-                from_ns: r.from,
-                to_ns: r.to,
-                service_id: q.service_id.clone(),
-                only_errors: q.only_errors,
-                before: decode_cursor(&q.cursor)?,
-                limit: limit + 1,
-            },
-        )
-        .await?;
+    let (query, limit) = q.to_query()?;
+    let rows = state.ch.traces(&scope, &query).await?;
+    let (traces, next_cursor, has_more) = trace_page(rows, limit);
+    Ok(Json(TraceListResponse { traces, next_cursor, completeness: completeness(&state, &scope, has_more).await? }))
+}
+
+impl TraceListParams {
+    /// Validated storage query (one extra row to detect more pages) and the page size.
+    fn to_query(&self) -> ApiResult<(TraceQuery, u32)> {
+        let r = RangeParams { from: self.from.clone(), to: self.to.clone() }.resolve()?;
+        let limit = limit(self.limit, 50, 500);
+        let query = TraceQuery {
+            from_ns: r.from,
+            to_ns: r.to,
+            service_id: self.service_id.clone(),
+            only_errors: self.only_errors,
+            before: decode_cursor(&self.cursor)?,
+            limit: limit + 1,
+        };
+        Ok((query, limit))
+    }
+}
+
+fn trace_page(rows: Vec<TraceSummaryRow>, limit: u32) -> (Vec<TraceSummaryDto>, Option<String>, bool) {
     let has_more = rows.len() > limit as usize;
     let traces: Vec<TraceSummaryDto> = rows
         .into_iter()
@@ -424,7 +460,7 @@ pub async fn traces(
     } else {
         None
     };
-    Ok(Json(TraceListResponse { traces, next_cursor, completeness: completeness(&state, &scope, has_more).await? }))
+    (traces, next_cursor, has_more)
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -531,6 +567,41 @@ fn event_dto(e: controlhub_storage::ch::EventRow) -> EventDto {
     }
 }
 
+/// Parent span IDs referenced in the trace but not recorded, sorted and unique.
+fn missing_parents(spans: &[SpanRow]) -> Vec<String> {
+    let ids: HashSet<&str> = spans.iter().map(|s| s.span_id.as_str()).collect();
+    let mut missing: Vec<String> = spans
+        .iter()
+        .filter(|s| !s.parent_span_id.is_empty() && !ids.contains(s.parent_span_id.as_str()))
+        .map(|s| s.parent_span_id.clone())
+        .collect();
+    missing.sort();
+    missing.dedup();
+    missing
+}
+
+fn span_dto(s: SpanRow) -> SpanDto {
+    SpanDto {
+        duration_ms: s.duration_ns as f64 / 1e6,
+        trace_id: s.trace_id,
+        span_id: s.span_id,
+        parent_span_id: nonempty(s.parent_span_id),
+        service_id: s.service_id,
+        service_name: s.service_name,
+        service_instance_id: nonempty(s.service_instance_id),
+        service_version: nonempty(s.service_version),
+        name: s.name,
+        kind: s.kind,
+        start_ns: ns(s.start_time),
+        end_ns: ns(s.end_time),
+        status_code: s.status_code,
+        status_message: s.status_message,
+        target_entity_id: nonempty(s.target_entity_id),
+        target_name: nonempty(s.target_name),
+        attributes: s.attributes.into_iter().collect(),
+    }
+}
+
 #[utoipa::path(get, path = "/api/v1/projects/{project_id}/environments/{environment_id}/traces/{trace_id}", tag = "telemetry",
     params(("project_id" = String, Path), ("environment_id" = String, Path), ("trace_id" = String, Path)),
     responses((status = 200, body = TraceDetailResponse), (status = 404, body = crate::error::ErrorBody)))]
@@ -549,7 +620,7 @@ pub async fn trace_detail(
     let truncated = spans.len() > SPAN_LIMIT as usize;
     let min = spans.iter().map(|s| s.start_time).min().unwrap_or(0);
     let max = spans.iter().map(|s| s.end_time).max().unwrap_or(0);
-    let (from, to) = (min - NS_PER_MIN, max + NS_PER_MIN);
+    let (from, to) = (min.saturating_sub(NS_PER_MIN), max.saturating_add(NS_PER_MIN));
     let log_query = LogQuery {
         from_ns: from,
         to_ns: to,
@@ -561,37 +632,8 @@ pub async fn trace_detail(
         state.ch.logs(&scope, &log_query),
         state.ch.events(&scope, from, to, Some(trace_id.as_str()), 1_000),
     )?;
-    let ids: HashSet<&str> = spans.iter().map(|s| s.span_id.as_str()).collect();
-    let mut missing: Vec<String> = spans
-        .iter()
-        .filter(|s| !s.parent_span_id.is_empty() && !ids.contains(s.parent_span_id.as_str()))
-        .map(|s| s.parent_span_id.clone())
-        .collect();
-    missing.sort();
-    missing.dedup();
-    let span_dtos = spans
-        .into_iter()
-        .take(SPAN_LIMIT as usize)
-        .map(|s| SpanDto {
-            duration_ms: s.duration_ns as f64 / 1e6,
-            trace_id: s.trace_id,
-            span_id: s.span_id,
-            parent_span_id: nonempty(s.parent_span_id),
-            service_id: s.service_id,
-            service_name: s.service_name,
-            service_instance_id: nonempty(s.service_instance_id),
-            service_version: nonempty(s.service_version),
-            name: s.name,
-            kind: s.kind,
-            start_ns: ns(s.start_time),
-            end_ns: ns(s.end_time),
-            status_code: s.status_code,
-            status_message: s.status_message,
-            target_entity_id: nonempty(s.target_entity_id),
-            target_name: nonempty(s.target_name),
-            attributes: s.attributes.into_iter().collect(),
-        })
-        .collect();
+    let missing = missing_parents(&spans);
+    let span_dtos = spans.into_iter().take(SPAN_LIMIT as usize).map(span_dto).collect();
     let mut logs: Vec<LogDto> = logs.into_iter().map(log_dto).collect();
     logs.reverse();
     let mut events: Vec<EventDto> = events.into_iter().map(event_dto).collect();
@@ -642,31 +684,39 @@ pub async fn logs(
     Query(q): Query<LogParams>,
 ) -> ApiResult<Json<LogListResponse>> {
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
-    let r = RangeParams { from: q.from.clone(), to: q.to.clone() }.resolve()?;
-    let limit = q.limit.unwrap_or(200).clamp(1, 1_000);
-    if let Some(t) = &q.trace_id {
-        TraceId::parse(t.clone()).map_err(|_| ApiError::BadRequest("invalid trace id".into()))?;
+    let (query, limit) = q.to_query()?;
+    let rows = state.ch.logs(&scope, &query).await?;
+    let (logs, next_cursor, has_more) = log_page(rows, limit);
+    Ok(Json(LogListResponse { logs, next_cursor, completeness: completeness(&state, &scope, has_more).await? }))
+}
+
+impl LogParams {
+    /// Validated storage query (one extra row to detect more pages) and the page size.
+    fn to_query(&self) -> ApiResult<(LogQuery, u32)> {
+        let r = RangeParams { from: self.from.clone(), to: self.to.clone() }.resolve()?;
+        let limit = limit(self.limit, 200, 1_000);
+        if let Some(t) = &self.trace_id {
+            TraceId::parse(t.clone()).map_err(|_| ApiError::BadRequest("invalid trace id".into()))?;
+        }
+        let text = self.q.clone().filter(|s| !s.trim().is_empty());
+        if text.as_ref().is_some_and(|s| s.len() > 256) {
+            return Err(ApiError::BadRequest("q too long".into()));
+        }
+        let query = LogQuery {
+            from_ns: r.from,
+            to_ns: r.to,
+            service_id: self.service_id.clone(),
+            min_severity: self.min_severity,
+            trace_id: self.trace_id.clone(),
+            text,
+            before: decode_cursor(&self.cursor)?,
+            limit: limit + 1,
+        };
+        Ok((query, limit))
     }
-    let text = q.q.clone().filter(|s| !s.trim().is_empty());
-    if text.as_ref().is_some_and(|s| s.len() > 256) {
-        return Err(ApiError::BadRequest("q too long".into()));
-    }
-    let rows = state
-        .ch
-        .logs(
-            &scope,
-            &LogQuery {
-                from_ns: r.from,
-                to_ns: r.to,
-                service_id: q.service_id.clone(),
-                min_severity: q.min_severity,
-                trace_id: q.trace_id.clone(),
-                text,
-                before: decode_cursor(&q.cursor)?,
-                limit: limit + 1,
-            },
-        )
-        .await?;
+}
+
+fn log_page(rows: Vec<LogRow>, limit: u32) -> (Vec<LogDto>, Option<String>, bool) {
     let has_more = rows.len() > limit as usize;
     let logs: Vec<LogDto> = rows.into_iter().take(limit as usize).map(log_dto).collect();
     let next_cursor = if has_more {
@@ -674,7 +724,7 @@ pub async fn logs(
     } else {
         None
     };
-    Ok(Json(LogListResponse { logs, next_cursor, completeness: completeness(&state, &scope, has_more).await? }))
+    (logs, next_cursor, has_more)
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -703,7 +753,7 @@ pub async fn events(
 ) -> ApiResult<Json<EventListResponse>> {
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
     let r = RangeParams { from: q.from.clone(), to: q.to.clone() }.resolve()?;
-    let limit = q.limit.unwrap_or(200).clamp(1, 1_000);
+    let limit = limit(q.limit, 200, 1_000);
     let rows = state.ch.events(&scope, r.from, r.to, q.trace_id.as_deref(), limit + 1).await?;
     let truncated = rows.len() > limit as usize;
     Ok(Json(EventListResponse {
@@ -774,6 +824,21 @@ pub(crate) fn event_item(e: EventRow) -> TimelineItem {
     })
 }
 
+/// At most `limit` items per signal, with a per-signal truncation flag.
+fn timeline_items(
+    spans: Vec<TimelineSpanRow>,
+    logs: Vec<TimelineLogRow>,
+    events: Vec<EventRow>,
+    limit: u32,
+) -> (Vec<TimelineItem>, bool, bool, bool) {
+    let (st, lt, et) = (spans.len() > limit as usize, logs.len() > limit as usize, events.len() > limit as usize);
+    let mut items = Vec::with_capacity(spans.len() + logs.len() + events.len());
+    items.extend(spans.into_iter().take(limit as usize).map(span_item));
+    items.extend(logs.into_iter().take(limit as usize).map(log_item));
+    items.extend(events.into_iter().take(limit as usize).map(event_item));
+    (items, st, lt, et)
+}
+
 #[utoipa::path(get, path = "/api/v1/projects/{project_id}/environments/{environment_id}/timeline", tag = "timeline",
     params(("project_id" = String, Path), ("environment_id" = String, Path), TimelineParams),
     responses((status = 200, body = TimelineResponse), (status = 404, body = crate::error::ErrorBody)))]
@@ -785,17 +850,13 @@ pub async fn timeline(
 ) -> ApiResult<Json<TimelineResponse>> {
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
     let r = RangeParams { from: q.from.clone(), to: q.to.clone() }.resolve()?;
-    let limit = q.limit.unwrap_or(20_000).clamp(1, 100_000);
+    let limit = limit(q.limit, 20_000, 100_000);
     let (spans, logs, events) = tokio::try_join!(
         state.ch.timeline_spans(&scope, r.from, r.to, limit + 1),
         state.ch.timeline_logs(&scope, r.from, r.to, limit + 1),
         state.ch.events(&scope, r.from, r.to, None, limit + 1),
     )?;
-    let (st, lt, et) = (spans.len() > limit as usize, logs.len() > limit as usize, events.len() > limit as usize);
-    let mut items = Vec::with_capacity(spans.len() + logs.len() + events.len());
-    items.extend(spans.into_iter().take(limit as usize).map(span_item));
-    items.extend(logs.into_iter().take(limit as usize).map(log_item));
-    items.extend(events.into_iter().take(limit as usize).map(event_item));
+    let (items, st, lt, et) = timeline_items(spans, logs, events, limit);
     Ok(Json(TimelineResponse {
         items,
         from_ns: ns(r.from),
@@ -837,4 +898,518 @@ pub async fn coverage(
         ],
         completeness: svc.completeness,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    use proptest::prelude::*;
+    use serde_json::json;
+
+    const T0: i64 = 1_790_000_000_000_000_000;
+
+    fn range(from: Option<i64>, to: Option<i64>) -> ApiResult<Range> {
+        RangeParams { from: from.map(|v| v.to_string()), to: to.map(|v| v.to_string()) }.resolve()
+    }
+
+    fn bad_request(r: ApiResult<impl std::fmt::Debug>) -> String {
+        match r {
+            Err(ApiError::BadRequest(m)) => m,
+            other => panic!("expected 400, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn range_defaults_to_the_last_15_minutes() {
+        let r = range(None, Some(T0)).unwrap();
+        assert_eq!((r.from, r.to), (T0 - 15 * NS_PER_MIN, T0));
+        let before = now_ns();
+        let r = range(None, None).unwrap();
+        assert!(r.to >= before && r.to - r.from == 15 * NS_PER_MIN);
+    }
+
+    #[test]
+    fn range_must_be_ordered_and_at_most_7_days() {
+        assert!(bad_request(range(Some(T0), Some(T0))).contains("before"));
+        assert!(bad_request(range(Some(T0 + 1), Some(T0))).contains("before"));
+        assert!(range(Some(T0 - MAX_RANGE_NS), Some(T0)).is_ok(), "exactly 7 days");
+        assert!(bad_request(range(Some(T0 - MAX_RANGE_NS - 1), Some(T0))).contains("7 days"));
+        // A default `from` is 15 minutes before an explicit far-past `to`, which is fine.
+        assert!(range(None, Some(1)).is_ok());
+    }
+
+    #[test]
+    fn extreme_ranges_do_not_wrap_around() {
+        // Regression: `to - from` used to overflow (panic in debug, pass as -1 in release).
+        assert!(bad_request(range(Some(i64::MIN), Some(i64::MAX))).contains("7 days"));
+        assert!(bad_request(range(Some(-1), Some(i64::MAX))).contains("7 days"));
+        assert!(bad_request(range(Some(i64::MIN), Some(0))).contains("7 days"));
+        let r = range(None, Some(i64::MIN + 1)).unwrap();
+        assert_eq!(r.from, i64::MIN, "default `from` saturates instead of overflowing");
+    }
+
+    #[test]
+    fn timestamps_must_be_plain_decimal_integers() {
+        for v in ["", "abc", "1e18", "1.5", "0x10", " 1", "1 ", "+-1", "9223372036854775808", "1_000"] {
+            let m = bad_request(RangeParams { from: Some(v.into()), to: Some(T0.to_string()) }.resolve());
+            assert!(m.contains("from"), "{v:?}: {m}");
+            let m = bad_request(RangeParams { from: None, to: Some(v.into()) }.resolve());
+            assert!(m.contains("to"), "{v:?}: {m}");
+        }
+        assert_eq!(parse_ns(&Some("-5".into()), "x").unwrap(), Some(-5));
+        assert_eq!(parse_ns(&None, "x").unwrap(), None);
+    }
+
+    proptest! {
+        /// Any pair of timestamps either resolves to a valid, bounded range or is a 400; never a panic.
+        #[test]
+        fn resolve_never_panics_and_bounds_hold(from in any::<i64>(), to in any::<i64>()) {
+            match range(Some(from), Some(to)) {
+                Ok(r) => prop_assert!(r.from < r.to && r.to - r.from <= MAX_RANGE_NS),
+                Err(ApiError::BadRequest(_)) => prop_assert!(from >= to || (to as i128 - from as i128) > MAX_RANGE_NS as i128),
+                Err(e) => prop_assert!(false, "unexpected {:?}", e),
+            }
+        }
+
+        #[test]
+        fn cursors_round_trip(t in any::<i64>(), id in "[ -~]{0,256}") {
+            let c = encode_cursor(t, &id);
+            prop_assert!(c.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'), "URL-safe: {}", c);
+            prop_assert_eq!(decode_cursor(&Some(c)).unwrap(), Some((t, id)));
+        }
+
+        /// Arbitrary client cursors decode or fail with 400, never panic.
+        #[test]
+        fn arbitrary_cursors_are_rejected_cleanly(c in ".{0,400}") {
+            match decode_cursor(&Some(c)) {
+                Ok(Some((_, id))) => prop_assert!(id.len() <= 256),
+                Ok(None) => prop_assert!(false, "Some input never decodes to None"),
+                Err(ApiError::BadRequest(m)) => prop_assert_eq!(m, "invalid cursor"),
+                Err(e) => prop_assert!(false, "unexpected {:?}", e),
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_cursors_are_400() {
+        let enc = |v: serde_json::Value| URL_SAFE_NO_PAD.encode(serde_json::to_vec(&v).unwrap());
+        for c in [
+            "!!!".to_owned(),
+            "eyJ0IjoiMSIsImlkIjoiYSJ9==".to_owned(), // padded
+            URL_SAFE_NO_PAD.encode(b"not json"),
+            enc(json!({ "t": 1, "id": "a" })), // t must be a decimal string
+            enc(json!({ "t": "abc", "id": "a" })),
+            enc(json!({ "t": "1" })),
+            enc(json!({ "t": "1", "id": "x".repeat(257) })),
+            enc(json!([1, 2])),
+        ] {
+            assert_eq!(bad_request(decode_cursor(&Some(c.clone()))), "invalid cursor", "{c}");
+        }
+        assert_eq!(decode_cursor(&None).unwrap(), None);
+        assert!(decode_cursor(&Some(enc(json!({ "t": "1", "id": "x".repeat(256) })))).is_ok());
+    }
+
+    #[test]
+    fn limits_are_clamped() {
+        assert_eq!(limit(None, 50, 500), 50);
+        assert_eq!(limit(Some(0), 50, 500), 1);
+        assert_eq!(limit(Some(501), 50, 500), 500);
+        assert_eq!(limit(Some(u32::MAX), 20_000, 100_000), 100_000);
+    }
+
+    fn trace_params() -> TraceListParams {
+        TraceListParams {
+            from: Some((T0 - 1000).to_string()),
+            to: Some(T0.to_string()),
+            service_id: None,
+            only_errors: false,
+            limit: None,
+            cursor: None,
+        }
+    }
+
+    #[test]
+    fn trace_params_build_a_bounded_query() {
+        let (q, l) = trace_params().to_query().unwrap();
+        assert_eq!((l, q.limit, q.from_ns, q.to_ns), (50, 51, T0 - 1000, T0));
+        let (q, l) = TraceListParams { limit: Some(10_000), ..trace_params() }.to_query().unwrap();
+        assert_eq!((l, q.limit), (500, 501));
+        let evil = "a' OR '1'='1".to_owned();
+        let p = TraceListParams {
+            service_id: Some(evil.clone()),
+            only_errors: true,
+            cursor: Some(encode_cursor(T0 - 10, "tid")),
+            ..trace_params()
+        };
+        let (q, _) = p.to_query().unwrap();
+        assert_eq!(q.service_id, Some(evil), "passed through as a bound parameter, unmodified");
+        assert!(q.only_errors);
+        assert_eq!(q.before, Some((T0 - 10, "tid".into())));
+        assert!(TraceListParams { cursor: Some("zz".into()), ..trace_params() }.to_query().is_err());
+        assert!(TraceListParams { from: Some("x".into()), ..trace_params() }.to_query().is_err());
+    }
+
+    fn log_params() -> LogParams {
+        LogParams {
+            from: Some((T0 - 1000).to_string()),
+            to: Some(T0.to_string()),
+            service_id: None,
+            min_severity: None,
+            trace_id: None,
+            q: None,
+            limit: None,
+            cursor: None,
+        }
+    }
+
+    #[test]
+    fn log_params_are_validated() {
+        let (q, l) = log_params().to_query().unwrap();
+        assert_eq!((l, q.limit), (200, 201));
+        assert_eq!(LogParams { limit: Some(0), ..log_params() }.to_query().unwrap().1, 1);
+        assert_eq!(LogParams { limit: Some(5_000), ..log_params() }.to_query().unwrap().1, 1_000);
+
+        let tid = "0123456789abcdef0123456789abcdef".to_owned();
+        let (q, _) = LogParams { trace_id: Some(tid.clone()), ..log_params() }.to_query().unwrap();
+        assert_eq!(q.trace_id, Some(tid));
+        for bad in ["", "xyz", "0123456789ABCDEF0123456789ABCDEF", "0123456789abcdef0123456789abcde", "' OR 1=1 --"] {
+            let m = bad_request(LogParams { trace_id: Some(bad.into()), ..log_params() }.to_query());
+            assert_eq!(m, "invalid trace id", "{bad:?}");
+        }
+
+        assert_eq!(LogParams { q: Some("   ".into()), ..log_params() }.to_query().unwrap().0.text, None);
+        let (q, _) = LogParams { q: Some("%' OR 1=1 --".into()), ..log_params() }.to_query().unwrap();
+        assert_eq!(q.text.as_deref(), Some("%' OR 1=1 --"), "search text is data, bound as a parameter");
+        assert!(LogParams { q: Some("x".repeat(256)), ..log_params() }.to_query().is_ok());
+        assert_eq!(bad_request(LogParams { q: Some("x".repeat(257)), ..log_params() }.to_query()), "q too long");
+        assert_eq!(
+            bad_request(LogParams { q: Some("é".repeat(129)), ..log_params() }.to_query()),
+            "q too long",
+            "bytes"
+        );
+        assert!(LogParams { cursor: Some("?".into()), ..log_params() }.to_query().is_err());
+    }
+
+    fn trace_row(id: &str, start: i64) -> TraceSummaryRow {
+        TraceSummaryRow {
+            trace_id: id.into(),
+            trace_start: start,
+            trace_end: start + 2_500_000,
+            span_count: 3,
+            error_count: 1,
+            root_name: "GET /".into(),
+            root_service: "gateway".into(),
+            services: vec!["gateway".into()],
+        }
+    }
+
+    #[test]
+    fn trace_pages_report_more_and_point_the_cursor_at_the_last_item() {
+        let rows: Vec<_> = (0..4).map(|i| trace_row(&format!("t{i}"), T0 - i)).collect();
+        let (page, cursor, more) = trace_page(rows.clone(), 3);
+        assert!(more);
+        assert_eq!(page.len(), 3);
+        assert_eq!(page[0].duration_ms, 2.5);
+        assert_eq!(page[0].start_ns, T0.to_string());
+        assert_eq!(decode_cursor(&cursor).unwrap(), Some((T0 - 2, "t2".into())));
+
+        let (page, cursor, more) = trace_page(rows[..3].to_vec(), 3);
+        assert!(!more && cursor.is_none() && page.len() == 3);
+        let (page, cursor, more) = trace_page(vec![], 3);
+        assert!(!more && cursor.is_none() && page.is_empty());
+    }
+
+    fn log_row(id: &str, time: i64) -> LogRow {
+        LogRow {
+            tenant_id: "t".into(),
+            project_id: "p".into(),
+            environment_id: "e".into(),
+            service_id: "svc_a".into(),
+            service_name: "a".into(),
+            service_instance_id: String::new(),
+            log_id: id.into(),
+            time,
+            observed_time: time + 1,
+            severity_number: 17,
+            severity_text: "ERROR".into(),
+            body: "<script>alert(1)</script>".into(),
+            trace_id: String::new(),
+            span_id: "0123456789abcdef".into(),
+            attributes: vec![("b".into(), "2".into()), ("a".into(), "1".into())],
+            resource_attributes: vec![],
+            batch_id: "b".into(),
+            ingested_at: time,
+        }
+    }
+
+    #[test]
+    fn log_pages_and_dtos() {
+        let rows: Vec<_> = (0..3).map(|i| log_row(&format!("l{i}"), T0 - i)).collect();
+        let (page, cursor, more) = log_page(rows.clone(), 2);
+        assert!(more && page.len() == 2);
+        assert_eq!(decode_cursor(&cursor).unwrap(), Some((T0 - 1, "l1".into())));
+        let (_, cursor, more) = log_page(rows, 3);
+        assert!(!more && cursor.is_none());
+
+        let d = log_dto(log_row("l", T0));
+        assert_eq!(d.body, "<script>alert(1)</script>", "untrusted text is passed as data, never transformed");
+        assert_eq!(d.trace_id, None, "empty strings become null");
+        assert_eq!(d.span_id.as_deref(), Some("0123456789abcdef"));
+        assert_eq!(d.observed_time_ns, (T0 + 1).to_string());
+        assert_eq!(d.attributes.keys().collect::<Vec<_>>(), ["a", "b"], "attributes are sorted");
+    }
+
+    fn event_row(id: &str) -> EventRow {
+        EventRow {
+            tenant_id: "t".into(),
+            project_id: "p".into(),
+            environment_id: "e".into(),
+            event_id: id.into(),
+            event_type: "deploy".into(),
+            service_id: String::new(),
+            service_name: String::new(),
+            service_instance_id: String::new(),
+            entity_id: String::new(),
+            event_time: T0,
+            observed_time: T0,
+            trace_id: String::new(),
+            span_id: String::new(),
+            source_id: "src".into(),
+            source_epoch: String::new(),
+            source_sequence: Some(u64::MAX),
+            attributes: vec![],
+            payload_json: "{}".into(),
+            batch_id: "b".into(),
+            ingested_at: T0,
+        }
+    }
+
+    #[test]
+    fn event_dtos_keep_u64_sequences_as_strings() {
+        let d = event_dto(event_row("e1"));
+        assert_eq!(d.source_sequence.as_deref(), Some("18446744073709551615"));
+        assert_eq!(d.source_id.as_deref(), Some("src"));
+        assert_eq!((d.entity_id, d.trace_id, d.source_epoch), (None, None, None));
+        let v = serde_json::to_value(event_dto(event_row("e1"))).unwrap();
+        assert!(v["source_sequence"].is_string(), "u64 does not fit a JS number");
+        let TimelineItem::Event(e) = event_item(event_row("e2")) else { panic!("event") };
+        assert_eq!((e.service_id, e.service_name), (None, None));
+    }
+
+    fn tl_span(id: &str, status: u8) -> TimelineSpanRow {
+        TimelineSpanRow {
+            trace_id: "t".into(),
+            span_id: id.into(),
+            parent_span_id: String::new(),
+            service_id: "svc".into(),
+            service_name: "svc".into(),
+            target_entity_id: String::new(),
+            name: "op".into(),
+            kind: 2,
+            start_time: T0,
+            end_time: T0 + 1,
+            status_code: status,
+            ingested_at: T0,
+        }
+    }
+
+    fn tl_log(id: &str) -> TimelineLogRow {
+        TimelineLogRow {
+            log_id: id.into(),
+            service_id: "svc".into(),
+            service_name: "svc".into(),
+            time: T0,
+            severity_number: 9,
+            trace_id: "t".into(),
+            ingested_at: T0,
+        }
+    }
+
+    #[test]
+    fn span_items_flag_only_otlp_error_status() {
+        for (status, err) in [(0, false), (1, false), (2, true), (3, false)] {
+            let TimelineItem::Span(s) = span_item(tl_span("s", status)) else { panic!("span") };
+            assert_eq!(s.is_error, err, "status {status}");
+            assert_eq!((s.parent_span_id, s.target_entity_id), (None, None));
+        }
+        let TimelineItem::Log(l) = log_item(tl_log("l")) else { panic!("log") };
+        assert_eq!(l.trace_id.as_deref(), Some("t"));
+    }
+
+    #[test]
+    fn timeline_truncation_is_reported_per_signal() {
+        let spans: Vec<_> = (0..3).map(|i| tl_span(&i.to_string(), 0)).collect();
+        let logs: Vec<_> = (0..2).map(|i| tl_log(&i.to_string())).collect();
+        let events: Vec<_> = (0..1).map(|i| event_row(&i.to_string())).collect();
+        let (items, st, lt, et) = timeline_items(spans.clone(), logs.clone(), events.clone(), 2);
+        assert_eq!((st, lt, et), (true, false, false));
+        assert_eq!(items.len(), 2 + 2 + 1);
+        let (items, st, lt, et) = timeline_items(spans, logs, events, 1);
+        assert_eq!((st, lt, et), (true, true, false));
+        assert_eq!(items.len(), 3);
+        let (items, st, lt, et) = timeline_items(vec![], vec![], vec![], 1);
+        assert!(items.is_empty() && !st && !lt && !et);
+    }
+
+    fn span_row(id: &str, parent: &str) -> SpanRow {
+        SpanRow {
+            tenant_id: "t".into(),
+            project_id: "p".into(),
+            environment_id: "e".into(),
+            service_id: "svc".into(),
+            service_name: "svc".into(),
+            service_namespace: String::new(),
+            service_instance_id: String::new(),
+            service_version: "1.2.3".into(),
+            trace_id: "t".into(),
+            span_id: id.into(),
+            parent_span_id: parent.into(),
+            name: "op".into(),
+            kind: 2,
+            start_time: T0,
+            end_time: T0 + 1_500_000,
+            duration_ns: 1_500_000,
+            status_code: 2,
+            status_message: "boom".into(),
+            target_entity_id: String::new(),
+            target_name: String::new(),
+            target_kind: String::new(),
+            attributes: vec![("http.method".into(), "GET".into())],
+            resource_attributes: vec![],
+            batch_id: "b".into(),
+            ingested_at: T0,
+        }
+    }
+
+    #[test]
+    fn missing_parents_are_unique_sorted_and_exclude_recorded_spans() {
+        let spans =
+            [span_row("a", ""), span_row("b", "a"), span_row("c", "zz"), span_row("d", "zz"), span_row("e", "mm")];
+        assert_eq!(missing_parents(&spans), ["mm", "zz"]);
+        assert!(missing_parents(&[]).is_empty());
+        let d = span_dto(span_row("b", "a"));
+        assert_eq!(d.duration_ms, 1.5);
+        assert_eq!(d.parent_span_id.as_deref(), Some("a"));
+        assert_eq!(d.service_version.as_deref(), Some("1.2.3"));
+        assert_eq!((d.service_instance_id, d.target_name), (None, None));
+        assert_eq!(span_dto(span_row("a", "")).parent_span_id, None);
+    }
+
+    fn svc(id: &str, requests: u64, p95: f64, last: i64) -> ServiceSummaryRow {
+        ServiceSummaryRow {
+            service_id: id.into(),
+            service_name: format!("{id}-name"),
+            requests,
+            errors: requests / 10,
+            p95_ns: p95,
+            last_seen: last,
+            instances: 2,
+            version: String::new(),
+        }
+    }
+
+    fn log_svc(id: &str, last: i64) -> LogServiceRow {
+        LogServiceRow {
+            service_id: id.into(),
+            service_name: format!("{id}-name"),
+            logs: 7,
+            error_logs: 1,
+            last_seen: last,
+        }
+    }
+
+    #[test]
+    fn services_merge_spans_and_logs() {
+        let out = merge_services(
+            vec![svc("b", 100, 2_000_000.0, 10), svc("c", 0, f64::NAN, 5), svc("d", 5, f64::INFINITY, 1)],
+            vec![log_svc("b", 20), log_svc("a", 3)],
+        );
+        assert_eq!(out.iter().map(|s| s.service_id.as_str()).collect::<Vec<_>>(), ["a", "b", "c", "d"]);
+        let [a, b, c, d] = [&out[0], &out[1], &out[2], &out[3]];
+        assert_eq!((a.requests, a.logs, a.p95_ms, a.instances), (0, 7, None, 0));
+        assert_eq!(a.signals, ["logs"]);
+        assert_eq!(a.last_seen_ns.as_deref(), Some("3"));
+        assert_eq!(b.signals, ["traces", "logs"]);
+        assert_eq!(b.p95_ms, Some(2.0));
+        assert_eq!(b.last_seen_ns.as_deref(), Some("20"), "latest of spans and logs");
+        assert_eq!((b.logs, b.error_logs), (7, 1));
+        assert_eq!(b.version, None, "empty version is null");
+        assert_eq!(c.p95_ms, None, "no requests → no p95");
+        assert_eq!(d.p95_ms, None, "non-finite p95 is never serialized");
+        assert!(serde_json::to_string(&out).is_ok());
+    }
+
+    #[test]
+    fn topology_nodes_and_edges() {
+        let calls = vec![CallEdgeRow {
+            source_service_id: "a".into(),
+            target_service_id: "b".into(),
+            calls: 3,
+            errors: 1,
+            last_seen: 9,
+        }];
+        let res = |id: &str, kind: &str| ResourceEdgeRow {
+            service_id: "b".into(),
+            target_entity_id: id.into(),
+            target_name: format!("{id}-name"),
+            target_kind: kind.into(),
+            calls: 1,
+            errors: 0,
+            last_seen: 4,
+        };
+        let resources = vec![res("db1", "database"), res("q1", "queue"), res("x1", "http"), res("a", "database")];
+        let (nodes, edges) =
+            build_topology(&[svc("a", 1, 1.0, 1)], &[log_svc("b", 1), log_svc("a", 1)], calls, resources);
+        let v = serde_json::to_value(&nodes).unwrap();
+        let by_id = |id: &str| v.as_array().unwrap().iter().find(|n| n["id"] == id).cloned().unwrap();
+        assert_eq!(nodes.len(), 5, "a, b, db1, q1, x1 (a is not duplicated)");
+        assert_eq!(by_id("a")["provenance"], serde_json::to_value(ProvenanceDto::Observed).unwrap());
+        assert_eq!(by_id("a")["kind"], serde_json::to_value(EntityKindDto::Service).unwrap(), "observed node wins");
+        assert_eq!(by_id("db1")["kind"], serde_json::to_value(EntityKindDto::Database).unwrap());
+        assert_eq!(by_id("q1")["kind"], serde_json::to_value(EntityKindDto::Queue).unwrap());
+        assert_eq!(by_id("x1")["kind"], serde_json::to_value(EntityKindDto::ExternalDependency).unwrap());
+        assert_eq!(by_id("db1")["provenance"], serde_json::to_value(ProvenanceDto::Inferred).unwrap());
+
+        assert_eq!(edges.len(), 5);
+        assert_eq!((edges[0].source.as_str(), edges[0].target.as_str(), edges[0].calls), ("a", "b", 3));
+        assert!(edges[0].reasons.is_empty(), "observed edges need no inferred reasons");
+        for e in &edges[1..] {
+            assert_eq!(
+                serde_json::to_value(e.provenance).unwrap(),
+                serde_json::to_value(ProvenanceDto::Inferred).unwrap()
+            );
+            assert_eq!(e.reasons.len(), 1);
+        }
+    }
+
+    fn wm(next: i64, high: i64, received: i64, updated_secs: i64) -> WatermarkRow {
+        WatermarkRow {
+            partition: 0,
+            next_offset: next,
+            high_watermark: high,
+            last_received_time_ns: received,
+            updated_at: time::OffsetDateTime::from_unix_timestamp(updated_secs).unwrap(),
+        }
+    }
+
+    #[test]
+    fn completeness_reflects_processing_state() {
+        let none = completeness_from(&[], 0, false);
+        assert!(!none.processing_caught_up && none.watermark_ns.is_none());
+        assert!(none.notes.iter().any(|n| n.contains("behind")));
+
+        let ok = completeness_from(&[wm(10, 10, 5, 100), wm(11, 10, 6, 200)], 0, true);
+        assert!(ok.processing_caught_up && ok.truncated);
+        assert_eq!(ok.watermark_ns.as_deref(), Some("100000000000"), "minimum over partitions");
+        assert_eq!(ok.notes.len(), 1);
+        assert_eq!(ok.sampling, "unknown");
+
+        let behind = completeness_from(&[wm(10, 10, 5, 100), wm(3, 10, 42, 200)], 2, false);
+        assert!(!behind.processing_caught_up);
+        assert_eq!(behind.watermark_ns.as_deref(), Some("42"), "lagging partition bounds the watermark");
+        assert_eq!(behind.unresolved_processing_errors, 2);
+        assert!(behind.notes.iter().any(|n| n.contains("2 record(s) failed")));
+        assert!(behind.notes.iter().any(|n| n.contains("behind")));
+    }
 }

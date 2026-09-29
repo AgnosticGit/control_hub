@@ -86,3 +86,99 @@ impl AppState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::broker::fake::Mode;
+    use crate::testing::{TOKEN, TRACES_ONLY, get, harness};
+
+    #[tokio::test]
+    async fn missing_or_invalid_tokens_are_counted() {
+        let h = harness();
+        let st = &h.state;
+        assert!(matches!(st.authenticate(None, Signal::Traces).await, Err(AcceptError::Auth(AuthError::Missing))));
+        assert!(matches!(
+            st.authenticate(Some("Basic abc"), Signal::Traces).await,
+            Err(AcceptError::Auth(AuthError::Missing))
+        ));
+        assert!(matches!(
+            st.authenticate(Some("Bearer wrong"), Signal::Traces).await,
+            Err(AcceptError::Auth(AuthError::Invalid))
+        ));
+        assert!(matches!(
+            st.authenticate(Some(&format!("Bearer {TRACES_ONLY}")), Signal::Logs).await,
+            Err(AcceptError::Auth(AuthError::SignalNotAllowed("logs")))
+        ));
+        assert_eq!(get(&h.metrics().requests_rejected_auth), 4);
+    }
+
+    #[tokio::test]
+    async fn store_outage_is_not_counted_as_an_auth_rejection() {
+        let h = harness();
+        h.store.lock().unwrap().unavailable = true;
+        let r = h.state.authenticate(Some(&format!("Bearer {TOKEN}")), Signal::Traces).await;
+        assert!(matches!(r, Err(AcceptError::Auth(AuthError::Unavailable))));
+        assert_eq!(get(&h.metrics().requests_rejected_auth), 0);
+    }
+
+    #[tokio::test]
+    async fn envelope_scope_comes_from_the_credential() {
+        let h = harness();
+        let cred = h.state.authenticate(Some(&format!("Bearer {TOKEN}")), Signal::Traces).await.unwrap();
+        let accepted = h.state.publish(&cred, Payload::OtlpTraces(vec![1, 2, 3])).await.unwrap();
+
+        let records = h.broker.records();
+        assert_eq!(records.len(), 1);
+        let rec = &records[0].1;
+        assert_eq!(rec.key.as_deref(), Some(&b"t1/p1/dev"[..]));
+        assert_eq!(rec.headers.get("schema_version").map(Vec::as_slice), Some(&b"1"[..]));
+
+        let env = &h.envelopes()[0];
+        assert_eq!(env.schema_version, ENVELOPE_SCHEMA_VERSION);
+        assert_eq!(env.batch_id, accepted.batch_id);
+        assert_eq!(uuid::Uuid::parse_str(&env.batch_id).unwrap().get_version_num(), 7);
+        let scope = env.scope.as_ref().unwrap();
+        assert_eq!(
+            (scope.tenant_id.as_str(), scope.project_id.as_str(), scope.environment_id.as_str()),
+            ("t1", "p1", "dev")
+        );
+        assert_eq!(scope.token_id, cred.token_id.to_string());
+        assert_eq!(env.source_id, "ingest-test");
+        assert!(env.received_time_unix_nano > 1_700_000_000_000_000_000);
+        assert_eq!(env.payload, Some(Payload::OtlpTraces(vec![1, 2, 3])));
+        assert_eq!(get(&h.metrics().requests_accepted), 1);
+    }
+
+    #[tokio::test]
+    async fn batch_ids_are_unique() {
+        let h = harness();
+        let cred = h.state.authenticate(Some(&format!("Bearer {TOKEN}")), Signal::Logs).await.unwrap();
+        let a = h.state.publish(&cred, Payload::OtlpLogs(vec![])).await.unwrap();
+        let b = h.state.publish(&cred, Payload::OtlpLogs(vec![])).await.unwrap();
+        assert_ne!(a.batch_id, b.batch_id);
+    }
+
+    #[tokio::test]
+    async fn broker_errors_are_propagated_and_counted() {
+        let h = harness();
+        let cred = h.state.authenticate(Some(&format!("Bearer {TOKEN}")), Signal::Traces).await.unwrap();
+
+        h.broker.set_mode(Mode::Fail(PublishError::Unavailable("down".into())));
+        let r = h.state.publish(&cred, Payload::OtlpTraces(vec![])).await;
+        assert!(matches!(r, Err(AcceptError::Publish(PublishError::Unavailable(_)))));
+
+        h.broker.set_mode(Mode::Hang);
+        let r = h.state.publish(&cred, Payload::OtlpTraces(vec![])).await;
+        assert!(matches!(r, Err(AcceptError::Publish(PublishError::Timeout))));
+
+        h.broker.set_mode(Mode::Fail(PublishError::Overloaded));
+        let r = h.state.publish(&cred, Payload::OtlpTraces(vec![])).await;
+        assert!(matches!(r, Err(AcceptError::Publish(PublishError::Overloaded))));
+
+        assert_eq!(get(&h.metrics().requests_failed_broker), 2);
+        assert_eq!(get(&h.metrics().requests_rejected_overload), 1);
+        assert_eq!(get(&h.metrics().requests_accepted), 0);
+        assert!(h.broker.records().is_empty());
+    }
+}

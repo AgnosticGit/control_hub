@@ -78,4 +78,80 @@ mod tests {
         assert!(constant_time_eq(&hash_token(&a), &hash_token(&a)));
         assert!(!constant_time_eq(&hash_token(&a), &hash_token(&b)));
     }
+
+    #[test]
+    fn tokens_carry_256_bits_of_url_safe_randomness() {
+        for prefix in ["chi_", "chs_", "chc_", "cha_", ""] {
+            let t = generate_token(prefix).unwrap();
+            let body = t.strip_prefix(prefix).unwrap();
+            assert_eq!(body.len(), 43, "32 bytes, unpadded base64url");
+            assert_eq!(URL_SAFE_NO_PAD.decode(body).unwrap().len(), 32);
+            assert!(body.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'), "{t}");
+        }
+        let many: std::collections::HashSet<_> = (0..200).map(|_| generate_token("chi_").unwrap()).collect();
+        assert_eq!(many.len(), 200);
+    }
+
+    #[test]
+    fn token_hash_is_sha256_and_never_the_plaintext() {
+        // Known SHA-256 test vector ("abc").
+        assert_eq!(hex::encode(hash_token("abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        let t = generate_token("chs_").unwrap();
+        let h = hash_token(&t);
+        assert_eq!(h.len(), 32);
+        assert_ne!(h, t.as_bytes());
+        assert!(!hex::encode(&h).contains(&t[4..]));
+        assert_eq!(hash_token(&t), h, "deterministic, so it can be looked up");
+    }
+
+    #[test]
+    fn constant_time_eq_handles_lengths_and_single_bit_differences() {
+        assert!(constant_time_eq(b"", b""));
+        assert!(!constant_time_eq(b"abc", b"abcd"), "prefix is not equal");
+        assert!(!constant_time_eq(b"abcd", b"abc"));
+        assert!(!constant_time_eq(b"", b"a"));
+        let a = hash_token("x");
+        for i in 0..a.len() {
+            for bit in 0..8 {
+                let mut b = a.clone();
+                b[i] ^= 1 << bit;
+                assert!(!constant_time_eq(&a, &b), "byte {i} bit {bit}");
+            }
+        }
+    }
+
+    #[test]
+    fn prefix_is_a_short_non_secret_identifier() {
+        let t = generate_token("chi_").unwrap();
+        let p = token_prefix(&t);
+        assert_eq!(p.chars().count(), 10);
+        assert!(t.starts_with(&p));
+        assert_eq!(token_prefix("short"), "short");
+        assert_eq!(token_prefix("ééééééééééééé").chars().count(), 10, "never splits a UTF-8 character");
+    }
+
+    #[test]
+    fn password_hashes_are_salted_and_malformed_hashes_fail_closed() {
+        let a = hash_password("same").unwrap();
+        let b = hash_password("same").unwrap();
+        assert_ne!(a, b, "random salt per hash");
+        assert!(!a.contains("same"));
+        assert!(verify_password("same", &a) && verify_password("same", &b));
+        assert!(!verify_password("", &a));
+        assert!(!verify_password("Same", &a));
+        for bad in ["", "$argon2id$", "$argon2id$v=19$m=19456,t=2,p=1$bad", "plaintext"] {
+            assert!(!verify_password("same", bad), "{bad:?}");
+        }
+        // An empty password still hashes (policy is enforced elsewhere) and does not verify others.
+        let empty = hash_password("").unwrap();
+        assert!(verify_password("", &empty) && !verify_password("x", &empty));
+    }
+
+    #[test]
+    fn generated_passwords_are_typable() {
+        let p = generate_password().unwrap();
+        assert_eq!(p.len(), 24);
+        assert!(p.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'));
+        assert_ne!(p, generate_password().unwrap());
+    }
 }

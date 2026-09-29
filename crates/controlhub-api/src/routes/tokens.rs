@@ -131,6 +131,16 @@ fn expiry(kind: TokenKindDto, days: Option<u32>) -> ApiResult<Option<OffsetDateT
     }
 }
 
+/// The replacement keeps the lifetime policy: same expiry length, capped by kind.
+fn rotated_lifetime_days(
+    kind: TokenKindDto,
+    created_at: OffsetDateTime,
+    expires_at: Option<OffsetDateTime>,
+) -> Option<u32> {
+    let max = if kind == TokenKindDto::Api { MAX_API_TOKEN_DAYS } else { MAX_INGEST_TOKEN_DAYS };
+    expires_at.map(|e| ((e - created_at).whole_days().clamp(1, i64::from(u32::MAX)) as u32).min(max))
+}
+
 async fn issue(
     state: &AppState,
     scope: &Scope,
@@ -276,10 +286,7 @@ pub async fn rotate(
     }
     let kind = kind_of(&old);
     let now = OffsetDateTime::now_utc();
-    // The replacement keeps the remaining lifetime policy: same expiry length, capped by kind.
-    let lifetime_days = old.expires_at.map(|e| (e - old.created_at).whole_days().clamp(1, i64::from(u32::MAX)) as u32);
-    let max = if kind == TokenKindDto::Api { MAX_API_TOKEN_DAYS } else { MAX_INGEST_TOKEN_DAYS };
-    let expires_at = expiry(kind, lifetime_days.map(|d| d.min(max)))?;
+    let expires_at = expiry(kind, rotated_lifetime_days(kind, old.created_at, old.expires_at))?;
     let (new_id, secret) = issue(&state, &scope, &user, kind, &old.name, expires_at).await?;
     let before = TokenDto::from_row(old.clone());
     state.pg.end_token(&scope, kind.into(), old.id, now + time::Duration::seconds(i64::from(grace))).await?;
@@ -305,5 +312,105 @@ mod tests {
         assert!(expiry(TokenKindDto::Api, Some(91)).is_err());
         assert!(expiry(TokenKindDto::Ingest, None).unwrap().is_none());
         assert!(expiry(TokenKindDto::Ingest, Some(0)).is_err());
+    }
+
+    fn days_from_now(t: Option<OffsetDateTime>) -> i64 {
+        (t.unwrap() - OffsetDateTime::now_utc()).whole_hours().div_euclid(24) + 1
+    }
+
+    #[test]
+    fn expiry_bounds_per_kind() {
+        assert_eq!(days_from_now(expiry(TokenKindDto::Api, None).unwrap()), 30, "default 30 days");
+        assert_eq!(days_from_now(expiry(TokenKindDto::Api, Some(1)).unwrap()), 1);
+        assert_eq!(days_from_now(expiry(TokenKindDto::Api, Some(90)).unwrap()), 90);
+        assert!(expiry(TokenKindDto::Api, Some(0)).is_err());
+        assert!(expiry(TokenKindDto::Api, Some(u32::MAX)).is_err());
+        assert_eq!(days_from_now(expiry(TokenKindDto::Ingest, Some(365)).unwrap()), 365);
+        assert!(expiry(TokenKindDto::Ingest, Some(366)).is_err());
+        match expiry(TokenKindDto::Api, Some(91)) {
+            Err(ApiError::BadRequest(m)) => assert_eq!(m, "expires_in_days must be 1-90"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn names_allow_only_a_safe_charset() {
+        assert_eq!(validate_name("  deploy bot  ").unwrap(), "deploy bot", "trimmed");
+        assert!(validate_name(&"x".repeat(64)).is_ok());
+        for bad in ["   ", "a/b", "a\nb", "a;b", "naïve", "a\"b", "a'b", "a\u{0}b", "a\u{202e}b"] {
+            assert!(validate_name(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn reasons_are_optional_and_bounded() {
+        assert_eq!(validate_reason(None).unwrap(), None);
+        assert_eq!(validate_reason(Some("  ")).unwrap(), None);
+        assert_eq!(validate_reason(Some(" leaked in CI ")).unwrap(), Some("leaked in CI"));
+        assert!(validate_reason(Some(&"x".repeat(500))).is_ok());
+        assert!(validate_reason(Some(&"x".repeat(501))).is_err());
+    }
+
+    fn row(kind: &str, expires_at: Option<OffsetDateTime>, revoked_at: Option<OffsetDateTime>) -> TokenRow {
+        TokenRow {
+            id: Uuid::nil(),
+            kind: kind.into(),
+            name: "ci".into(),
+            token_prefix: "cha_abcdef".into(),
+            signals: None,
+            created_at: OffsetDateTime::now_utc() - time::Duration::days(1),
+            expires_at,
+            revoked_at,
+            last_used_at: None,
+            created_by: None,
+        }
+    }
+
+    #[test]
+    fn token_dto_activity_and_kind() {
+        let now = OffsetDateTime::now_utc();
+        let future = Some(now + time::Duration::days(1));
+        let past = Some(now - time::Duration::seconds(1));
+        assert!(TokenDto::from_row(row("api", future, None)).active);
+        assert!(TokenDto::from_row(row("ingest", None, None)).active, "ingest tokens may never expire");
+        assert!(!TokenDto::from_row(row("api", past, None)).active, "expired");
+        assert!(!TokenDto::from_row(row("api", future, past)).active, "revoked");
+        assert_eq!(TokenDto::from_row(row("api", future, None)).kind, TokenKindDto::Api);
+        assert_eq!(TokenDto::from_row(row("ingest", None, None)).kind, TokenKindDto::Ingest);
+        assert_eq!(kind_of(&row("api", None, None)), TokenKindDto::Api);
+        assert_eq!(kind_of(&row("ingest", None, None)), TokenKindDto::Ingest);
+        let v = serde_json::to_value(TokenDto::from_row(row("api", future, None))).unwrap();
+        assert!(v.get("token_hash").is_none() && v.get("secret").is_none(), "metadata only: {v}");
+        assert_eq!(v["kind"], "api");
+    }
+
+    #[test]
+    fn rotation_keeps_the_lifetime_capped_by_kind() {
+        let c = OffsetDateTime::from_unix_timestamp(1_790_000_000).unwrap();
+        let d = |n: i64| Some(c + time::Duration::days(n));
+        assert_eq!(rotated_lifetime_days(TokenKindDto::Api, c, d(30)), Some(30));
+        assert_eq!(rotated_lifetime_days(TokenKindDto::Api, c, d(400)), Some(MAX_API_TOKEN_DAYS));
+        assert_eq!(rotated_lifetime_days(TokenKindDto::Ingest, c, d(400)), Some(MAX_INGEST_TOKEN_DAYS));
+        assert_eq!(rotated_lifetime_days(TokenKindDto::Ingest, c, None), None, "no expiry stays no expiry");
+        assert_eq!(
+            rotated_lifetime_days(TokenKindDto::Api, c, Some(c + time::Duration::hours(3))),
+            Some(1),
+            "at least a day"
+        );
+        assert_eq!(rotated_lifetime_days(TokenKindDto::Api, c, Some(c - time::Duration::days(5))), Some(1));
+        // Whatever it returns is accepted by `expiry` for the same kind.
+        for kind in [TokenKindDto::Api, TokenKindDto::Ingest] {
+            for n in [-10, 0, 1, 89, 90, 91, 365, 10_000] {
+                assert!(expiry(kind, rotated_lifetime_days(kind, c, d(n))).is_ok(), "{kind:?} {n}");
+            }
+        }
+    }
+
+    #[test]
+    fn kind_dto_maps_to_storage_kind() {
+        assert_eq!(TokenKind::from(TokenKindDto::Api), TokenKind::Api);
+        assert_eq!(TokenKind::from(TokenKindDto::Ingest), TokenKind::Ingest);
+        assert_eq!(serde_json::from_str::<TokenKindDto>("\"ingest\"").unwrap(), TokenKindDto::Ingest);
+        assert!(serde_json::from_str::<TokenKindDto>("\"admin\"").is_err());
     }
 }

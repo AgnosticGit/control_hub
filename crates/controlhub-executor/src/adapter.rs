@@ -164,4 +164,170 @@ mod tests {
         assert!(Demo::new(DemoConfig { db_container: "x; rm -rf /".into(), ..cfg() }).is_err());
         assert!(Demo::new(DemoConfig { db_container: "--privileged".into(), ..cfg() }).is_err());
     }
+
+    #[test]
+    fn loopback_urls() {
+        for ok in ["http://127.0.0.1:7001", "http://localhost:7002", "http://[::1]:7001"] {
+            assert!(loopback(ok), "{ok}");
+        }
+        for bad in [
+            "https://127.0.0.1:7001",
+            "http://127.0.0.1",
+            "http://127.0.0.2:7001",
+            "http://localhost.evil.example:80",
+            "http://127.0.0.1:7001@evil.example",
+            "http://user@127.0.0.1:7001",
+            "HTTP://127.0.0.1:7001",
+            "file:///etc/passwd",
+            "",
+        ] {
+            assert!(!loopback(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn container_names_can_never_become_flags() {
+        for ok in ["controlhub-demo-postgres-1", "a", "db_1.x", "0db"] {
+            assert!(Demo::new(DemoConfig { db_container: ok.into(), ..cfg() }).is_ok(), "{ok}");
+        }
+        for bad in ["", "-x", ".hidden", "_x", "a b", "a/b", "a\nb", "a=b", "ä"] {
+            assert!(Demo::new(DemoConfig { db_container: bad.into(), ..cfg() }).is_err(), "{bad:?}");
+        }
+    }
+
+    /// Minimal HTTP/1.1 server on a random loopback port: answers each connection with the next
+    /// canned response and records `METHOD PATH` plus the request body.
+    fn fake_server(responses: Vec<(u16, &'static str)>) -> (String, std::thread::JoinHandle<Vec<(String, String)>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let handle = std::thread::spawn(move || {
+            let mut seen = Vec::new();
+            for (status, body) in responses {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 4096];
+                let head_end = loop {
+                    let n = stream.read(&mut chunk).unwrap();
+                    buf.extend_from_slice(&chunk[..n]);
+                    if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        break i + 4;
+                    }
+                    assert!(n > 0, "client closed before sending headers");
+                };
+                let head = String::from_utf8_lossy(&buf[..head_end]).to_string();
+                let len = head
+                    .lines()
+                    .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().to_owned()))
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .unwrap_or(0);
+                while buf.len() < head_end + len {
+                    let n = stream.read(&mut chunk).unwrap();
+                    assert!(n > 0);
+                    buf.extend_from_slice(&chunk[..n]);
+                }
+                let line = head.lines().next().unwrap_or_default().rsplit_once(' ').map(|(l, _)| l.to_owned());
+                seen.push((
+                    line.unwrap_or_default(),
+                    String::from_utf8_lossy(&buf[head_end..head_end + len]).to_string(),
+                ));
+                let res = format!(
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(res.as_bytes()).unwrap();
+            }
+            seen
+        });
+        (url, handle)
+    }
+
+    fn demo_at(url: &str) -> Demo {
+        Demo::new(DemoConfig { gateway_url: url.into(), orders_url: url.into(), ..cfg() }).unwrap()
+    }
+
+    #[tokio::test]
+    async fn inject_posts_typed_values_and_verifies_the_readback() {
+        let (url, server) = fake_server(vec![(200, "{}"), (200, r#"{"latencyMs":250,"errorRate":0.25}"#)]);
+        let action = Action::DemoFaultsInject { service: DemoService::Orders, latency_ms: 250, error_rate: 0.25 };
+        let out = demo_at(&url).run(&action).await.unwrap();
+        assert_eq!(out["service"], "orders");
+        assert_eq!(out["fault_state"]["latencyMs"], 250);
+        let seen = server.join().unwrap();
+        assert_eq!(seen[0].0, "POST /__demo/faults");
+        assert_eq!(serde_json::from_str::<Value>(&seen[0].1).unwrap(), json!({ "latencyMs": 250, "errorRate": 0.25 }));
+        assert_eq!(seen[1].0, "GET /__demo/faults");
+    }
+
+    #[tokio::test]
+    async fn clear_posts_zeroes() {
+        let (url, server) = fake_server(vec![(200, "{}"), (200, r#"{"latencyMs":0,"errorRate":0}"#)]);
+        demo_at(&url).run(&Action::DemoFaultsClear { service: DemoService::Gateway }).await.unwrap();
+        let seen = server.join().unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&seen[0].1).unwrap(), json!({ "latencyMs": 0, "errorRate": 0.0 }));
+    }
+
+    #[tokio::test]
+    async fn a_readback_that_differs_is_a_failure() {
+        for readback in [
+            r#"{"latencyMs":0,"errorRate":0}"#,
+            r#"{"latencyMs":250}"#,
+            r#"{"latencyMs":250,"errorRate":0.2500001}"#,
+            r#"{"latencyMs":"250","errorRate":0.25}"#,
+        ] {
+            let (url, server) = fake_server(vec![(200, "{}"), (200, readback)]);
+            let action = Action::DemoFaultsInject { service: DemoService::Orders, latency_ms: 250, error_rate: 0.25 };
+            let e = demo_at(&url).run(&action).await.unwrap_err();
+            assert!(format!("{e:#}").contains("did not read back"), "{readback}: {e:#}");
+            server.join().unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn fault_endpoint_errors_are_failures() {
+        let (url, server) = fake_server(vec![(500, "{}")]);
+        let e = demo_at(&url).run(&Action::DemoFaultsClear { service: DemoService::Orders }).await.unwrap_err();
+        assert!(format!("{e:#}").contains("fault control returned 500"), "{e:#}");
+        server.join().unwrap();
+
+        let (url, server) = fake_server(vec![(200, "{}"), (200, "<html>not json</html>")]);
+        assert!(demo_at(&url).run(&Action::DemoFaultsClear { service: DemoService::Orders }).await.is_err());
+        server.join().unwrap();
+
+        // Nothing listens on port 1.
+        let e = demo_at("http://127.0.0.1:1").run(&Action::DemoFaultsClear { service: DemoService::Orders }).await;
+        assert!(format!("{:#}", e.unwrap_err()).contains("unreachable"));
+    }
+
+    #[tokio::test]
+    async fn restart_fails_cleanly_without_docker() {
+        let demo = Demo::new(DemoConfig { docker_bin: "controlhub-test-no-such-docker".into(), ..cfg() }).unwrap();
+        let e = demo.run(&Action::DemoRestartDatabase).await.unwrap_err();
+        assert!(format!("{e:#}").contains("cannot run controlhub-test-no-such-docker"), "{e:#}");
+    }
+
+    #[tokio::test]
+    async fn restart_refuses_a_container_with_foreign_compose_labels() {
+        let dir = std::env::temp_dir().join(format!("controlhub-fake-docker-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        #[cfg(windows)]
+        let bin = {
+            let p = dir.join("docker.cmd");
+            std::fs::write(&p, "@echo otherproject/postgres\r\n").unwrap();
+            p
+        };
+        #[cfg(not(windows))]
+        let bin = {
+            use std::os::unix::fs::PermissionsExt;
+            let p = dir.join("docker");
+            std::fs::write(&p, "#!/bin/sh\necho otherproject/postgres\n").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            p
+        };
+        let demo = Demo::new(DemoConfig { docker_bin: bin.to_string_lossy().into_owned(), ..cfg() }).unwrap();
+        let e = demo.run(&Action::DemoRestartDatabase).await.unwrap_err();
+        let msg = format!("{e:#}");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(msg.contains("is not controlhub/demo-postgres") && msg.contains("otherproject/postgres"), "{msg}");
+    }
 }

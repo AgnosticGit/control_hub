@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { splitterDragValue, splitterKeyValue } from "./splitter-math";
 
 interface Props {
   /** "row": a horizontal bar that resizes the height of the panel below it; "column": a
@@ -16,7 +17,6 @@ interface Props {
 /** Drag or arrow-key handle that resizes the panel after it (the panel grows towards the handle). */
 export function Splitter({ axis, label, value, min, max, onChange }: Props) {
   const start = useRef<{ pos: number; value: number } | null>(null);
-  const clamp = (v: number) => Math.round(Math.max(min, Math.min(max, v)));
   const pos = (e: React.PointerEvent) => (axis === "row" ? e.clientY : e.clientX);
   const row = axis === "row";
   return (
@@ -35,18 +35,17 @@ export function Splitter({ axis, label, value, min, max, onChange }: Props) {
       }}
       onPointerMove={(e) => {
         const s = start.current;
-        if (s) onChange(clamp(s.value - (pos(e) - s.pos)));
+        if (s) onChange(splitterDragValue(s.value, s.pos, pos(e), min, max));
       }}
       onPointerUp={(e) => {
         start.current = null;
         if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
       }}
       onKeyDown={(e) => {
-        const grow = row ? "ArrowUp" : "ArrowLeft";
-        const shrink = row ? "ArrowDown" : "ArrowRight";
-        if (e.key !== grow && e.key !== shrink) return;
+        const next = splitterKeyValue(axis, e.key, value, min, max);
+        if (next === null) return;
         e.preventDefault();
-        onChange(clamp(value + (e.key === grow ? 24 : -24)));
+        onChange(next);
       }}
       className={`group relative flex shrink-0 touch-none items-center justify-center outline-none ${
         row ? "h-3 cursor-row-resize" : "w-3 cursor-col-resize"

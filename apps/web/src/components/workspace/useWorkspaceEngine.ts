@@ -25,7 +25,7 @@ export function animClockFor(mode: Mode, speed: Speed): AnimClock {
 }
 
 /** Hop window around the frame time that covers the animation time until the next frame. */
-function hopWindowFor(mode: Mode): { before: bigint; after: bigint } {
+export function hopWindowFor(mode: Mode): { before: bigint; after: bigint } {
   if (mode === "live") {
     // Frames come at least every LIVE_TICK_MS; animation time is frame time - delay + elapsed.
     return { before: BigInt(LIVE_ANIM_DELAY_MS + 1000) * NS_PER_MS, after: 500n * NS_PER_MS };
@@ -81,7 +81,7 @@ export interface EngineState {
   liveTransport: "off" | "connecting" | "websocket" | "polling";
 }
 
-function asCompleteness(v: unknown): Completeness | null {
+export function asCompleteness(v: unknown): Completeness | null {
   return v && typeof v === "object" && "processing_caught_up" in v ? (v as Completeness) : null;
 }
 

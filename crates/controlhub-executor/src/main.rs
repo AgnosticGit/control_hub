@@ -65,10 +65,22 @@ struct Executor {
     demo: adapter::Demo,
 }
 
+#[derive(Debug)]
 enum Outcome {
     Succeeded(Value, Value),
     VerificationFailed(Value, Value),
     Failed(Value),
+}
+
+impl Outcome {
+    /// Final plan state, result and verification as stored by `finish_action_plan`.
+    fn into_record(self) -> (&'static str, Value, Option<Value>) {
+        match self {
+            Outcome::Succeeded(r, v) => ("succeeded", r, Some(v)),
+            Outcome::VerificationFailed(r, v) => ("verification_failed", r, Some(v)),
+            Outcome::Failed(r) => ("failed", r, None),
+        }
+    }
 }
 
 impl Executor {
@@ -152,11 +164,7 @@ impl Executor {
         };
         let outcome = self.execute(&row).await;
         lease.abort();
-        let (state, result, verification) = match outcome {
-            Outcome::Succeeded(r, v) => ("succeeded", r, Some(v)),
-            Outcome::VerificationFailed(r, v) => ("verification_failed", r, Some(v)),
-            Outcome::Failed(r) => ("failed", r, None),
-        };
+        let (state, result, verification) = outcome.into_record();
         tracing::info!(plan = %row.id, state, "finished");
         if !self.pg.finish_action_plan(row.id, &self.id, state, &result, verification.as_ref()).await? {
             tracing::error!(plan = %row.id, "could not record the result: plan no longer held by this executor");
@@ -219,4 +227,138 @@ async fn main() -> anyhow::Result<()> {
     }
     tracing::info!("controlhub-executor stopped");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    fn row(action_type: &str, target: &str, params: Value) -> ActionPlanRow {
+        let t = time::OffsetDateTime::UNIX_EPOCH;
+        ActionPlanRow {
+            id: uuid::Uuid::nil(),
+            tenant_id: "local".into(),
+            project_id: "demo".into(),
+            environment_id: "local-demo".into(),
+            action_type: action_type.into(),
+            target: target.into(),
+            params,
+            reason: "reason".into(),
+            state: "running".into(),
+            policy: json!({}),
+            created_by: uuid::Uuid::nil(),
+            created_by_email: "op@example.test".into(),
+            created_at: t,
+            expires_at: t,
+            decided_by: None,
+            decided_by_email: None,
+            decided_at: None,
+            decision_comment: None,
+            executor_id: Some("executor-test".into()),
+            lease_until: None,
+            started_at: None,
+            finished_at: None,
+            result: None,
+            verification: None,
+        }
+    }
+
+    fn executor() -> Executor {
+        Executor {
+            id: "executor-test".into(),
+            // Closed local ports: any storage access fails instead of touching a real system.
+            pg: PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/controlhub", 1).unwrap(),
+            ch: ChStore::new(&ChConfig {
+                url: "http://127.0.0.1:1".into(),
+                database: "controlhub".into(),
+                user: "u".into(),
+                password: "p".into(),
+            }),
+            demo: adapter::Demo::new(adapter::DemoConfig {
+                gateway_url: "http://127.0.0.1:1".into(),
+                orders_url: "http://127.0.0.1:1".into(),
+                db_container: "controlhub-demo-postgres-1".into(),
+                docker_bin: "controlhub-test-no-such-docker".into(),
+            })
+            .unwrap(),
+        }
+    }
+
+    #[test]
+    fn outcomes_map_to_final_states() {
+        let (s, r, v) = Outcome::Succeeded(json!({ "a": 1 }), json!({ "passed": true })).into_record();
+        assert_eq!((s, r, v), ("succeeded", json!({ "a": 1 }), Some(json!({ "passed": true }))));
+        let (s, _, v) = Outcome::VerificationFailed(json!({}), json!({ "passed": false })).into_record();
+        assert_eq!((s, v), ("verification_failed", Some(json!({ "passed": false }))));
+        let (s, r, v) = Outcome::Failed(json!({ "error": "x" })).into_record();
+        assert_eq!((s, r, v), ("failed", json!({ "error": "x" }), None));
+        // Every final state is a terminal state of the plan lifecycle.
+        for s in ["succeeded", "verification_failed", "failed"] {
+            assert!(actions::State::parse(s).is_some_and(actions::State::is_terminal), "{s}");
+        }
+    }
+
+    #[test]
+    fn scope_is_taken_from_the_plan_row_and_validated() {
+        let s = scope_of(&row("demo.faults.clear", "orders", json!({}))).unwrap();
+        assert_eq!(
+            (s.tenant_id.as_str(), s.project_id.as_str(), s.environment_id.as_str()),
+            ("local", "demo", "local-demo")
+        );
+        for (t, p, e) in [("", "demo", "env"), ("local", "de mo", "env"), ("local", "demo", "e;x")] {
+            let mut r = row("demo.faults.clear", "orders", json!({}));
+            (r.tenant_id, r.project_id, r.environment_id) = (t.into(), p.into(), e.into());
+            assert!(scope_of(&r).is_err(), "{t:?}/{p:?}/{e:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn tampered_plans_fail_revalidation_before_any_effect() {
+        let ex = executor();
+        for r in [
+            row("shell.exec", "orders", json!({ "cmd": "rm -rf /" })),
+            row("demo.faults.clear", "postgres", json!({})),
+            row("demo.faults.inject", "orders", json!({ "latency_ms": 1e9, "error_rate": 0.1 })),
+            row("demo.restart_database", "--privileged", json!({})),
+        ] {
+            match ex.execute(&r).await {
+                Outcome::Failed(v) => assert_eq!(v["error"], "plan failed re-validation", "{v}"),
+                other => panic!("{} must fail re-validation, got {other:?}", r.action_type),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_scope_fails_before_policy_or_effect() {
+        let mut r = row("demo.faults.clear", "orders", json!({}));
+        r.tenant_id = "bad tenant".into();
+        match executor().execute(&r).await {
+            Outcome::Failed(v) => assert!(v["error"].as_str().unwrap().starts_with("invalid scope"), "{v}"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn unreachable_policy_store_fails_closed() {
+        // Valid plan, but the policy cannot be evaluated: it must not run.
+        match executor().execute(&row("demo.faults.clear", "orders", json!({}))).await {
+            Outcome::Failed(v) => assert!(v["error"].as_str().unwrap().starts_with("policy check failed"), "{v}"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn args_require_database_url_and_validate_numbers() {
+        let base = ["controlhub-executor", "--clickhouse-user", "u", "--clickhouse-password", "p"];
+        if std::env::var_os("CONTROLHUB_EXECUTOR_DATABASE_URL").is_none() {
+            assert!(Args::try_parse_from(base).is_err(), "database URL is required");
+        }
+        let mut argv = base.to_vec();
+        argv.extend(["--database-url", "postgres://x@127.0.0.1/db", "--poll-ms", "250"]);
+        let a = Args::try_parse_from(&argv).unwrap();
+        assert_eq!(a.poll_ms, 250);
+        argv.extend(["--poll-ms", "-1"]);
+        assert!(Args::try_parse_from(&argv).is_err());
+    }
 }

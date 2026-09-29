@@ -18,11 +18,21 @@ if (!service || !(service in targets)) {
   console.error(`usage: fault.mjs <${Object.keys(targets).join('|')}> [--latency MS] [--error-rate 0..1] [--clear] [--status]`);
   process.exit(2);
 }
+// A missing or non-numeric value would be sent as null, which the service reads as 0 (fault cleared).
+function numberArg(flag, raw) {
+  const n = Number(raw);
+  if (raw === undefined || raw === '' || !Number.isFinite(n)) {
+    console.error(`${flag} needs a number`);
+    process.exit(2);
+  }
+  return n;
+}
+
 const opts = {};
 for (let i = 0; i < rest.length; i++) {
   const a = rest[i];
-  if (a === '--latency') opts.latencyMs = Number(rest[++i]);
-  else if (a === '--error-rate') opts.errorRate = Number(rest[++i]);
+  if (a === '--latency') opts.latencyMs = numberArg(a, rest[++i]);
+  else if (a === '--error-rate') opts.errorRate = numberArg(a, rest[++i]);
   else if (a === '--clear') Object.assign(opts, { latencyMs: 0, errorRate: 0 });
   else if (a === '--status') opts.status = true;
   else {

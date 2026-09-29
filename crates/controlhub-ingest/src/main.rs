@@ -9,6 +9,8 @@ mod http;
 mod metrics;
 mod pipeline;
 mod sanitize;
+#[cfg(test)]
+mod testing;
 
 use std::net::SocketAddr;
 use std::sync::Arc;

@@ -92,8 +92,31 @@ fn now_ns() -> i64 {
     chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
 }
 
+/// Offset to resume from after a batch: one past the highest fetched record offset.
+fn next_offset(offsets: impl Iterator<Item = i64>, current: i64) -> i64 {
+    offsets.max().unwrap_or(current - 1) + 1
+}
+
+/// Dead-letter rows keep the raw record only up to `MAX_DEAD_LETTER_PAYLOAD`.
+fn dead_letter_payload(payload: &[u8]) -> Option<&[u8]> {
+    (payload.len() <= MAX_DEAD_LETTER_PAYLOAD).then_some(payload)
+}
+
 /// Retry `op` with backoff until it succeeds or shutdown is requested.
-async fn retry_until_ok<T, E: std::fmt::Display, F, Fut>(ctx: &Ctx, what: &str, mut op: F) -> Option<T>
+async fn retry_until_ok<T, E: std::fmt::Display, F, Fut>(ctx: &Ctx, what: &str, op: F) -> Option<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
+{
+    retry_with(&ctx.metrics, &ctx.stop, what, op).await
+}
+
+async fn retry_with<T, E: std::fmt::Display, F, Fut>(
+    metrics: &Metrics,
+    stop_rx: &watch::Receiver<bool>,
+    what: &str,
+    mut op: F,
+) -> Option<T>
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = Result<T, E>>,
@@ -103,12 +126,12 @@ where
         match op().await {
             Ok(v) => return Some(v),
             Err(e) => {
-                ctx.metrics.write_failures.fetch_add(1, Ordering::Relaxed);
+                metrics.write_failures.fetch_add(1, Ordering::Relaxed);
                 tracing::warn!(error = %e, attempt, "{what} failed; will retry (offset not advanced)");
-                if *ctx.stop.borrow() {
+                if *stop_rx.borrow() {
                     return None;
                 }
-                let mut stop = ctx.stop.clone();
+                let mut stop = stop_rx.clone();
                 tokio::select! {
                     _ = tokio::time::sleep(backoff(attempt, Duration::from_millis(200), Duration::from_secs(10))) => {}
                     _ = stop.wait_for(|v| *v) => return None,
@@ -224,7 +247,7 @@ async fn run_partition(ctx: Ctx, pc: PartitionClient) {
             }
         }
         for (off, err, payload) in &dead {
-            let payload = (payload.len() <= MAX_DEAD_LETTER_PAYLOAD).then_some(payload.as_slice());
+            let payload = dead_letter_payload(payload);
             let msg = err.to_string();
             let stored = retry_until_ok(&ctx, "dead-letter write", || {
                 ctx.pg.record_processing_error(
@@ -246,7 +269,7 @@ async fn run_partition(ctx: Ctx, pc: PartitionClient) {
             ctx.metrics.dead_letters.fetch_add(1, Ordering::Relaxed);
             tracing::error!(partition, broker_offset = off, kind = err.kind(), "record moved to dead-letter table");
         }
-        let next = records.iter().map(|r| r.offset).max().unwrap_or(offset - 1) + 1;
+        let next = next_offset(records.iter().map(|r| r.offset), offset);
         if retry_until_ok(&ctx, "offset commit", || {
             ctx.pg.commit_offset(CONSUMER, TELEMETRY_TOPIC, partition, next, high_watermark, max_received)
         })
@@ -323,4 +346,105 @@ async fn main() -> anyhow::Result<()> {
     let _ = admin_task.await;
     tracing::info!("controlhub-processor stopped");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicU32;
+
+    #[test]
+    fn next_offset_is_one_past_the_highest_record() {
+        assert_eq!(next_offset([5, 6, 7].into_iter(), 5), 8);
+        assert_eq!(next_offset([9, 7, 8].into_iter(), 7), 10, "order does not matter");
+        assert_eq!(next_offset(std::iter::empty(), 42), 42, "empty batch never moves the offset");
+        assert_eq!(next_offset([0].into_iter(), 0), 1);
+    }
+
+    #[test]
+    fn dead_letter_payload_is_bounded() {
+        assert_eq!(dead_letter_payload(b"abc"), Some(&b"abc"[..]));
+        assert_eq!(dead_letter_payload(&[]), Some(&[][..]));
+        let exact = vec![0u8; MAX_DEAD_LETTER_PAYLOAD];
+        assert!(dead_letter_payload(&exact).is_some());
+        let over = vec![0u8; MAX_DEAD_LETTER_PAYLOAD + 1];
+        assert!(dead_letter_payload(&over).is_none());
+    }
+
+    #[test]
+    fn metrics_render_every_series() {
+        let m = Metrics { lag: (0..3).map(|_| AtomicI64::new(0)).collect(), ..Metrics::default() };
+        m.records.fetch_add(10, Ordering::Relaxed);
+        m.spans.fetch_add(4, Ordering::Relaxed);
+        m.dead_letters.fetch_add(1, Ordering::Relaxed);
+        m.offset_gaps.fetch_add(2, Ordering::Relaxed);
+        if let Some(l) = m.lag.get(2) {
+            l.store(-3, Ordering::Relaxed);
+        }
+        let out = m.render();
+        for line in [
+            "controlhub_processor_records_total 10",
+            "controlhub_processor_rows_total{table=\"spans\"} 4",
+            "controlhub_processor_rows_total{table=\"logs\"} 0",
+            "controlhub_processor_rows_total{table=\"events\"} 0",
+            "controlhub_processor_write_failures_total 0",
+            "controlhub_processor_dead_letters_total 1",
+            "controlhub_processor_offset_gaps_total 2",
+            "controlhub_processor_lag{partition=\"0\"} 0",
+            "controlhub_processor_lag{partition=\"2\"} -3",
+        ] {
+            assert!(out.lines().any(|l| l == line), "missing {line}:\n{out}");
+        }
+        assert_eq!(out.lines().count(), 7 + 3);
+        assert_eq!(Metrics::default().render().lines().count(), 7);
+    }
+
+    #[tokio::test]
+    async fn retry_returns_immediately_on_success() {
+        let m = Metrics::default();
+        let (_tx, rx) = watch::channel(false);
+        let r = retry_with(&m, &rx, "op", || async { Ok::<_, String>(5) }).await;
+        assert_eq!(r, Some(5));
+        assert_eq!(m.write_failures.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn retry_counts_failures_until_success() {
+        let m = Metrics::default();
+        let (_tx, rx) = watch::channel(false);
+        let calls = AtomicU32::new(0);
+        let r = retry_with(&m, &rx, "op", || {
+            let n = calls.fetch_add(1, Ordering::Relaxed);
+            async move { if n < 2 { Err("transient") } else { Ok(n) } }
+        })
+        .await;
+        assert_eq!(r, Some(2));
+        assert_eq!(m.write_failures.load(Ordering::Relaxed), 2);
+    }
+
+    #[tokio::test]
+    async fn retry_gives_up_when_already_stopping() {
+        let m = Metrics::default();
+        let (_tx, rx) = watch::channel(true);
+        let r: Option<()> = retry_with(&m, &rx, "op", || async { Err("down") }).await;
+        assert_eq!(r, None, "offset must not advance");
+        assert_eq!(m.write_failures.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn retry_is_interrupted_by_shutdown_during_backoff() {
+        let m = Metrics::default();
+        let (tx, rx) = watch::channel(false);
+        let stopper = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = tx.send(true);
+            tx
+        });
+        let started = Instant::now();
+        let r: Option<()> = retry_with(&m, &rx, "op", || async { Err("down") }).await;
+        assert_eq!(r, None);
+        assert!(started.elapsed() < Duration::from_secs(5), "shutdown must cut the backoff short");
+        assert!(m.write_failures.load(Ordering::Relaxed) >= 1);
+        drop(stopper.await);
+    }
 }

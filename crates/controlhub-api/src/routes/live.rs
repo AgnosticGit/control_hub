@@ -66,6 +66,13 @@ fn require_origin(state: &AppState, headers: &HeaderMap) -> ApiResult<()> {
     }
 }
 
+/// A client-supplied resume cursor is clamped to the live window, so it can neither request
+/// history older than the window nor skip ahead of now.
+fn start_cursor(resume: &Option<String>, now: i64) -> ApiResult<i64> {
+    let floor = now - EVENT_LOOKBACK_NS;
+    Ok(parse_ns(resume, "resume")?.map_or(now - INITIAL_OVERLAP_NS, |r| r.clamp(floor, now)))
+}
+
 #[utoipa::path(get, path = "/api/v1/projects/{project_id}/environments/{environment_id}/live", tag = "telemetry",
     description = "WebSocket upgrade. Server messages: hello, batch, gap, heartbeat, error (JSON text frames).",
     params(("project_id" = String, Path), ("environment_id" = String, Path), LiveParams),
@@ -83,9 +90,7 @@ pub async fn live(
         require_origin(&state, &headers)?;
     }
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
-    let now = now_ns();
-    let floor = now - EVENT_LOOKBACK_NS;
-    let cursor = parse_ns(&q.resume, "resume")?.map_or(now - INITIAL_OVERLAP_NS, |r| r.clamp(floor, now));
+    let cursor = start_cursor(&q.resume, now_ns())?;
     let permit = state.live_slots.clone().try_acquire_owned().map_err(|_| ApiError::TooManyRequests)?;
     Ok(ws.max_message_size(64 * 1024).on_upgrade(move |socket| run(socket, state, scope, cursor, user, permit)))
 }
@@ -198,5 +203,59 @@ mod tests {
         let mut e = controlhub_engine_core::Engine::new(Default::default());
         e.apply_batch_json(&text).unwrap();
         assert_eq!(e.item_count(), 1);
+    }
+
+    #[test]
+    fn control_messages_have_the_documented_shape() {
+        let j = |m: &ServerMessage<'_>| serde_json::to_string(m).unwrap();
+        assert_eq!(
+            j(&ServerMessage::Hello { resume: "1".into(), poll_ms: 1000 }),
+            r#"{"type":"hello","resume":"1","poll_ms":1000}"#
+        );
+        assert_eq!(
+            j(&ServerMessage::Gap { resume: "9".into(), from_ingested_ns: "3".into() }),
+            r#"{"type":"gap","resume":"9","from_ingested_ns":"3"}"#
+        );
+        assert_eq!(j(&ServerMessage::Heartbeat { resume: "5".into() }), r#"{"type":"heartbeat","resume":"5"}"#);
+        assert_eq!(
+            j(&ServerMessage::Error { message: "authorization ended" }),
+            r#"{"type":"error","message":"authorization ended"}"#
+        );
+    }
+
+    #[test]
+    fn resume_cursor_is_clamped_to_the_live_window() {
+        let now = 1_790_000_000_000_000_000;
+        assert_eq!(start_cursor(&None, now).unwrap(), now - INITIAL_OVERLAP_NS);
+        assert_eq!(start_cursor(&Some((now - 1).to_string()), now).unwrap(), now - 1);
+        assert_eq!(start_cursor(&Some("0".into()), now).unwrap(), now - EVENT_LOOKBACK_NS, "no old history");
+        assert_eq!(start_cursor(&Some(i64::MIN.to_string()), now).unwrap(), now - EVENT_LOOKBACK_NS);
+        assert_eq!(start_cursor(&Some(i64::MAX.to_string()), now).unwrap(), now, "cannot skip ahead");
+        for bad in ["", "abc", "1.5", "-"] {
+            assert!(matches!(start_cursor(&Some(bad.into()), now), Err(ApiError::BadRequest(_))), "{bad:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn websocket_origin_is_always_required_for_sessions() {
+        let s = crate::state::test_state(true);
+        let h = |o: Option<&str>| {
+            let mut m = HeaderMap::new();
+            if let Some(o) = o {
+                m.insert(header::ORIGIN, o.parse().unwrap());
+            }
+            m
+        };
+        assert!(require_origin(&s, &h(Some("http://localhost:3000"))).is_ok());
+        assert!(require_origin(&s, &h(Some("http://127.0.0.1:3000"))).is_ok());
+        // Unlike plain requests, a missing Origin is refused (cross-site WebSocket hijacking).
+        for o in [None, Some("http://evil.example"), Some("null"), Some("http://localhost:3000/")] {
+            assert!(matches!(require_origin(&s, &h(o)), Err(ApiError::Forbidden("origin not allowed"))), "{o:?}");
+        }
+    }
+
+    #[test]
+    fn credentials_are_rechecked_every_30_seconds() {
+        assert_eq!(SESSION_RECHECK, Duration::from_secs(30), "ADR-0011");
     }
 }

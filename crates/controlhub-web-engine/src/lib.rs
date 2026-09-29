@@ -21,6 +21,11 @@ fn set(obj: &Object, key: &str, value: &JsValue) -> Result<(), JsValue> {
     Reflect::set(obj, &JsValue::from_str(key), value).map(|_| ())
 }
 
+/// Empty or whitespace-only text means defaults.
+fn parse_config(config_json: &str) -> Result<EngineConfig, serde_json::Error> {
+    if config_json.trim().is_empty() { Ok(EngineConfig::default()) } else { serde_json::from_str(config_json) }
+}
+
 /// Version of the engine ABI; the TS wrapper refuses to run against a mismatching build.
 #[wasm_bindgen(js_name = engineAbiVersion)]
 pub fn engine_abi_version() -> u32 {
@@ -38,11 +43,7 @@ impl WebEngine {
     /// `config_json`: serialized `EngineConfig` (empty string = defaults).
     #[wasm_bindgen(constructor)]
     pub fn new(config_json: &str) -> Result<WebEngine, JsValue> {
-        let config: EngineConfig = if config_json.trim().is_empty() {
-            EngineConfig::default()
-        } else {
-            serde_json::from_str(config_json).map_err(js_err)?
-        };
+        let config = parse_config(config_json).map_err(js_err)?;
         Ok(WebEngine { inner: Engine::new(config) })
     }
 
@@ -138,5 +139,138 @@ impl WebEngine {
     #[wasm_bindgen(js_name = getDiagnostics)]
     pub fn get_diagnostics(&mut self) -> Result<JsValue, JsValue> {
         to_js(&self.inner.diagnostics())
+    }
+}
+
+/// Native tests cover every method whose success path creates no JS value. Anything that builds a
+/// `JsValue` (errors, typed arrays, `serde_wasm_bindgen`) aborts outside wasm32, so those paths are
+/// exercised through the engine-core API they delegate to and by the browser tests.
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use super::*;
+    use controlhub_engine_core as core;
+
+    const TS_INDEX: &str = include_str!("../../../packages/web-engine/src/index.ts");
+
+    fn ts_const(name: &str) -> u32 {
+        let prefix = format!("export const {name} = ");
+        let line =
+            TS_INDEX.lines().find(|l| l.starts_with(&prefix)).unwrap_or_else(|| panic!("{name} missing in index.ts"));
+        line[prefix.len()..].trim_end_matches(';').trim().parse().unwrap()
+    }
+
+    fn ts_status(name: &str) -> f32 {
+        let line = TS_INDEX.lines().find(|l| l.starts_with("export const STATUS = ")).unwrap();
+        let at = line.find(&format!("{name}: ")).unwrap() + name.len() + 2;
+        line[at..].chars().take_while(char::is_ascii_digit).collect::<String>().parse().unwrap()
+    }
+
+    const BATCH: &str = r#"{"items":[
+        {"type":"span","trace_id":"t1","span_id":"a","service_id":"svc_gw","service_name":"gw","name":"GET /","kind":2,"start_ns":"1000000000","end_ns":"3000000000","is_error":false},
+        {"type":"span","trace_id":"t1","span_id":"b","parent_span_id":"a","service_id":"svc_orders","service_name":"orders","name":"order","kind":2,"start_ns":"1500000000","end_ns":"2500000000","is_error":true},
+        {"type":"log","id":"l1","service_id":"svc_orders","service_name":"orders","time_ns":"2000000000","severity":17}
+    ]}"#;
+
+    fn engine() -> WebEngine {
+        let mut e = WebEngine::new("").unwrap();
+        e.load_topology(r#"{"nodes":[],"edges":[]}"#).unwrap();
+        e.apply_batch(BATCH).unwrap();
+        e
+    }
+
+    #[test]
+    fn abi_and_buffer_layout_match_the_typescript_wrapper() {
+        assert_eq!(engine_abi_version(), ts_const("ENGINE_ABI_VERSION"), "bump both sides together");
+        for (name, value) in [
+            ("NODE_STRIDE", core::NODE_STRIDE as u32),
+            ("EDGE_STRIDE", core::EDGE_STRIDE as u32),
+            ("HOP_STRIDE", core::HOP_STRIDE as u32),
+            ("HOP_ERROR", core::HOP_ERROR),
+            ("HOP_LEAF", core::HOP_LEAF),
+            ("HOP_HIGHLIGHT", core::HOP_HIGHLIGHT),
+            ("HOP_CLAMPED", core::HOP_CLAMPED),
+            ("HOP_DIMMED", core::HOP_DIMMED),
+            ("FLAG_HIGHLIGHT", core::FLAG_HIGHLIGHT),
+            ("FLAG_INFERRED", core::FLAG_INFERRED),
+            ("FLAG_DECLARED", core::FLAG_DECLARED),
+            ("FLAG_RESOURCE", core::FLAG_RESOURCE),
+            ("FLAG_PROBLEM", core::FLAG_PROBLEM),
+            ("FLAG_DIMMED", core::FLAG_DIMMED),
+        ] {
+            assert_eq!(ts_const(name), value, "{name}");
+        }
+    }
+
+    #[test]
+    fn status_encoding_matches_the_typescript_wrapper() {
+        let mut e = engine();
+        assert!(e.seek(2_600_000_000, 1));
+        let vs = e.inner.visible_state();
+        let topo = e.inner.topology();
+        let status = |id: &str| {
+            let idx = topo.nodes.iter().find(|n| n.id == id).unwrap().index;
+            let k = vs.node_indices.iter().position(|&i| i == idx).unwrap();
+            vs.node_data[k * core::NODE_STRIDE + 3]
+        };
+        assert_eq!(status("svc_orders"), ts_status("failing"));
+        assert_eq!(status("svc_gw"), ts_status("healthy"), "one request in flight");
+        assert!(e.seek(0, 2));
+        let vs = e.inner.visible_state();
+        assert!(vs.node_data.chunks(core::NODE_STRIDE).all(|c| c[3] == ts_status("unknown")));
+    }
+
+    #[test]
+    fn config_parsing() {
+        assert_eq!(parse_config("").unwrap(), EngineConfig::default());
+        assert_eq!(parse_config(" \n\t").unwrap(), EngineConfig::default());
+        assert_eq!(parse_config("{}").unwrap(), EngineConfig::default(), "missing fields take defaults");
+        let c = parse_config(r#"{"max_items":5,"rolling_window_ns":"1000","hop_before_ns":"-1"}"#).unwrap();
+        assert_eq!((c.max_items, c.rolling_window_ns, c.hop_before_ns), (5, 1000, -1));
+        for bad in ["{", "null", r#"{"max_items":-1}"#, r#"{"rolling_window_ns":"x"}"#, r#"{"max_hops":1.5}"#] {
+            assert!(parse_config(bad).is_err(), "accepted {bad}");
+        }
+        // A negative hop window from the config is clamped by the engine.
+        let e = WebEngine::new(r#"{"hop_before_ns":"-5","max_items":3}"#).unwrap();
+        assert_eq!(e.inner.config().max_items, 3);
+    }
+
+    #[test]
+    fn methods_delegate_to_the_engine() {
+        let mut e = engine();
+        assert_eq!(e.inner.item_count(), 3);
+        assert!(e.seek(2_000_000_000, 5));
+        assert!(!e.seek(0, 4), "stale generation is reported as false");
+        assert_eq!(e.inner.current_time(), Some(2_000_000_000));
+        assert_eq!(e.prev_event_time(1_500_000_000), Some(1_000_000_000));
+        assert_eq!(e.next_event_time(1_500_000_000), Some(2_000_000_000));
+        assert_eq!(e.next_event_time(3_000_000_000), None);
+
+        e.set_viewport(1e6, 1e6, 10.0, 10.0, 1.0);
+        assert_eq!(e.inner.visible_state().summary.visible_nodes, 0);
+        e.set_viewport(0.0, 0.0, 0.0, 0.0, 1.0);
+        assert_eq!(e.inner.visible_state().summary.visible_nodes, 2);
+
+        e.set_hop_window(i64::MIN, i64::MAX);
+        let vs = e.inner.visible_state();
+        assert_eq!(vs.summary.hops_in_window, 1, "the gw -> orders call");
+
+        let topo = e.inner.topology();
+        let n = &topo.nodes[0];
+        assert_eq!(e.pick(n.x, n.y).as_deref(), Some(n.id.as_str()));
+        assert_eq!(e.pick(n.x + 1e6, n.y), None);
+
+        e.evict_before(2_600_000_000);
+        assert_eq!(e.inner.item_count(), 1, "only the gateway span ends after the cutoff");
+    }
+
+    #[test]
+    fn batches_from_the_worker_accumulate_and_dedupe() {
+        let mut e = engine();
+        e.apply_batch(BATCH).unwrap();
+        e.apply_batch(r#"{"items":[]}"#).unwrap();
+        let d = e.inner.diagnostics();
+        assert_eq!((d.spans, d.logs, d.duplicates_ignored), (2, 1, 3));
     }
 }

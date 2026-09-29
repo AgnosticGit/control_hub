@@ -1,4 +1,4 @@
-//! Controlled actions: propose (operator), approve/reject (admin, never the proposer),
+//! Controlled actions: propose (operator), approve (admin, never the proposer), reject (admin),
 //! cancel (proposer or admin). The API never executes anything: approved plans are picked up
 //! by the separate executor process. Every state change is committed with its audit entry.
 
@@ -465,4 +465,160 @@ pub async fn cancel(
         .await?
         .ok_or(ApiError::Conflict("only proposed or approved plans can be cancelled"))?;
     Ok(Json(updated.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    use controlhub_domain::{EnvironmentId, ProjectId, TenantId};
+
+    fn row(action_type: &str, target: &str, params: Value) -> ActionPlanRow {
+        let t = OffsetDateTime::from_unix_timestamp(1_790_000_000).unwrap();
+        ActionPlanRow {
+            id: Uuid::nil(),
+            tenant_id: "local".into(),
+            project_id: "demo".into(),
+            environment_id: "local-demo".into(),
+            action_type: action_type.into(),
+            target: target.into(),
+            params,
+            reason: "reason text".into(),
+            state: "proposed".into(),
+            policy: json!({ "allowed": true }),
+            created_by: Uuid::nil(),
+            created_by_email: "op@example.test".into(),
+            created_at: t,
+            expires_at: t + time::Duration::minutes(30),
+            decided_by: None,
+            decided_by_email: None,
+            decided_at: None,
+            decision_comment: None,
+            executor_id: None,
+            lease_until: None,
+            started_at: None,
+            finished_at: None,
+            result: None,
+            verification: None,
+        }
+    }
+
+    fn bad_request<T: std::fmt::Debug>(r: ApiResult<T>) -> String {
+        match r {
+            Err(ApiError::BadRequest(m)) => m,
+            other => panic!("expected 400, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn comments_are_optional_bounded_and_single_line() {
+        assert_eq!(clean_comment(None).unwrap(), None);
+        assert_eq!(clean_comment(Some("   ")).unwrap(), None, "blank means absent");
+        assert_eq!(clean_comment(Some("  looks good  ")).unwrap().as_deref(), Some("looks good"));
+        assert!(clean_comment(Some(&"x".repeat(500))).is_ok());
+        assert!(clean_comment(Some(&"é".repeat(500))).is_ok(), "counted in characters");
+        assert!(bad_request(clean_comment(Some(&"x".repeat(501)))).contains("500"));
+        for c in ["a\nb", "a\rb", "tab\there", "\u{1b}[2J", "nul\0"] {
+            assert!(clean_comment(Some(c)).is_err(), "{c:?}");
+        }
+    }
+
+    #[test]
+    fn plan_ids_must_be_uuids_and_unknown_ids_look_missing() {
+        assert_eq!(plan_id("00000000-0000-0000-0000-000000000000").unwrap(), Uuid::nil());
+        for bad in ["", "1", "../../tokens", "00000000-0000-0000-0000-00000000000g", "' OR 1=1"] {
+            assert!(matches!(plan_id(bad), Err(ApiError::NotFound)), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn stored_plans_are_revalidated_before_approval() {
+        assert!(stored_action(&row("demo.faults.clear", "orders", json!({}))).is_ok());
+        for r in [
+            row("shell.exec", "orders", json!({})),
+            row("demo.faults.clear", "postgres", json!({})),
+            row("demo.faults.inject", "orders", json!({ "latency_ms": 99_999, "error_rate": 0.1 })),
+            row("demo.faults.clear", "orders", json!({ "cmd": "id" })),
+        ] {
+            assert!(
+                matches!(stored_action(&r), Err(ApiError::Conflict("plan no longer passes validation"))),
+                "{} {} {}",
+                r.action_type,
+                r.target,
+                r.params
+            );
+        }
+    }
+
+    #[test]
+    fn plan_dto_uses_catalog_titles_and_marks_unknown_types() {
+        let d = ActionPlanDto::from(row("demo.faults.inject", "orders", json!({ "latency_ms": 5, "error_rate": 0.0 })));
+        assert_eq!((d.title.as_str(), d.risk.as_str()), ("Inject faults", "medium"));
+        assert_eq!(d.created_at, "2026-09-21T14:13:20Z");
+        assert_eq!(d.expires_at, "2026-09-21T14:43:20Z");
+        assert_eq!((d.decided_at, d.started_at, d.finished_at), (None, None, None));
+        assert_eq!(d.created_by, "op@example.test");
+        let d = ActionPlanDto::from(row("demo.faults.clear", "orders", json!({})));
+        assert_eq!(d.risk, "low");
+        let d = ActionPlanDto::from(row("retired.action", "x", json!({})));
+        assert_eq!((d.title.as_str(), d.risk.as_str()), ("retired.action", "unknown"));
+    }
+
+    #[test]
+    fn denial_messages_list_only_failed_checks() {
+        let a = Action::DemoRestartDatabase;
+        let d = actions::evaluate(
+            &a,
+            &PolicyInput { environment_is_demo: false, open_plans_for_target: 1, plans_last_hour: 0 },
+            false,
+        );
+        let m = denied_message(&d);
+        assert!(m.starts_with("demo environment: demo-only action"), "{m}");
+        assert!(m.contains("; one open plan per target: 1 other open plan(s) for demo-postgres"), "{m}");
+        assert!(!m.contains("allowlisted") && !m.contains("rate limit"), "{m}");
+        let ok = actions::evaluate(
+            &a,
+            &PolicyInput { environment_is_demo: true, open_plans_for_target: 0, plans_last_hour: 0 },
+            false,
+        );
+        assert_eq!(denied_message(&ok), "");
+    }
+
+    #[test]
+    fn user_audit_entries_are_scoped_from_the_authorized_scope() {
+        let scope = Scope {
+            tenant_id: TenantId::parse("local").unwrap(),
+            project_id: ProjectId::parse("demo").unwrap(),
+            environment_id: EnvironmentId::parse("local-demo").unwrap(),
+        };
+        let e = user_audit(&scope, "user-1", "action.propose", Some("why"), json!({ "x": 1 }));
+        assert_eq!((e.tenant_id, e.project_id), (Some("local"), Some("demo")));
+        assert_eq!((e.actor_id, e.actor_kind, e.action, e.outcome), ("user-1", "user", "action.propose", "succeeded"));
+        assert_eq!(e.reason, Some("why"));
+        assert_eq!(e.target, None, "set by storage to the plan ID");
+    }
+
+    #[test]
+    fn stored_policy_matches_the_documented_schema() {
+        let d = actions::evaluate(
+            &Action::DemoRestartDatabase,
+            &PolicyInput { environment_is_demo: true, open_plans_for_target: 0, plans_last_hour: 0 },
+            false,
+        );
+        let v = serde_json::to_value(&d).unwrap();
+        let keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(keys.len(), 3);
+        for k in ["allowed", "requires_approval", "checks"] {
+            assert!(v.get(k).is_some(), "{k}");
+        }
+        for c in v["checks"].as_array().unwrap() {
+            assert!(c["name"].is_string() && c["passed"].is_boolean() && c["detail"].is_string());
+        }
+    }
+
+    #[test]
+    fn risk_strings() {
+        assert_eq!(risk_str(actions::Risk::Low), "low");
+        assert_eq!(risk_str(actions::Risk::Medium), "medium");
+    }
 }
