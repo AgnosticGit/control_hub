@@ -5,7 +5,7 @@ alwaysApply: true
 
 # ControlHub core invariants
 
-Read `AGENTS.md`, `STATUS.md` and `docs/adr/` before changing architecture.
+Read `AGENTS.md` and `docs/adr/` before changing architecture.
 
 - Data flow is fixed: SDK/Collector → Rust ingest → Kafka → Rust processor → ClickHouse → Rust API → Worker → WASM engine → Pixi/React. No LLM anywhere in it.
 - Ingest ACKs only after the broker ACK (`acks=-1`). A broker failure must return an error (503/UNAVAILABLE), never success. No silent drops: every rejected or dropped item increments a counter.

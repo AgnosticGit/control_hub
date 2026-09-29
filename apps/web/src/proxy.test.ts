@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
-import { config, proxy } from "./proxy";
+import { config, isPublicAppPath, proxy } from "./proxy";
 
 const ORIGIN = "https://controlhub.test";
 
@@ -44,9 +44,19 @@ describe("proxy (/app)", () => {
     }
   });
 
-  it("does not treat look-alike paths as the login page", () => {
-    const res = proxy(request("/app/loginx", null));
-    expect(res.status).toBe(307);
+  it("lets the sign-up page through without a session, with the strict CSP", () => {
+    for (const path of ["/app/register", "/app/register/"]) {
+      const res = proxy(request(path, null));
+      expect(res.headers.get("location")).toBeNull();
+      expect(res.headers.get("content-security-policy")).toContain("'nonce-");
+    }
+  });
+
+  it("does not treat look-alike paths as public pages", () => {
+    for (const path of ["/app/loginx", "/app/registerx", "/app/p1/register", "/app/register-admin"]) {
+      expect(isPublicAppPath(path)).toBe(false);
+      expect(proxy(request(path, null)).status).toBe(307);
+    }
   });
 
   it("sets a strict nonce CSP on the response and forwards it to Next.js on the request", () => {

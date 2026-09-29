@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 // Expects a running stack: `just dev` (or `pnpm --filter @controlhub/web start`
 // + backend) and `just demo` for telemetry. Base URL is overridable.
+const baseURL = process.env.CONTROLHUB_WEB_URL ?? "http://127.0.0.1:3000";
+
 export default defineConfig({
   testDir: "./specs",
   timeout: 60_000,
@@ -13,7 +15,9 @@ export default defineConfig({
   reporter: [["list"]],
   outputDir: "../../test-results/e2e",
   use: {
-    baseURL: process.env.CONTROLHUB_WEB_URL ?? "http://127.0.0.1:3000",
+    baseURL,
+    // ngrok's free plan puts a one-time warning page in front of browsers; skip it when testing through the tunnel.
+    extraHTTPHeaders: /\.ngrok-free\.(dev|app)$/.test(new URL(baseURL).hostname) ? { "ngrok-skip-browser-warning": "1" } : undefined,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { Icon, Logo, type IconName } from "@/components/ui/Icon";
 import { useLogout, useSession } from "@/lib/session";
 
-export type NavId = "overview" | "actions" | "tokens";
+export type NavId = "overview" | "integration" | "actions" | "tokens";
 
 interface Props {
   projectId: string;
@@ -29,6 +29,7 @@ export function AppShell({ projectId, environmentId, active, top, status, childr
 
   const nav: Array<{ id: NavId; href: string; label: string; icon: IconName; show: boolean }> = [
     { id: "overview", href: base, label: "Overview", icon: "map", show: true },
+    { id: "integration", href: `${base}/integration`, label: "Integration", icon: "file", show: true },
     { id: "actions", href: `${base}/actions`, label: "Actions", icon: "bolt", show: true },
     { id: "tokens", href: `${base}/tokens`, label: "Tokens", icon: "key", show: isAdmin },
   ];

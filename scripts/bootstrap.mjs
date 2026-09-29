@@ -5,7 +5,7 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { run, root, parseEnv, compose } from "./lib.mjs";
+import { run, root, parseEnv, compose, loadEnvFile } from "./lib.mjs";
 
 const dir = join(root, ".controlhub");
 mkdirSync(dir, { recursive: true });
@@ -71,7 +71,10 @@ console.error("[bootstrap] starting infrastructure (postgres, clickhouse, kafka)
 await compose(["up", "-d", "--wait", "--wait-timeout", "240"]);
 
 console.error("[bootstrap] migrations, service users, seed data…");
+// Optional personal account that survives resets: CONTROLHUB_OWNER_EMAIL / CONTROLHUB_OWNER_PASSWORD.
+const owner = loadEnvFile(".controlhub/owner.env");
 await run("cargo", ["run", "-q", "-p", "controlhub-api", "--", "bootstrap", "--out-dir", dir], {
-  env: { ...process.env, ...infra },
+  env: { ...process.env, ...infra, ...owner },
 });
+if (owner.CONTROLHUB_OWNER_EMAIL) console.error(`[bootstrap] owner account: ${owner.CONTROLHUB_OWNER_EMAIL} (password from .controlhub/owner.env)`);
 console.error(`[bootstrap] done. Credentials: ${join(dir, "local-credentials.json")}`);

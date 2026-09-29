@@ -12,6 +12,8 @@ use controlhub_storage::pg::PgStore;
 use controlhub_storage::secrets::{generate_password, generate_token, hash_password, hash_token, token_prefix};
 use serde_json::json;
 
+use crate::routes::signup::{MAX_PASSWORD_BYTES, MIN_PASSWORD_CHARS, normalise_email};
+
 const CH_MIGRATIONS: &[(&str, &str)] =
     &[("0001_telemetry.sql", include_str!("../../../infra/migrations/clickhouse/0001_telemetry.sql"))];
 
@@ -21,6 +23,34 @@ struct SeedScope {
     project_name: &'static str,
     env_name: &'static str,
     is_demo: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Owner {
+    email: String,
+    password: String,
+}
+
+/// The developer's own account from `CONTROLHUB_OWNER_EMAIL` / `CONTROLHUB_OWNER_PASSWORD`.
+/// Both unset (or empty) means no owner; only one of them set is a configuration error.
+fn configured_owner(email: Option<&str>, password: Option<&str>) -> anyhow::Result<Option<Owner>> {
+    let email = email.map(str::trim).filter(|s| !s.is_empty());
+    let password = password.filter(|s| !s.is_empty());
+    match (email, password) {
+        (None, None) => Ok(None),
+        (Some(e), Some(p)) => {
+            let email =
+                normalise_email(e).map_err(|_| anyhow::anyhow!("CONTROLHUB_OWNER_EMAIL is not a valid email"))?;
+            anyhow::ensure!(
+                p.len() <= MAX_PASSWORD_BYTES,
+                "CONTROLHUB_OWNER_PASSWORD is longer than {MAX_PASSWORD_BYTES} bytes"
+            );
+            Ok(Some(Owner { email, password: p.to_owned() }))
+        }
+        _ => anyhow::bail!(
+            "set both CONTROLHUB_OWNER_EMAIL and CONTROLHUB_OWNER_PASSWORD in .controlhub/owner.env, or neither"
+        ),
+    }
 }
 
 fn scope(t: &str, p: &str, e: &str) -> anyhow::Result<Scope> {
@@ -46,7 +76,9 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
         "controlhub_api",
         &env_required("CH_PG_API_PASSWORD")?,
         &[
-            "SELECT ON tenants, projects, environments, users, memberships, consumer_offsets, processing_errors",
+            "SELECT ON consumer_offsets, processing_errors",
+            // INSERT only (no UPDATE/DELETE): self-service sign-up creates a user with a new tenant.
+            "SELECT, INSERT ON tenants, projects, environments, users, memberships",
             "SELECT, INSERT, UPDATE ON sessions",
             "SELECT, INSERT ON audit_log",
             "SELECT, INSERT, UPDATE ON ingest_tokens, api_tokens",
@@ -134,6 +166,26 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
         users.push(json!({ "email": email, "password": password, "project_id": project, "role": role }));
     }
 
+    // A persistent personal account whose password is chosen by the developer (gitignored
+    // .controlhub/owner.env), so it survives `just reset`. Never written to local-credentials.json.
+    let owner = configured_owner(
+        std::env::var("CONTROLHUB_OWNER_EMAIL").ok().as_deref(),
+        std::env::var("CONTROLHUB_OWNER_PASSWORD").ok().as_deref(),
+    )?;
+    if let Some(o) = &owner {
+        if o.password.chars().count() < MIN_PASSWORD_CHARS {
+            tracing::warn!(
+                "the owner password is shorter than {MIN_PASSWORD_CHARS} characters (the sign-up minimum); fine for local dev only"
+            );
+        }
+        let pw = o.password.clone();
+        let hash = tokio::task::spawn_blocking(move || hash_password(&pw)).await??;
+        let name = o.email.split('@').next().unwrap_or_default().to_owned();
+        let id = pg.upsert_user(&o.email, &name, &hash).await?;
+        pg.upsert_membership(id, "demo", "owner").await?;
+        tracing::info!(email = %o.email, "owner account ensured (owner of the demo project)");
+    }
+
     let mut tokens = serde_json::Map::new();
     for (name, s) in [("demo-local", &seeds[0].scope), ("isolation-test", &seeds[1].scope)] {
         pg.revoke_ingest_tokens_named(s, name).await?;
@@ -151,6 +203,12 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
         "project_id": "demo",
         "environment_id": "local-demo",
         "users": users,
+        "owner": owner.as_ref().map(|o| json!({
+            "email": o.email,
+            "project_id": "demo",
+            "role": "owner",
+            "password": "set in .controlhub/owner.env",
+        })),
         "ingest_tokens": tokens,
     });
     std::fs::write(out_dir.join("local-credentials.json"), serde_json::to_string_pretty(&creds)?)?;
@@ -163,4 +221,40 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
     )?;
     tracing::info!(path = %out_dir.join("local-credentials.json").display(), "local credentials written");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    #[test]
+    fn no_owner_unless_configured() {
+        assert_eq!(configured_owner(None, None).unwrap(), None);
+        assert_eq!(configured_owner(Some("  "), Some("")).unwrap(), None, "empty lines in owner.env count as unset");
+    }
+
+    #[test]
+    fn owner_email_is_normalised_and_the_password_kept_verbatim() {
+        let o = configured_owner(Some(" Me@Example.COM "), Some(" pass word ")).unwrap().unwrap();
+        assert_eq!(o, Owner { email: "me@example.com".into(), password: " pass word ".into() });
+    }
+
+    #[test]
+    fn half_configured_or_invalid_owner_fails_the_bootstrap() {
+        let msg = |e: anyhow::Error| e.to_string();
+        assert!(msg(configured_owner(Some("me@example.com"), None).unwrap_err()).contains("both"));
+        assert!(msg(configured_owner(None, Some("secret")).unwrap_err()).contains("both"));
+        assert!(msg(configured_owner(Some("not-an-email"), Some("secret")).unwrap_err()).contains("valid email"));
+        let long = "x".repeat(MAX_PASSWORD_BYTES + 1);
+        assert!(msg(configured_owner(Some("me@example.com"), Some(&long)).unwrap_err()).contains("longer"));
+    }
+
+    #[test]
+    fn errors_never_contain_the_password() {
+        for (e, p) in [(Some("bad"), Some("hunter2-secret")), (Some("me@example.com"), Some(&*"s".repeat(2000)))] {
+            let err = configured_owner(e, p).unwrap_err().to_string();
+            assert!(!err.contains("hunter2") && !err.contains("sss"), "{err}");
+        }
+    }
 }

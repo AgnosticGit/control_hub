@@ -9,7 +9,6 @@ engine compiled to WebAssembly and is rendered with WebGL.
 > tested: telemetry flow, map and time machine, WebSocket live updates, token management, the
 > `controlhub` CLI, controlled actions (demo adapter only) and a read-only MCP server. OTLP metrics,
 > archiving, production deployment and real (non-demo) action adapters do not exist.
-> See [STATUS.md](STATUS.md) for what was actually verified.
 
 ```
 SDK / OTel Collector ──OTLP──▶ ingest (Rust) ──▶ Kafka ──▶ processor (Rust) ──▶ ClickHouse
@@ -78,7 +77,6 @@ just bench              # engine benchmark on synthetic data
 
 ## Documentation
 
-- [STATUS.md](STATUS.md) — verified progress, check results, limitations
 - [TASKS.md](TASKS.md) — next work, by stage
 - [AGENTS.md](AGENTS.md) — repository map and rules for contributors and coding agents
 - [docs/architecture/data-flow.md](docs/architecture/data-flow.md)

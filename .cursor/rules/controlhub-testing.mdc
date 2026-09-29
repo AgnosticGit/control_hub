@@ -38,4 +38,4 @@ Required levels by change type:
 
 - While working: run only the affected crate/package/spec, trimmed to the summary (e.g. `... 2>&1 | Select-Object -Last 20`, Playwright `--reporter=line`). Read full logs only on failure.
 - Before claiming done: `just check`, `just test`, and — for anything touching UI, API or data flow — `just test-integration` and `just test-e2e` with `just dev` + `just demo` running.
-- If a suite could not be run, say so explicitly; never report it as passed. Record real counts in `STATUS.md`.
+- If a suite could not be run, say so explicitly; never report it as passed.

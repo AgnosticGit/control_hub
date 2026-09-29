@@ -66,7 +66,16 @@ export const randomHex = (bytes: number) => randomBytes(bytes).toString("hex");
  * Sends one log record through the real ingest endpoint with the environment's ingestion
  * token (`isolation-test` by default, so the demo map stays clean).
  */
-export async function ingestLog(opts: { service: string; body: string; severity?: number; traceId?: string; env?: string }) {
+export async function ingestLog(opts: {
+  service: string;
+  body: string;
+  severity?: number;
+  traceId?: string;
+  env?: string;
+  /** Explicit token and OTLP base URL, e.g. a token created in the UI and the site's /otlp proxy. */
+  token?: string;
+  endpoint?: string;
+}) {
   const now = BigInt(Date.now()) * 1_000_000n;
   const record = Buffer.concat([
     fixed64(1, now),
@@ -79,8 +88,8 @@ export async function ingestLog(opts: { service: string; body: string; severity?
   ]);
   const resource = len(1, len(1, Buffer.concat([str(1, "service.name"), len(2, str(1, opts.service))])));
   const body = len(1, Buffer.concat([resource, len(2, len(2, record))]));
-  const token = creds.ingest_tokens[opts.env ?? "isolation-test"];
-  const res = await fetch(`${creds.otlp_http_endpoint}/v1/logs`, {
+  const token = opts.token ?? creds.ingest_tokens[opts.env ?? "isolation-test"];
+  const res = await fetch(`${opts.endpoint ?? creds.otlp_http_endpoint}/v1/logs`, {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/x-protobuf" },
     body,

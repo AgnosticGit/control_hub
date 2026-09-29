@@ -4,6 +4,11 @@ import { baselineCsp } from "./src/lib/csp";
 // Server-side only: where the Next.js server forwards /api/v1/* (same-origin
 // for the browser, so session cookies stay SameSite=Strict and HttpOnly).
 const apiUrl = process.env.CONTROLHUB_API_URL ?? "http://127.0.0.1:8080";
+// Where /otlp/* is forwarded: the Rust ingest (OTLP/HTTP). Lets SDKs send telemetry through
+// the same public address as the web app; tokens are checked by ingest, not here.
+const ingestUrl = process.env.CONTROLHUB_INGEST_URL ?? "http://127.0.0.1:4318";
+// Public tunnel hostname, set only by `just dev ngrok`; the dev server rejects other cross-origin hosts.
+const publicHost = process.env.CONTROLHUB_DEV_PUBLIC_URL ? new URL(process.env.CONTROLHUB_DEV_PUBLIC_URL).hostname : null;
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -18,8 +23,13 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   transpilePackages: ["@controlhub/api-client", "@controlhub/web-engine"],
+  allowedDevOrigins: publicHost ? [publicHost] : [],
   async rewrites() {
-    return [{ source: "/api/v1/:path*", destination: `${apiUrl}/api/v1/:path*` }];
+    return [
+      { source: "/api/v1/:path*", destination: `${apiUrl}/api/v1/:path*` },
+      { source: "/otlp/v1/:signal", destination: `${ingestUrl}/v1/:signal` },
+      { source: "/otlp/api/v1/events/batch", destination: `${ingestUrl}/api/v1/events/batch` },
+    ];
   },
   async headers() {
     return [

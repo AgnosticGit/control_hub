@@ -62,7 +62,7 @@ controlhub CLI `context` / `mcp` ──read-only API token──▶ controlhub-a
   exposed at `:9464/metrics` for ingest and `:9465/metrics` for the processor. The SDK events
   client counts queued, sent, rejected, dropped, retried and failed items. There is one known gap:
   the OpenTelemetry batch processors inside the Node SDK drop spans or logs when their own queue
-  is full, and these drops are not surfaced yet (see STATUS.md).
+  is full, and these drops are not surfaced yet.
 
 ## Timeline and time machine
 

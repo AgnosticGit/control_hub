@@ -1,26 +1,33 @@
 #!/usr/bin/env node
 // Build and run ControlHub backend services (+ optionally the web app)
 // against the local infrastructure started by `just bootstrap`.
+// `just dev ngrok` also exposes the web app at CONTROLHUB_PUBLIC_URL through ngrok.
 //
 // Binaries are copied to .controlhub/bin before starting: on Windows a running
 // .exe cannot be replaced, and running from target/ would block `cargo build`.
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { parseDevArgs } from "./dev-args.mjs";
 import { assertNotRunning, root, run, supervise } from "./lib.mjs";
+import { allowedOrigins } from "./public-url.mjs";
 
+let opts;
+try {
+  opts = parseDevArgs(process.argv.slice(2));
+} catch (e) {
+  console.error(`[dev] ${e.message}`);
+  process.exit(2);
+}
 if (!existsSync(join(root, ".controlhub", "services.env"))) {
   console.error("missing .controlhub/services.env — run `just bootstrap` first");
   process.exit(2);
 }
 assertNotRunning("dev");
-const withWeb = !process.argv.includes("--no-web");
-const release = process.argv.includes("--release");
-const skipBuild = process.argv.includes("--no-build");
 const services = ["controlhub-ingest", "controlhub-processor", "controlhub-api", "controlhub-executor"];
 
-if (!skipBuild) {
-  await run("cargo", ["build", ...(release ? ["--release"] : []), ...services.flatMap((s) => ["-p", s])]);
+if (opts.build) {
+  await run("cargo", ["build", ...(opts.release ? ["--release"] : []), ...services.flatMap((s) => ["-p", s])]);
 }
 
 const exe = (name) => (process.platform === "win32" ? `${name}.exe` : name);
@@ -28,7 +35,7 @@ const binDir = join(root, ".controlhub", "bin");
 mkdirSync(binDir, { recursive: true });
 for (const s of services) {
   try {
-    copyFileSync(join(root, "target", release ? "release" : "debug", exe(s)), join(binDir, exe(s)));
+    copyFileSync(join(root, "target", opts.release ? "release" : "debug", exe(s)), join(binDir, exe(s)));
   } catch (e) {
     if (e?.code !== "EBUSY" && e?.code !== "ETXTBSY") throw e;
     console.error(`${exe(s)} is still running from an earlier \`just dev\`. Stop it first: just stop`);
@@ -37,14 +44,22 @@ for (const s of services) {
 }
 const bin = (name) => join(binDir, exe(name));
 
+const pub = opts.publicUrl;
+const apiEnv = {
+  // With ngrok the browser's Origin is the public URL, so the API must accept it too.
+  CONTROLHUB_ALLOWED_ORIGINS: allowedOrigins(pub),
+  // Dev stand only: self-service sign-up is open here and closed by default elsewhere.
+  CONTROLHUB_SIGNUP: process.env.CONTROLHUB_SIGNUP ?? "open",
+  CONTROLHUB_SIGNUP_PER_HOUR: process.env.CONTROLHUB_SIGNUP_PER_HOUR ?? "60",
+};
 const procs = [
   { name: "ingest", cmd: bin("controlhub-ingest"), args: [] },
   { name: "processor", cmd: bin("controlhub-processor"), args: [] },
-  { name: "api", cmd: bin("controlhub-api"), args: ["serve"] },
+  { name: "api", cmd: bin("controlhub-api"), args: ["serve"], env: apiEnv },
   // The only process allowed to touch the observed system (and Docker).
   { name: "executor", cmd: bin("controlhub-executor"), args: [] },
 ];
-if (withWeb) {
+if (opts.web) {
   // Started with node directly (no pnpm/cmd wrapper) so the recorded PID is `next` itself and
   // `just stop` can kill its server child even after the supervisor was force-killed.
   const web = join(root, "apps", "web");
@@ -54,6 +69,12 @@ if (withWeb) {
     cmd: process.execPath,
     args: [next, "dev", "--port", "3000", "--hostname", "127.0.0.1"],
     cwd: web,
+    env: { CONTROLHUB_DEV_PUBLIC_URL: pub ?? "" },
   });
+}
+if (pub) {
+  // ngrok reads its own authtoken from its config; everything (pages, /api/v1, /otlp) goes via :3000.
+  procs.push({ name: "ngrok", cmd: "ngrok", args: ["http", `--url=${pub}`, "3000", "--log=stdout"] });
+  console.log(`[dev] public dev stand: ${pub} (anyone with the URL can reach sign-in and sign-up)`);
 }
 supervise(procs, "dev");

@@ -9,7 +9,8 @@ import { join } from 'node:path';
 import { API, ORIGIN, root, user, Session, DEMO, ISO, nowNs, postOversized } from './lib.mjs';
 
 const spec = JSON.parse(readFileSync(join(root, 'schemas', 'generated', 'openapi.json'), 'utf8'));
-const PUBLIC = new Set(['/api/v1/health', '/api/v1/ready', '/api/v1/session/login']);
+// Sign-up is public like login; its Origin/input/rate rules are covered in signup.test.mjs.
+const PUBLIC = new Set(['/api/v1/health', '/api/v1/ready', '/api/v1/session/login', '/api/v1/session/register']);
 // The live route is a WebSocket upgrade; its rules are covered in e2e-flow.test.mjs.
 const WEBSOCKET = /\/live$/;
 const FAKE_UUID = '00000000-0000-4000-8000-000000000000';

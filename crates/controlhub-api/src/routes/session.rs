@@ -119,19 +119,30 @@ pub async fn login(
         return Err(ApiError::Unauthenticated);
     };
     state.login_throttle.success(&email).await;
+    let (headers, body) = start_session(&state, user.id, user.email, user.display_name).await?;
+    Ok((headers, Json(body)).into_response())
+}
 
+/// Create a browser session for an authenticated user: stores only token hashes, audits
+/// `session.login`, and returns the session + CSRF cookies with the session payload.
+pub(crate) async fn start_session(
+    state: &AppState,
+    user_id: uuid::Uuid,
+    email: String,
+    display_name: String,
+) -> ApiResult<(HeaderMap, SessionResponse)> {
     let session_token = generate_token("chs_")?;
     let csrf_token = generate_token("chc_")?;
     let session_id = state
         .pg
-        .create_session(user.id, &hash_token(&session_token), &hash_token(&csrf_token), state.config.session_ttl)
+        .create_session(user_id, &hash_token(&session_token), &hash_token(&csrf_token), state.config.session_ttl)
         .await?;
     let _ = state
         .pg
         .audit(controlhub_storage::pg::NewAuditEntry {
             tenant_id: None,
             project_id: None,
-            actor_id: &user.id.to_string(),
+            actor_id: &user_id.to_string(),
             actor_kind: "user",
             action: "session.login",
             target: Some(&session_id.to_string()),
@@ -145,13 +156,13 @@ pub async fn login(
 
     let current = CurrentUser {
         credential: crate::auth::Credential::Session(session_id),
-        user_id: user.id,
-        email: user.email.clone(),
-        display_name: user.display_name.clone(),
+        user_id,
+        email: email.clone(),
+        display_name: display_name.clone(),
     };
     let body = SessionResponse {
-        user: UserDto { id: user.id.to_string(), email: user.email, display_name: user.display_name },
-        projects: projects_for(&state, &current).await?,
+        projects: projects_for(state, &current).await?,
+        user: UserDto { id: user_id.to_string(), email, display_name },
     };
     let max_age = state.config.session_ttl.whole_seconds();
     let mut headers = HeaderMap::new();
@@ -161,7 +172,7 @@ pub async fn login(
     );
     // Readable by JS on purpose (double-submit); useless without the HttpOnly session cookie.
     headers.append(header::SET_COOKIE, cookie(CSRF_COOKIE, &csrf_token, false, state.config.secure_cookies, max_age)?);
-    Ok((headers, Json(body)).into_response())
+    Ok((headers, body))
 }
 
 #[utoipa::path(get, path = "/api/v1/session", tag = "session",

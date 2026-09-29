@@ -6,13 +6,17 @@ function nonce(): string {
   return btoa(String.fromCharCode(...bytes));
 }
 
+/** Pages under /app reachable without a session cookie. */
+export function isPublicAppPath(pathname: string): boolean {
+  return ["/app/login", "/app/register"].some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 // 1. Strict per-request CSP for the private app (Next.js applies the nonce from the request header).
 // 2. Optimistic check only: redirects to login when there is no session cookie. Real
 //    authentication and authorization happen in the Rust API on every call.
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const isLogin = pathname === "/app/login" || pathname.startsWith("/app/login/");
-  if (!isLogin && !request.cookies.has("controlhub_session")) {
+  if (!isPublicAppPath(pathname) && !request.cookies.has("controlhub_session")) {
     const url = request.nextUrl.clone();
     url.pathname = "/app/login";
     url.search = `?next=${encodeURIComponent(pathname)}`;

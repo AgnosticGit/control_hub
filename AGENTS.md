@@ -1,7 +1,6 @@
 # AGENTS.md — working in the ControlHub repo
 
 ControlHub is an observability, history-exploration and (later) controlled-management platform.
-Current progress lives in `STATUS.md`, planned work in `TASKS.md`, and decisions in `docs/adr/`.
 
 ## Layout
 
@@ -35,7 +34,9 @@ just doctor          # tools, ports, bootstrap state
 just bootstrap       # install deps, generate local secrets, start infra, migrate, seed
 just dev             # ingest + processor + API + executor + web
 just stop            # stop leftovers of just dev / just demo (keeps containers)
+just reset           # DESTRUCTIVE: wipe data volumes, then bootstrap again (owner from .controlhub/owner.env)
 just demo            # demo system sending telemetry
+just dev ngrok       # same as just dev, plus the web app at CONTROLHUB_PUBLIC_URL via ngrok (dev stand only)
 just check           # fmt, clippy -D warnings, wasm32 check, TS typecheck, eslint
 just test            # Rust unit/property tests + SDK tests
 just test-integration / just test-e2e   # need `just dev` and `just demo` running
@@ -55,4 +56,4 @@ See `.cursor/rules/controlhub-core.mdc` and `controlhub-testing.mdc` (always app
  vitest `*.test.ts`, `tests/integration/*.test.mjs`, Playwright `tests/e2e/specs/*.spec.ts`. A bug fix starts
  with a failing regression test. Never delete or weaken a test to get green.
 - Never overwrite user changes, never `git reset`/`clean`, never commit `.controlhub/`.
-- Report only checks you actually ran, and update `STATUS.md` with the real results.
+- Report only checks you actually ran.

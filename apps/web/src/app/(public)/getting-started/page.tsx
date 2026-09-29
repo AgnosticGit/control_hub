@@ -23,6 +23,17 @@ just demo        # demo services + load generator (second terminal)`}</pre>
         Login credentials are generated per machine and written to <code>.controlhub/local-credentials.json</code>{" "}
         (gitignored). There is no shared default password.
       </p>
+      <h2>Your own account and services</h2>
+      <p>
+        In dev mode anyone can create an account at <code>/app/register</code> (sign-up is closed by default outside dev,
+        see <code>CONTROLHUB_SIGNUP</code>). A new account gets its own project; its <strong>Integration</strong> page
+        creates an ingestion token and shows the OpenTelemetry settings for your services.
+      </p>
+      <pre>{`just dev ngrok   # like just dev, plus the dev stand at CONTROLHUB_PUBLIC_URL through ngrok`}</pre>
+      <p>
+        The tunnel exposes only the web app: pages, <code>/api/v1</code> and the OTLP endpoint <code>/otlp</code>. It is a
+        development stand, not a production deployment.
+      </p>
       <h2>Inject a failure</h2>
       <pre>{`just demo-fault orders --latency 800 --error-rate 0.3
 just demo-fault orders --clear`}</pre>

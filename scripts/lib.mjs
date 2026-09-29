@@ -52,7 +52,7 @@ export function compose(args, extra = []) {
 const runDir = join(root, ".controlhub", "run");
 const pidFile = (group) => join(runDir, `${group}.json`);
 // Only these images are ever killed from a PID file, so a reused PID of another program is safe.
-const OURS = /^(node|cmd|sh|bash|controlhub-[a-z]+)(\.exe)?$/i;
+const OURS = /^(node|cmd|sh|bash|ngrok|controlhub-[a-z]+)(\.exe)?$/i;
 
 function processName(pid) {
   try {

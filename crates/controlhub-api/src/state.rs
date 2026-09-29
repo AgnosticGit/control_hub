@@ -5,6 +5,7 @@ use controlhub_storage::pg::PgStore;
 use tokio::sync::Semaphore;
 
 use crate::auth::LoginThrottle;
+use crate::routes::signup::SignupThrottle;
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
@@ -12,6 +13,15 @@ pub struct ApiConfig {
     /// `Secure` attribute on cookies. Disabled only for local http development.
     pub secure_cookies: bool,
     pub session_ttl: time::Duration,
+    pub signup: SignupPolicy,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SignupPolicy {
+    /// Self-service sign-up is off unless explicitly enabled.
+    pub open: bool,
+    /// Sign-up attempts allowed per hour across all clients.
+    pub per_hour: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -20,6 +30,7 @@ pub struct AppState {
     pub ch: ChStore,
     pub config: ApiConfig,
     pub login_throttle: LoginThrottle,
+    pub signup_throttle: SignupThrottle,
     /// Bounds concurrent live WebSocket connections (each polls ClickHouse once per second).
     pub live_slots: Arc<Semaphore>,
 }
@@ -44,8 +55,10 @@ pub fn test_state(secure_cookies: bool) -> AppState {
             allowed_origins: vec!["http://localhost:3000".into(), "http://127.0.0.1:3000".into()],
             secure_cookies,
             session_ttl: time::Duration::hours(12),
+            signup: SignupPolicy { open: true, per_hour: 1000 },
         },
         login_throttle: LoginThrottle::default(),
+        signup_throttle: SignupThrottle::default(),
         live_slots: Arc::new(Semaphore::new(2)),
     }
 }

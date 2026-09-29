@@ -34,7 +34,7 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Run the HTTP API (default).
-    Serve(ServeArgs),
+    Serve(Box<ServeArgs>),
     /// Local development bootstrap (migrations, service users, seed data).
     Bootstrap {
         #[arg(long, default_value = ".controlhub")]
@@ -67,6 +67,12 @@ struct ServeArgs {
     /// Maximum concurrent live WebSocket connections; further upgrades get 429.
     #[arg(long, env = "CONTROLHUB_MAX_LIVE_CONNECTIONS", default_value_t = 256)]
     max_live_connections: usize,
+    /// Self-service sign-up at `POST /api/v1/session/register`: `open` or `closed`.
+    #[arg(long, env = "CONTROLHUB_SIGNUP", default_value = "closed", value_parser = ["open", "closed"])]
+    signup: String,
+    /// Sign-up attempts allowed per hour across all clients.
+    #[arg(long, env = "CONTROLHUB_SIGNUP_PER_HOUR", default_value_t = 20)]
+    signup_per_hour: u32,
 }
 
 fn router(state: state::AppState) -> Router {
@@ -76,6 +82,7 @@ fn router(state: state::AppState) -> Router {
         .route("/api/v1/health", get(routes::health))
         .route("/api/v1/ready", get(routes::ready))
         .route("/api/v1/session/login", post(session::login))
+        .route("/api/v1/session/register", post(routes::signup::register))
         .route("/api/v1/session/logout", post(session::logout))
         .route("/api/v1/session", get(session::session))
         .route("/api/v1/projects", get(session::projects))
@@ -111,6 +118,7 @@ fn api_config(args: &ServeArgs) -> state::ApiConfig {
         allowed_origins: args.allowed_origins.split(',').map(|s| s.trim().to_owned()).collect(),
         secure_cookies: args.env != "dev",
         session_ttl: time::Duration::hours(12),
+        signup: state::SignupPolicy { open: args.signup == "open", per_hour: args.signup_per_hour },
     }
 }
 
@@ -131,6 +139,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         ch,
         config,
         login_throttle: auth::LoginThrottle::default(),
+        signup_throttle: routes::signup::SignupThrottle::default(),
         live_slots: std::sync::Arc::new(tokio::sync::Semaphore::new(args.max_live_connections)),
     };
     let listener = tokio::net::TcpListener::bind(args.addr).await?;
@@ -154,7 +163,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Command::Serve(args)) => {
             init_tracing("controlhub-api");
-            serve(args).await
+            serve(*args).await
         }
         None => {
             init_tracing("controlhub-api");
@@ -362,6 +371,77 @@ mod tests {
         assert_eq!(b["code"], "too_many_requests");
     }
 
+    const REGISTER: &str = "/api/v1/session/register";
+    const SIGNUP: &str = r#"{"email":"new@example.test","password":"correct horse battery"}"#;
+
+    #[tokio::test]
+    async fn register_checks_origin_policy_and_input_before_touching_storage() {
+        let (s, _, b) = send(state(), req(Method::POST, REGISTER, &[("origin", "http://evil.example")], SIGNUP)).await;
+        assert_eq!((s, b["message"].as_str()), (StatusCode::FORBIDDEN, Some("forbidden: origin not allowed")));
+
+        let mut closed = state();
+        closed.config.signup.open = false;
+        let (s, h, b) = send(closed, req(Method::POST, REGISTER, &[("origin", "http://localhost:3000")], SIGNUP)).await;
+        assert_eq!(
+            (s, b["message"].as_str()),
+            (StatusCode::FORBIDDEN, Some("forbidden: sign-up is disabled on this server"))
+        );
+        assert!(h.get("set-cookie").is_none());
+
+        for body in [
+            r#"{"email":"not-an-email","password":"correct horse battery"}"#,
+            r#"{"email":"new@example.test","password":"short"}"#,
+            r#"{"email":"new@example.test","password":"New@Example.test"}"#,
+        ] {
+            let (s, h, b) = send(state(), req(Method::POST, REGISTER, &[], body)).await;
+            assert_eq!((s, b["code"].as_str()), (StatusCode::BAD_REQUEST, Some("bad_request")), "{body}");
+            assert!(h.get("set-cookie").is_none());
+        }
+        let (s, _, _) = send(state(), req(Method::POST, REGISTER, &[], r#"{"email":"a@example.test"}"#)).await;
+        assert!(s.is_client_error(), "{s}");
+
+        // Valid input reaches storage, which is down: an error, never a session.
+        let (s, h, b) =
+            send(state(), req(Method::POST, REGISTER, &[("origin", "http://localhost:3000")], SIGNUP)).await;
+        assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(b["message"], "storage unavailable");
+        assert!(h.get("set-cookie").is_none());
+    }
+
+    #[tokio::test]
+    async fn register_is_rate_limited_across_all_clients() {
+        let mut st = state();
+        st.config.signup.per_hour = 2;
+        for _ in 0..2 {
+            let (s, _, _) = send(st.clone(), req(Method::POST, REGISTER, &[], SIGNUP)).await;
+            assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "within the limit it reaches storage");
+        }
+        let other = r#"{"email":"someone.else@example.test","password":"correct horse battery"}"#;
+        let (s, _, b) = send(st.clone(), req(Method::POST, REGISTER, &[], other)).await;
+        assert_eq!((s, b["code"].as_str()), (StatusCode::TOO_MANY_REQUESTS, Some("too_many_requests")));
+        // Invalid input is rejected without spending the budget.
+        let (s, _, _) = send(st, req(Method::POST, REGISTER, &[], r#"{"email":"x","password":"y"}"#)).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn signup_is_closed_unless_explicitly_opened() {
+        if std::env::var_os("CONTROLHUB_SIGNUP").is_none() {
+            assert!(!super::api_config(&serve_args(&[])).signup.open, "default is closed");
+        }
+        let open = super::api_config(&serve_args(&["--signup", "open", "--signup-per-hour", "5"])).signup;
+        assert!(open.open);
+        assert_eq!(open.per_hour, 5);
+        assert!(!super::api_config(&serve_args(&["--signup", "closed"])).signup.open);
+        let mut argv =
+            vec!["controlhub-api", "--database-url", "x", "--clickhouse-user", "u", "--clickhouse-password", "p"];
+        for bad in ["Open", "yes", "true", ""] {
+            argv.extend_from_slice(&["--signup", bad]);
+            assert!(super::ServeArgs::try_parse_from(&argv).is_err(), "{bad:?}");
+            argv.truncate(7);
+        }
+    }
+
     #[tokio::test]
     async fn malformed_and_oversized_bodies_are_rejected() {
         let login = "/api/v1/session/login";
@@ -390,6 +470,7 @@ mod tests {
             ("/api/v1/health".into(), "get"),
             ("/api/v1/ready".into(), "get"),
             ("/api/v1/session/login".into(), "post"),
+            ("/api/v1/session/register".into(), "post"),
             ("/api/v1/session/logout".into(), "post"),
             ("/api/v1/session".into(), "get"),
             ("/api/v1/projects".into(), "get"),

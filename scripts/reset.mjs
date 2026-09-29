@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // DESTRUCTIVE: stop local infrastructure and delete its data volumes
-// (PostgreSQL metadata, ClickHouse telemetry, Kafka log, demo database).
+// (PostgreSQL metadata, ClickHouse telemetry, Kafka log, demo database), then bootstrap
+// a fresh stand (seed users, tokens and the owner account from .controlhub/owner.env).
 // Requires typing RESET, or passing --yes for non-interactive use.
+// `--no-bootstrap` only deletes.
 import { createInterface } from "node:readline/promises";
-import { compose } from "./lib.mjs";
+import { join } from "node:path";
+import { compose, root, run } from "./lib.mjs";
 
 if (!process.argv.includes("--yes")) {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
@@ -15,4 +18,9 @@ if (!process.argv.includes("--yes")) {
   }
 }
 await compose(["down", "--volumes"], ["--profile", "demo"]);
-console.error("[reset] containers and data volumes removed. Run `just bootstrap` to start fresh.");
+if (process.argv.includes("--no-bootstrap")) {
+  console.error("[reset] containers and data volumes removed. Run `just bootstrap` to start fresh.");
+} else {
+  console.error("[reset] containers and data volumes removed; bootstrapping a fresh stand…");
+  await run(process.execPath, [join(root, "scripts", "bootstrap.mjs")]);
+}

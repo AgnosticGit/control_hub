@@ -16,9 +16,10 @@ bootstrap:
     pnpm install --frozen-lockfile
     node scripts/bootstrap.mjs
 
-# Build and run ingest + processor + API + executor + web (Ctrl+C stops all)
-dev:
-    node scripts/dev.mjs
+# Build and run ingest + processor + API + executor + web (Ctrl+C stops all).
+# `just dev ngrok` also exposes the web app at CONTROLHUB_PUBLIC_URL through ngrok.
+dev *ARGS:
+    node scripts/dev.mjs {{ARGS}}
 
 # Same as dev without the web app
 dev-backend:
@@ -90,6 +91,7 @@ bench:
 down:
     node scripts/down.mjs
 
-# DESTRUCTIVE: stop infrastructure and delete all local data volumes (asks for confirmation)
-reset:
-    node scripts/reset.mjs
+# DESTRUCTIVE: delete all local data volumes (asks for confirmation), then bootstrap a fresh stand
+# incl. the owner account from .controlhub/owner.env. `just reset --no-bootstrap` only deletes.
+reset *ARGS:
+    node scripts/reset.mjs {{ARGS}}

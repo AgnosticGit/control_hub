@@ -141,6 +141,28 @@ pub struct AuditRow {
     pub outcome: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct NewAccount<'a> {
+    pub email: &'a str,
+    pub display_name: &'a str,
+    pub password_hash: &'a str,
+    pub project_name: &'a str,
+    pub environment_name: &'a str,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreatedAccount {
+    pub user_id: Uuid,
+    pub scope: Scope,
+}
+
+/// Random, unguessable ids for a signed-up tenant, so they never collide with seeded or
+/// other customers' ids and reveal nothing about how many accounts exist.
+fn new_account_scope() -> Result<Scope> {
+    let id = |prefix: &str| format!("{prefix}-{}", Uuid::new_v4().simple());
+    scope_from(id("t"), id("p"), id("e"))
+}
+
 fn scope_from(t: String, p: String, e: String) -> Result<Scope> {
     let err = |e: controlhub_domain::IdError| StorageError::Other(format!("corrupt scope in database: {e}"));
     Ok(Scope {
@@ -255,6 +277,55 @@ impl PgStore {
         .fetch_one(&self.pool)
         .await?;
         Ok(id)
+    }
+
+    /// Self-service sign-up: a new user who owns a fresh tenant, project and environment,
+    /// created atomically. Returns `None` (and creates nothing) if the email is taken.
+    /// Never touches an existing user, unlike [`PgStore::upsert_user`].
+    pub async fn create_account(&self, a: &NewAccount<'_>) -> Result<Option<CreatedAccount>> {
+        let mut tx = self.pool.begin().await?;
+        let user_id: Option<Uuid> = sqlx::query_scalar(
+            "INSERT INTO users (id, email, display_name, password_hash) VALUES ($1, $2, $3, $4)
+             ON CONFLICT (email) DO NOTHING RETURNING id",
+        )
+        .bind(Uuid::now_v7())
+        .bind(a.email)
+        .bind(a.display_name)
+        .bind(a.password_hash)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(user_id) = user_id else {
+            tx.rollback().await?;
+            return Ok(None);
+        };
+        let scope = new_account_scope()?;
+        sqlx::query("INSERT INTO tenants (id, name) VALUES ($1, $2)")
+            .bind(scope.tenant_id.as_str())
+            .bind(a.display_name)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO projects (id, tenant_id, name) VALUES ($1, $2, $3)")
+            .bind(scope.project_id.as_str())
+            .bind(scope.tenant_id.as_str())
+            .bind(a.project_name)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "INSERT INTO environments (id, tenant_id, project_id, name, is_demo) VALUES ($1, $2, $3, $4, FALSE)",
+        )
+        .bind(scope.environment_id.as_str())
+        .bind(scope.tenant_id.as_str())
+        .bind(scope.project_id.as_str())
+        .bind(a.environment_name)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("INSERT INTO memberships (user_id, project_id, role) VALUES ($1, $2, 'owner')")
+            .bind(user_id)
+            .bind(scope.project_id.as_str())
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(Some(CreatedAccount { user_id, scope }))
     }
 
     pub async fn upsert_membership(&self, user_id: Uuid, project_id: &str, role: &str) -> Result<()> {
@@ -724,6 +795,21 @@ mod tests {
                 Err(StorageError::Other(m)) => assert!(m.contains("corrupt scope"), "{m}"),
                 other => panic!("{t:?}/{p:?}/{e:?} must be refused, got {other:?}"),
             }
+        }
+    }
+
+    #[test]
+    fn signed_up_scopes_are_valid_random_and_never_collide_with_seeds() {
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..200 {
+            let s = new_account_scope().unwrap();
+            let (t, p, e) = (s.tenant_id.as_str(), s.project_id.as_str(), s.environment_id.as_str());
+            assert!(t.starts_with("t-") && p.starts_with("p-") && e.starts_with("e-"), "{t} {p} {e}");
+            assert_eq!(p.len(), 34);
+            for seeded in ["local", "demo", "local-demo", "isolation-tenant", "isolation", "isolation-test"] {
+                assert!(t != seeded && p != seeded && e != seeded);
+            }
+            assert!(seen.insert(p.to_owned()), "duplicate project id {p}");
         }
     }
 

@@ -11,6 +11,7 @@ use crate::routes;
         routes::ready,
         routes::audit,
         routes::session::login,
+        routes::signup::register,
         routes::session::session,
         routes::session::logout,
         routes::session::projects,

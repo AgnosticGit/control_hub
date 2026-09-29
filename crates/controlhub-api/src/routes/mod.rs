@@ -1,6 +1,7 @@
 pub mod actions;
 pub mod live;
 pub mod session;
+pub mod signup;
 pub mod telemetry;
 pub mod tokens;
 

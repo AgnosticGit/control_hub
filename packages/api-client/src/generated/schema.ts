@@ -405,6 +405,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/session/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -630,6 +646,15 @@ export interface components {
         };
         /** @enum {string} */
         ProvenanceDto: "observed" | "declared" | "inferred";
+        RegisterRequest: {
+            /** @description Shown in the UI; defaults to the part of the email before `@`. */
+            display_name?: string | null;
+            email: string;
+            /** @description At least 12 characters. */
+            password: string;
+            /** @description Name of the first project; defaults to "My project". */
+            project_name?: string | null;
+        };
         /** @enum {string} */
         RelationKindDto: "calls" | "depends_on" | "runs_on" | "deployed_from" | "owns" | "publishes_to" | "consumes_from";
         RevokeTokenRequest: {
@@ -1842,6 +1867,64 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Account created and signed in */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Origin not allowed or sign-up disabled */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Email already registered */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -39,7 +39,7 @@ async function audit(page: Page) {
   });
 }
 
-const PUBLIC = ["/", "/features", "/integrations", "/getting-started", "/docs", "/app/login"];
+const PUBLIC = ["/", "/features", "/integrations", "/getting-started", "/docs", "/app/login", "/app/register"];
 
 for (const path of PUBLIC) {
   test(`${path}: lang, title, one main landmark, one h1, named controls, unique IDs`, async ({ page }) => {
@@ -84,7 +84,7 @@ test.describe("signed-in pages", () => {
     expect(a.h1s).toEqual(["System Map"]);
   });
 
-  for (const section of ["actions", "tokens"]) {
+  for (const section of ["actions", "tokens", "integration"]) {
     test(`${section}: one main landmark, one h1, named controls, unique IDs`, async ({ page }) => {
       await page.goto(`/app/demo/local-demo/${section}`);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
