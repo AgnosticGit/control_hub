@@ -1,20 +1,30 @@
 // PixiJS (WebGL) renderer for the service map. It only draws: positions,
-// statuses and flags come precomputed from the engine frame buffers. Pan and
-// zoom are local; the resulting world-space viewport is reported back so the
-// engine can cull and choose a level of detail.
+// statuses, flags and request hops come precomputed from the engine frame
+// buffers. Pan and zoom are local; the resulting world-space viewport is
+// reported back so the engine can cull and choose a level of detail.
 
 // Replaces Pixi's `new Function` code generation so the page runs without CSP 'unsafe-eval'.
 import "pixi.js/unsafe-eval";
 import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
 import {
   EDGE_STRIDE,
+  FLAG_DIMMED,
   FLAG_HIGHLIGHT,
   FLAG_INFERRED,
   FLAG_PROBLEM,
   FLAG_RESOURCE,
+  HOP_DIMMED,
+  HOP_ERROR,
+  HOP_HIGHLIGHT,
+  HOP_STRIDE,
   NODE_STRIDE,
+  type EntityKindDto,
   type Frame,
+  type TopologyView,
 } from "@controlhub/web-engine";
+import { DEFAULT_EDGE_STYLE, dashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
+import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
+import { animTimeMs, callProgress, type AnimClock } from "./hops";
 
 export interface MapCallbacks {
   onViewport(x: number, y: number, width: number, height: number, scale: number): void;
@@ -23,24 +33,74 @@ export interface MapCallbacks {
 
 const STATUS_COLORS = [0x64748b, 0x22d3ee, 0xf59e0b, 0xef4444];
 const EDGE_OK = 0x3b82f6;
-const EDGE_INFERRED = 0x64748b;
+const EDGE_INFERRED = 0x475569;
 const EDGE_ERROR = 0xef4444;
 const EDGE_WARN = 0xf59e0b;
 const ACCENT = 0x22d3ee;
+const CARD_BG = 0x0e1729;
 const MIN_SCALE = 0.15;
 const MAX_SCALE = 4;
+/** Node card size in world units (layout spacing is 300 × 140). */
+const CARD_W = 172;
+const CARD_H = 56;
+const CARD_BOX = { hw: CARD_W / 2 + 4, hh: CARD_H / 2 + 4 };
+const ROUTE_BOX = { ...CARD_BOX, portSpan: CARD_H - 20 };
+const LINE_STYLE = { join: "round", cap: "round" } as const;
+/** Opacity of switched-off services and everything attached to them. */
+const DIM_ALPHA = 0.22;
+
+interface EdgeGeom {
+  path: EdgePath;
+  color: number;
+}
+
+/** A routed edge path and the end positions it was routed for. */
+interface Route {
+  path: EdgePath;
+  sx: number;
+  sy: number;
+  tx: number;
+  ty: number;
+}
+
+interface NodeText {
+  name: Text;
+  sub: Text;
+  subValue: string;
+}
 
 export class PixiMap {
   private app: Application | null = null;
   private readonly world = new Container();
   private readonly edges = new Graphics();
-  private readonly pulses = new Graphics();
+  private readonly edgesDim = new Graphics({ alpha: DIM_ALPHA });
+  private readonly hops = new Graphics();
   private readonly nodes = new Graphics();
+  private readonly nodesDim = new Graphics({ alpha: DIM_ALPHA });
   private readonly labels = new Container();
-  private readonly labelPool = new Map<number, Text>();
-  private readonly labelStyle = new TextStyle({ fill: 0xe5ebf5, fontSize: 12, fontFamily: "system-ui, sans-serif" });
+  private readonly textPool = new Map<number, NodeText>();
+  private readonly nameStyle = new TextStyle({
+    fill: 0xe6ecf5,
+    fontSize: 13,
+    fontWeight: "600",
+    fontFamily: "Inter, 'Segoe UI', system-ui, sans-serif",
+  });
+  private readonly subStyle = new TextStyle({
+    fill: 0x7d8aa5,
+    fontSize: 11,
+    fontFamily: "Inter, 'Segoe UI', system-ui, sans-serif",
+  });
   private frame: Frame | null = null;
+  private frameTimeUs = 0;
+  private frameArrivedAt = 0;
+  private clock: AnimClock = { kind: "frame", rate: 0 };
+  private edgeGeom = new Map<number, EdgeGeom>();
+  private edgeStyle: EdgeStyle = DEFAULT_EDGE_STYLE;
+  private routeNodes: RouteNode[] = [];
+  private routeEdges: RouteEdge[] = [];
+  private routes = new Map<number, Route>();
   private names: string[] = [];
+  private kinds: EntityKindDto[] = [];
   private selectedIndex: number | null = null;
   private fitted = false;
   private reducedMotion = false;
@@ -55,7 +115,7 @@ export class PixiMap {
     await app.init({
       resizeTo: host,
       antialias: true,
-      background: 0x0b1017,
+      backgroundAlpha: 0,
       preference: "webgl",
       autoDensity: true,
       resolution: Math.min(window.devicePixelRatio || 1, 2),
@@ -67,22 +127,43 @@ export class PixiMap {
     this.app = app;
     app.canvas.setAttribute("aria-hidden", "true");
     host.appendChild(app.canvas);
-    this.world.addChild(this.edges, this.pulses, this.nodes, this.labels);
+    // Hops above cards so a request waiting at its callee stays visible on the card border.
+    this.world.addChild(this.edgesDim, this.nodesDim, this.edges, this.nodes, this.hops, this.labels);
     app.stage.addChild(this.world);
     this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    app.ticker.add(() => this.drawPulses());
+    // With reduced motion hops are drawn once per frame (no interpolation between frames).
+    if (!this.reducedMotion) app.ticker.add(() => this.drawHops());
     this.bindInput(app.canvas);
     const ro = new ResizeObserver(() => this.reportViewport());
     ro.observe(host);
     this.cleanup.push(() => ro.disconnect());
   }
 
-  setNames(names: string[]) {
-    if (names.length === this.names.length && names.every((n, i) => n === this.names[i])) return;
-    this.names = names;
-    for (const t of this.labelPool.values()) t.destroy();
-    this.labelPool.clear();
-    this.labels.removeChildren();
+  setTopology(topology: TopologyView | null) {
+    const nodes = topology?.nodes ?? [];
+    const names: string[] = [];
+    const kinds: EntityKindDto[] = [];
+    for (const n of nodes) {
+      names[n.index] = n.name;
+      kinds[n.index] = n.kind;
+    }
+    this.kinds = kinds;
+    this.routeNodes = nodes.map((n) => ({ index: n.index, x: n.x, y: n.y }));
+    this.routeEdges = (topology?.edges ?? []).map((e) => ({ index: e.index, source: e.source, target: e.target, points: e.points }));
+    this.reroute();
+    if (names.length !== this.names.length || names.some((n, i) => n !== this.names[i])) {
+      this.names = names;
+      for (const t of this.textPool.values()) {
+        t.name.destroy();
+        t.sub.destroy();
+      }
+      this.textPool.clear();
+      this.labels.removeChildren();
+    }
+    if (this.frame) {
+      this.draw(this.frame);
+      if (this.reducedMotion) this.drawHops();
+    }
   }
 
   setSelected(index: number | null) {
@@ -90,14 +171,34 @@ export class PixiMap {
     if (this.frame) this.draw(this.frame);
   }
 
+  setEdgeStyle(style: EdgeStyle) {
+    if (style === this.edgeStyle) return;
+    this.edgeStyle = style;
+    this.reroute();
+    if (this.frame) {
+      this.draw(this.frame);
+      this.drawHops();
+    }
+  }
+
+  /** How hop timestamps map onto wall time (live delay, replay rate or frozen). */
+  setClock(clock: AnimClock) {
+    this.clock = clock;
+    this.frameArrivedAt = performance.now();
+  }
+
   render(frame: Frame) {
     this.frame = frame;
+    this.frameArrivedAt = performance.now();
+    const t = frame.summary.time_ns;
+    this.frameTimeUs = t ? Number(BigInt(t) / 1000n) : 0;
     if (!this.app) return;
     if (!this.fitted && frame.nodeIndices.length > 0) {
       this.fitted = true;
       this.fit();
     }
     this.draw(frame);
+    if (this.reducedMotion) this.drawHops();
   }
 
   fit() {
@@ -116,12 +217,19 @@ export class PixiMap {
       maxX = Math.max(maxX, x);
       maxY = Math.max(maxY, y);
     }
-    const pad = 120;
+    for (const e of this.routeEdges) {
+      for (const [, y] of e.points) {
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    const padX = CARD_W;
+    const padY = CARD_H * 2;
     const w = app.screen.width;
     const h = app.screen.height;
     const scale = Math.max(
       MIN_SCALE,
-      Math.min(1.5, Math.min(w / (maxX - minX + pad * 2), h / (maxY - minY + pad * 2))),
+      Math.min(1.3, Math.min(w / (maxX - minX + padX * 2), h / (maxY - minY + padY * 2))),
     );
     this.world.scale.set(scale);
     this.world.position.set(w / 2 - ((minX + maxX) / 2) * scale, h / 2 - ((minY + maxY) / 2) * scale);
@@ -155,11 +263,42 @@ export class PixiMap {
     this.app = null;
   }
 
+  /** Routes are recomputed only when the topology or the line style changes, not per frame. */
+  private reroute() {
+    const paths = routeEdges(this.edgeStyle, this.routeNodes, this.routeEdges, ROUTE_BOX);
+    const pos = new Map<number, RouteNode>();
+    for (const n of this.routeNodes) pos.set(n.index, n);
+    const routes = new Map<number, Route>();
+    for (const e of this.routeEdges) {
+      const path = paths.get(e.index);
+      const s = pos.get(e.source);
+      const t = pos.get(e.target);
+      if (path && s && t) routes.set(e.index, { path, sx: s.x, sy: s.y, tx: t.x, ty: t.y });
+    }
+    this.routes = routes;
+  }
+
   private reportViewport() {
     const app = this.app;
     if (!app) return;
     const s = this.world.scale.x;
     this.callbacks.onViewport(-this.world.x / s, -this.world.y / s, app.screen.width / s, app.screen.height / s, s);
+  }
+
+  /** Clicks anywhere on a card select it; the engine picks by the node centre. */
+  private pickAt(wx: number, wy: number) {
+    const f = this.frame;
+    if (f) {
+      for (let i = 0; i < f.nodeIndices.length; i++) {
+        const x = f.nodeData[i * NODE_STRIDE] ?? 0;
+        const y = f.nodeData[i * NODE_STRIDE + 1] ?? 0;
+        if (Math.abs(wx - x) <= CARD_W / 2 && Math.abs(wy - y) <= CARD_H / 2) {
+          this.callbacks.onPick(x, y);
+          return;
+        }
+      }
+    }
+    this.callbacks.onPick(wx, wy);
   }
 
   private bindInput(canvas: HTMLCanvasElement) {
@@ -190,7 +329,7 @@ export class PixiMap {
       if (moved < 4) {
         const rect = canvas.getBoundingClientRect();
         const s = this.world.scale.x;
-        this.callbacks.onPick((e.clientX - rect.left - this.world.x) / s, (e.clientY - rect.top - this.world.y) / s);
+        this.pickAt((e.clientX - rect.left - this.world.x) / s, (e.clientY - rect.top - this.world.y) / s);
       } else {
         this.reportViewport();
       }
@@ -213,14 +352,20 @@ export class PixiMap {
   }
 
   private draw(f: Frame) {
-    const e = this.edges;
-    e.clear();
+    this.drawEdges(f);
+    this.drawNodes(f);
+  }
+
+  private drawEdges(f: Frame) {
+    this.edges.clear();
+    this.edgesDim.clear();
+    this.edgeGeom.clear();
     for (let i = 0; i < f.edgeIndices.length; i++) {
       const o = i * EDGE_STRIDE;
-      const x1 = f.edgeData[o] ?? 0;
-      const y1 = f.edgeData[o + 1] ?? 0;
-      const x2 = f.edgeData[o + 2] ?? 0;
-      const y2 = f.edgeData[o + 3] ?? 0;
+      const sx = f.edgeData[o] ?? 0;
+      const sy = f.edgeData[o + 1] ?? 0;
+      const tx = f.edgeData[o + 2] ?? 0;
+      const ty = f.edgeData[o + 3] ?? 0;
       const calls = f.edgeData[o + 5] ?? 0;
       const ratio = f.edgeData[o + 6] ?? 0;
       const flags = f.edgeData[o + 7] ?? 0;
@@ -235,103 +380,179 @@ export class PixiMap {
           : inferred
             ? EDGE_INFERRED
             : EDGE_OK;
-      const width = highlight ? 3 : 1.5 + Math.min(3, Math.log10(1 + calls));
-      if (inferred) this.dashed(e, x1, y1, x2, y2, color, width);
-      else e.moveTo(x1, y1).lineTo(x2, y2).stroke({ color, width, alpha: 0.85 });
-      this.arrow(e, x1, y1, x2, y2, color);
+      const index = f.edgeIndices[i] ?? 0;
+      const route = this.routes.get(index);
+      // A route is only valid for the positions it was computed for (topology may lag a frame).
+      const fresh = route && near(route.sx, sx) && near(route.sy, sy) && near(route.tx, tx) && near(route.ty, ty);
+      const path = fresh ? route.path : edgePath(this.edgeStyle, sx, sy, tx, ty, CARD_BOX);
+      if (!path) continue;
+      this.edgeGeom.set(index, { path, color });
+      const e = (flags & FLAG_DIMMED) !== 0 ? this.edgesDim : this.edges;
+      const width = highlight ? 2.5 : 1.25 + Math.min(1.5, Math.log10(1 + calls) * 0.6);
+      if (inferred) {
+        for (const dash of dashes(path, 6, 5)) line(e, dash);
+        e.stroke({ color, width, alpha: 0.8, ...LINE_STYLE });
+      } else {
+        line(e, path.pts).stroke({ color, width: width + 6, alpha: calls > 0 ? 0.1 : 0.05, ...LINE_STYLE });
+        line(e, path.pts).stroke({ color, width, alpha: calls > 0 ? 0.9 : 0.5, ...LINE_STYLE });
+      }
+      arrow(e, path, color);
     }
+  }
 
-    const n = this.nodes;
-    n.clear();
+  private drawNodes(f: Frame) {
+    this.nodes.clear();
+    this.nodesDim.clear();
     const lod = f.summary.lod;
     const seen = new Set<number>();
+    const hw = CARD_W / 2;
+    const hh = CARD_H / 2;
     for (let i = 0; i < f.nodeIndices.length; i++) {
       const o = i * NODE_STRIDE;
       const x = f.nodeData[o] ?? 0;
       const y = f.nodeData[o + 1] ?? 0;
-      const r = f.nodeData[o + 2] ?? 20;
       const status = f.nodeData[o + 3] ?? 0;
       const active = f.nodeData[o + 4] ?? 0;
+      const requests = f.nodeData[o + 5] ?? 0;
       const flags = f.nodeData[o + 6] ?? 0;
       const idx = f.nodeIndices[i] ?? 0;
       const color = STATUS_COLORS[status] ?? STATUS_COLORS[0] ?? 0x64748b;
-      if ((flags & FLAG_RESOURCE) !== 0) {
-        n.roundRect(x - r, y - r * 0.75, r * 2, r * 1.5, 6).fill({ color: 0x111827 }).stroke({ color, width: 2 });
-      } else {
-        n.circle(x, y, r).fill({ color: 0x111827 }).stroke({ color, width: 2.5 + Math.min(4, active) });
+      const inferred = (flags & FLAG_INFERRED) !== 0;
+      const dimmed = (flags & FLAG_DIMMED) !== 0;
+      const n = dimmed ? this.nodesDim : this.nodes;
+      const left = x - hw;
+      const top = y - hh;
+
+      if (status > 0) {
+        n.roundRect(left - 3, top - 3, CARD_W + 6, CARD_H + 6, 15).stroke({ color, width: 6, alpha: status >= 2 ? 0.22 : 0.1 });
       }
-      if ((flags & FLAG_INFERRED) !== 0) n.circle(x, y, r + 5).stroke({ color: EDGE_INFERRED, width: 1, alpha: 0.6 });
-      if ((flags & FLAG_HIGHLIGHT) !== 0) n.circle(x, y, r + 8).stroke({ color: ACCENT, width: 2 });
-      if (idx === this.selectedIndex) n.circle(x, y, r + 11).stroke({ color: 0xffffff, width: 2 });
+      n.roundRect(left, top, CARD_W, CARD_H, 12)
+        .fill({ color: CARD_BG, alpha: 0.96 })
+        .stroke({ color, width: 1.5, alpha: inferred ? 0.45 : 0.85 });
+      if ((flags & FLAG_HIGHLIGHT) !== 0) n.roundRect(left - 5, top - 5, CARD_W + 10, CARD_H + 10, 16).stroke({ color: ACCENT, width: 2 });
+      if (idx === this.selectedIndex) n.roundRect(left - 8, top - 8, CARD_W + 16, CARD_H + 16, 18).stroke({ color: 0xffffff, width: 2, alpha: 0.9 });
+
+      const ix = left + 12;
+      const iy = y - 15;
+      n.roundRect(ix, iy, 30, 30, 9).fill({ color, alpha: 0.14 });
+      const resource = (flags & FLAG_RESOURCE) !== 0;
+      drawKindIcon(n, this.kinds[idx], resource, ix + 15, iy + 15, color);
+      n.circle(left + CARD_W - 12, top + 12, 3.5).fill({ color, alpha: status > 0 ? 1 : 0.6 });
 
       if (lod >= 1) {
         seen.add(idx);
-        let label = this.labelPool.get(idx);
-        if (!label) {
-          label = new Text({ text: this.names[idx] ?? `#${idx}`, style: this.labelStyle });
-          label.anchor.set(0.5, 0);
-          this.labelPool.set(idx, label);
-          this.labels.addChild(label);
+        let t = this.textPool.get(idx);
+        if (!t) {
+          const name = new Text({ text: truncate(this.names[idx] ?? `#${idx}`, 17), style: this.nameStyle });
+          const sub = new Text({ text: "", style: this.subStyle });
+          t = { name, sub, subValue: "" };
+          this.textPool.set(idx, t);
+          this.labels.addChild(name, sub);
         }
-        label.visible = true;
-        label.position.set(x, y + r + 6);
+        const subValue = active > 0 ? `${active} active · ${requests} req/30s` : `${requests} req/30s`;
+        if (subValue !== t.subValue) {
+          t.sub.text = subValue;
+          t.subValue = subValue;
+        }
+        t.name.visible = true;
+        t.sub.visible = true;
+        t.name.alpha = dimmed ? DIM_ALPHA + 0.1 : 1;
+        t.sub.alpha = dimmed ? DIM_ALPHA + 0.1 : 1;
+        t.name.position.set(left + 52, y - 17);
+        t.sub.position.set(left + 52, y + 2);
       }
     }
-    for (const [idx, label] of this.labelPool) {
-      if (!seen.has(idx)) label.visible = false;
+    for (const [idx, t] of this.textPool) {
+      if (!seen.has(idx)) {
+        t.name.visible = false;
+        t.sub.visible = false;
+      }
     }
   }
 
-  private drawPulses() {
-    const g = this.pulses;
+  /**
+   * Every dot is one recorded call. It travels from the caller to the callee over the call's
+   * recorded duration (client span start to end), so its position along the line is the share
+   * of the call that has elapsed at the animation time.
+   */
+  private drawHops() {
+    const g = this.hops;
     g.clear();
     const f = this.frame;
-    if (!f || this.reducedMotion) return;
-    const phase = (performance.now() % 1600) / 1600;
-    const limit = Math.min(f.edgeIndices.length, 500);
-    for (let i = 0; i < limit; i++) {
-      const o = i * EDGE_STRIDE;
-      const active = f.edgeData[o + 4] ?? 0;
-      const calls = f.edgeData[o + 5] ?? 0;
-      if (active <= 0 && calls <= 0) continue;
-      const x1 = f.edgeData[o] ?? 0;
-      const y1 = f.edgeData[o + 1] ?? 0;
-      const x2 = f.edgeData[o + 2] ?? 0;
-      const y2 = f.edgeData[o + 3] ?? 0;
-      const flags = f.edgeData[o + 7] ?? 0;
-      const color = (flags & FLAG_PROBLEM) !== 0 ? EDGE_ERROR : ACCENT;
-      g.circle(x1 + (x2 - x1) * phase, y1 + (y2 - y1) * phase, 3).fill({ color, alpha: 0.9 });
+    if (!f || f.hopData.length === 0) return;
+    const now = animTimeMs(this.clock, this.frameTimeUs, this.frameArrivedAt, performance.now(), performance.timeOrigin);
+    const lit = new Set<number>();
+    const data = f.hopData;
+    for (let o = 0; o + HOP_STRIDE <= data.length; o += HOP_STRIDE) {
+      const edge = data[o] ?? 0;
+      const geom = this.edgeGeom.get(edge);
+      if (!geom) continue;
+      const p = callProgress(data[o + 1] ?? 0, data[o + 4] ?? 0, now);
+      if (p === null) continue;
+      const flags = data[o + 5] ?? 0;
+      const error = (flags & HOP_ERROR) !== 0;
+      const color = error ? EDGE_ERROR : ACCENT;
+      const k = (flags & HOP_DIMMED) !== 0 ? DIM_ALPHA : 1;
+      if (!lit.has(edge)) {
+        lit.add(edge);
+        line(g, geom.path.pts).stroke({ color, width: 3, alpha: 0.35 * k, ...LINE_STYLE });
+      }
+      const r = (flags & HOP_HIGHLIGHT) !== 0 ? 6.5 : 4.5;
+      const [px, py] = pointAt(geom.path, p);
+      g.circle(px, py, r * 2.4).fill({ color, alpha: 0.16 * k });
+      g.circle(px, py, r).fill({ color, alpha: 0.95 * k }).stroke({ color: 0xffffff, width: 1, alpha: 0.6 * k });
     }
   }
+}
 
-  private dashed(g: Graphics, x1: number, y1: number, x2: number, y2: number, color: number, width: number) {
-    const len = Math.hypot(x2 - x1, y2 - y1);
-    const dash = 8;
-    const steps = Math.floor(len / (dash * 2));
-    const dx = (x2 - x1) / len;
-    const dy = (y2 - y1) / len;
-    for (let s = 0; s < steps; s++) {
-      const a = s * dash * 2;
-      g.moveTo(x1 + dx * a, y1 + dy * a).lineTo(x1 + dx * (a + dash), y1 + dy * (a + dash));
-    }
-    g.stroke({ color, width, alpha: 0.8 });
-  }
+function near(a: number, b: number) {
+  return Math.abs(a - b) < 0.5;
+}
 
-  private arrow(g: Graphics, x1: number, y1: number, x2: number, y2: number, color: number) {
-    const len = Math.hypot(x2 - x1, y2 - y1);
-    if (len < 60) return;
-    const ux = (x2 - x1) / len;
-    const uy = (y2 - y1) / len;
-    const tipX = x2 - ux * 32;
-    const tipY = y2 - uy * 32;
-    const size = 7;
-    g.poly([
-      tipX,
-      tipY,
-      tipX - ux * size - uy * size * 0.6,
-      tipY - uy * size + ux * size * 0.6,
-      tipX - ux * size + uy * size * 0.6,
-      tipY - uy * size - ux * size * 0.6,
-    ]).fill({ color });
+function truncate(s: string, max: number) {
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+/** Adds a polyline (flat x, y pairs) to the current path. */
+function line(gr: Graphics, pts: number[]) {
+  gr.moveTo(pts[0] ?? 0, pts[1] ?? 0);
+  for (let i = 2; i + 1 < pts.length; i += 2) gr.lineTo(pts[i] ?? 0, pts[i + 1] ?? 0);
+  return gr;
+}
+
+function arrow(gr: Graphics, path: EdgePath, color: number) {
+  const [bx, by] = pointAt(path, 1);
+  const [ux, uy] = endDirection(path);
+  const size = 8;
+  gr.poly([
+    bx,
+    by,
+    bx - ux * size - uy * size * 0.55,
+    by - uy * size + ux * size * 0.55,
+    bx - ux * size + uy * size * 0.55,
+    by - uy * size - ux * size * 0.55,
+  ]).fill({ color });
+}
+
+function drawKindIcon(g: Graphics, kind: EntityKindDto | undefined, resource: boolean, cx: number, cy: number, color: number) {
+  if (kind === "database" || (resource && kind === undefined)) {
+    const w = 8;
+    g.ellipse(cx, cy - 5, w, 2.8).stroke({ color, width: 1.5 });
+    g.moveTo(cx - w, cy - 5).lineTo(cx - w, cy + 5).stroke({ color, width: 1.5 });
+    g.moveTo(cx + w, cy - 5).lineTo(cx + w, cy + 5).stroke({ color, width: 1.5 });
+    g.moveTo(cx - w, cy + 5).quadraticCurveTo(cx, cy + 10, cx + w, cy + 5).stroke({ color, width: 1.5 });
+    return;
   }
+  if (kind === "queue" || kind === "cache" || resource) {
+    g.roundRect(cx - 8, cy - 8, 16, 16, 3).stroke({ color, width: 1.5 });
+    g.moveTo(cx - 8, cy).lineTo(cx + 8, cy).stroke({ color, width: 1.2, alpha: 0.7 });
+    return;
+  }
+  const pts: number[] = [];
+  for (let k = 0; k < 6; k++) {
+    const a = Math.PI / 6 + (k * Math.PI) / 3;
+    pts.push(cx + Math.cos(a) * 9, cy + Math.sin(a) * 9);
+  }
+  g.poly(pts).stroke({ color, width: 1.6 });
+  g.circle(cx, cy, 2.5).fill({ color });
 }

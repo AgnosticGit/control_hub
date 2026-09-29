@@ -49,7 +49,8 @@ test('topology has observed gateway->orders call and inferred orders->postgres d
 test('trace detail links spans across services with correlated logs', async () => {
   const list = await admin.json(`${DEMO}/traces?limit=50`);
   assert.equal(list.status, 200);
-  const multi = list.body.traces.find((t) => t.services.length >= 2);
+  // The demo also has gateway -> auth / catalog traces; pick one that reaches orders.
+  const multi = list.body.traces.find((t) => t.services.includes('gateway') && t.services.includes('orders'));
   assert.ok(multi, 'expected a trace spanning gateway and orders');
   const detail = await admin.json(`${DEMO}/traces/${multi.trace_id}`);
   assert.equal(detail.status, 200);

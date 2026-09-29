@@ -24,7 +24,7 @@ export default function HomePage() {
     <>
       <section className="mx-auto max-w-6xl px-6 pb-16 pt-20">
         <p className="mb-4 text-sm font-medium uppercase tracking-widest text-accent">Observability · Replay · Control</p>
-        <h1 className="max-w-3xl text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
+        <h1 className="max-w-3xl bg-gradient-to-br from-text via-text to-accent-2 bg-clip-text text-4xl font-semibold leading-tight tracking-tight text-transparent sm:text-5xl">
           See what your system is doing — and what it was doing five minutes ago.
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-muted">
@@ -32,10 +32,10 @@ export default function HomePage() {
           scrub and replay.
         </p>
         <div className="mt-8 flex gap-4">
-          <Link href="/getting-started" className="rounded-md bg-accent px-5 py-2.5 font-medium text-bg hover:bg-accent/90">
+          <Link href="/getting-started" className="btn btn-primary h-11 px-5 text-sm">
             Run it locally
           </Link>
-          <Link href="/features" className="rounded-md border border-border px-5 py-2.5 font-medium hover:bg-surface">
+          <Link href="/features" className="btn h-11 px-5 text-sm">
             How it works
           </Link>
         </div>
@@ -46,7 +46,7 @@ export default function HomePage() {
         </h2>
         <div className="grid gap-4 sm:grid-cols-2">
           {pillars.map((p) => (
-            <article key={p.title} className="rounded-lg border border-border bg-surface p-6">
+            <article key={p.title} className="card p-6 transition-colors hover:border-border-strong">
               <h3 className="text-lg font-medium">{p.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted">{p.body}</p>
             </article>

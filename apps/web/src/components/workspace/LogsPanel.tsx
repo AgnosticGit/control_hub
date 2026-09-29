@@ -5,7 +5,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRef, useState } from "react";
 import { api, scopedPath, unwrap, type Schemas } from "@/lib/api";
 import { formatClock, parseNs } from "@/lib/time";
-import type { PanelScope } from "./BottomPanel";
+import type { PanelScope } from "./SignalsPanel";
 import { useDebounced } from "./useDebounced";
 
 type Log = Schemas["LogDto"];
@@ -61,23 +61,23 @@ export function LogsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (id:
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs">
         <input
           type="search"
           placeholder="Search log text…"
           aria-label="Search log text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          className="w-64 rounded border border-border bg-bg px-2 py-1"
+          className="input h-7 min-w-32 flex-1 text-xs @2xl:max-w-64"
         />
-        <div role="group" aria-label="Minimum severity" className="flex gap-1">
+        <div role="group" aria-label="Minimum severity" className="seg">
           {SEVERITIES.map((s) => (
             <button
               key={s.value}
               type="button"
               aria-pressed={minSeverity === s.value}
               onClick={() => setMinSeverity(s.value)}
-              className={`rounded border px-2 py-0.5 ${minSeverity === s.value ? "border-accent text-accent" : "border-border text-muted"}`}
+              className="seg-item py-0.5"
             >
               {s.label}
             </button>
@@ -104,12 +104,12 @@ export function LogsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (id:
               return (
                 <div
                   key={l.id}
-                  className="absolute left-0 flex w-full items-center gap-3 whitespace-nowrap px-3 hover:bg-surface-2"
+                  className="absolute left-0 flex w-full items-center gap-2 whitespace-nowrap px-3 hover:bg-surface-2 @xl:gap-3"
                   style={{ top: row.start, height: row.size }}
                 >
                   <span className="text-muted tabular-nums">{t === null ? "?" : formatClock(t)}</span>
-                  <span className={`w-12 ${severityClass(l.severity_number)}`}>{l.severity_text || l.severity_number}</span>
-                  <span className="w-28 truncate text-accent-2">{l.service_name}</span>
+                  <span className={`w-10 shrink-0 @xl:w-12 ${severityClass(l.severity_number)}`}>{l.severity_text || l.severity_number}</span>
+                  <span className="w-20 shrink-0 truncate text-accent-2 @xl:w-28">{l.service_name}</span>
                   <span className="min-w-0 flex-1 truncate" title={l.body}>
                     {l.body}
                   </span>

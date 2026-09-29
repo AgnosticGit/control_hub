@@ -91,6 +91,14 @@ export class EngineClient {
     this.worker.postMessage({ kind: "setFilters", filters } satisfies WorkerRequest);
   }
 
+  setHopWindow(beforeNs: bigint, afterNs: bigint) {
+    this.worker.postMessage({
+      kind: "setHopWindow",
+      beforeNs: beforeNs.toString(),
+      afterNs: afterNs.toString(),
+    } satisfies WorkerRequest);
+  }
+
   /**
    * Resolves with the frame for the most recent seek (waiting for it if needed), so decisions
    * such as "step to next event" never use a summary computed for an older cursor.

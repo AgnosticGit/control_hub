@@ -14,6 +14,8 @@
 | 8080 | API |
 | 3000 | web |
 | 7001 / 7002 | demo gateway / orders |
+| 7003 – 7007 | demo inventory / payments / notifications / catalog / auth |
+| 7010 | demo payment provider stand-in (not instrumented) |
 
 The infrastructure ports sit outside the default ranges, so they don't clash with a local
 Postgres, ClickHouse or Kafka. See ADR-0006.
@@ -28,6 +30,8 @@ Postgres, ClickHouse or Kafka. See ADR-0006.
   ones.
 - `bin/`: copies of the service binaries that `just dev` runs. On Windows this keeps the build
   output unlocked while the services run.
+- `run/`: PID files of the running `just dev`/`just demo` processes, used by `just stop` and to
+  refuse a second start.
 
 ## Lifecycle
 
@@ -35,6 +39,7 @@ Postgres, ClickHouse or Kafka. See ADR-0006.
 just bootstrap   # idempotent
 just dev         # Ctrl+C stops everything
 just demo
+just stop        # stop leftovers of `just dev`/`just demo` (e.g. after closing their terminal)
 just down        # stop containers, keep data
 just reset       # asks for confirmation, then deletes volumes (all local telemetry and metadata)
 ```

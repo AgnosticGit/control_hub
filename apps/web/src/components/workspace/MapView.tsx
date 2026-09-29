@@ -1,16 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Frame, TopologyView } from "@controlhub/web-engine";
+import type { Frame, FrameSummary, TopologyView } from "@controlhub/web-engine";
+import { Icon, type IconName } from "@/components/ui/Icon";
+import type { EdgeStyle } from "@/renderer/edge-path";
 import type { PixiMap } from "@/renderer/pixi-map";
-import type { WorkspaceActions } from "./useWorkspaceEngine";
+import { setEdgeStyle, useEdgeStyle } from "./edgeStyleStore";
+import { LIVE_ANIM_DELAY_MS, animClockFor, type Mode, type Speed, type WorkspaceActions } from "./useWorkspaceEngine";
 import { NodeTable } from "./NodeTable";
 
 type ZoomAction = "in" | "out" | "fit";
-const ZOOM_BUTTONS: Array<{ label: string; text: string; action: ZoomAction }> = [
-  { label: "Zoom in", text: "+", action: "in" },
-  { label: "Zoom out", text: "−", action: "out" },
-  { label: "Fit to screen", text: "⤢", action: "fit" },
+const ZOOM_BUTTONS: Array<{ label: string; icon: IconName; action: ZoomAction }> = [
+  { label: "Zoom in", icon: "plus", action: "in" },
+  { label: "Zoom out", icon: "minus", action: "out" },
+  { label: "Fit to screen", icon: "maximize", action: "fit" },
+];
+
+/** Icon paths in a 20 × 12 box: the same two cards joined in each style. */
+const LINE_STYLES: Array<{ style: EdgeStyle; label: string; path: string }> = [
+  { style: "curved", label: "Curved lines", path: "M2 10 Q10 -2 18 2" },
+  { style: "orthogonal", label: "Square lines", path: "M2 10 H10 V2 H18" },
+  { style: "metro", label: "Metro lines", path: "M2 10 H6 L14 2 H18" },
 ];
 
 interface Props {
@@ -19,9 +29,12 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   forceTable: boolean;
+  mode: Mode;
+  speed: Speed;
+  summary: FrameSummary | null;
 }
 
-export function MapView({ actions, topology, selectedId, onSelect, forceTable }: Props) {
+export function MapView({ actions, topology, selectedId, onSelect, forceTable, mode, speed, summary }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<PixiMap | null>(null);
   const [webglError, setWebglError] = useState<string | null>(null);
@@ -30,11 +43,23 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable }:
   const onSelectRef = useRef(onSelect);
   const topologyRef = useRef(topology);
   const selectedRef = useRef(selectedId);
+  const clockRef = useRef(animClockFor(mode, speed));
+  const edgeStyle = useEdgeStyle();
+  const edgeStyleRef = useRef(edgeStyle);
+  useEffect(() => {
+    edgeStyleRef.current = edgeStyle;
+    mapRef.current?.setEdgeStyle(edgeStyle);
+  }, [edgeStyle]);
   useEffect(() => {
     onSelectRef.current = onSelect;
     topologyRef.current = topology;
     selectedRef.current = selectedId;
   }, [onSelect, topology, selectedId]);
+
+  useEffect(() => {
+    clockRef.current = animClockFor(mode, speed);
+    mapRef.current?.setClock(clockRef.current);
+  }, [mode, speed]);
 
   // Renderer lifecycle: pixi.js is imported only in the browser, on demand.
   useEffect(() => {
@@ -60,7 +85,9 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable }:
         }
         mapRef.current = map;
         const topo = topologyRef.current;
-        map.setNames(topo?.nodes.map((n) => n.name) ?? []);
+        map.setClock(clockRef.current);
+        map.setEdgeStyle(edgeStyleRef.current);
+        map.setTopology(topo);
         const sel = selectedRef.current;
         map.setSelected(sel ? (topo?.nodes.find((n) => n.id === sel)?.index ?? null) : null);
         off = actions.onFrame((f) => map.render(f));
@@ -77,7 +104,7 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable }:
   }, [actions, showTable]);
 
   useEffect(() => {
-    mapRef.current?.setNames(topology?.nodes.map((n) => n.name) ?? []);
+    mapRef.current?.setTopology(topology);
   }, [topology]);
 
   useEffect(() => {
@@ -151,43 +178,103 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable }:
         onKeyDown={onKeyDown}
         className="absolute inset-0 overflow-hidden outline-none"
       />
-      <div className="absolute bottom-3 right-3 flex flex-col gap-1">
-        {ZOOM_BUTTONS.map((b) => (
-          <button
-            key={b.label}
-            type="button"
-            aria-label={b.label}
-            title={b.label}
-            onClick={() => zoomControl(b.action)}
-            className="h-8 w-8 rounded-md border border-border bg-surface text-sm hover:border-accent"
-          >
-            {b.text}
-          </button>
-        ))}
+      <div className="pointer-events-none absolute inset-x-3 bottom-3 flex flex-wrap-reverse items-end justify-between gap-2">
+        <div className="pointer-events-auto flex gap-1.5">
+          {ZOOM_BUTTONS.map((b) => (
+            <button
+              key={b.label}
+              type="button"
+              aria-label={b.label}
+              title={b.label}
+              onClick={() => zoomControl(b.action)}
+              className="btn btn-icon bg-surface/90 backdrop-blur"
+            >
+              <Icon name={b.icon} className="h-4 w-4" />
+            </button>
+          ))}
+          <div role="group" aria-label="Line style" className="ml-1.5 flex gap-0.5 rounded-lg border border-border bg-surface/90 p-0.5 backdrop-blur">
+            {LINE_STYLES.map((s) => {
+              const active = s.style === edgeStyle;
+              return (
+                <button
+                  key={s.style}
+                  type="button"
+                  aria-label={s.label}
+                  aria-pressed={active}
+                  title={s.label}
+                  onClick={() => setEdgeStyle(s.style)}
+                  className={`flex h-7 w-8 items-center justify-center rounded-md transition-colors ${
+                    active ? "bg-accent/15 text-accent" : "text-muted hover:bg-surface-2 hover:text-text"
+                  }`}
+                >
+                  <svg viewBox="0 0 20 12" className="h-3 w-5" fill="none" aria-hidden>
+                    <path d={s.path} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <Legend />
       </div>
-      <Legend />
+      <AnimationNote mode={mode} speed={speed} summary={summary} />
     </div>
   );
 }
 
 function Legend() {
-  const items = [
-    { color: "bg-accent", label: "Healthy" },
+  const status = [
+    { color: "bg-accent-2", label: "Healthy" },
     { color: "bg-warn", label: "Degraded" },
     { color: "bg-error", label: "Failing" },
-    { color: "bg-slate-500", label: "No data" },
+    { color: "bg-muted", label: "No data" },
   ];
   return (
-    <div className="pointer-events-none absolute left-3 top-3 rounded-md border border-border bg-surface/90 px-3 py-2 text-[11px] text-muted">
-      <div className="flex gap-3">
-        {items.map((i) => (
-          <span key={i.label} className="flex items-center gap-1">
-            <span className={`inline-block h-2 w-2 rounded-full ${i.color}`} />
-            {i.label}
-          </span>
-        ))}
+    <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 rounded-xl border border-border bg-surface/85 px-3 py-2 text-[11px] text-muted backdrop-blur">
+      {status.map((i) => (
+        <span key={i.label} className="flex items-center gap-1.5">
+          <span className={`dot ${i.color}`} />
+          {i.label}
+        </span>
+      ))}
+      <span className="h-3 w-px bg-border-strong" />
+      <span className="flex items-center gap-1.5">
+        <span className="inline-block h-0.5 w-4 bg-accent" /> Observed
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-muted" /> Inferred
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="inline-block h-2 w-2 rounded-full bg-accent-2 shadow-[0_0_6px_var(--color-accent-2)]" /> Request
+      </span>
+    </div>
+  );
+}
+
+/** States exactly what the moving dots show, so nobody mistakes them for decoration. */
+function AnimationNote({ mode, speed, summary }: { mode: Mode; speed: Speed; summary: FrameSummary | null }) {
+  const clock =
+    mode === "live"
+      ? `${LIVE_ANIM_DELAY_MS / 1000} s behind live (telemetry is delivered in batches)`
+      : mode === "replay"
+        ? `replay at ${speed}×${speed <= 0.001 ? " — 1 ms of recorded time per second" : ""}`
+        : "frozen at the selected time";
+  const capped = summary && summary.hops_shown < summary.hops_in_window;
+  return (
+    <div
+      className="pointer-events-none absolute top-3 right-3 max-w-xs rounded-xl border border-border bg-surface/85 px-3 py-2 text-[11px] text-muted backdrop-blur"
+      aria-label="Request animation"
+    >
+      <div className="font-medium text-text">Requests from recorded spans</div>
+      <div>{clock}</div>
+      <div title="A dot travels from caller to callee over the whole call: halfway through the call it is halfway along the line.">
+        dot position = share of the call elapsed
       </div>
-      <div className="mt-1">Solid edge: observed · Dashed: inferred · Box: dependency</div>
+      {capped ? (
+        <div className="text-warn">
+          showing {summary.hops_shown} of {summary.hops_in_window} requests
+        </div>
+      ) : null}
     </div>
   );
 }

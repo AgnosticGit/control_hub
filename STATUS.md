@@ -80,6 +80,171 @@ lists only what has been built and actually checked, with real results.
 - **Executor container-name check** accepted names starting with `-`, which docker could parse as
   a flag. Names must now start with an alphanumeric character (unit test).
 
+### Bugs found by running every `just` command (2026-09-29)
+- **`just dev` failed with EBUSY** when an earlier run's children outlived a force-killed
+  supervisor. `just dev`/`just demo` now write PID files to `.controlhub/run/`, refuse to start
+  twice, and the new `just stop` kills recorded processes with their children (containers stay up).
+  The web app is started as `node …/next dev` instead of through the `pnpm`/`cmd` wrapper, so the
+  recorded PID is `next` itself and its server child is stopped too.
+- **Completeness watermark lagged ~23 min while `processing_caught_up=true`.** An idle Kafka
+  partition never updated its offset row, and the watermark is the minimum over partitions. A
+  caught-up idle partition now refreshes its row every 5 s (lag after the fix: 1.4 s).
+- **`just cli` lost exit codes**: PowerShell `-Command` turned the documented exit code 2 of
+  `apply` without `--yes` into 1. The recipe now ends with `exit $LASTEXITCODE`.
+- **CSP e2e specs failed under `just dev`**: `next dev` needs `'unsafe-eval'` (added outside
+  production by `csp.ts`), and the specs only knew the production policy. They now detect the
+  Next.js dev overlay and require no `'unsafe-eval'` only in production builds.
+
+### Honest request animation, 0.001× replay, redesign (2026-09-29)
+- **The dots on the map used to be decorative.** A global 1.6 s phase moved a dot on every busy
+  edge at once, so gateway→orders and orders→Postgres always looked simultaneous. The engine
+  now builds request hops from recorded spans:
+  - A call hop pairs the caller's client span with the callee's server span and keeps four real
+    timestamps: request leaves, reaches the callee, the callee answers, the answer is back.
+  - A leaf hop is a client span to a component without instrumentation. Only its start and end
+    are known, so the dot stays at the target for the whole call.
+  - Clock skew is clamped into order and flagged `HOP_CLAMPED`.
+  - The frame carries `hopData` (edge, t0..t3 relative to frame time, flags), capped at 3000
+    hops. The cap is reported as `hops_shown / hops_in_window`.
+  - The renderer moves each dot only between its own timestamps.
+    - Live runs 8 s behind the wall clock, because SDKs export spans in 5 s batches; the map says
+      so.
+    - Replay advances at the chosen speed; paused is frozen.
+    - Engine ABI is now 2.
+- **Replay speeds** are 0.001×, 0.01×, 0.1×, 0.5×, 1×, 2× and 10×. 0.001× plays 1 ms of recorded
+  time per second, and below 0.1× the clock shows microseconds. Measured: 3 s wall time moved the
+  cursor 3.08 ms.
+- **Redesign after the reference screenshot, visual only.** It adds a dark theme, a sidebar
+  (project, environment, Overview/Actions/Tokens, system status), a top bar (search, mode, the
+  1h/6h/24h presets that already existed), and KPI cards built only from existing numbers
+  (services, requests/min from the 30 s window, error rate, active requests).
+  - The map now shows card nodes, curved glowing edges and arrows.
+  - Inspector, signals, timeline, Actions, Tokens, login and public pages are restyled.
+  - No new features were added.
+
+### Layered, zoomable timeline (2026-09-29)
+- The bottom timeline is now a layered track view, like a video editor. It replaces the plain
+  slider. Spec: `docs/superpowers/specs/2026-09-29-layered-timeline-design.md`.
+- The engine computes `timeline_tracks(from, to, buckets, clip_cap)` over the loaded data. The
+  map filters (search, hide inferred) apply to every track.
+- Track rows:
+  - Actions: plan bars from `/actions`, coloured by state.
+  - Events: counts per bucket, plus markers for rare event types (not `request.*`).
+  - Errors: failed request spans and logs at severity ERROR or above.
+  - Requests: server, consumer and root spans, counted by start time.
+  - Latency p95: nearest-rank per bucket, by end time. Empty buckets are gaps, not zeros.
+  - One row per service: a heat strip, or individual span clips (up to 3 depth lanes) once no
+    more than 400 spans are in view.
+- Zoom: the wheel zooms around the pointer, and there are "Zoom in time" / "Zoom out time"
+  buttons. Shift+wheel or drag pans; a click moves the cursor. "Whole range" resets the view.
+  The minimum view is 1 ms.
+- While playing, the view pages so the playhead stays inside it. (The overview strip and the
+  separate "Selected time" slider were later removed; see "Workspace UX refactor" below.)
+- Deviation from the spec: JSON results instead of typed arrays, and a full span scan per call
+  instead of a start-sorted index (noted in the spec).
+
+### Map line styles (2026-09-29)
+- A "Line style" switch next to the map zoom buttons offers three styles:
+  - Curved: the previous bowed lines.
+  - Square: right angles with rounded corners.
+  - Metro: straight runs with a 45° diagonal, the extra option.
+- The choice is kept in `localStorage` (`controlhub.map.edgeStyle`).
+- The geometry is a pure module, `apps/web/src/renderer/edge-path.ts`, with vitest tests. Every
+  style is a polyline, and request dots move along it by arc length. The dots follow the drawn
+  line in every style and still keep only the recorded timestamps.
+- Opposite directions between the same cards get separate lanes (5 px) in the square and metro
+  styles.
+- With the original three demo services on one row, square and metro looked straight. The demo
+  now has seven services (see below), so the bends are visible on the map itself.
+
+### Workspace UX refactor, exact dots, larger demo (2026-09-29)
+- **Timeline without the slider.** The bottom range slider and the overview strip are gone.
+  The ruler itself is the cursor: drag it (or drag across the rows) to move through time, and
+  the cursor follows the pointer continuously. Shift+drag or the middle button pans. Ctrl/⌘+wheel
+  (or any wheel over the ruler) zooms, Shift+wheel pans, and the plain wheel scrolls the rows
+  vertically. The ruler is a `role="slider"` "Selected time" with Left/Right (Shift ×10),
+  PageUp/PageDown and Home/End. The zoom buttons centre the window on the cursor.
+- **Timeline is a compact, scrollable dock.** One header row holds mode, transport, speed,
+  live, cursor clock, the `active · req · err` summary, Mark A and Range… (now a popover). The
+  ruler is sticky and the tracks scroll vertically. The dock height is resizable by dragging its
+  top edge or with the arrow keys (separator "Resize bottom dock", 150–640 px, default 220 px,
+  remembered in `localStorage`).
+- **Page layout.** The map is the main area. KPIs are one compact row. Logs/Traces/Events moved
+  from a bottom panel into a right-hand side panel with tabs "Details" (Inspector) and "Signals".
+  Selecting a component (or running Compare) switches to Details; Signals is the default. The
+  side panel width is resizable (320–760 px, default 400 px, remembered). The logs, traces and
+  events views adapt to the narrow panel with container queries: the trace list stacks above the
+  waterfall, and the event attributes column hides. The map legend wraps instead of covering the
+  zoom and line-style buttons.
+- **Why dots were not in the middle of a request (root cause).** OpenTelemetry JS 2.x takes a
+  span's start from `Date.now()` (1 ms resolution) and adds a precise duration for the end.
+  Every span of a fast request therefore appeared to start in the same millisecond, and the
+  hop timestamps were wrong by up to 1 ms on 2–5 ms calls. `@controlhub/sdk-node` now adds a
+  `PreciseStartSpanProcessor` that restamps the start from `performance.timeOrigin +
+  performance.now()` (sub-millisecond). An explicit start time from the caller is kept. Tests:
+  `packages/sdk-node/test/precise-start.test.js`.
+- **Dot model.** The user chose "progress": a dot moves from caller to callee over the whole call,
+  `(now − t0) / (t3 − t0)` of the caller's client span. At the middle of a call the dot is in
+  the middle of the line. The map note says so ("dot position = share of the call elapsed").
+- **Clock skew between services.** Measured on this machine, Node processes disagree by up to
+  about 1 ms: `performance.timeOrigin` spreads 2.7 ms and `Date.now()` 0.8 ms across 6 processes,
+  checked against the system-wide `process.hrtime`. On live data, 172 of 1,604 cross-service
+  server spans started before their caller's client span and 931 ended after it. The engine now
+  corrects this for display only (new `skew.rs`), as trace viewers do. A callee whose entry span
+  does not fit inside the caller's span is shifted, with its whole in-service subtree, to sit
+  centred in it. Shifts accumulate down the chain. The correction is applied to map hops and to
+  timeline clips, so both show the same times. Stored data is unchanged.
+- **Demo: 7 services.** gateway, auth, catalog, orders, inventory, payments and notifications,
+  plus Postgres and an uninstrumented payment-provider stand-in:
+  - gateway checks every `/api/*` request with auth.
+  - `GET /api/catalog/:id` goes to catalog, which calls inventory.
+  - `POST /api/orders` goes to orders, which reserves in inventory, charges through payments
+    (which calls the provider), writes to Postgres and notifies.
+  - Load mix: 15% POST orders, 30% catalog reads, the rest order reads.
+  - `just demo-fault` accepts every service.
+
+### Map routing, service focus, replay range (2026-09-29)
+Spec: `docs/superpowers/specs/2026-09-29-map-focus-range-design.md`.
+- **Lines no longer cross or run under cards.** The engine layout (`layout.rs`) is now layered
+  (Sugiyama-style):
+  - Longest-path columns, with a corridor item for every column that a long edge skips.
+  - Barycenter sweeps plus neighbour swaps to minimise crossings.
+  - Heights set by isotonic regression (PAV) with minimum gaps.
+  - Each edge carries its corridor waypoints (`TopologyViewEdge.points`).
+
+  The renderer (`apps/web/src/renderer/edge-route.ts`, pure, vitest) routes every edge through
+  these corridors in all three line styles:
+  - Separate ports along the card sides, ordered by the other end.
+  - Separate lanes for vertical runs that share a gap.
+  - Routes are recomputed only when the topology or the style changes.
+
+  Tests:
+  - Engine: no crossings, corridors and cards never overlap on the demo topology, a proptest on
+    random graphs, determinism.
+  - Web: no route point lies inside a foreign card, in any style.
+- **Changed invariant.** Cards may move once when a new component or connection appears, because
+  the layout is recomputed. The old test "layout is stable when new nodes appear" was replaced by
+  "layout does not move when only items change".
+- **Switching services off.** Every service row on the timeline has a switch. There are also
+  "All on" / "All off" buttons and a "Show only this service" button, shown on hover. Switched-off
+  services are dimmed, not hidden:
+  - The timeline row fades, and the service is left out of the Requests, Errors, Latency and
+    Events rows.
+  - On the map its card, edges and request dots fade (`Filters.muted_services`, `FLAG_DIMMED`,
+    `HOP_DIMMED`).
+  - A dependency (for example Postgres) fades only when every caller is switched off.
+
+  To look at one interaction, switch everything off and turn two services back on.
+- **Replay range.** Dragging across the tracks selects a range. A click on the tracks, or a drag
+  on the ruler, still moves the cursor.
+  - The view zooms to the range, and the time outside it is shaded.
+  - The range edges can be dragged.
+  - A header chip shows the range; its ✕ (or Esc) clears it and shows the whole timeline again.
+  - Play loops inside the range until it is cleared. Picking a range leaves live mode.
+- **Tooltip.** The timeline tooltip is centred directly above the pointer and clamped to the
+  window edges. It flips below the pointer near the top of the window.
+- **PAUSED** is now a neutral grey instead of the amber used for degraded services.
+
 ## Checks run in this session (real results)
 
 Machine: Windows 11 (10.0.26200), Rust 1.98.1, Node 24.16.0, pnpm 10, Docker Desktop.
@@ -97,6 +262,75 @@ web production build via `pnpm --filter @controlhub/web start`.
 | `just test-broker-outage` | pass: 1/1 (503 after 15.0 s, recovery) |
 | `pnpm --filter @controlhub/e2e exec playwright test` | pass: **16/16** (actions 2, CSP 2, tokens 2, workspace incl. live/reload, fault scenario, isolation) |
 
+Second pass, every `just` recipe against `just dev` (web in `next dev` mode) + `just demo`:
+
+| Command | Result |
+|---|---|
+| `just`, `just doctor`, `just down`, `just reset` (answered "no": aborted, volumes kept), `just bootstrap`, `just wasm`, `just codegen`, `just build` | pass |
+| `just check`, `just test` | pass (re-run after the fixes above) |
+| `just dev`, `just dev-backend`, `just demo`, `just stop` | pass: ports up; a second `just dev` is refused; `just stop` stopped 8 (dev+demo) and 4 (dev-backend) processes and freed every port |
+| `just demo-fault orders --latency 100 --error-rate 0.2`, `--clear` | pass (read back) |
+| `just cli doctor/discover/plan/apply/apply --yes/verify/context/mcp` on a temp copy of the fixture | pass; `apply` without `--yes` exits 2 |
+| `just test-integration` | pass: 31/31, 1 skipped (broker outage) |
+| `just test-e2e` | 14/16 on first run (CSP specs, fixed above), then 15/16: the actions spec was refused by the policy rate limit (`30 plan(s) in the last hour`) after the earlier runs; after a slot freed, `specs/actions.spec.ts` passed 2/2 and `specs/csp.spec.ts` 2/2 |
+| `just test-broker-outage` | pass: 1/1 |
+| `just bench` | 155k items, first frame 113.3 ms, seek 0.011 ms, live batch + frame 4.6 ms, ~44 MiB |
+
+Third pass, after honest hops and the redesign, against `just dev` + `just demo`:
+
+| Command | Result |
+|---|---|
+| `just wasm`, `just codegen` | pass; ABI 2, WASM 474 KiB; codegen shows no drift |
+| `just check` | pass |
+| `just test` | pass: engine-core 22 tests (6 new hop tests), web vitest 6/6 (hop math), all other crates and SDK tests pass |
+| `just test-e2e` | pass: **16/16** with the new layout (all accessible labels kept) |
+| Visual check (Playwright screenshots, 1600×960) | live and replay layouts render. At 0.001× a request dot waits on the orders card while gateway→orders is lit, then disappears when the recorded call ends |
+| `just test-integration`, `just bench` | not re-run: ingest, processor and API are unchanged since the second pass |
+
+Fourth pass, after the layered timeline, against `just dev` + `just demo`:
+
+| Command | Result |
+|---|---|
+| `just wasm`, `just codegen` | pass; WASM 529 KiB; new generated types `TimelineTracks`, `ServiceTrack`, `SpanClip`, `EventMarker` |
+| `just check` | pass (after collapsing three `if let` for clippy) |
+| `just test` | pass: engine-core 28 tests (6 new track tests), web vitest 14/14 (8 new scale tests), other crates and SDK pass |
+| `just test-e2e` | pass: **16/16**; then `specs/workspace.spec.ts` with the new "layered timeline shows tracks per service and zooms" test: 7/7 |
+| Visual check (temporary Playwright screenshots at 1600×1000, spec deleted afterwards) | whole range at 15 min, 3.5 s and 220 ms views render; at 220 ms the service rows show individual span clips and the hover tooltip; no console errors |
+| `just test-integration`, `just bench` | not run: ingest, processor and API are unchanged; the bench does not cover `timeline_tracks` |
+
+Fifth pass, map line styles (web only), against `just dev` + `just demo`:
+
+| Command | Result |
+|---|---|
+| `just check` | pass |
+| `just test` | pass: web vitest 24/24 (10 new edge-path tests), Rust and SDK unchanged and passing |
+| `just test-e2e` | pass: **18/18**, including the new "map line style can be switched and is remembered" test |
+| Visual check (temporary Playwright screenshots and an SVG preview of a branching graph; both deleted) | all three styles render, and the choice survives a reload; no console errors |
+
+Sixth pass, UX refactor + precise span starts + clock-skew correction + 7-service demo, against
+`just dev` + `just demo` (restarted with the new SDK):
+
+| Command | Result |
+|---|---|
+| `just wasm` | pass; WASM 534 KiB. Engine types unchanged, so no codegen output changes |
+| `just check` | pass (after `cargo fmt`) |
+| `just test` | pass: engine-core 33 tests (5 new skew tests), SDK tests pass (8 new precise-start tests), web vitest 25/25 (new `callProgress` and `zoomCentered` tests), other crates unchanged and passing |
+| `just test-e2e` | pass: **20/20**, including the new "timeline cursor is dragged along the ruler and the dock is resizable" and "selecting a component opens its details in the side panel" tests |
+| `just test-integration` | first run 30/32 with 1 failure: the trace test assumed the first multi-service trace contains orders, but the new demo also has gateway→auth/catalog traces. After fixing the test to pick a trace containing orders: **31 pass, 1 skipped** (broker outage), 0 fail |
+| ClickHouse check on live data | all 7 services report spans; span starts are sub-millisecond and ordered within a process. Across processes, the skew described above remains in the stored data (by design; corrected at display) |
+| Visual check (temporary Playwright screenshots at 1600×900 and 1366×768; spec deleted) | map, side panel (Signals and Traces stacked), dock with drag-scrub and a 220 ms zoom render correctly at both sizes. The legend now wraps instead of covering the line-style buttons |
+
+Seventh pass: map routing, service focus and replay range, against `just dev` + `just demo`.
+
+| Command | Result |
+|---|---|
+| `just codegen`, `just wasm` | pass. New fields `Filters.muted_services` and `TopologyViewEdge.points`. WASM 588 KiB |
+| `just check` | pass (after `cargo fmt`) |
+| `just test` | pass: engine-core 41 tests (new layout tests incl. a proptest, and mute tests), web vitest 44/44 (new `edge-route` and `range` tests), other crates and SDK pass |
+| `just test-e2e` | first run 23/24: the new range test used a label that also matched the ✕ button. After fixing the test: **24/24**, including 4 new tests (service switches with All on/off and show-only, replay range with looping play and ✕ reset, a click on the tracks plus the tooltip above the pointer at the right edge, the PAUSED colour) |
+| `just test-integration` | **31 pass, 1 skipped** (broker outage), 0 fail |
+| Visual check (temporary Playwright screenshots at 1600×1000; spec deleted) | curved, square and metro: no crossings, and no line under a card. Gateway + orders focused with the rest dimmed on the map and the timeline. Range chip, shading and the grey PAUSED badge render |
+
 ## Not run, and why
 
 - **CI** (`.github/workflows/ci.yml`): a GitHub remote exists (`origin`, one commit `upd1`), but I
@@ -108,15 +342,20 @@ web production build via `pnpm --filter @controlhub/web start`.
   throughput numbers.
 - **Executor loss** (lease expiry → `failed`, never retried): the SQL and the loop exist, but no
   test kills the executor mid-plan.
-- **`just bench`** was not re-run after the incremental engine change. The earlier numbers
-  (155k items, first frame 148 ms, seek 0.015 ms) are from before.
+- **A clean orphan scenario for `just stop`** (supervisor killed while its children survive) could
+  not be reproduced here: the tool shell killed the whole process tree. `just stop` was verified
+  against running supervisors.
 
 ## Known limitations
 
 - Actions exist only for the demo system (3 actions). Verification is statistical over 15 s: it
   shows the service receives traffic with a bounded error ratio, not causality.
 - Policy limits are fixed in code (30 plans/hour per environment, one open plan per target,
-  30 min decision window, 10 min start window). There is no per-tenant configuration.
+  30 min decision window, 10 min start window). There is no per-tenant configuration. Running
+  `just test-integration` and `just test-e2e` several times within an hour exhausts the demo
+  environment's limit, and the actions e2e spec then fails until the window frees.
+- After `just stop`, the stopped `just dev`/`just demo` terminals report exit code 1 (the
+  supervisor sees its children killed).
 - The MCP server is stdio only (no remote transport). MCP and `context` see one environment per
   token.
 - The live channel streams the whole environment. Filtering happens in the engine, not on the
@@ -128,7 +367,24 @@ web production build via `pnpm --filter @controlhub/web start`.
 - The OpenTelemetry batch processors in the Node SDK can drop data when full, without a counter.
 - The processor does not coordinate consumer groups (one instance reads all partitions).
 - The Worker still reads timeline metadata from the response tail (ADR-0009).
+- At 1× a demo request lasts about 2–5 ms, shorter than one display frame, so the honest dots are
+  barely visible live. Slow replay (0.01× or 0.001×) is the way to watch a request travel.
+  Live dots run 8 s behind real time.
+- Hops are drawn only on edges visible in the frame. Messaging hops (consumer spans) are not
+  exercised by the demo.
+- Timeline tracks show only the loaded range. When the load is truncated, the tracks warn
+  about it. The last few seconds of live data are often empty because SDKs export in batches.
+  `timeline_tracks` scans every loaded span per call and has no benchmark yet.
+- Clock-skew correction is a display heuristic (centring). It is applied to map hops and
+  timeline clips but not yet to the trace waterfall in the Signals panel, which still shows the
+  raw per-service times. Services instrumented with plain OpenTelemetry JS instead of
+  `@controlhub/sdk-node` still report span starts with 1 ms resolution.
 - `@controlhub/sdk-node` and the CLI are not published. Projects reference them from a checkout.
+- Map routing guarantees are for left-to-right edges. Cycles and edges within one column fall
+  back to a direct line, which can still cross others. Large graphs (over 400 layout items) skip
+  crossing minimisation. At low zoom, parallel lanes in one gap are only a few pixels apart.
+- Switched-off services and the replay range are not remembered across reloads. The loop runs
+  only inside the loaded range; loading another range or returning to live clears it.
 
 ## Next concrete task
 

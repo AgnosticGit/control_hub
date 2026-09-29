@@ -5,10 +5,34 @@ import type { Filters, Frame, FrameSummary, InitResult, LoadResult, TopologyView
 import { EngineClient } from "@/engine/client";
 import { scopedUrl } from "@/lib/api";
 import { NS_PER_MS, NS_PER_SEC, clampNs, nowNs, parseNs } from "@/lib/time";
+import type { AnimClock } from "@/renderer/hops";
+import { playStart, replayStep } from "./timeline/range";
 
 export type Mode = "live" | "paused" | "replay" | "historical";
-export const SPEEDS = [0.1, 0.5, 1, 2, 10] as const;
+/** Replay speeds; 0.001x shows one millisecond of recorded time per second. */
+export const SPEEDS = [0.001, 0.01, 0.1, 0.5, 1, 2, 10] as const;
 export type Speed = (typeof SPEEDS)[number];
+
+/**
+ * Live request animation runs this far behind the wall clock: SDKs export spans in batches
+ * (OpenTelemetry's default is every 5 s), so the newest requests are not loaded yet at "now".
+ */
+export const LIVE_ANIM_DELAY_MS = 8000;
+
+export function animClockFor(mode: Mode, speed: Speed): AnimClock {
+  if (mode === "live") return { kind: "wall", delayMs: LIVE_ANIM_DELAY_MS };
+  return { kind: "frame", rate: mode === "replay" ? speed : 0 };
+}
+
+/** Hop window around the frame time that covers the animation time until the next frame. */
+function hopWindowFor(mode: Mode): { before: bigint; after: bigint } {
+  if (mode === "live") {
+    // Frames come at least every LIVE_TICK_MS; animation time is frame time - delay + elapsed.
+    return { before: BigInt(LIVE_ANIM_DELAY_MS + 1000) * NS_PER_MS, after: 500n * NS_PER_MS };
+  }
+  if (mode === "replay") return { before: 500n * NS_PER_MS, after: 1000n * NS_PER_MS };
+  return { before: 0n, after: 0n };
+}
 
 const LIVE_WINDOW_NS = 15n * 60n * NS_PER_SEC;
 /** Live clock: advances the cursor (and polls when the WebSocket is unavailable). */
@@ -47,6 +71,8 @@ export interface EngineState {
   rangeFrom: bigint;
   rangeTo: bigint;
   cursor: bigint;
+  /** Replay range picked on the timeline: Play loops inside it until it is cleared. */
+  loop: { from: bigint; to: bigint } | null;
   summary: FrameSummary | null;
   frameMs: number;
   topology: TopologyView | null;
@@ -74,6 +100,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       rangeFrom: now - LIVE_WINDOW_NS,
       rangeTo: now,
       cursor: now,
+      loop: null,
       summary: null,
       frameMs: 0,
       topology: null,
@@ -296,7 +323,13 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     };
   }, [state.phase, state.mode, url, recordLoad, refreshTopologyView, patch, projectId, environmentId]);
 
-  // Replay: advance the cursor at `speed` x real time; stop at the loaded end.
+  useEffect(() => {
+    if (state.phase !== "ready") return;
+    const w = hopWindowFor(state.mode);
+    clientRef.current?.setHopWindow(w.before, w.after);
+  }, [state.phase, state.mode]);
+
+  // Replay: advance the cursor at `speed` x real time; stop at the loaded end or loop the range.
   useEffect(() => {
     if (state.mode !== "replay") return;
     let raf = 0;
@@ -306,14 +339,13 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       last = t;
       const s = stateRef.current;
       const advance = BigInt(Math.round(dtMs * s.speed * 1e6));
-      const next = s.cursor + advance;
-      if (next >= s.rangeTo) {
-        clientRef.current?.seek(s.rangeTo);
-        patch({ cursor: s.rangeTo, mode: "paused" });
+      const next = replayStep(s.cursor, advance, s.rangeTo, s.loop);
+      clientRef.current?.seek(next.cursor);
+      if (next.stop) {
+        patch({ cursor: next.cursor, mode: "paused" });
         return;
       }
-      clientRef.current?.seek(next);
-      patch({ cursor: next });
+      patch({ cursor: next.cursor });
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
@@ -325,9 +357,15 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     pause: () => patch({ mode: stateRef.current.mode === "historical" ? "historical" : "paused" }),
     play: () => {
       const s = stateRef.current;
-      const atEnd = s.cursor >= s.rangeTo;
-      if (atEnd) seek(s.rangeFrom);
+      const start = playStart(s.cursor, s.rangeFrom, s.rangeTo, s.loop);
+      if (start !== s.cursor) seek(start);
       patch({ mode: "replay" });
+    },
+    /** Sets or clears the replay range; picking one leaves live mode. */
+    setLoop: (loop: { from: bigint; to: bigint } | null) => {
+      const s = stateRef.current;
+      patch({ loop, mode: loop && s.mode === "live" ? "paused" : s.mode });
+      if (loop && (s.cursor < loop.from || s.cursor > loop.to)) seek(loop.from);
     },
     setSpeed: (speed: Speed) => patch({ speed }),
     seek: (t: bigint) => {
@@ -350,7 +388,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       const s = stateRef.current;
       const now = nowNs();
       const wasHistorical = s.mode === "historical" || now - s.rangeTo > LIVE_WINDOW_NS;
-      patch({ mode: "live", rangeFrom: now - LIVE_WINDOW_NS, rangeTo: now, cursor: now });
+      patch({ mode: "live", rangeFrom: now - LIVE_WINDOW_NS, rangeTo: now, cursor: now, loop: null });
       await loadRange(wasHistorical ? now - LIVE_WINDOW_NS : s.rangeTo - OVERLAP_NS, now, {
         reset: wasHistorical,
         topology: true,
@@ -358,7 +396,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       clientRef.current?.seek(now);
     },
     loadHistorical: async (from: bigint, to: bigint) => {
-      patch({ mode: "historical", rangeFrom: from, rangeTo: to, cursor: to });
+      patch({ mode: "historical", rangeFrom: from, rangeTo: to, cursor: to, loop: null });
       await loadRange(from, to, { reset: true, topology: true });
       clientRef.current?.seek(to);
     },
@@ -371,6 +409,14 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     compare: async (a: bigint, b: bigint) =>
       (await clientRef.current?.call({ kind: "compare", aNs: a.toString(), bNs: b.toString() })) ?? [],
     diagnostics: async () => (await clientRef.current?.call({ kind: "diagnostics" })) ?? null,
+    timelineTracks: async (from: bigint, to: bigint, buckets: number, clipCap: number) =>
+      (await clientRef.current?.call({
+        kind: "timelineTracks",
+        fromNs: from.toString(),
+        toNs: to.toString(),
+        buckets,
+        clipCap,
+      })) ?? null,
     onFrame: (cb: (f: Frame) => void) => {
       const listeners = frameListeners.current;
       listeners.add(cb);

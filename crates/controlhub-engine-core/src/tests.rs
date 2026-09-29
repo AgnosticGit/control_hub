@@ -178,11 +178,15 @@ fn compare_reports_changes() {
 }
 
 #[test]
-fn layout_is_stable_when_new_nodes_appear() {
+fn layout_does_not_move_when_only_items_change() {
     let mut e = engine_with(demo_items());
+    e.seek(BASE + SEC, 1);
     let before: Vec<(String, f32, f32)> = e.topology().nodes.iter().map(|n| (n.id.clone(), n.x, n.y)).collect();
-    e.apply_batch(Batch { items: vec![TimelineItem::Log(log("lx", "payments", 4 * SEC, 9))] }).unwrap();
+    let rev = e.topology().revision;
+    e.apply_batch(Batch { items: vec![TimelineItem::Log(log("lx", "orders", 4 * SEC, 9))] }).unwrap();
+    e.seek(BASE + 5 * SEC, 2);
     let after = e.topology();
+    assert_eq!(after.revision, rev, "no new node or edge: no relayout");
     for (id, x, y) in before {
         let n = after.nodes.iter().find(|n| n.id == id).unwrap();
         assert_eq!((n.x, n.y), (x, y), "existing node {id} moved");
@@ -195,6 +199,251 @@ fn json_contract_parses_decimal_string_timestamps() {
     let mut e = Engine::new(EngineConfig::default());
     e.apply_batch_json(json).unwrap();
     assert_eq!(e.diagnostics().first_item_ns, Some(1_790_000_000_123_456_789));
+}
+
+// ------------------------------------------------------------------ hops
+
+const MS: i64 = 1_000_000;
+const US: i64 = 1_000;
+
+fn db_span(trace: &str, id: &str, parent: &str, start: i64, end: i64, err: bool) -> SpanItem {
+    SpanItem { target_entity_id: Some("res_db".into()), ..span(trace, id, Some(parent), "orders", 3, start, end, err) }
+}
+
+/// gateway client (t=0..10 ms) -> orders server (1..9 ms) -> db client (2 ms + 5 µs .. 7 ms).
+fn chain_items() -> Vec<TimelineItem> {
+    vec![
+        TimelineItem::Span(span("t1", "g1", None, "gateway", 2, 0, 11 * MS, false)),
+        TimelineItem::Span(span("t1", "g2", Some("g1"), "gateway", 3, 0, 10 * MS, false)),
+        TimelineItem::Span(span("t1", "o1", Some("g2"), "orders", 2, MS, 9 * MS, false)),
+        TimelineItem::Span(db_span("t1", "d1", "o1", 2 * MS + 5 * US, 7 * MS, true)),
+    ]
+}
+
+fn chain_engine() -> Engine {
+    let mut e = Engine::new(EngineConfig::default());
+    e.load_topology(TopologySnapshot {
+        nodes: vec![TopologyNode {
+            id: "res_db".into(),
+            name: "postgres".into(),
+            kind: EntityKindDto::Database,
+            provenance: ProvenanceDto::Inferred,
+        }],
+        edges: vec![],
+    });
+    e.apply_batch(Batch { items: chain_items() }).unwrap();
+    e
+}
+
+fn hops(vs: &VisibleState) -> Vec<&[f32]> {
+    vs.hop_data.chunks(HOP_STRIDE).collect()
+}
+
+fn edge_between(e: &Engine, from: &str, to: &str) -> u32 {
+    let t = e.topology();
+    let idx = |id: &str| t.nodes.iter().find(|n| n.id == id).unwrap().index;
+    t.edges.iter().find(|x| x.source == idx(from) && x.target == idx(to)).unwrap().index
+}
+
+#[test]
+fn hops_carry_the_recorded_timestamps_of_each_call() {
+    let mut e = chain_engine();
+    e.seek(BASE + 5 * MS, 1);
+    let vs = e.visible_state();
+    let call_edge = edge_between(&e, "svc_gateway", "svc_orders") as f32;
+    let db_edge = edge_between(&e, "svc_orders", "res_db") as f32;
+    let hs = hops(&vs);
+    assert_eq!(hs.len(), 2);
+    assert_eq!(vs.summary.hops_in_window, 2);
+    assert_eq!(vs.summary.hops_shown, 2);
+
+    // Times are milliseconds relative to the frame time (5 ms).
+    let call = hs.iter().find(|h| h[0] == call_edge).unwrap();
+    assert_eq!(&call[1..5], &[-5.0, -4.0, 4.0, 5.0], "client start, server start, server end, client end");
+    assert_eq!(call[5] as u32, 0);
+
+    let db = hs.iter().find(|h| h[0] == db_edge).unwrap();
+    // Leaf: only departure and return are known; microsecond precision survives.
+    assert!((db[1] - -2.995).abs() < 1e-4 && db[1] == db[2], "{db:?}");
+    assert_eq!((db[3], db[4]), (2.0, 2.0));
+    assert_eq!(db[5] as u32, HOP_LEAF | HOP_ERROR);
+}
+
+#[test]
+fn hop_window_selects_overlapping_calls_only() {
+    let mut e = chain_engine();
+    e.set_hop_window(MS, 0);
+    // At 12 ms everything ended before 11 ms: nothing overlaps [11 ms, 12 ms].
+    e.seek(BASE + 12 * MS, 1);
+    assert!(e.visible_state().hop_data.is_empty());
+    // [9.5 ms, 10.5 ms] still overlaps the gateway -> orders call (ends at 10 ms).
+    e.seek(BASE + 10 * MS + MS / 2, 2);
+    let vs = e.visible_state();
+    assert_eq!(hops(&vs).len(), 1);
+    // Before the first departure, with a lookahead, the call shows up ahead of time.
+    e.set_hop_window(0, 3 * MS);
+    e.seek(BASE - 2 * MS, 3);
+    let vs = e.visible_state();
+    assert_eq!(hops(&vs).len(), 1);
+    assert_eq!(hops(&vs)[0][1], 2.0);
+}
+
+#[test]
+fn hop_cap_is_reported() {
+    let mut e = Engine::new(EngineConfig { max_hops: 1, ..EngineConfig::default() });
+    e.load_topology(TopologySnapshot {
+        nodes: vec![TopologyNode {
+            id: "res_db".into(),
+            name: "postgres".into(),
+            kind: EntityKindDto::Database,
+            provenance: ProvenanceDto::Inferred,
+        }],
+        edges: vec![],
+    });
+    e.apply_batch(Batch { items: chain_items() }).unwrap();
+    e.seek(BASE + 5 * MS, 1);
+    let vs = e.visible_state();
+    assert_eq!((vs.summary.hops_in_window, vs.summary.hops_shown), (2, 1));
+    assert_eq!(vs.hop_data.len(), HOP_STRIDE);
+}
+
+#[test]
+fn clock_skew_is_clamped_and_flagged() {
+    // The callee's clock runs 2 ms behind: its server span starts before the client span.
+    let items = vec![
+        TimelineItem::Span(span("t1", "g2", None, "gateway", 3, 3 * MS, 10 * MS, false)),
+        TimelineItem::Span(span("t1", "o1", Some("g2"), "orders", 2, MS, 8 * MS, false)),
+    ];
+    let mut e = engine_with(items);
+    e.seek(BASE + 5 * MS, 1);
+    let vs = e.visible_state();
+    let h = hops(&vs)[0];
+    assert!(h[1] <= h[2] && h[2] <= h[3] && h[3] <= h[4], "{h:?}");
+    assert_eq!(h[5] as u32 & HOP_CLAMPED, HOP_CLAMPED);
+}
+
+#[test]
+fn clock_skew_shifts_the_callee_and_its_subtree_for_display() {
+    // orders reports its 6 ms call at 1..7 ms inside the gateway's 3..10 ms client span, and
+    // payments reports 7..9 ms for a call that orders made at 2..5 ms of its own clock.
+    let items = vec![
+        TimelineItem::Span(span("t1", "g2", None, "gateway", 3, 3 * MS, 10 * MS, false)),
+        TimelineItem::Span(span("t1", "o1", Some("g2"), "orders", 2, MS, 7 * MS, false)),
+        TimelineItem::Span(span("t1", "o2", Some("o1"), "orders", 3, 2 * MS, 5 * MS, false)),
+        TimelineItem::Span(span("t1", "p1", Some("o2"), "payments", 2, 7 * MS, 9 * MS, false)),
+    ];
+    let e = engine_with(items);
+    let t = e.timeline_tracks(BASE, BASE + 12 * MS, 12, 100);
+    let clip = |service: &str, start: f64| {
+        let (i, _) = track(&t, service);
+        t.clips.iter().any(|c| c.track == i as u32 && (c.start_ms - start).abs() < 1e-9)
+    };
+    // orders: +2.5 ms (o1 centred at 3.5..9.5), and o2 moves with it to 4.5..7.5.
+    assert!(clip("orders", 3.5) && clip("orders", 4.5), "{:?}", t.clips);
+    // payments is centred in the shifted o2: 7..9 -> 5..7 (-2 ms).
+    assert!(clip("payments", 5.0), "{:?}", t.clips);
+    // gateway (the root) is never moved.
+    assert!(clip("gateway", 3.0));
+}
+
+fn muted(ids: &[&str]) -> Filters {
+    Filters { muted_services: ids.iter().map(|s| (*s).to_owned()).collect(), ..Filters::default() }
+}
+
+fn node_flags(e: &Engine, vs: &VisibleState, id: &str) -> u32 {
+    let idx = e.topology().nodes.iter().find(|n| n.id == id).unwrap().index;
+    let k = vs.node_indices.iter().position(|&i| i == idx).unwrap();
+    vs.node_data[k * NODE_STRIDE + 6] as u32
+}
+
+fn edge_flags(vs: &VisibleState, edge: u32) -> u32 {
+    let k = vs.edge_indices.iter().position(|&i| i == edge).unwrap();
+    vs.edge_data[k * EDGE_STRIDE + 7] as u32
+}
+
+#[test]
+fn muted_services_are_dimmed_with_their_edges_and_hops() {
+    let mut e = chain_engine();
+    e.seek(BASE + 5 * MS, 1);
+    e.set_filters(muted(&["svc_gateway"]));
+    let vs = e.visible_state();
+    let call = edge_between(&e, "svc_gateway", "svc_orders");
+    let db = edge_between(&e, "svc_orders", "res_db");
+    assert_eq!(node_flags(&e, &vs, "svc_gateway") & FLAG_DIMMED, FLAG_DIMMED);
+    assert_eq!(node_flags(&e, &vs, "svc_orders") & FLAG_DIMMED, 0);
+    // The database is still called by a live service.
+    assert_eq!(node_flags(&e, &vs, "res_db") & FLAG_DIMMED, 0);
+    assert_eq!(edge_flags(&vs, call) & FLAG_DIMMED, FLAG_DIMMED);
+    assert_eq!(edge_flags(&vs, db) & FLAG_DIMMED, 0);
+    for h in hops(&vs) {
+        let dim = h[5] as u32 & HOP_DIMMED != 0;
+        assert_eq!(dim, h[0] as u32 == call, "{h:?}");
+    }
+
+    // With every caller muted, the dependency is dimmed too.
+    e.set_filters(muted(&["svc_gateway", "svc_orders"]));
+    let vs = e.visible_state();
+    assert_eq!(node_flags(&e, &vs, "res_db") & FLAG_DIMMED, FLAG_DIMMED);
+    // Nothing muted: nothing dimmed.
+    e.set_filters(Filters::default());
+    let vs = e.visible_state();
+    assert!(vs.node_data.chunks(NODE_STRIDE).all(|n| n[6] as u32 & FLAG_DIMMED == 0));
+}
+
+#[test]
+fn muted_services_keep_their_row_but_leave_the_aggregates() {
+    let mut e = chain_engine();
+    e.set_filters(muted(&["svc_orders"]));
+    let t = e.timeline_tracks(BASE, BASE + 12 * MS, 12, 100);
+    // Only the gateway root request is counted; orders still has its own row and clips.
+    assert_eq!(t.requests.iter().sum::<u32>(), 1);
+    assert_eq!(t.latency_samples.iter().sum::<u32>(), 1);
+    let (oi, orders) = track(&t, "orders");
+    assert_eq!(orders.counts.iter().sum::<u32>(), 2);
+    assert!(t.clips.iter().any(|c| c.track as usize == oi));
+}
+
+#[test]
+fn spans_that_fit_their_caller_are_not_shifted() {
+    let mut e = chain_engine();
+    let t = e.timeline_tracks(BASE, BASE + 12 * MS, 12, 100);
+    let (orders, _) = track(&t, "orders");
+    assert!(t.clips.iter().any(|c| c.track == orders as u32 && c.start_ms == 1.0));
+    e.seek(BASE + 5 * MS, 1);
+    let vs = e.visible_state();
+    assert!(hops(&vs).iter().all(|h| h[5] as u32 & HOP_CLAMPED == 0));
+}
+
+#[test]
+fn hops_follow_filters_and_trace_selection() {
+    let mut e = chain_engine();
+    e.seek(BASE + 5 * MS, 1);
+    e.set_filters(Filters { selected_trace_id: Some("t1".into()), ..Filters::default() });
+    let vs = e.visible_state();
+    assert!(hops(&vs).iter().all(|h| h[5] as u32 & HOP_HIGHLIGHT != 0));
+    // Hiding the inferred database edge hides its hops too.
+    e.set_filters(Filters { hide_inferred: true, ..Filters::default() });
+    let vs = e.visible_state();
+    assert_eq!(hops(&vs).len(), 1);
+}
+
+#[test]
+fn hops_update_when_new_spans_arrive_and_are_evicted() {
+    let mut e = chain_engine();
+    e.seek(BASE + 5 * MS, 1);
+    assert_eq!(hops(&e.visible_state()).len(), 2);
+    e.apply_batch(Batch {
+        items: vec![
+            TimelineItem::Span(span("t2", "g2", None, "gateway", 3, 4 * MS, 6 * MS, false)),
+            TimelineItem::Span(span("t2", "o1", Some("g2"), "orders", 2, 4 * MS + US, 6 * MS - US, false)),
+        ],
+    })
+    .unwrap();
+    e.seek(BASE + 5 * MS, 2);
+    assert_eq!(hops(&e.visible_state()).len(), 3);
+    e.evict_before(BASE + 20 * MS);
+    e.seek(BASE + 5 * MS, 3);
+    assert!(e.visible_state().hop_data.is_empty());
 }
 
 // ------------------------------------------------------------- properties
@@ -395,4 +644,99 @@ fn live_batches_merge_instead_of_rebuilding() {
         .unwrap();
     e.seek(BASE + SEC, 21);
     assert_eq!(e.diagnostics().timeline_rebuilds, 2);
+}
+
+// ------------------------------------------------------------------ timeline tracks
+
+fn track<'a>(t: &'a TimelineTracks, name: &str) -> (usize, &'a ServiceTrack) {
+    t.services.iter().enumerate().find(|(_, s)| s.name == name).unwrap()
+}
+
+#[test]
+fn tracks_count_requests_on_the_callee_and_p95_by_end_bucket() {
+    let e = chain_engine();
+    let t = e.timeline_tracks(BASE, BASE + 12 * MS, 12, 100);
+    // g1 (root) and o1 (server); client spans are not counted again.
+    assert_eq!(t.requests[0], 1);
+    assert_eq!(t.requests[1], 1);
+    assert_eq!(t.requests.iter().sum::<u32>(), 2);
+    // d1 failed but is a client span; no request span failed and there are no error logs.
+    assert_eq!(t.errors.iter().sum::<u32>(), 0);
+    assert_eq!(t.latency_p95_ms[11], Some(11.0));
+    assert_eq!(t.latency_p95_ms[9], Some(8.0));
+    assert_eq!(t.latency_p95_ms[5], None);
+    assert_eq!(t.latency_samples[11], 1);
+
+    let (_, gw) = track(&t, "gateway");
+    assert_eq!(gw.counts[0], 2);
+    let (oi, orders) = track(&t, "orders");
+    assert_eq!((orders.counts[1], orders.counts[2]), (1, 1));
+    assert!(orders.clipped);
+    let clips: Vec<&SpanClip> = t.clips.iter().filter(|c| c.track as usize == oi).collect();
+    assert_eq!(clips.len(), 2);
+    assert_eq!((clips[0].start_ms, clips[0].end_ms, clips[0].depth, clips[0].error), (1.0, 9.0, 0, false));
+    assert!((clips[1].start_ms - 2.005).abs() < 1e-9, "{}", clips[1].start_ms);
+    assert_eq!((clips[1].end_ms, clips[1].depth, clips[1].error), (7.0, 1, true));
+}
+
+#[test]
+fn tracks_p95_is_nearest_rank() {
+    let items =
+        (1..=20).map(|i| TimelineItem::Span(span(&format!("t{i}"), "r", None, "api", 2, 0, i * MS, false))).collect();
+    let e = engine_with(items);
+    let t = e.timeline_tracks(BASE, BASE + 100 * MS, 1, 0);
+    assert_eq!(t.requests, vec![20]);
+    assert_eq!(t.latency_samples, vec![20]);
+    assert_eq!(t.latency_p95_ms, vec![Some(19.0)]);
+}
+
+#[test]
+fn tracks_leave_out_clips_over_the_cap_but_report_the_count() {
+    let e = chain_engine();
+    let t = e.timeline_tracks(BASE, BASE + 12 * MS, 12, 1);
+    let (_, orders) = track(&t, "orders");
+    assert_eq!(orders.spans_in_view, 2);
+    assert!(!orders.clipped);
+    assert!(t.clips.is_empty());
+}
+
+#[test]
+fn tracks_honour_service_filters() {
+    let mut e = chain_engine();
+    e.set_filters(Filters { search: "orders".into(), ..Filters::default() });
+    let t = e.timeline_tracks(BASE, BASE + 12 * MS, 12, 100);
+    assert_eq!(t.services.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["orders"]);
+    assert_eq!(t.requests.iter().sum::<u32>(), 1);
+}
+
+#[test]
+fn tracks_count_error_logs_events_and_mark_rare_event_types() {
+    let mut items = demo_items();
+    items.push(TimelineItem::Event(EventItem {
+        id: "e2".into(),
+        event_type: "deployment.started".into(),
+        service_id: Some("svc_orders".into()),
+        service_name: Some("orders".into()),
+        time_ns: BASE + 5 * SEC,
+        trace_id: None,
+    }));
+    let e = engine_with(items);
+    let t = e.timeline_tracks(BASE, BASE + 10 * SEC, 10, 0);
+    assert_eq!(t.errors[2], 1, "failed orders server span");
+    assert_eq!(t.errors[3], 1, "error log");
+    assert_eq!(t.events[0], 1);
+    assert_eq!(t.events[5], 1);
+    assert_eq!(t.markers_total, 1);
+    assert_eq!(t.markers[0].event_type, "deployment.started");
+    assert_eq!(t.markers[0].time_ms, 5000.0);
+}
+
+#[test]
+fn tracks_for_an_empty_window_are_empty() {
+    let e = chain_engine();
+    let t = e.timeline_tracks(BASE, BASE, 10, 10);
+    assert!(t.requests.is_empty() && t.services.is_empty());
+    let t = e.timeline_tracks(BASE + SEC, BASE + 2 * SEC, 4, 10);
+    assert_eq!(t.requests, vec![0; 4]);
+    assert!(t.clips.is_empty());
 }

@@ -7,12 +7,13 @@
 // - process command-line arguments are not attached to the resource
 //   (automatic resource detection is disabled on purpose);
 // - optional `request.started` / `request.completed` events are sent to
-//   the ControlHub custom events endpoint.
+//   the ControlHub custom events endpoint;
+// - span start times are refined below 1 ms (see `precise-start.js`).
 
 import { hostname } from 'node:os';
 import { context, trace } from '@opentelemetry/api';
 import { logs, SeverityNumber } from '@opentelemetry/api-logs';
-import { NodeSDK } from '@opentelemetry/sdk-node';
+import { NodeSDK, tracing } from '@opentelemetry/sdk-node';
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto';
@@ -20,6 +21,7 @@ import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
 import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
 import { EventsClient } from './events.js';
+import { PreciseStartSpanProcessor } from './precise-start.js';
 
 const GLOBAL_KEY = Symbol.for('controlhub.sdk-node');
 const OTEL_API_KEY = Symbol.for('opentelemetry.js.api.1');
@@ -116,7 +118,10 @@ export function startControlHub(options = {}) {
   const sdk = new NodeSDK({
     autoDetectResources: false,
     resource: defaultResource().merge(resourceFromAttributes(attributes)),
-    traceExporter: new OTLPTraceExporter({ url: `${endpoint}/v1/traces`, headers }),
+    spanProcessors: [
+      new PreciseStartSpanProcessor(),
+      new tracing.BatchSpanProcessor(new OTLPTraceExporter({ url: `${endpoint}/v1/traces`, headers })),
+    ],
     logRecordProcessors: [
       new BatchLogRecordProcessor({
         exporter: new OTLPLogExporter({ url: `${endpoint}/v1/logs`, headers }),

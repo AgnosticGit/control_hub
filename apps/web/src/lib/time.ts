@@ -24,6 +24,12 @@ export function formatClock(ns: bigint, withMs = true): string {
   return `${hh}:${mm}:${ss}.${String(d.getMilliseconds()).padStart(3, "0")}`;
 }
 
+/** `HH:MM:SS.mmm uuu` — microseconds shown when replaying slowly. */
+export function formatClockMicros(ns: bigint): string {
+  const us = ((ns % NS_PER_MS) + NS_PER_MS) % NS_PER_MS / 1000n;
+  return `${formatClock(ns)} ${String(us).padStart(3, "0")}`;
+}
+
 export function formatDateTime(ns: bigint): string {
   const d = new Date(Number(ns / NS_PER_MS));
   return `${d.toLocaleDateString()} ${formatClock(ns)}`;

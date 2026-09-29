@@ -67,6 +67,170 @@ test.describe("workspace on demo data", () => {
     await expect(timeline.getByText("live", { exact: true })).toBeVisible();
   });
 
+  test("map line style can be switched and is remembered", async ({ page }) => {
+    const styles = page.getByRole("group", { name: "Line style" });
+    await expect(styles.getByRole("button", { name: "Curved lines" })).toHaveAttribute("aria-pressed", "true");
+    await styles.getByRole("button", { name: "Square lines" }).click();
+    await expect(styles.getByRole("button", { name: "Square lines" })).toHaveAttribute("aria-pressed", "true");
+    await page.reload();
+    await expect(page.getByRole("group", { name: "Line style" }).getByRole("button", { name: "Square lines" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+      { timeout: 30_000 },
+    );
+    await page.getByRole("group", { name: "Line style" }).getByRole("button", { name: "Curved lines" }).click();
+  });
+
+  test("layered timeline shows tracks per service and zooms", async ({ page }) => {
+    const timeline = page.getByLabel("Timeline");
+    const tracks = timeline.getByRole("list", { name: "Tracks" });
+    for (const name of ["Actions", "Events", "Errors", "Requests", "Latency p95", "gateway", "orders"]) {
+      await expect(tracks.getByText(name, { exact: true })).toBeVisible();
+    }
+    await timeline.getByRole("button", { name: "Pause live" }).click();
+    const whole = timeline.getByRole("button", { name: "Whole range" });
+    await expect(whole).toHaveAttribute("aria-pressed", "true");
+    await timeline.getByRole("button", { name: "Zoom in time" }).click();
+    await expect(whole).toHaveAttribute("aria-pressed", "false");
+    await whole.click();
+    await expect(whole).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("timeline cursor is dragged along the ruler and the dock is resizable", async ({ page }) => {
+    const timeline = page.getByLabel("Timeline");
+    await timeline.getByRole("button", { name: "Pause live" }).click();
+    const ruler = timeline.getByLabel("Selected time");
+    const box = await ruler.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+    const before = await ruler.getAttribute("aria-valuetext");
+    await page.mouse.move(box.x + box.width * 0.8, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await expect(ruler).not.toHaveAttribute("aria-valuetext", before ?? "");
+    await expect(timeline.getByText("paused", { exact: true })).toBeVisible();
+
+    const dragged = await ruler.getAttribute("aria-valuetext");
+    await ruler.focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(ruler).not.toHaveAttribute("aria-valuetext", dragged ?? "");
+
+    const dock = page.getByRole("separator", { name: "Resize bottom dock" });
+    const height = Number(await dock.getAttribute("aria-valuenow"));
+    await dock.focus();
+    await page.keyboard.press("ArrowUp");
+    await expect(dock).toHaveAttribute("aria-valuenow", String(height + 24));
+  });
+
+  test("services can be switched off on the timeline, all at once or all but one", async ({ page }) => {
+    const tracks = page.getByLabel("Timeline").getByRole("list", { name: "Tracks" });
+    const orders = tracks.getByRole("checkbox", { name: "Show orders" });
+    const gateway = tracks.getByRole("checkbox", { name: "Show gateway" });
+    await expect(orders).toBeChecked();
+    await orders.uncheck();
+    await expect(orders).not.toBeChecked();
+    await expect(gateway).toBeChecked();
+
+    await tracks.getByRole("button", { name: "All off" }).click();
+    await expect(gateway).not.toBeChecked();
+    await expect(tracks.getByRole("button", { name: "All off" })).toBeDisabled();
+    await tracks.getByRole("button", { name: "All on" }).click();
+    await expect(gateway).toBeChecked();
+    await expect(orders).toBeChecked();
+
+    await tracks.getByRole("listitem").filter({ hasText: "orders" }).hover();
+    await tracks.getByRole("button", { name: "Show only orders" }).click();
+    await expect(orders).toBeChecked();
+    await expect(gateway).not.toBeChecked();
+    await tracks.getByRole("button", { name: "All on" }).click();
+  });
+
+  test("a replay range is dragged on the tracks, loops on play and resets with its close button", async ({ page }) => {
+    const timeline = page.getByLabel("Timeline");
+    const rows = timeline.locator('[data-area="rows"]');
+    const box = await rows.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+    const y = box.y + 30;
+    await page.mouse.move(box.x + box.width * 0.3, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.32, y, { steps: 10 });
+    await page.mouse.up();
+
+    const chip = timeline.getByLabel("Replay range", { exact: true });
+    await expect(chip).toBeVisible();
+    await expect(timeline.getByText("paused", { exact: true })).toBeVisible();
+    await expect(timeline.getByRole("button", { name: "Whole range" })).toHaveAttribute("aria-pressed", "false");
+
+    const ruler = timeline.getByLabel("Selected time");
+    await timeline.getByLabel("Speed").selectOption("10");
+    await timeline.getByRole("button", { name: "Play replay" }).click();
+    await expect(timeline.getByText("replay", { exact: true })).toBeVisible();
+    // 2% of the 15-minute live window is 18 s: at 10x one pass takes under 2 s, so staying
+    // inside the range while still replaying for 3.6 s means it wrapped around.
+    for (let i = 0; i < 12; i++) {
+      await page.waitForTimeout(300);
+      const at = Number(await ruler.getAttribute("aria-valuenow"));
+      expect(at).toBeGreaterThanOrEqual(29);
+      expect(at).toBeLessThanOrEqual(33);
+    }
+    await expect(timeline.getByText("replay", { exact: true })).toBeVisible();
+
+    await timeline.getByRole("button", { name: "Clear replay range" }).click();
+    await expect(chip).toHaveCount(0);
+    await expect(timeline.getByRole("button", { name: "Whole range" })).toHaveAttribute("aria-pressed", "true");
+    await timeline.getByRole("button", { name: "Pause", exact: true }).click();
+    await timeline.getByLabel("Speed").selectOption("1");
+  });
+
+  test("a click on the tracks moves the cursor and the tooltip sits above the pointer", async ({ page }) => {
+    const timeline = page.getByLabel("Timeline");
+    await timeline.getByRole("button", { name: "Pause live" }).click();
+    const ruler = timeline.getByLabel("Selected time");
+    const rows = timeline.locator('[data-area="rows"]');
+    const box = await rows.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+    await page.mouse.click(box.x + box.width * 0.5, box.y + 60);
+    const at = Number(await ruler.getAttribute("aria-valuenow"));
+    expect(Math.abs(at - 50)).toBeLessThanOrEqual(2);
+    await expect(timeline.getByLabel("Replay range")).toHaveCount(0);
+
+    // Requests row, right edge: the tooltip must stay on screen and above the pointer.
+    const px = box.x + box.width - 3;
+    const py = box.y + 70;
+    await page.mouse.move(px, py);
+    const tip = page.getByRole("tooltip");
+    await expect(tip).toBeVisible();
+    const t = await tip.boundingBox();
+    const viewport = page.viewportSize();
+    expect(t).not.toBeNull();
+    if (!t || !viewport) return;
+    expect(t.y + t.height).toBeLessThanOrEqual(py);
+    expect(t.x + t.width).toBeLessThanOrEqual(viewport.width);
+    expect(t.x).toBeGreaterThanOrEqual(0);
+  });
+
+  test("the paused badge is not the degraded (amber) colour", async ({ page }) => {
+    const timeline = page.getByLabel("Timeline");
+    await timeline.getByRole("button", { name: "Pause live" }).click();
+    const badge = timeline.getByText("paused", { exact: true });
+    await expect(badge).toBeVisible();
+    const color = await badge.evaluate((el) => getComputedStyle(el).color);
+    expect(color).not.toMatch(/245,\s*158,\s*11/);
+  });
+
+  test("selecting a component opens its details in the side panel", async ({ page }) => {
+    await expect(page.getByRole("region", { name: "Signals" })).toBeVisible();
+    await page.getByRole("checkbox", { name: "Table view" }).check();
+    await page.getByRole("table").getByRole("button", { name: "gateway", exact: true }).click();
+    const inspector = page.getByRole("complementary", { name: "Inspector" });
+    await expect(inspector.getByRole("heading", { name: "gateway", exact: true })).toBeVisible();
+    await page.getByRole("tab", { name: "Signals" }).click();
+    await expect(page.getByRole("region", { name: "Signals" }).getByLabel("Log records")).toBeVisible();
+  });
+
   test("live mode streams over WebSocket and survives pause and reload", async ({ page }) => {
     const transport = page.getByLabel("Live transport");
     await expect(transport).toHaveText("Live: WebSocket");

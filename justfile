@@ -16,7 +16,7 @@ bootstrap:
     pnpm install --frozen-lockfile
     node scripts/bootstrap.mjs
 
-# Build and run ingest + processor + API + web (Ctrl+C stops all)
+# Build and run ingest + processor + API + executor + web (Ctrl+C stops all)
 dev:
     node scripts/dev.mjs
 
@@ -24,7 +24,11 @@ dev:
 dev-backend:
     node scripts/dev.mjs --no-web
 
-# Start the demo system (gateway, orders, Postgres, load generator)
+# Stop leftovers of `just dev` / `just demo` (e.g. after closing their terminal); keeps containers
+stop:
+    node scripts/stop.mjs
+
+# Start the demo system (7 services, Postgres, a payment provider stand-in, load generator)
 demo:
     node scripts/demo.mjs
 
@@ -57,6 +61,7 @@ check:
 test:
     cargo test --workspace
     pnpm --filter @controlhub/sdk-node test
+    pnpm --filter @controlhub/web test
 
 # Integration tests against the running stack (needs: just dev + just demo)
 test-integration:
@@ -68,8 +73,9 @@ test-broker-outage:
     node tests/integration/broker-outage.test.mjs --run
 
 # The controlhub CLI, e.g. `just cli discover --path ../my-app`
+# (`exit $LASTEXITCODE` keeps the CLI's exit code under PowerShell; in sh it expands to plain `exit`)
 cli *ARGS:
-    cargo run -q -p controlhub-cli -- {{ARGS}}
+    cargo run -q -p controlhub-cli -- {{ARGS}}; exit $LASTEXITCODE
 
 # Browser tests against the running stack (needs: just dev + just demo)
 test-e2e:

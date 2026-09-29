@@ -28,10 +28,14 @@ Ordered by priority within each stage. `[x]` = done and verified (see STATUS.md)
 - [x] Incremental engine merge for live batches (rebuild only on structural changes)
 - [ ] Replace the timeline tail parse with explicit framing (ADR-0009)
 - [ ] Renderer: persistent per-node Graphics, culling, level of detail for large graphs
+- [x] Layered map layout with corridor routing (no crossings, no lines under cards), service
+      switches with dimming on map and timeline
+- [ ] Route cycles and same-column edges around cards too; remember switched-off services
 
 ## Stage 3 — timeline
 - [x] Modes, speeds, step, range, compare, completeness, synchronized panels, proptest, e2e
 - [x] e2e test: reload the page and check that history is restored
+- [x] Replay range: drag on the tracks, looping play, ✕ resets to the whole timeline
 - [ ] Late-data indicator per range (rows that arrived after the watermark was shown)
 - [ ] Snapshots (periodic topology/health snapshots in ClickHouse) for fast long-range seek
 

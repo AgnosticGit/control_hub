@@ -2,7 +2,7 @@
   "name": "@controlhub/demo-system",
   "version": "0.1.0",
   "private": true,
-  "description": "Demo-only system observed by ControlHub: gateway -> orders -> Postgres, plus a load generator and fault injection",
+  "description": "Demo-only system observed by ControlHub: gateway, auth, catalog, orders, inventory, payments, notifications, Postgres and an external payment provider, plus a load generator and fault injection",
   "type": "module",
   "scripts": {
     "gateway": "node --import @controlhub/sdk-node/register src/gateway.cjs",

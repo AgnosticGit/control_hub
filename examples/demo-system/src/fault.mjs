@@ -6,11 +6,16 @@
 const targets = {
   gateway: process.env.DEMO_GATEWAY_URL ?? 'http://127.0.0.1:7001',
   orders: process.env.DEMO_ORDERS_URL ?? 'http://127.0.0.1:7002',
+  inventory: process.env.DEMO_INVENTORY_URL ?? 'http://127.0.0.1:7003',
+  payments: process.env.DEMO_PAYMENTS_URL ?? 'http://127.0.0.1:7004',
+  notifications: process.env.DEMO_NOTIFICATIONS_URL ?? 'http://127.0.0.1:7005',
+  catalog: process.env.DEMO_CATALOG_URL ?? 'http://127.0.0.1:7006',
+  auth: process.env.DEMO_AUTH_URL ?? 'http://127.0.0.1:7007',
 };
 
 const [service, ...rest] = process.argv.slice(2);
 if (!service || !(service in targets)) {
-  console.error('usage: fault.mjs <gateway|orders> [--latency MS] [--error-rate 0..1] [--clear] [--status]');
+  console.error(`usage: fault.mjs <${Object.keys(targets).join('|')}> [--latency MS] [--error-rate 0..1] [--clear] [--status]`);
   process.exit(2);
 }
 const opts = {};

@@ -23,7 +23,7 @@ Current progress lives in `STATUS.md`, planned work in `TASKS.md`, and decisions
 | `packages/web-engine` | TS protocol, constants, ts-rs types, built WASM glue (`pkg/`) |
 | `packages/api-client` | Generated OpenAPI types + typed fetch client |
 | `packages/sdk-node` | `@controlhub/sdk-node` (OpenTelemetry-based) |
-| `examples/demo-system` | gateway + orders + Postgres + load generator + fault injection |
+| `examples/demo-system` | 7 services (gateway, auth, catalog, orders, inventory, payments, notifications) + Postgres + provider stand-in + load generator + fault injection |
 | `infra/` | Docker Compose, SQL migrations |
 | `scripts/` | Cross-platform Node scripts behind the `justfile` |
 | `tests/integration`, `tests/e2e` | Node integration tests and Playwright tests against a running stack |
@@ -34,6 +34,7 @@ Current progress lives in `STATUS.md`, planned work in `TASKS.md`, and decisions
 just doctor          # tools, ports, bootstrap state
 just bootstrap       # install deps, generate local secrets, start infra, migrate, seed
 just dev             # ingest + processor + API + executor + web
+just stop            # stop leftovers of just dev / just demo (keeps containers)
 just demo            # demo system sending telemetry
 just check           # fmt, clippy -D warnings, wasm32 check, TS typecheck, eslint
 just test            # Rust unit/property tests + SDK tests

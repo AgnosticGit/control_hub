@@ -3,10 +3,12 @@
 // service. DEMO ONLY.
 
 const http = require('node:http');
-const { logger, sendJson, createFaults, getJson, listen } = require('./common.cjs');
+const { logger, sendJson, createFaults, getJson, callJson, listen } = require('./common.cjs');
 
 const port = Number(process.env.DEMO_GATEWAY_PORT ?? 7001);
 const ordersUrl = process.env.DEMO_ORDERS_URL ?? 'http://127.0.0.1:7002';
+const authUrl = process.env.DEMO_AUTH_URL ?? 'http://127.0.0.1:7007';
+const catalogUrl = process.env.DEMO_CATALOG_URL ?? 'http://127.0.0.1:7006';
 const log = logger();
 const faults = createFaults();
 
@@ -33,6 +35,24 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 502, { error: 'injected demo failure' });
     }
 
+    if (url.pathname.startsWith('/api/')) {
+      const auth = await callJson('GET', `${authUrl}/verify`);
+      if (auth.status !== 200) {
+        log.error('auth check failed', { 'http.response.status_code': auth.status });
+        return sendJson(res, 502, { error: 'auth unavailable' });
+      }
+    }
+
+    const item = url.pathname.match(/^\/api\/catalog\/(\d{1,9})$/);
+    if (req.method === 'GET' && item) {
+      const upstream = await getJson(`${catalogUrl}/items/${item[1]}`);
+      if (upstream.status >= 500) {
+        log.error('catalog service failed', { 'http.response.status_code': upstream.status });
+        return sendJson(res, 502, { error: 'upstream failure' });
+      }
+      return sendJson(res, upstream.status, upstream.body);
+    }
+
     const match = url.pathname.match(/^\/api\/orders\/(\d{1,9})$/);
     if (req.method === 'GET' && match) {
       const upstream = await getJson(`${ordersUrl}/orders/${match[1]}`);
@@ -48,6 +68,7 @@ const server = http.createServer(async (req, res) => {
         log.error('order creation failed', { 'http.response.status_code': upstream.status });
         return sendJson(res, 502, { error: 'upstream failure' });
       }
+      if (upstream.status === 402) return sendJson(res, 402, { error: 'payment declined' });
       log.info('order accepted');
       return sendJson(res, 202, { accepted: true });
     }

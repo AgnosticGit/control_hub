@@ -6,8 +6,14 @@ const rps = Math.max(0.2, Math.min(200, Number(process.env.DEMO_RPS ?? 5)));
 const counts = { ok: 0, clientError: 0, serverError: 0, failed: 0 };
 
 async function once() {
-  const write = Math.random() < 0.15;
-  const url = write ? `${target}/api/orders` : `${target}/api/orders/${1 + Math.floor(Math.random() * 55)}`;
+  // 15 % order writes, 30 % catalog reads, the rest order reads.
+  const r = Math.random();
+  const write = r < 0.15;
+  const url = write
+    ? `${target}/api/orders`
+    : r < 0.45
+      ? `${target}/api/catalog/${1 + Math.floor(Math.random() * 60)}`
+      : `${target}/api/orders/${1 + Math.floor(Math.random() * 55)}`;
   try {
     const res = await fetch(url, { method: write ? 'POST' : 'GET', signal: AbortSignal.timeout(10_000) });
     await res.body?.cancel();

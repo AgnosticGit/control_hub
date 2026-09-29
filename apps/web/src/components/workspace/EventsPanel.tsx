@@ -3,7 +3,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api, scopedPath, unwrap } from "@/lib/api";
 import { formatClock, parseNs } from "@/lib/time";
-import type { PanelScope } from "./BottomPanel";
+import type { PanelScope } from "./SignalsPanel";
 
 export function EventsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (id: string) => void }) {
   const query = useQuery({
@@ -34,13 +34,13 @@ export function EventsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (i
   return (
     <div className="h-full overflow-auto">
       <table className="w-full text-left text-xs">
-        <thead className="sticky top-0 bg-surface text-muted">
+        <thead className="table-head">
           <tr>
-            <th scope="col" className="px-3 py-1">Time</th>
-            <th scope="col" className="px-3 py-1">Type</th>
-            <th scope="col" className="px-3 py-1">Service</th>
-            <th scope="col" className="px-3 py-1">Attributes</th>
-            <th scope="col" className="px-3 py-1">Trace</th>
+            <th scope="col" className="px-3 py-2">Time</th>
+            <th scope="col" className="px-3 py-2">Type</th>
+            <th scope="col" className="px-3 py-2">Service</th>
+            <th scope="col" className="hidden px-3 py-2 @xl:table-cell">Attributes</th>
+            <th scope="col" className="px-3 py-2">Trace</th>
           </tr>
         </thead>
         <tbody className="font-mono">
@@ -50,11 +50,11 @@ export function EventsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (i
               .map(([k, v]) => `${k}=${v}`)
               .join(" ");
             return (
-              <tr key={e.id} className="border-t border-border">
+              <tr key={e.id} className="border-t border-border hover:bg-surface-2" title={attrs}>
                 <td className="px-3 py-0.5 text-muted">{t === null ? "" : formatClock(t)}</td>
                 <td className="px-3 py-0.5 text-accent">{e.event_type}</td>
                 <td className="px-3 py-0.5">{e.service_name}</td>
-                <td className="max-w-md truncate px-3 py-0.5 text-muted" title={attrs}>
+                <td className="hidden max-w-md truncate px-3 py-0.5 text-muted @xl:table-cell">
                   {attrs}
                 </td>
                 <td className="px-3 py-0.5">

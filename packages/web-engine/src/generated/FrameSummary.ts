@@ -15,4 +15,12 @@ lod: number,
 /**
  * Serialized as a JSON number (values stay far below 2^53).
  */
-topology_revision: number, };
+topology_revision: number, 
+/**
+ * Request hops on visible edges overlapping the hop window.
+ */
+hops_in_window: number, 
+/**
+ * Hops actually returned in `hop_data` (less than `hops_in_window` when capped).
+ */
+hops_shown: number, };

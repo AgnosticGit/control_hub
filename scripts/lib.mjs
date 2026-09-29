@@ -1,6 +1,6 @@
-import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,8 +47,77 @@ export function compose(args, extra = []) {
   return run("docker", ["compose", "--env-file", infra, "-f", join(root, "infra/compose/compose.yaml"), ...extra, ...args]);
 }
 
+// PID files let `just stop` clean up children that outlive a force-killed supervisor
+// (closing a terminal or `taskkill /F` on it skips the SIGINT handler below).
+const runDir = join(root, ".controlhub", "run");
+const pidFile = (group) => join(runDir, `${group}.json`);
+// Only these images are ever killed from a PID file, so a reused PID of another program is safe.
+const OURS = /^(node|cmd|sh|bash|controlhub-[a-z]+)(\.exe)?$/i;
+
+function processName(pid) {
+  try {
+    if (process.platform === "win32") {
+      const out = execFileSync("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], { encoding: "utf8" });
+      const m = out.match(/^"([^"]+)","(\d+)"/m);
+      return m && Number(m[2]) === pid ? m[1] : null;
+    }
+    const out = execFileSync("ps", ["-p", String(pid), "-o", "comm="], { encoding: "utf8" }).trim();
+    return out ? basename(out) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Recorded processes of a group that are still alive. */
+export function running(group) {
+  if (!existsSync(pidFile(group))) return [];
+  let entries = [];
+  try {
+    entries = JSON.parse(readFileSync(pidFile(group), "utf8"));
+  } catch {
+    return [];
+  }
+  return entries.filter((e) => Number.isInteger(e.pid) && OURS.test(processName(e.pid) ?? ""));
+}
+
+/** Kills the recorded processes of a group (with their children) and removes its PID file. */
+export function stopGroup(group) {
+  const live = running(group);
+  for (const e of live) {
+    if (process.platform === "win32") {
+      try {
+        execFileSync("taskkill", ["/PID", String(e.pid), "/T", "/F"], { stdio: "ignore" });
+      } catch {
+        // already gone
+      }
+    } else {
+      try {
+        execFileSync("pkill", ["-TERM", "-P", String(e.pid)], { stdio: "ignore" });
+      } catch {
+        // no children
+      }
+      try {
+        process.kill(e.pid, "SIGTERM");
+      } catch {
+        // already gone
+      }
+    }
+  }
+  rmSync(pidFile(group), { force: true });
+  return live;
+}
+
+/** Exits with a hint when a previous `just dev`/`just demo` is still running. */
+export function assertNotRunning(group) {
+  const live = running(group);
+  if (live.length) {
+    console.error(`[${group}] already running (${live.map((e) => `${e.name}:${e.pid}`).join(", ")}). Stop it first: just stop`);
+    process.exit(2);
+  }
+}
+
 /** Run several long-lived processes with prefixed output; stop all on Ctrl+C or first failure. */
-export function supervise(procs) {
+export function supervise(procs, group) {
   const colors = [36, 33, 35, 32, 34, 31];
   const children = procs.map((p, i) => {
     const child = spawnCmd(p.cmd, p.args, {
@@ -73,10 +142,15 @@ export function supervise(procs) {
     });
     return child;
   });
+  if (group) {
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(pidFile(group), JSON.stringify(children.map((c, i) => ({ name: procs[i].name, pid: c.pid }))));
+  }
   let stopping = false;
   function shutdown(code) {
     if (stopping) return;
     stopping = true;
+    if (group) rmSync(pidFile(group), { force: true });
     for (const c of children) {
       if (c.exitCode === null) {
         if (process.platform === "win32") spawn("taskkill", ["/pid", String(c.pid), "/T", "/F"]);

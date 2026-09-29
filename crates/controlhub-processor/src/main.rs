@@ -12,7 +12,7 @@ mod convert;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use clap::Parser;
 use controlhub_protocol::TELEMETRY_TOPIC;
@@ -26,6 +26,7 @@ use tokio::sync::watch;
 
 const CONSUMER: &str = "controlhub-processor";
 const MAX_DEAD_LETTER_PAYLOAD: usize = 1024 * 1024;
+const IDLE_TOUCH_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Parser)]
 #[command(name = "controlhub-processor")]
@@ -134,6 +135,7 @@ async fn run_partition(ctx: Ctx, pc: PartitionClient) {
             None => return,
         };
     tracing::info!(partition, offset, "partition consumer started");
+    let mut idle_touched: Option<Instant> = None;
 
     loop {
         if *stop.borrow() {
@@ -180,8 +182,19 @@ async fn run_partition(ctx: Ctx, pc: PartitionClient) {
             lag.store(high_watermark - offset, Ordering::Relaxed);
         }
         if records.is_empty() {
+            // An idle, caught-up partition must still advance the completeness watermark,
+            // otherwise the API reports data as stale while nothing is pending.
+            if offset >= high_watermark && idle_touched.is_none_or(|t| t.elapsed() >= IDLE_TOUCH_INTERVAL) {
+                if let Err(e) =
+                    ctx.pg.commit_offset(CONSUMER, TELEMETRY_TOPIC, partition, offset, high_watermark, 0).await
+                {
+                    tracing::warn!(partition, error = %e, "idle watermark update failed");
+                }
+                idle_touched = Some(Instant::now());
+            }
             continue;
         }
+        idle_touched = None;
 
         let ingested_at = now_ns();
         let mut batch = convert::Converted::default();

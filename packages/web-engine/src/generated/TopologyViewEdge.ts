@@ -2,4 +2,9 @@
 import type { ProvenanceDto } from "./ProvenanceDto";
 import type { RelationKindDto } from "./RelationKindDto";
 
-export type TopologyViewEdge = { index: number, source: number, target: number, relation: RelationKindDto, provenance: ProvenanceDto, reasons: Array<string>, };
+export type TopologyViewEdge = { index: number, source: number, target: number, relation: RelationKindDto, provenance: ProvenanceDto, reasons: Array<string>, 
+/**
+ * Corridor waypoints `[x, y]` (world coordinates) where the edge crosses intermediate
+ * layout columns; empty for edges between adjacent columns.
+ */
+points: Array<[number, number]>, };

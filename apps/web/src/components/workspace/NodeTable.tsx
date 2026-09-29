@@ -39,7 +39,7 @@ export function NodeTable({ frame, topology, selectedId, onSelect }: Props) {
   return (
     <table className="w-full text-left text-sm">
       <caption className="sr-only">Components at the selected time</caption>
-      <thead className="sticky top-0 bg-surface text-xs uppercase text-muted">
+      <thead className="table-head">
         <tr>
           <th scope="col" className="px-4 py-2">Name</th>
           <th scope="col" className="px-4 py-2">Kind</th>
@@ -51,7 +51,7 @@ export function NodeTable({ frame, topology, selectedId, onSelect }: Props) {
       </thead>
       <tbody>
         {rows.map((r) => (
-          <tr key={r.id} className={`border-t border-border ${r.id === selectedId ? "bg-surface-2" : ""}`}>
+          <tr key={r.id} className={`border-t border-border hover:bg-surface-2 ${r.id === selectedId ? "bg-accent/10" : ""}`}>
             <td className="px-4 py-1.5">
               <button type="button" className="hover:text-accent" onClick={() => onSelect(r.id)}>
                 {r.name}

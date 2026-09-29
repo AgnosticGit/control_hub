@@ -5,16 +5,23 @@
 //! subgraph and produces compact render buffers. Pure Rust: no I/O, no clock,
 //! no threads — the same code runs natively (tests, benchmarks) and in WASM.
 
+mod hops;
 mod layout;
 mod reducer;
 pub mod reference;
+mod skew;
+mod tracks;
 pub mod types;
 
 use std::collections::{HashMap, HashSet};
 
 use controlhub_domain::{EntityKind, HealthStatus, Provenance, RelationKind};
+pub use hops::{HOP_CLAMPED, HOP_DIMMED, HOP_ERROR, HOP_HIGHLIGHT, HOP_LEAF, HOP_STRIDE};
+use hops::{Hop, HopIndex};
 use layout::Layout;
 use reducer::*;
+use skew::SkewCache;
+pub use tracks::{MAX_CLIP_CAP, MAX_TRACK_BUCKETS};
 pub use types::*;
 
 /// Floats per node in [`VisibleState::node_data`]:
@@ -29,6 +36,8 @@ pub const FLAG_INFERRED: u32 = 2;
 pub const FLAG_DECLARED: u32 = 4;
 pub const FLAG_RESOURCE: u32 = 8;
 pub const FLAG_PROBLEM: u32 = 16;
+/// Node or edge of a muted service (see `Filters::muted_services`): drawn dimmed.
+pub const FLAG_DIMMED: u32 = 32;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
@@ -51,6 +60,8 @@ pub struct VisibleState {
     pub edge_indices: Vec<u32>,
     /// Node indices whose health status changed since the previous frame.
     pub changed_nodes: Vec<u32>,
+    /// Individual request hops on visible edges, [`HOP_STRIDE`] floats each.
+    pub hop_data: Vec<f32>,
     pub summary: FrameSummary,
 }
 
@@ -100,6 +111,11 @@ pub struct Engine {
     unresolved_keys: HashSet<(String, String)>,
     timeline_rebuilds: u64,
     timeline_merges: u64,
+    /// Built lazily from `spans`; dropped whenever spans or edges change.
+    hops: Option<HopIndex>,
+    hop_window: (i64, i64),
+    /// Nodes or edges were added since the layout was computed.
+    layout_dirty: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -164,6 +180,7 @@ fn stable_hash(parts: &[&str]) -> u64 {
 impl Engine {
     pub fn new(config: EngineConfig) -> Self {
         Self {
+            hop_window: (config.hop_before_ns.max(0), config.hop_after_ns.max(0)),
             config,
             nodes: Vec::new(),
             node_index: HashMap::new(),
@@ -189,6 +206,8 @@ impl Engine {
             unresolved_keys: HashSet::new(),
             timeline_rebuilds: 0,
             timeline_merges: 0,
+            hops: None,
+            layout_dirty: false,
         }
     }
 
@@ -224,6 +243,7 @@ impl Engine {
         }
         self.relayout();
         self.timeline = None;
+        self.hops = None;
     }
 
     pub fn load_topology_json(&mut self, json: &str) -> Result<(), EngineError> {
@@ -248,12 +268,14 @@ impl Engine {
                         None => {
                             self.pending.push(ItemKey::Span(key.clone()));
                             self.spans.insert(key, s);
+                            self.hops = None;
                         }
                         Some(old) => {
                             self.duplicates_ignored += 1;
                             if *old != s {
                                 self.spans.insert(key, s);
                                 self.timeline = None;
+                                self.hops = None;
                             }
                         }
                     }
@@ -317,6 +339,7 @@ impl Engine {
         self.events.retain(|_, e| e.time_ns >= before_ns);
         let removed = n0 - self.item_count();
         if removed > 0 {
+            self.hops = None;
             self.evicted_items += removed as u64;
             self.evicted_before = Some(self.evicted_before.map_or(before_ns, |b| b.max(before_ns)));
             // Kept spans keep the edge attribution they had when their (now evicted) parent was loaded.
@@ -332,6 +355,13 @@ impl Engine {
 
     pub fn set_filters(&mut self, filters: Filters) {
         self.filters = filters;
+    }
+
+    /// Which hops frames carry: those overlapping `[time - before, time + after]`, each side
+    /// capped at one minute.
+    pub fn set_hop_window(&mut self, before_ns: i64, after_ns: i64) {
+        const MAX: i64 = 60_000_000_000;
+        self.hop_window = (before_ns.clamp(0, MAX), after_ns.clamp(0, MAX));
     }
 
     /// Move the selected time. Results of older generations are rejected so a
@@ -394,6 +424,7 @@ impl Engine {
                     relation: e.relation.into(),
                     provenance: e.provenance.into(),
                     reasons: e.reasons.clone(),
+                    points: self.layout.waypoints(i).iter().map(|&(x, y)| [x, y]).collect(),
                 })
                 .collect(),
         }
@@ -414,6 +445,8 @@ impl Engine {
             _ => 1,
         };
 
+        let dimmed = self.dimmed_nodes();
+        let mut dimmed_edges: HashSet<u32> = HashSet::new();
         let mut node_visible = vec![false; self.nodes.len()];
         let mut out = VisibleState::default();
         let mut statuses = vec![0u8; self.nodes.len()];
@@ -458,6 +491,9 @@ impl Engine {
             if problem {
                 flags |= FLAG_PROBLEM;
             }
+            if dimmed.get(i).copied().unwrap_or(false) {
+                flags |= FLAG_DIMMED;
+            }
             out.node_indices.push(i as u32);
             out.node_data.extend_from_slice(&[
                 x,
@@ -501,9 +537,18 @@ impl Engine {
             if ratio >= self.config.degraded_error_ratio && calls > 0 {
                 flags |= FLAG_PROBLEM;
             }
+            if dimmed.get(s).copied().unwrap_or(false) || dimmed.get(tg).copied().unwrap_or(false) {
+                flags |= FLAG_DIMMED;
+                dimmed_edges.insert(i as u32);
+            }
             out.edge_indices.push(i as u32);
             out.edge_data.extend_from_slice(&[x1, y1, x2, y2, active as f32, calls as f32, ratio, flags as f32]);
         }
+
+        let (hops_in_window, hops_shown) = match t {
+            Some(t) => self.collect_hops(t, &out.edge_indices, &dimmed_edges, &mut out.hop_data),
+            None => (0, 0),
+        };
 
         if self.last_status.len() == statuses.len() {
             for (i, (a, b)) in self.last_status.iter().zip(statuses.iter()).enumerate() {
@@ -528,8 +573,78 @@ impl Engine {
             visible_edges: out.edge_indices.len() as u32,
             lod,
             topology_revision: self.topology_revision,
+            hops_in_window,
+            hops_shown,
         };
         out
+    }
+
+    /// Writes hops on `visible_edges` overlapping the hop window around `t`, with times
+    /// relative to `t` in milliseconds (f32 keeps sub-microsecond precision within a minute).
+    /// Returns `(overlapping, written)`.
+    fn collect_hops(&mut self, t: i64, visible_edges: &[u32], dimmed: &HashSet<u32>, out: &mut Vec<f32>) -> (u32, u32) {
+        if self.hops.is_none() {
+            self.hops = Some(self.build_hops());
+        }
+        let Some(index) = self.hops.as_ref() else { return (0, 0) };
+        let visible: HashSet<u32> = visible_edges.iter().copied().collect();
+        let selected = self.filters.selected_trace_id.as_deref().map(|id| stable_hash(&[id]));
+        let (before, after) = self.hop_window;
+        let max = self.config.max_hops as usize;
+        let rel = |ns: i64| ((ns - t) as f64 / 1e6) as f32;
+        let (mut total, mut shown) = (0u32, 0u32);
+        for h in index.overlapping(t.saturating_sub(before), t.saturating_add(after)) {
+            if !visible.contains(&h.edge) {
+                continue;
+            }
+            total += 1;
+            if (shown as usize) < max {
+                shown += 1;
+                let mut flags = if selected == Some(h.trace) { h.flags | HOP_HIGHLIGHT } else { h.flags };
+                if dimmed.contains(&h.edge) {
+                    flags |= HOP_DIMMED;
+                }
+                out.extend_from_slice(&[
+                    h.edge as f32,
+                    rel(h.t[0]),
+                    rel(h.t[1]),
+                    rel(h.t[2]),
+                    rel(h.t[3]),
+                    flags as f32,
+                ]);
+            }
+        }
+        (total, shown)
+    }
+
+    /// Hops from recorded spans, attributed to edges exactly like the timeline does.
+    fn build_hops(&self) -> HopIndex {
+        let mut hops = Vec::new();
+        let mut skew = SkewCache::new();
+        for s in self.spans.values() {
+            let Some(&node) = self.node_index.get(&s.service_id) else { continue };
+            let trace = stable_hash(&[&s.trace_id]);
+            if let Some(&target) = s.target_entity_id.as_ref().and_then(|t| self.node_index.get(t)) {
+                if let Some(&e) = self.edge_index.get(&(node, target, RelationKind::DependsOn)) {
+                    hops.push(Hop::leaf(e, s, trace, self.skew_ns(s, &mut skew)));
+                }
+                continue;
+            }
+            let (true, Some(parent)) = (s.kind == 2 || s.kind == 5, s.parent_span_id.as_deref()) else {
+                continue;
+            };
+            let Some(p) = self.spans.get(&(s.trace_id.clone(), parent.to_owned())) else { continue };
+            match self.node_index.get(&p.service_id) {
+                Some(&caller) if caller != node => {
+                    if let Some(&e) = self.edge_index.get(&(caller, node, RelationKind::Calls)) {
+                        let shift = (self.skew_ns(p, &mut skew), self.skew_ns(s, &mut skew));
+                        hops.push(Hop::call(e, p, s, trace, shift));
+                    }
+                }
+                _ => {}
+            }
+        }
+        HopIndex::new(hops)
     }
 
     /// Metrics for one node at an arbitrary time (defaults to the current time).
@@ -610,6 +725,34 @@ impl Engine {
 
     // ------------------------------------------------------------- internal
 
+    /// Nodes drawn dimmed: muted services, and dependencies whose every caller is dimmed.
+    pub(crate) fn dimmed_nodes(&self) -> Vec<bool> {
+        let n = self.nodes.len();
+        let mut dimmed = vec![false; n];
+        if self.filters.muted_services.is_empty() {
+            return dimmed;
+        }
+        let muted: HashSet<&str> = self.filters.muted_services.iter().map(String::as_str).collect();
+        for (i, node) in self.nodes.iter().enumerate() {
+            dimmed[i] = node.kind == EntityKind::Service && muted.contains(node.id.as_str());
+        }
+        let is_service = |i: usize| self.nodes.get(i).is_some_and(|x| x.kind == EntityKind::Service);
+        let (mut called, mut live) = (vec![false; n], vec![false; n]);
+        for e in &self.edges {
+            let (s, t) = (e.source as usize, e.target as usize);
+            if t < n && s < n && !is_service(t) {
+                called[t] = true;
+                live[t] |= !dimmed[s];
+            }
+        }
+        for i in 0..n {
+            if called[i] && !live[i] {
+                dimmed[i] = true;
+            }
+        }
+        dimmed
+    }
+
     fn passes_filter(&self, idx: usize) -> bool {
         let Some(n) = self.nodes.get(idx) else { return false };
         if self.filters.hide_inferred && n.provenance == Provenance::Inferred {
@@ -654,6 +797,7 @@ impl Engine {
         self.nodes.push(NodeRec { id: id.to_owned(), name: name.to_owned(), kind, provenance });
         self.node_index.insert(id.to_owned(), i);
         self.topology_revision += 1;
+        self.layout_dirty = true;
         i
     }
 
@@ -665,13 +809,19 @@ impl Engine {
         self.edges.push(EdgeRec { source: s, target: t, relation, provenance, reasons: Vec::new() });
         self.edge_index.insert((s, t, relation), i);
         self.topology_revision += 1;
+        self.layout_dirty = true;
         i
     }
 
+    /// Recompute the layout if nodes or edges were added since the last one.
     fn relayout(&mut self) {
+        if !self.layout_dirty {
+            return;
+        }
+        self.layout_dirty = false;
         let ids: Vec<String> = self.nodes.iter().map(|n| n.id.clone()).collect();
         let edges: Vec<(u32, u32)> = self.edges.iter().map(|e| (e.source, e.target)).collect();
-        self.layout.place_new(&ids, &edges);
+        self.layout.compute(&ids, &edges);
         self.topology_revision += 1;
     }
 
@@ -769,6 +919,12 @@ impl Engine {
     /// Bring ordered deltas + checkpoints up to date: merge new items when possible,
     /// otherwise rebuild from all recorded items.
     fn ensure_timeline(&mut self) {
+        self.build_timeline();
+        // Building the timeline discovers edges from spans; lay them out before the next frame.
+        self.relayout();
+    }
+
+    fn build_timeline(&mut self) {
         if self.timeline.is_some() && !self.pending.is_empty() && !self.try_merge_pending() {
             self.timeline = None;
         }
@@ -777,6 +933,7 @@ impl Engine {
         }
         self.pending.clear();
         self.unresolved_keys.clear();
+        self.hops = None;
         self.timeline_rebuilds += 1;
         let span_service: HashMap<(&str, &str), u32> = self
             .spans

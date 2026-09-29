@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { api, ApiRequestError, scopedPath, unwrap, type Schemas } from "@/lib/api";
 import { useSession } from "@/lib/session";
+import { AppShell } from "@/components/shell/AppShell";
+import { Icon } from "@/components/ui/Icon";
 
 type Plan = Schemas["ActionPlanDto"];
 type Spec = Schemas["ActionSpecDto"];
@@ -30,7 +32,7 @@ function stateClass(state: string) {
 /** Plan fields come from the API and may echo telemetry-derived text: shown as text only. */
 function Json({ value, label }: { value: unknown; label: string }) {
   return (
-    <pre aria-label={label} className="mt-1 max-h-64 overflow-auto rounded bg-bg p-2 font-mono text-xs whitespace-pre-wrap">
+    <pre aria-label={label} className="mt-1 max-h-64 overflow-auto rounded-lg border border-border bg-bg/70 p-3 font-mono text-xs whitespace-pre-wrap">
       {JSON.stringify(value, null, 2)}
     </pre>
   );
@@ -45,7 +47,7 @@ function ProposeForm({ specs, onPropose, pending }: { specs: Spec[]; onPropose: 
   const [reason, setReason] = useState("");
 
   if (allowed.length === 0) {
-    return <p className="mt-6 text-sm text-muted">Policy allows no actions in this environment (demo-only actions need a demo environment).</p>;
+    return <p className="card p-4 text-sm text-muted">Policy allows no actions in this environment (demo-only actions need a demo environment).</p>;
   }
   const choose = (t: string) => {
     const s = allowed.find((x) => x.action_type === t);
@@ -62,11 +64,11 @@ function ProposeForm({ specs, onPropose, pending }: { specs: Spec[]; onPropose: 
   };
 
   return (
-    <form onSubmit={onSubmit} aria-label="Propose action" className="mt-6 space-y-3 rounded border border-border bg-surface p-4 text-sm">
+    <form onSubmit={onSubmit} aria-label="Propose action" className="card space-y-4 p-5 text-sm">
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-muted">Action</span>
-          <select value={type} onChange={(e) => choose(e.target.value)} className="rounded border border-border bg-bg px-2 py-1">
+        <label className="flex flex-col gap-1.5">
+          <span className="label">Action</span>
+          <select value={type} onChange={(e) => choose(e.target.value)} className="select h-9 min-w-64 text-sm">
             {allowed.map((s) => (
               <option key={s.action_type} value={s.action_type}>
                 {s.title} ({s.risk} risk)
@@ -74,9 +76,9 @@ function ProposeForm({ specs, onPropose, pending }: { specs: Spec[]; onPropose: 
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-muted">Target</span>
-          <select value={target} onChange={(e) => setTarget(e.target.value)} className="rounded border border-border bg-bg px-2 py-1">
+        <label className="flex flex-col gap-1.5">
+          <span className="label">Target</span>
+          <select value={target} onChange={(e) => setTarget(e.target.value)} className="select h-9 min-w-40 text-sm">
             {(spec?.targets ?? []).map((t) => (
               <option key={t} value={t}>
                 {t}
@@ -85,8 +87,8 @@ function ProposeForm({ specs, onPropose, pending }: { specs: Spec[]; onPropose: 
           </select>
         </label>
         {(spec?.params ?? []).map((p) => (
-          <label key={p.name} className="flex flex-col gap-1" title={p.description}>
-            <span className="text-xs text-muted">
+          <label key={p.name} className="flex flex-col gap-1.5" title={p.description}>
+            <span className="label">
               {p.name} ({p.min}–{p.max})
             </span>
             <input
@@ -97,24 +99,25 @@ function ProposeForm({ specs, onPropose, pending }: { specs: Spec[]; onPropose: 
               step={p.integer ? 1 : 0.01}
               value={params[p.name] ?? String(p.min)}
               onChange={(e) => setParams((cur) => ({ ...cur, [p.name]: e.target.value }))}
-              className="w-28 rounded border border-border bg-bg px-2 py-1"
+              className="input h-9 w-28"
             />
           </label>
         ))}
       </div>
       {spec ? <p className="text-xs text-muted">{spec.description} Verification: {spec.verification}</p> : null}
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-muted">Reason (recorded in the audit log)</span>
+      <label className="flex flex-col gap-1.5">
+        <span className="label">Reason (recorded in the audit log)</span>
         <input
           required
           minLength={5}
           maxLength={500}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          className="rounded border border-border bg-bg px-2 py-1"
+          className="input h-9"
         />
       </label>
-      <button type="submit" disabled={pending} className="rounded bg-accent px-3 py-1 font-medium text-bg disabled:opacity-50">
+      <button type="submit" disabled={pending} className="btn btn-primary h-9 px-4">
+        <Icon name="check" className="h-4 w-4" />
         Propose plan
       </button>
       <p className="text-xs text-muted">Every plan needs approval by an admin other than the proposer before the executor runs it.</p>
@@ -133,8 +136,8 @@ function PlanDetail({ projectId, environmentId, id }: { projectId: string; envir
   if (detail.error) return <p role="alert" className="text-sm text-error">{message(detail.error)}</p>;
   const { plan, audit } = detail.data;
   return (
-    <section aria-label="Plan detail" className="space-y-3 rounded border border-border bg-surface p-4 text-sm">
-      <h2 className="font-medium">
+    <section aria-label="Plan detail" className="card space-y-4 p-5 text-sm">
+      <h2 className="text-base font-semibold">
         {plan.title} · {plan.target} · <span className={stateClass(plan.state)}>{plan.state}</span>
       </h2>
       <p className="text-xs text-muted">
@@ -142,7 +145,7 @@ function PlanDetail({ projectId, environmentId, id }: { projectId: string; envir
         {plan.decision_comment ? ` · Decision comment: ${plan.decision_comment}` : ""}
       </p>
       <div>
-        <h3 className="text-xs text-muted">Policy</h3>
+        <h3 className="label">Policy</h3>
         <ul className="mt-1 space-y-0.5">
           {plan.policy.checks.map((c) => (
             <li key={c.name} className={c.passed ? "text-ok" : "text-error"}>
@@ -153,18 +156,18 @@ function PlanDetail({ projectId, environmentId, id }: { projectId: string; envir
       </div>
       {plan.result ? (
         <div>
-          <h3 className="text-xs text-muted">Result</h3>
+          <h3 className="label">Result</h3>
           <Json value={plan.result} label="Result" />
         </div>
       ) : null}
       {plan.verification ? (
         <div>
-          <h3 className="text-xs text-muted">Verification</h3>
+          <h3 className="label">Verification</h3>
           <Json value={plan.verification} label="Verification" />
         </div>
       ) : null}
       <div>
-        <h3 className="text-xs text-muted">Audit trail</h3>
+        <h3 className="label">Audit trail</h3>
         <ol aria-label="Audit trail" className="mt-1 space-y-0.5 text-xs">
           {audit.map((a) => (
             <li key={a.id}>
@@ -221,67 +224,101 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
   });
 
   if (session.isPending) return <p className="p-8 text-sm text-muted">Loading…</p>;
-  if (!env) return <p className="p-8 text-sm">This environment does not exist or you do not have access to it.</p>;
+  if (!env) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-8">
+        <div className="card max-w-md p-6 text-sm">
+          <p>This environment does not exist or you do not have access to it.</p>
+          <Link href="/app" className="btn mt-4">
+            <Icon name="arrowLeft" className="h-3.5 w-3.5" />
+            Back to environments
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   const error = propose.error ?? decide.error ?? plans.error ?? catalog.error;
 
   return (
-    <main className="mx-auto max-w-6xl p-8">
-      <Link href={`/app/${encodeURIComponent(projectId)}/${encodeURIComponent(environmentId)}`} className="text-sm text-accent">
-        ← Back to workspace
-      </Link>
-      <h1 className="mt-4 text-xl font-semibold">
-        Actions · {project?.name} / {env.name}
-      </h1>
-      <p className="mt-2 text-sm text-muted">
-        Controlled changes to the observed system. Only allowlisted actions exist; each plan is checked by policy, needs
-        approval by a different admin, runs in the separate executor, is verified from telemetry and is fully audited.
-      </p>
+    <AppShell
+      projectId={projectId}
+      environmentId={environmentId}
+      active="actions"
+      top={
+        <>
+          <span className="card-title-icon">
+            <Icon name="bolt" className="h-3.5 w-3.5" />
+          </span>
+          <span className="text-sm text-muted">
+            {project?.name} / {env.name}
+          </span>
+        </>
+      }
+    >
+      <main className="h-full overflow-auto">
+        <div className="mx-auto max-w-7xl space-y-5 p-6">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Actions</h1>
+            <p className="mt-1 max-w-3xl text-sm text-muted">
+              Controlled changes to the observed system. Only allowlisted actions exist; each plan is checked by policy, needs
+              approval by a different admin, runs in the separate executor, is verified from telemetry and is fully audited.
+            </p>
+          </div>
 
-      {canPropose && catalog.data ? (
-        <ProposeForm specs={catalog.data.actions} onPropose={(b) => propose.mutate(b)} pending={propose.isPending} />
-      ) : (
-        <p className="mt-6 text-sm text-muted">{canPropose ? "Loading catalog…" : "Proposing actions requires the operator role."}</p>
-      )}
+          {canPropose && catalog.data ? (
+            <ProposeForm specs={catalog.data.actions} onPropose={(b) => propose.mutate(b)} pending={propose.isPending} />
+          ) : (
+            <p className="card p-4 text-sm text-muted">{canPropose ? "Loading catalog…" : "Proposing actions requires the operator role."}</p>
+          )}
 
-      {error ? (
-        <p role="alert" className="mt-4 text-sm text-error">
-          {message(error)}
-        </p>
-      ) : null}
+          {error ? (
+            <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
+              {message(error)}
+            </p>
+          ) : null}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[3fr_2fr]">
-        <table className="w-full self-start text-left text-sm" aria-label="Action plans">
-          <thead className="text-xs text-muted">
-            <tr>
-              <th className="py-2">Action</th>
-              <th>Target</th>
-              <th>State</th>
-              <th>Proposed by</th>
-              <th>Created</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
+          <div className="grid gap-5 lg:grid-cols-[3fr_2fr]">
+            <div className="card self-start overflow-hidden">
+              <div className="card-header">
+                <span className="card-title-icon">
+                  <Icon name="list" className="h-3.5 w-3.5" />
+                </span>
+                Plans
+              </div>
+              <table className="w-full text-left text-sm" aria-label="Action plans">
+                <thead className="table-head">
+                  <tr>
+                    <th className="px-4 py-2">Action</th>
+                    <th className="px-2">Target</th>
+                    <th className="px-2">State</th>
+                    <th className="px-2">Proposed by</th>
+                    <th className="px-2">Created</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
             {(plans.data ?? []).map((p) => {
               const mine = p.created_by === me;
               return (
                 <tr
                   key={p.id}
-                  className={`cursor-pointer border-t border-border ${selected === p.id ? "bg-surface" : ""}`}
+                  className={`cursor-pointer border-t border-border transition-colors hover:bg-surface-2 ${selected === p.id ? "bg-accent/10" : ""}`}
                   onClick={() => setSelected(p.id)}
                 >
-                  <td className="py-2">{p.title}</td>
-                  <td>{p.target}</td>
-                  <td className={stateClass(p.state)}>{p.state}</td>
-                  <td>{p.created_by}</td>
-                  <td>{when(p.created_at)}</td>
-                  <td className="space-x-1 text-right" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-4 py-2.5 font-medium">{p.title}</td>
+                  <td className="px-2 font-mono text-xs">{p.target}</td>
+                  <td className="px-2">
+                    <span className={`badge border-current/40 ${stateClass(p.state)}`}>{p.state}</span>
+                  </td>
+                  <td className="px-2 text-xs text-muted">{p.created_by}</td>
+                  <td className="px-2 text-xs text-muted">{when(p.created_at)}</td>
+                  <td className="space-x-1 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {p.state === "proposed" && isAdmin && !mine ? (
                       <>
                         <button
                           type="button"
-                          className="rounded border border-ok/60 px-2 py-0.5 text-xs text-ok hover:bg-ok/10"
+                          className="btn btn-sm btn-ok"
                           onClick={() => {
                             if (window.confirm(`Approve “${p.title}” on ${p.target}? The executor will run it.`)) {
                               decide.mutate({ plan: p, verb: "approve", comment: null });
@@ -292,7 +329,7 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
                         </button>
                         <button
                           type="button"
-                          className="rounded border border-error/60 px-2 py-0.5 text-xs text-error hover:bg-error/10"
+                          className="btn btn-sm btn-danger"
                           onClick={() => {
                             const comment = window.prompt("Reason for rejecting:");
                             if (comment && comment.trim()) decide.mutate({ plan: p, verb: "reject", comment });
@@ -305,7 +342,7 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
                     {(p.state === "proposed" || p.state === "approved") && (mine || isAdmin) ? (
                       <button
                         type="button"
-                        className="rounded border border-border px-2 py-0.5 text-xs hover:border-accent"
+                        className="btn btn-sm"
                         onClick={() => {
                           if (window.confirm(`Cancel “${p.title}”?`)) decide.mutate({ plan: p, verb: "cancel", comment: null });
                         }}
@@ -317,16 +354,22 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
                 </tr>
               );
             })}
-          </tbody>
-        </table>
-        <div>
-          {selected ? (
-            <PlanDetail projectId={projectId} environmentId={environmentId} id={selected} />
-          ) : (
-            <p className="text-sm text-muted">Select a plan to see its policy checks, result, verification and audit trail.</p>
-          )}
+                </tbody>
+              </table>
+              {(plans.data ?? []).length === 0 && !plans.isPending ? (
+                <p className="border-t border-border px-4 py-6 text-center text-sm text-muted">No plans yet.</p>
+              ) : null}
+            </div>
+            <div>
+              {selected ? (
+                <PlanDetail projectId={projectId} environmentId={environmentId} id={selected} />
+              ) : (
+                <p className="card p-4 text-sm text-muted">Select a plan to see its policy checks, result, verification and audit trail.</p>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </AppShell>
   );
 }

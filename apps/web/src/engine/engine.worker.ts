@@ -26,6 +26,7 @@ let engine: WebEngine | null = null;
 let pendingSeek: { timeNs: string; generation: number } | null = null;
 let pendingViewport: { x: number; y: number; width: number; height: number; scale: number } | null = null;
 let pendingFilters: Filters | null = null;
+let pendingHopWindow: { beforeNs: string; afterNs: string } | null = null;
 let dirty = false;
 let scheduled = false;
 
@@ -54,6 +55,10 @@ function flush() {
     engine.setFilters(pendingFilters);
     pendingFilters = null;
   }
+  if (pendingHopWindow) {
+    engine.setHopWindow(BigInt(pendingHopWindow.beforeNs), BigInt(pendingHopWindow.afterNs));
+    pendingHopWindow = null;
+  }
   if (pendingViewport) {
     const v = pendingViewport;
     engine.setViewport(v.x, v.y, v.width, v.height, v.scale);
@@ -71,6 +76,7 @@ function flush() {
     frame.edgeData.buffer,
     frame.edgeIndices.buffer,
     frame.changedNodes.buffer,
+    frame.hopData.buffer,
   ]);
 }
 
@@ -291,12 +297,18 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       pendingFilters = msg.filters;
       schedule();
       return undefined;
+    case "setHopWindow":
+      pendingHopWindow = msg;
+      schedule();
+      return undefined;
     case "nodeMetrics":
       return requireEngine().getNodeMetrics(msg.nodeId, msg.atNs ? BigInt(msg.atNs) : undefined) ?? null;
     case "compare":
       return requireEngine().compare(BigInt(msg.aNs), BigInt(msg.bNs));
     case "pick":
       return requireEngine().pick(msg.x, msg.y) ?? null;
+    case "timelineTracks":
+      return requireEngine().timelineTracks(BigInt(msg.fromNs), BigInt(msg.toNs), msg.buckets, msg.clipCap);
     case "diagnostics":
       return requireEngine().getDiagnostics();
     case "topology":

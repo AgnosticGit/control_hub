@@ -11,6 +11,7 @@ import type {
   FrameSummary,
   NodeDiff,
   NodeMetrics,
+  TimelineTracks,
   TopologyView,
 } from "./generated";
 
@@ -22,9 +23,13 @@ export type WorkerRequest =
   | { kind: "seek"; timeNs: string; generation: number }
   | { kind: "setViewport"; x: number; y: number; width: number; height: number; scale: number }
   | { kind: "setFilters"; filters: Filters }
+  /** Frames carry request hops overlapping `[time - beforeNs, time + afterNs]`. */
+  | { kind: "setHopWindow"; beforeNs: string; afterNs: string }
   | { kind: "nodeMetrics"; id: number; nodeId: string; atNs?: string }
   | { kind: "compare"; id: number; aNs: string; bNs: string }
   | { kind: "pick"; id: number; x: number; y: number }
+  /** Layered timeline aggregates over `[fromNs, toNs)`; see `TimelineTracks`. */
+  | { kind: "timelineTracks"; id: number; fromNs: string; toNs: string; buckets: number; clipCap: number }
   | { kind: "diagnostics"; id: number }
   | { kind: "topology"; id: number }
   /** Open (or re-target) the live WebSocket; `url` is a same-origin path. */
@@ -68,6 +73,7 @@ export interface ResultMap {
   nodeMetrics: NodeMetrics | null;
   compare: NodeDiff[];
   pick: string | null;
+  timelineTracks: TimelineTracks;
   diagnostics: Diagnostics;
   topology: TopologyView;
   liveStart: null;
@@ -82,6 +88,8 @@ export interface Frame {
   edgeData: Float32Array;
   edgeIndices: Uint32Array;
   changedNodes: Uint32Array;
+  /** Request hops, `HOP_STRIDE` floats each, times relative to `summary.time_ns` in ms. */
+  hopData: Float32Array;
   summary: FrameSummary;
   /** Time spent computing the frame inside the Worker (WASM + copy). */
   computeMs: number;

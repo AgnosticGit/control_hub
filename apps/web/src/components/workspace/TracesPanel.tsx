@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, scopedPath, unwrap, type Schemas } from "@/lib/api";
 import { formatClock, formatDurationNs, parseNs } from "@/lib/time";
-import type { PanelScope } from "./BottomPanel";
+import type { PanelScope } from "./SignalsPanel";
 
 type Span = Schemas["SpanDto"];
 
@@ -41,11 +41,11 @@ export function TracesPanel({
   const traces = list.data?.traces ?? [];
 
   return (
-    <div className="flex h-full">
-      <div className="flex w-[42%] min-w-72 flex-col border-r border-border">
-        <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
-          <label className="flex items-center gap-1 text-muted">
-            <input type="checkbox" checked={onlyErrors} onChange={(e) => setOnlyErrors(e.target.checked)} />
+    <div className="flex h-full flex-col @3xl:flex-row">
+      <div className="flex max-h-[42%] min-h-28 shrink-0 flex-col border-b border-border @3xl:max-h-none @3xl:w-[42%] @3xl:min-w-72 @3xl:border-r @3xl:border-b-0">
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs">
+          <label className="toggle">
+            <input type="checkbox" className="switch" checked={onlyErrors} onChange={(e) => setOnlyErrors(e.target.checked)} />
             Only errors
           </label>
           <span className="ml-auto text-muted">
@@ -67,7 +67,7 @@ export function TracesPanel({
                   type="button"
                   onClick={() => onTrace(t.trace_id)}
                   aria-current={t.trace_id === traceId}
-                  className={`flex w-full items-center gap-2 px-3 py-1 text-left hover:bg-surface-2 ${t.trace_id === traceId ? "bg-surface-2" : ""}`}
+                  className={`flex w-full items-center gap-2 border-l-2 px-3 py-1.5 text-left transition-colors hover:bg-surface-2 ${t.trace_id === traceId ? "border-accent bg-accent/10" : "border-transparent"}`}
                 >
                   <span className={`h-2 w-2 shrink-0 rounded-full ${t.error_count > 0 ? "bg-error" : "bg-ok"}`} aria-label={t.error_count > 0 ? "has errors" : "ok"} />
                   <span className="font-mono text-muted tabular-nums">{start === null ? "" : formatClock(start)}</span>
@@ -83,7 +83,7 @@ export function TracesPanel({
           {traces.length === 0 && !list.isPending ? <li className="p-3 text-muted">No traces in this window.</li> : null}
         </ul>
       </div>
-      <div className="min-w-0 flex-1 overflow-auto">
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto">
         {traceId ? <Waterfall scope={scope} traceId={traceId} /> : <p className="p-3 text-xs text-muted">Select a trace.</p>}
       </div>
     </div>
@@ -156,8 +156,10 @@ function Waterfall({ scope, traceId }: { scope: PanelScope; traceId: string }) {
 
   return (
     <div className="text-xs">
-      <div className="flex items-center gap-3 border-b border-border px-3 py-1.5">
-        <span className="font-mono text-muted">{traceId}</span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-3 py-2">
+        <span className="min-w-0 truncate font-mono text-muted" title={traceId}>
+          {traceId}
+        </span>
         <span className="text-muted">
           {rows.length} spans · {formatDurationNs(total)}
         </span>
@@ -176,31 +178,31 @@ function Waterfall({ scope, traceId }: { scope: PanelScope; traceId: string }) {
               <button
                 type="button"
                 onClick={() => setSelected(span.span_id === selected ? null : span.span_id)}
-                className={`flex w-full items-center gap-2 px-3 py-0.5 text-left hover:bg-surface-2 ${span.span_id === selected ? "bg-surface-2" : ""}`}
+                className={`flex w-full items-center gap-2 px-3 py-1 text-left hover:bg-surface-2 ${span.span_id === selected ? "bg-accent/10" : ""}`}
               >
-                <span className="w-64 shrink-0 truncate" style={{ paddingLeft: depth * 12 }}>
+                <span className="w-36 shrink-0 truncate @xl:w-64" style={{ paddingLeft: depth * 10 }} title={`${span.service_name} ${span.name}`}>
                   <span className="text-accent-2">{span.service_name}</span> {span.name}
                 </span>
-                <span className="relative h-3 flex-1 rounded bg-bg">
+                <span className="relative h-2.5 flex-1 rounded-full bg-surface-3/60">
                   <span
-                    className={`absolute top-0 h-3 rounded ${isErr ? "bg-error" : "bg-accent/70"}`}
+                    className={`absolute top-0 h-2.5 rounded-full ${isErr ? "bg-error shadow-[0_0_8px_rgb(239_68_68/0.6)]" : "bg-gradient-to-r from-accent to-accent-2"}`}
                     style={{ left: `${left}%`, width: `${width}%` }}
                   />
                 </span>
-                <span className="w-20 shrink-0 text-right tabular-nums text-muted">{span.duration_ms.toFixed(2)} ms</span>
+                <span className="w-16 shrink-0 text-right tabular-nums text-muted @xl:w-20">{span.duration_ms.toFixed(2)} ms</span>
               </button>
             </li>
           );
         })}
       </ul>
       {sel ? (
-        <div className="m-3 rounded border border-border p-3">
+        <div className="m-3 rounded-lg border border-border bg-bg/50 p-3">
           <div className="font-medium">
             {sel.service_name} · {sel.name}
           </div>
           {sel.status_message ? <div className="mt-1 text-error">{sel.status_message}</div> : null}
           {sel.target_name ? <div className="mt-1 text-muted">Calls: {sel.target_name}</div> : null}
-          <dl className="mt-2 grid grid-cols-[minmax(0,14rem)_1fr] gap-x-3 gap-y-0.5 font-mono">
+          <dl className="mt-2 grid grid-cols-[minmax(0,9rem)_1fr] @xl:grid-cols-[minmax(0,14rem)_1fr] gap-x-3 gap-y-0.5 font-mono">
             {Object.entries(sel.attributes).map(([k, v]) => (
               <div key={k} className="contents">
                 <dt className="truncate text-muted">{k}</dt>

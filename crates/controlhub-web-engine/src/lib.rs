@@ -24,7 +24,7 @@ fn set(obj: &Object, key: &str, value: &JsValue) -> Result<(), JsValue> {
 /// Version of the engine ABI; the TS wrapper refuses to run against a mismatching build.
 #[wasm_bindgen(js_name = engineAbiVersion)]
 pub fn engine_abi_version() -> u32 {
-    1
+    2
 }
 
 #[wasm_bindgen]
@@ -78,6 +78,11 @@ impl WebEngine {
         Ok(())
     }
 
+    #[wasm_bindgen(js_name = setHopWindow)]
+    pub fn set_hop_window(&mut self, before_ns: i64, after_ns: i64) {
+        self.inner.set_hop_window(before_ns, after_ns);
+    }
+
     #[wasm_bindgen(js_name = prevEventTime)]
     pub fn prev_event_time(&mut self, t: i64) -> Option<i64> {
         self.inner.prev_event_time(t)
@@ -88,7 +93,7 @@ impl WebEngine {
         self.inner.next_event_time(t)
     }
 
-    /// `{ nodeData: Float32Array, nodeIndices: Uint32Array, edgeData, edgeIndices, changedNodes, summary }`
+    /// `{ nodeData: Float32Array, nodeIndices: Uint32Array, edgeData, edgeIndices, changedNodes, hopData, summary }`
     #[wasm_bindgen(js_name = getVisibleState)]
     pub fn get_visible_state(&mut self) -> Result<JsValue, JsValue> {
         let vs = self.inner.visible_state();
@@ -98,6 +103,7 @@ impl WebEngine {
         set(&obj, "edgeData", &Float32Array::from(vs.edge_data.as_slice()).into())?;
         set(&obj, "edgeIndices", &Uint32Array::from(vs.edge_indices.as_slice()).into())?;
         set(&obj, "changedNodes", &Uint32Array::from(vs.changed_nodes.as_slice()).into())?;
+        set(&obj, "hopData", &Float32Array::from(vs.hop_data.as_slice()).into())?;
         set(&obj, "summary", &to_js(&vs.summary)?)?;
         Ok(obj.into())
     }
@@ -118,6 +124,11 @@ impl WebEngine {
 
     pub fn compare(&mut self, a_ns: i64, b_ns: i64) -> Result<JsValue, JsValue> {
         to_js(&self.inner.compare(a_ns, b_ns))
+    }
+
+    #[wasm_bindgen(js_name = timelineTracks)]
+    pub fn timeline_tracks(&self, from_ns: i64, to_ns: i64, buckets: u32, clip_cap: u32) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.timeline_tracks(from_ns, to_ns, buckets, clip_cap))
     }
 
     pub fn pick(&self, x: f32, y: f32) -> Option<String> {

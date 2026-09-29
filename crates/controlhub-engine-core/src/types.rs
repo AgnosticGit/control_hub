@@ -25,6 +25,17 @@ pub struct EngineConfig {
     pub checkpoint_budget_bytes: u32,
     pub degraded_error_ratio: f32,
     pub failing_error_ratio: f32,
+    /// Request hops returned per frame cover `[time - hop_before_ns, time + hop_after_ns]`.
+    #[serde(with = "nanos_string")]
+    #[cfg_attr(feature = "ts", ts(type = "string"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub hop_before_ns: i64,
+    #[serde(with = "nanos_string")]
+    #[cfg_attr(feature = "ts", ts(type = "string"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub hop_after_ns: i64,
+    /// Cap on hops per frame; the summary reports how many were left out.
+    pub max_hops: u32,
 }
 
 impl Default for EngineConfig {
@@ -35,6 +46,9 @@ impl Default for EngineConfig {
             checkpoint_budget_bytes: 16 * 1024 * 1024,
             degraded_error_ratio: 0.05,
             failing_error_ratio: 0.5,
+            hop_before_ns: 1_000_000_000,
+            hop_after_ns: 1_000_000_000,
+            max_hops: 3_000,
         }
     }
 }
@@ -170,6 +184,9 @@ pub struct Filters {
     pub hide_inferred: bool,
     pub only_problems: bool,
     pub selected_trace_id: Option<String>,
+    /// Service node IDs switched off by the user: dimmed on the map, left out of the timeline
+    /// aggregates. Dependencies whose every caller is muted are dimmed too.
+    pub muted_services: Vec<String>,
 }
 
 /// Summary accompanying each computed frame.
@@ -202,6 +219,10 @@ pub struct FrameSummary {
     /// Serialized as a JSON number (values stay far below 2^53).
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub topology_revision: u64,
+    /// Request hops on visible edges overlapping the hop window.
+    pub hops_in_window: u32,
+    /// Hops actually returned in `hop_data` (less than `hops_in_window` when capped).
+    pub hops_shown: u32,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -220,6 +241,69 @@ pub struct NodeMetrics {
     pub window_logs: u32,
     pub window_error_logs: u32,
     pub window_events: u32,
+}
+
+/// Per-bucket aggregates and fine-zoom items for the layered timeline over `[from_ns, to_ns)`.
+/// Times inside are milliseconds relative to `from_ns`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+pub struct TimelineTracks {
+    #[serde(with = "nanos_string")]
+    #[cfg_attr(feature = "ts", ts(type = "string"))]
+    pub from_ns: i64,
+    #[serde(with = "nanos_string")]
+    #[cfg_attr(feature = "ts", ts(type = "string"))]
+    pub to_ns: i64,
+    pub buckets: u32,
+    /// Server, consumer and root spans by start time (a call is counted once, on the callee).
+    pub requests: Vec<u32>,
+    /// Failed request spans (same set as `requests`) plus logs with severity >= 17.
+    pub errors: Vec<u32>,
+    pub events: Vec<u32>,
+    /// p95 duration of request spans ending in the bucket; `null` when the bucket has none.
+    pub latency_p95_ms: Vec<Option<f32>>,
+    pub latency_samples: Vec<u32>,
+    pub services: Vec<ServiceTrack>,
+    /// Span clips of services under the clip cap.
+    pub clips: Vec<SpanClip>,
+    /// Events whose type is not `request.*`, capped.
+    pub markers: Vec<EventMarker>,
+    pub markers_total: u32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+pub struct ServiceTrack {
+    pub node: u32,
+    pub name: String,
+    /// Spans of this service starting in each bucket.
+    pub counts: Vec<u32>,
+    /// Spans overlapping the window.
+    pub spans_in_view: u32,
+    /// True when `spans_in_view` is within the clip cap and every clip is in `clips`.
+    pub clipped: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+pub struct SpanClip {
+    /// Index into `TimelineTracks::services`.
+    pub track: u32,
+    pub start_ms: f64,
+    pub end_ms: f64,
+    /// Nesting depth among spans of the same service in the trace (0 = outermost).
+    pub depth: u8,
+    pub error: bool,
+    pub name: String,
+    pub trace_id: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+pub struct EventMarker {
+    pub time_ms: f64,
+    pub event_type: String,
+    pub service_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -266,6 +350,9 @@ pub struct TopologyViewEdge {
     pub relation: RelationKindDto,
     pub provenance: ProvenanceDto,
     pub reasons: Vec<String>,
+    /// Corridor waypoints `[x, y]` (world coordinates) where the edge crosses intermediate
+    /// layout columns; empty for edges between adjacent columns.
+    pub points: Vec<[f32; 2]>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

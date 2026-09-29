@@ -120,9 +120,67 @@ function getJson(url, timeoutMs = 5000) {
   });
 }
 
+/** HTTP call with an optional JSON body; resolves with the status and parsed body. */
+function callJson(method, url, body, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const text = body === undefined ? null : JSON.stringify(body);
+    const headers = text === null ? {} : { 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) };
+    const req = http.request(url, { method, timeout: timeoutMs, headers }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        let parsed = null;
+        try {
+          parsed = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : null;
+        } catch {
+          parsed = null;
+        }
+        resolve({ status: res.statusCode ?? 0, body: parsed });
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('upstream timeout')));
+    req.on('error', reject);
+    req.end(text ?? undefined);
+  });
+}
+
+/** Busy-waits for `ms` to stand in for real CPU work in a demo handler. */
+function work(ms) {
+  const until = performance.now() + ms;
+  while (performance.now() < until) {
+    // intentionally empty
+  }
+}
+
 function listen(server, port, name) {
   server.listen(port, '127.0.0.1', () => console.log(`${name} listening on http://127.0.0.1:${port}`));
   server.requestTimeout = 30_000;
 }
 
-module.exports = { logger, sendJson, readJson, createFaults, getJson, listen };
+/**
+ * A small demo service: health, fault injection and injected failures are handled here;
+ * `route` handles the rest and returns false for "not found".
+ */
+function serve(name, port, route) {
+  const log = logger();
+  const faults = createFaults();
+  const server = http.createServer(async (req, res) => {
+    try {
+      if (await faults.handle(req, res)) return;
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      if (url.pathname === '/health') return sendJson(res, 200, { ok: true });
+      if (await faults.apply()) {
+        log.error(`injected ${name} failure`, { 'demo.fault': 'error' });
+        return sendJson(res, 500, { error: 'injected demo failure' });
+      }
+      if ((await route(req, res, url, log)) === false) sendJson(res, 404, { error: 'not found' });
+    } catch (err) {
+      log.error(`${name} request failed`, { 'error.type': err?.name ?? 'Error' });
+      if (!res.headersSent) sendJson(res, 500, { error: 'internal error' });
+    }
+  });
+  listen(server, port, name);
+  return server;
+}
+
+module.exports = { logger, sendJson, readJson, createFaults, getJson, callJson, work, listen, serve };

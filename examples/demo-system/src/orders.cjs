@@ -3,9 +3,12 @@
 
 const http = require('node:http');
 const { Pool } = require('pg');
-const { logger, sendJson, createFaults, listen } = require('./common.cjs');
+const { logger, sendJson, createFaults, callJson, listen } = require('./common.cjs');
 
 const port = Number(process.env.DEMO_ORDERS_PORT ?? 7002);
+const inventoryUrl = process.env.DEMO_INVENTORY_URL ?? 'http://127.0.0.1:7003';
+const paymentsUrl = process.env.DEMO_PAYMENTS_URL ?? 'http://127.0.0.1:7004';
+const notificationsUrl = process.env.DEMO_NOTIFICATIONS_URL ?? 'http://127.0.0.1:7005';
 const log = logger();
 const faults = createFaults();
 
@@ -60,13 +63,30 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, rows[0]);
     }
     if (req.method === 'POST' && url.pathname === '/orders') {
+      const reserved = await callJson('POST', `${inventoryUrl}/reserve`);
+      if (reserved.status !== 200) {
+        log.error('stock reservation failed', { 'http.response.status_code': reserved.status });
+        return sendJson(res, 502, { error: 'inventory failure' });
+      }
+      const charge = await callJson('POST', `${paymentsUrl}/charge`);
+      if (charge.status === 402) {
+        log.warn('order rejected: payment declined');
+        return sendJson(res, 402, { error: 'payment declined' });
+      }
+      if (charge.status !== 200) {
+        log.error('payment failed', { 'http.response.status_code': charge.status });
+        return sendJson(res, 502, { error: 'payment failure' });
+      }
       const quantity = 1 + Math.floor(Math.random() * 5);
       const { rows } = await pool.query(
         'INSERT INTO orders (item, quantity) VALUES ($1, $2) RETURNING id',
         [`item-${Date.now() % 1000}`, quantity],
       );
-      log.info('order created', { 'order.id': Number(rows[0].id) });
-      return sendJson(res, 201, { id: Number(rows[0].id) });
+      const id = Number(rows[0].id);
+      log.info('order created', { 'order.id': id });
+      const notified = await callJson('POST', `${notificationsUrl}/notify`, { orderId: id });
+      if (notified.status !== 202) log.warn('order notification not queued', { 'http.response.status_code': notified.status });
+      return sendJson(res, 201, { id });
     }
     return sendJson(res, 404, { error: 'not found' });
   } catch (err) {

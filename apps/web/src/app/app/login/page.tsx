@@ -3,6 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { Logo } from "@/components/ui/Icon";
 import { api, ApiRequestError, unwrap } from "@/lib/api";
 
 function safeNext(next: string | null): string {
@@ -37,45 +38,42 @@ function LoginForm() {
   }
 
   return (
-    <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-xl border border-border bg-surface p-8">
-      <div>
-        <h1 className="text-xl font-semibold">Sign in to ControlHub</h1>
+    <form onSubmit={submit} className="card w-full max-w-sm space-y-5 p-8">
+      <div className="flex flex-col items-center text-center">
+        <Logo className="h-11 w-11" />
+        <h1 className="mt-4 text-xl font-semibold">Sign in to ControlHub</h1>
         <p className="mt-1 text-sm text-muted">
           Local credentials are in <code className="font-mono text-xs">.controlhub/local-credentials.json</code>.
         </p>
       </div>
       <label className="block text-sm">
-        <span className="text-muted">Email</span>
+        <span className="label">Email</span>
         <input
           type="email"
           autoComplete="username"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 outline-none focus:border-accent"
+          className="input mt-1.5 h-10 w-full"
         />
       </label>
       <label className="block text-sm">
-        <span className="text-muted">Password</span>
+        <span className="label">Password</span>
         <input
           type="password"
           autoComplete="current-password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="mt-1 w-full rounded-md border border-border bg-bg px-3 py-2 outline-none focus:border-accent"
+          className="input mt-1.5 h-10 w-full"
         />
       </label>
       {error ? (
-        <p role="alert" className="text-sm text-error">
+        <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
           {error}
         </p>
       ) : null}
-      <button
-        type="submit"
-        disabled={busy}
-        className="w-full rounded-md bg-accent py-2 font-medium text-bg hover:bg-accent/90 disabled:opacity-60"
-      >
+      <button type="submit" disabled={busy} className="btn btn-primary h-10 w-full text-sm">
         {busy ? "Signing in…" : "Sign in"}
       </button>
     </form>

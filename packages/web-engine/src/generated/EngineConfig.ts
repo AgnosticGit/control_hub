@@ -12,4 +12,12 @@ rolling_window_ns: string,
 /**
  * Memory budget for reducer checkpoints.
  */
-checkpoint_budget_bytes: number, degraded_error_ratio: number, failing_error_ratio: number, };
+checkpoint_budget_bytes: number, degraded_error_ratio: number, failing_error_ratio: number, 
+/**
+ * Request hops returned per frame cover `[time - hop_before_ns, time + hop_after_ns]`.
+ */
+hop_before_ns: string, hop_after_ns: string, 
+/**
+ * Cap on hops per frame; the summary reports how many were left out.
+ */
+max_hops: number, };

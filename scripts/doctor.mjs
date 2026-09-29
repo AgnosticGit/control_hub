@@ -58,7 +58,7 @@ if (existsSync(infraEnv)) {
   ports.clickhouse = Number(env.CH_CLICKHOUSE_HTTP_PORT ?? ports.clickhouse);
   ports.kafka = Number(env.CH_KAFKA_PORT ?? ports.kafka);
 }
-const servicePorts = { ingestHttp: 4318, ingestGrpc: 4317, api: 8080, web: 3000, gateway: 7001, orders: 7002 };
+const servicePorts = { ingestHttp: 4318, ingestGrpc: 4317, api: 8080, web: 3000, gateway: 7001, orders: 7002, inventory: 7003, payments: 7004, notifications: 7005, catalog: 7006, auth: 7007, provider: 7010 };
 function portFree(port) {
   return new Promise((resolve) => {
     const s = createServer();
