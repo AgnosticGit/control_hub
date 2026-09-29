@@ -1,0 +1,41 @@
+---
+description: ControlHub testing policy — every change ships unit, integration and e2e tests in the existing suites
+alwaysApply: true
+---
+
+# Testing policy
+
+Code here is written mostly by AI agents, so tests are the spec. A change without tests is not done.
+
+## Every feature, bug fix or behaviour change ships tests in the same change
+
+| Level | Where it goes | Run with |
+|---|---|---|
+| Rust unit / property | `#[cfg(test)] mod tests` in the changed file; `proptest` for invariants | `cargo test -p <crate>` |
+| Rust HTTP handlers | same file, axum router via `tower::ServiceExt::oneshot` (fakes: `controlhub-ingest/src/testing.rs`) | `cargo test -p <crate>` |
+| Web / engine TS | `*.test.ts` next to the file in `apps/web/src` (vitest) | `pnpm --filter @controlhub/web test` |
+| SDK, demo system, scripts | `packages/sdk-node/test/`, `examples/demo-system/test/`, `scripts/test/` (`node --test`) | `just test` |
+| Integration (real binaries, Kafka, ClickHouse, Postgres) | `tests/integration/<area>.test.mjs`, helpers from `tests/integration/lib.mjs` | `just test-integration` |
+| E2E (browser) | `tests/e2e/specs/<area>.spec.ts`, helpers from `specs/helpers.ts` (`login`, `ingestLog`, `collectErrors`) | `just test-e2e` |
+
+Required levels by change type:
+- **UI or user-visible behaviour** (page, button, map, timeline, dialog): vitest for the logic **and** a Playwright spec that clicks through it as a user and checks the visible result.
+- **API route or auth/permission rule**: Rust handler test **and** an integration test for success, 401/403, CSRF and tenant isolation. If the UI uses it, an e2e spec too.
+- **Ingest / processor / data flow**: Rust unit test **and** an integration test that sends real OTLP and reads the result back through the API.
+- **Engine (Rust/WASM)**: unit + property tests in engine-core; an e2e spec if rendering or interaction changes.
+- **Bug fix**: first a regression test that fails without the fix, at the lowest level that reproduces it, plus e2e if the user saw the bug in the browser.
+- **Security-relevant code** (redaction, tokens, sessions, CSP, headers): negative tests — what must be rejected, redacted or never returned.
+
+## Test quality
+
+- Assert behaviour a user or client can observe, not implementation details. Cover edge cases and error paths, not only the happy path.
+- Playwright: locate by role/label/text (`getByRole`, `getByLabel`), never by CSS classes; no new fixed `waitForTimeout` — use `expect(...).toBe...` auto-waits or `expect.poll`. Integration: `eventually(...)` instead of sleeps.
+- Tests are independent and repeatable: unique data (`randomHex`, `randomUUID`), no reliance on run order or on data from other tests.
+- Actions are rate-limited (30 plans/hour per environment): create as few plans as a test needs.
+- Never delete, skip or weaken an existing test to get green. Fix the code, or fix the test only if it is provably wrong, and say so. `test.skip` only with a stated environmental reason in the code.
+
+## Running
+
+- While working: run only the affected crate/package/spec, trimmed to the summary (e.g. `... 2>&1 | Select-Object -Last 20`, Playwright `--reporter=line`). Read full logs only on failure.
+- Before claiming done: `just check`, `just test`, and — for anything touching UI, API or data flow — `just test-integration` and `just test-e2e` with `just dev` + `just demo` running.
+- If a suite could not be run, say so explicitly; never report it as passed. Record real counts in `STATUS.md`.

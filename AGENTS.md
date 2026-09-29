@@ -45,11 +45,14 @@ just wasm / just codegen                # regenerate WASM artifact / contracts
 
 ## Rules
 
-See `.cursor/rules/controlhub-core.mdc` (always applies) and `controlhub-web.mdc`. In short:
+See `.cursor/rules/controlhub-core.mdc` and `controlhub-testing.mdc` (always apply) and `controlhub-web.mdc`. In short:
 - Keep the fixed data flow and ACK semantics. No LLM anywhere in the data path.
 - Treat telemetry as untrusted. Redact at ingestion. Scope every query by the principal's tenant.
 - No `unsafe`, no `unwrap` on external data, no TS `any`.
 - Only `controlhub-executor` may change the observed system or use Docker. New actions go into the
   `controlhub-actions` catalog (typed, bounded, verified), never as free-form commands (ADR-0012).
+- Every feature or fix ships tests at every applicable level in the existing suites: Rust `#[cfg(test)]`,
+ vitest `*.test.ts`, `tests/integration/*.test.mjs`, Playwright `tests/e2e/specs/*.spec.ts`. A bug fix starts
+ with a failing regression test. Never delete or weaken a test to get green.
 - Never overwrite user changes, never `git reset`/`clean`, never commit `.controlhub/`.
 - Report only checks you actually ran, and update `STATUS.md` with the real results.
