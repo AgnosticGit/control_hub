@@ -1,6 +1,6 @@
 import type { TimelineTracks } from "@controlhub/web-engine";
 import { describe, expect, it } from "vitest";
-import { RULER_H, actionColor, bucketGeometry, draw, drawRuler, rowTop, totalHeight, type DrawInput, type Row } from "./draw";
+import { RULER_H, actionColor, bucketGeometry, draw, drawRuler, rowTop, totalHeight, withAlpha, type DrawInput, type Row } from "./draw";
 import type { View } from "./scale";
 
 interface Call {
@@ -182,6 +182,32 @@ describe("draw", () => {
     });
     draw(ctx, input({ rows: [row("s", "service", 30, { track: 0 })], tracks: t }));
     expect(named("fillText").map((c) => c.args[0])).toEqual(["GET /orders"]);
+  });
+
+  it("draws a service row in that service's colour, failed spans in red", () => {
+    const heatCtx = fakeCtx();
+    const heatTracks = tracks({ services: [{ node: 0, name: "orders", counts: [2, 4], spans_in_view: 6, clipped: false }] });
+    draw(heatCtx.ctx, input({ rows: [row("s", "service", 20, { track: 0, color: "#a78bfa" })], tracks: heatTracks }));
+    const heat = heatCtx.calls.filter((c) => c.name === "fillRect" && String(c.fillStyle).startsWith("rgba(167, 139, 250,"));
+    expect(heat).toHaveLength(2);
+
+    const clipCtx = fakeCtx();
+    const clipTracks = tracks({
+      services: [{ node: 0, name: "orders", counts: [], spans_in_view: 2, clipped: true }],
+      clips: [
+        { track: 0, start_ms: 100, end_ms: 400, depth: 0, error: false, name: "ok", trace_id: "t" },
+        { track: 0, start_ms: 500, end_ms: 600, depth: 1, error: true, name: "bad", trace_id: "t" },
+      ],
+    });
+    draw(clipCtx.ctx, input({ rows: [row("s", "service", 30, { track: 0, color: "#a78bfa" })], tracks: clipTracks }));
+    const fills = clipCtx.named("fill").map((c) => c.fillStyle);
+    expect(fills).toContain("rgba(167, 139, 250, 0.35)");
+    expect(fills).toContain("rgba(239, 68, 68, 0.2)");
+  });
+
+  it("withAlpha converts #rrggbb", () => {
+    expect(withAlpha("#3b82f6", 0.5)).toBe("rgba(59, 130, 246, 0.5)");
+    expect(withAlpha("#000000", 1)).toBe("rgba(0, 0, 0, 1)");
   });
 
   it("splits the latency line at empty buckets", () => {

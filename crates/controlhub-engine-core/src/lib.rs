@@ -456,7 +456,13 @@ impl Engine {
             _ => 1,
         };
 
-        let dimmed = self.dimmed_nodes();
+        let isolated = self.filters.isolated_trace().is_some();
+        let mut dimmed = self.dimmed_nodes();
+        if isolated {
+            for (i, d) in dimmed.iter_mut().enumerate() {
+                *d |= !highlight.0.contains(&(i as u32));
+            }
+        }
         let mut dimmed_edges: HashSet<u32> = HashSet::new();
         let mut node_visible = vec![false; self.nodes.len()];
         // Passed every filter (before viewport culling).
@@ -554,7 +560,8 @@ impl Engine {
             if ratio >= self.config.degraded_error_ratio && calls > 0 {
                 flags |= FLAG_PROBLEM;
             }
-            if dimmed.get(s).copied().unwrap_or(false) || dimmed.get(tg).copied().unwrap_or(false) {
+            let off_trace = isolated && !highlight.1.contains(&(i as u32));
+            if off_trace || dimmed.get(s).copied().unwrap_or(false) || dimmed.get(tg).copied().unwrap_or(false) {
                 flags |= FLAG_DIMMED;
                 dimmed_edges.insert(i as u32);
             }
@@ -606,12 +613,13 @@ impl Engine {
         let Some(index) = self.hops.as_ref() else { return (0, 0) };
         let visible: HashSet<u32> = visible_edges.iter().copied().collect();
         let selected = self.filters.selected_trace_id.as_deref().map(|id| stable_hash(&[id]));
+        let only = self.filters.isolated_trace().map(|id| stable_hash(&[id]));
         let (before, after) = self.hop_window;
         let max = self.config.max_hops as usize;
         let rel = |ns: i64| ((i128::from(ns) - i128::from(t)) as f64 / 1e6) as f32;
         let (mut total, mut shown) = (0u32, 0u32);
         for h in index.overlapping(t.saturating_sub(before), t.saturating_add(after)) {
-            if !visible.contains(&h.edge) {
+            if !visible.contains(&h.edge) || only.is_some_and(|o| o != h.trace) {
                 continue;
             }
             total += 1;
@@ -628,6 +636,7 @@ impl Engine {
                     rel(h.t[2]),
                     rel(h.t[3]),
                     flags as f32,
+                    if h.origin == hops::NO_ORIGIN { -1.0 } else { h.origin as f32 },
                 ]);
             }
         }
@@ -638,12 +647,14 @@ impl Engine {
     fn build_hops(&self) -> HopIndex {
         let mut hops = Vec::new();
         let mut skew = SkewCache::new();
+        let roots = self.trace_roots();
         for s in self.spans.values() {
             let Some(&node) = self.node_index.get(&s.service_id) else { continue };
             let trace = stable_hash(&[&s.trace_id]);
             if let Some(&target) = s.target_entity_id.as_ref().and_then(|t| self.node_index.get(t)) {
                 if let Some(&e) = self.edge_index.get(&(node, target, RelationKind::DependsOn)) {
-                    hops.push(Hop::leaf(e, s, trace, self.skew_ns(s, &mut skew)));
+                    let origin = self.trace_origin(s, &roots);
+                    hops.push(Hop::leaf(e, s, trace, self.skew_ns(s, &mut skew)).with_origin(origin));
                 }
                 continue;
             }
@@ -655,13 +666,43 @@ impl Engine {
                 Some(&caller) if caller != node => {
                     if let Some(&e) = self.edge_index.get(&(caller, node, RelationKind::Calls)) {
                         let shift = (self.skew_ns(p, &mut skew), self.skew_ns(s, &mut skew));
-                        hops.push(Hop::call(e, p, s, trace, shift));
+                        let origin = self.trace_origin(s, &roots);
+                        hops.push(Hop::call(e, p, s, trace, shift).with_origin(origin));
                     }
                 }
                 _ => {}
             }
         }
         HopIndex::new(hops)
+    }
+
+    /// Service node of each loaded trace's root span (the earliest one if there are several).
+    fn trace_roots(&self) -> HashMap<&str, (i64, u32)> {
+        let mut roots: HashMap<&str, (i64, u32)> = HashMap::new();
+        for s in self.spans.values().filter(|s| s.parent_span_id.is_none()) {
+            let Some(&node) = self.node_index.get(&s.service_id) else { continue };
+            let slot = roots.entry(s.trace_id.as_str()).or_insert((s.start_ns, node));
+            if (s.start_ns, node) < *slot {
+                *slot = (s.start_ns, node);
+            }
+        }
+        roots
+    }
+
+    /// Service where the trace of `s` started: its root span's service or, when the root is not
+    /// loaded, the service of the topmost loaded ancestor of `s`.
+    fn trace_origin(&self, s: &SpanItem, roots: &HashMap<&str, (i64, u32)>) -> Option<u32> {
+        const MAX_WALK: usize = 64;
+        if let Some(&(_, node)) = roots.get(s.trace_id.as_str()) {
+            return Some(node);
+        }
+        let mut cur = s;
+        for _ in 0..MAX_WALK {
+            let Some(parent) = cur.parent_span_id.as_deref() else { break };
+            let Some(p) = self.spans.get(&(cur.trace_id.clone(), parent.to_owned())) else { break };
+            cur = p;
+        }
+        self.node_index.get(&cur.service_id).copied()
     }
 
     /// Metrics for one node at an arbitrary time (defaults to the current time).

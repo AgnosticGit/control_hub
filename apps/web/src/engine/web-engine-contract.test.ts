@@ -47,7 +47,7 @@ describe("strides and status", () => {
   it("has the documented strides", () => {
     expect(engine.NODE_STRIDE).toBe(7);
     expect(engine.EDGE_STRIDE).toBe(8);
-    expect(engine.HOP_STRIDE).toBe(6);
+    expect(engine.HOP_STRIDE).toBe(7);
   });
 
   it("encodes health status as 0..3", () => {

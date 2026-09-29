@@ -247,6 +247,9 @@ function Legend() {
       <span className="flex items-center gap-1.5">
         <span className="inline-block h-2 w-2 rounded-full bg-accent-2 shadow-[0_0_6px_var(--color-accent-2)]" /> Request
       </span>
+      <span className="flex items-center gap-1.5">
+        <span className="inline-block h-2 w-2 rounded-full border-2 border-accent-2 bg-surface" /> Response
+      </span>
     </div>
   );
 }
@@ -267,9 +270,10 @@ function AnimationNote({ mode, speed, summary }: { mode: Mode; speed: Speed; sum
     >
       <div className="font-medium text-text">Requests from recorded spans</div>
       <div>{clock}</div>
-      <div title="A dot travels from caller to callee over the whole call: halfway through the call it is halfway along the line.">
-        dot position = share of the call elapsed
+      <div title="The request dot travels caller → callee until the callee's span starts, waits there while the callee works, and the answer ring travels back until the caller's span ends.">
+        filled dot = request, ring = response
       </div>
+      <div>dot colour = service where the request started</div>
       {capped ? (
         <div className="text-warn">
           showing {summary.hops_shown} of {summary.hops_in_window} requests

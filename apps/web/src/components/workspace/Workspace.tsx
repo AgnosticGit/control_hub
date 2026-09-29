@@ -13,6 +13,8 @@ import { Inspector } from "./Inspector";
 import { MapView } from "./MapView";
 import { SignalsPanel, type Tab } from "./SignalsPanel";
 import { TimelineBar } from "./TimelineBar";
+import { TraceFocusBar } from "./TraceFocusBar";
+import type { View } from "./timeline/scale";
 import { useDebounced } from "./useDebounced";
 import { useWorkspaceEngine, type EngineState, type Mode, type WorkspaceActions } from "./useWorkspaceEngine";
 
@@ -47,6 +49,9 @@ export function Workspace({ projectId, environmentId }: { projectId: string; env
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("logs");
   const [traceId, setTraceId] = useState<string | null>(null);
+  // With a selected request: show only it on the map and the timeline.
+  const [traceOnly, setTraceOnly] = useState(true);
+  const [traceFocus, setTraceFocus] = useState<View | null>(null);
   const [search, setSearch] = useState("");
   const [hideInferred, setHideInferred] = useState(false);
   const [onlyProblems, setOnlyProblems] = useState(false);
@@ -77,9 +82,21 @@ export function Workspace({ projectId, environmentId }: { projectId: string; env
       hide_inferred: hideInferred,
       only_problems: onlyProblems,
       selected_trace_id: traceId,
+      trace_only: traceOnly,
       muted_services: muted,
     });
-  }, [actions, state.phase, debouncedSearch, hideInferred, onlyProblems, traceId, muted]);
+  }, [actions, state.phase, debouncedSearch, hideInferred, onlyProblems, traceId, traceOnly, muted]);
+
+  const selectTrace = (id: string | null) => {
+    setTraceId(id);
+    if (id !== null) setTraceOnly(true);
+  };
+  const closeTrace = () => {
+    setTraceId(null);
+    setTraceFocus(null);
+    actions.setLoop(null);
+    actions.pause();
+  };
 
   if (session.isPending) return <p className="p-8 text-sm text-muted">Loading…</p>;
   if (session.data && !env) {
@@ -189,6 +206,20 @@ export function Workspace({ projectId, environmentId }: { projectId: string; env
                   summary={state.summary}
                 />
               )}
+              {traceId && state.phase === "ready" ? (
+                <TraceFocusBar
+                  key={traceId}
+                  projectId={projectId}
+                  environmentId={environmentId}
+                  traceId={traceId}
+                  traceOnly={traceOnly}
+                  onTraceOnly={setTraceOnly}
+                  onClose={closeTrace}
+                  onFocus={setTraceFocus}
+                  state={state}
+                  actions={actions}
+                />
+              ) : null}
               {state.phase === "starting" ? (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-muted">Starting engine…</div>
               ) : null}
@@ -251,7 +282,7 @@ export function Workspace({ projectId, environmentId }: { projectId: string; env
                 tab={tab}
                 onTab={setTab}
                 traceId={traceId}
-                onTrace={setTraceId}
+                onTrace={selectTrace}
               />
             )}
           </div>
@@ -262,9 +293,10 @@ export function Workspace({ projectId, environmentId }: { projectId: string; env
         <TimelineBar
           projectId={projectId}
           environmentId={environmentId}
-          filterKey={`${debouncedSearch.trim()}|${hideInferred}|${onlyProblems}|${muted.join(",")}`}
+          filterKey={`${debouncedSearch.trim()}|${hideInferred}|${onlyProblems}|${muted.join(",")}|${traceId ?? ""}|${traceOnly}`}
           muted={muted}
           onMuted={setMuted}
+          focus={traceFocus}
           height={dockHeight}
           state={state}
           actions={actions}

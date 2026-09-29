@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import type { TimelineTracks } from "@controlhub/web-engine";
 import { Icon } from "@/components/ui/Icon";
 import { api, scopedPath, unwrap } from "@/lib/api";
+import { RESOURCE_COLOR, cssColor, serviceColors } from "@/renderer/service-colors";
 import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime } from "@/lib/time";
 import type { EngineState, WorkspaceActions } from "../useWorkspaceEngine";
 import { RULER_H, bucketGeometry, draw, drawRuler, rowTop, totalHeight, type ActionBar, type Row } from "./draw";
@@ -32,6 +33,8 @@ interface Props {
   /** Service node IDs switched off by the user. */
   muted: string[];
   onMuted: (ids: string[]) => void;
+  /** Time span of the focused request: the view zooms to it whenever it changes. */
+  focus?: View | null;
 }
 
 function isoNs(iso: string | null | undefined): bigint | null {
@@ -91,7 +94,7 @@ interface Hover {
   clientY: number;
 }
 
-export function TimelineTracksView({ projectId, environmentId, state, actions, markA, filterKey, muted, onMuted }: Props) {
+export function TimelineTracksView({ projectId, environmentId, state, actions, markA, filterKey, muted, onMuted, focus = null }: Props) {
   const bounds = useMemo<View>(() => ({ from: state.rangeFrom, to: state.rangeTo }), [state.rangeFrom, state.rangeTo]);
   const [userView, setUserView] = useState<View | null>(null);
   const [width, setWidth] = useState(0);
@@ -103,6 +106,11 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     // Clearing the replay range shows the whole timeline again (derived-state update during render).
     setPrevLoop(state.loop);
     if (!state.loop) setUserView(null);
+  }
+  const [prevFocus, setPrevFocus] = useState<View | null>(null);
+  if (prevFocus !== focus) {
+    setPrevFocus(focus);
+    if (focus) setUserView(viewAround(focus, bounds));
   }
   const range = draft ?? state.loop;
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -151,6 +159,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     return ids;
   }, [state.topology]);
   const serviceIds = useMemo(() => (state.topology?.nodes ?? []).filter((n) => n.kind === "service").map((n) => n.id), [state.topology]);
+  const colors = useMemo(() => serviceColors(state.topology?.nodes ?? []), [state.topology]);
   const mutedSet = useMemo(() => new Set(muted), [muted]);
 
   const rows = useMemo<Row[]>(() => {
@@ -175,10 +184,11 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
           track: i,
           nodeId,
           dimmed: nodeId !== undefined && mutedSet.has(nodeId),
+          color: cssColor(colors.get(s.node) ?? RESOURCE_COLOR),
         };
       }),
     );
-  }, [tracks?.services, nodeIds, mutedSet]);
+  }, [tracks?.services, nodeIds, mutedSet, colors]);
   const height = totalHeight(rows);
 
   const toggleService = (id: string, on: boolean) => onMuted(on ? muted.filter((m) => m !== id) : [...muted, id]);
@@ -436,6 +446,12 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
                     onChange={(e) => toggleService(id, e.target.checked)}
                     aria-label={`Show ${r.label}`}
                     title={r.dimmed ? "Switched off: dimmed here and on the map" : "Switch off to dim it here and on the map"}
+                  />
+                  <span
+                    className={`dot shrink-0 ${r.dimmed ? "opacity-40" : ""}`}
+                    style={{ background: r.color }}
+                    data-service-color={r.color}
+                    aria-hidden
                   />
                   <span className={`truncate ${r.dimmed ? "text-muted/60" : ""}`}>{r.label}</span>
                   <button

@@ -368,6 +368,16 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       if (loop && (s.cursor < loop.from || s.cursor > loop.to)) seek(loop.from);
     },
     setSpeed: (speed: Speed) => patch({ speed }),
+    /**
+     * Loops `loop` at `speed` from its start: replays one request from beginning to end. The
+     * range is (re)loaded first: replay stops the live stream, and a request picked seconds
+     * after it happened may not have reached the engine completely yet.
+     */
+    playRange: (loop: { from: bigint; to: bigint }, speed: Speed) => {
+      patch({ loop, speed, mode: "replay" });
+      seek(loop.from);
+      void loadRange(loop.from, loop.to, { reset: false, topology: false });
+    },
     seek: (t: bigint) => {
       const s = stateRef.current;
       if (s.mode === "live" || s.mode === "replay") patch({ mode: "paused" });

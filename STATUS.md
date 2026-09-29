@@ -291,6 +291,40 @@ Real bugs these tests found, all fixed and covered by a regression test:
   itself against a dev server. Against `next start` every `/app` page, logged in or not,
   returned `no-store` (checked by hand on port 3001).
 
+### Service colours, two-way request dots, request focus (2026-09-29)
+- **Service colours.** Every service has its own colour, shared by the map card, the timeline
+  row dot, span clips and the density heat map (`renderer/service-colors.ts`). Colours come from
+  a 12-colour palette ordered by service ID, then golden-angle hues. Resources stay grey. Card
+  borders switch to amber or red when a service is degraded or failing; the corner dot always
+  shows the health status.
+- **Two-way dots.** Each hop now carries the node of the service where its trace started
+  (`HOP_STRIDE` 7, ABI 3). The dot has that service's colour, so a request can be traced across
+  the map. The dot moves through four stages:
+  - The request is a filled dot going caller → callee between `t0` and `t1`.
+  - While the callee works, a small half-transparent dot waits at the callee.
+  - The response is a hollow ring going callee → caller between `t2` and `t3`. It is still on
+    the line until the caller's span ends.
+  - Errors get a red halo.
+  - For an uninstrumented target (database), the two legs split the call evenly. This is an
+    assumption, not a measurement.
+- **Synchronisation.** Skew correction already kept a callee's calls inside its own
+  `t1..t2`. A new property test now checks this under random per-service clock offsets of
+  ±5 ms:
+  - `gateway→orders.t1 ≤ orders→payments.t0`;
+  - `orders→payments.t3 ≤ gateway→orders.t2`;
+  - sequential calls stay in order.
+  So a dot only leaves a service after the dot into it has arrived.
+- **Request focus.** Picking a request in Traces, or from a trace link in Logs or Events, opens
+  a bar over the map with the ID, the number of spans and services, the duration, "Only this
+  request" (on by default), "Replay request" and ✕.
+  - The engine filter `trace_only` leaves only that request's hops in the frame. It dims every
+    node and edge off the request's path. The timeline keeps only its services and counts only
+    its spans, logs and events.
+  - The request's range (plus 5%) becomes the replay range. It is reloaded from the API, because
+    replay stops the live stream and a fresh request may not be in the engine completely yet.
+  - Replay loops at the fastest speed that still takes at least 4 s (0.001× for a 20–30 ms demo
+    request). The timeline zooms to it. ✕ clears the request, the range and the replay.
+
 ## Checks run in this session (real results)
 
 Machine: Windows 11 (10.0.26200), Rust 1.98.1, Node 24.16.0, pnpm 10, Docker Desktop.
@@ -388,6 +422,17 @@ Eighth pass: test coverage, against `just dev` + `just demo`.
 | `just test-e2e` | first run 88 pass, 1 fail, 2 skipped. The failure was the actions spec (same rate limit); one skip is the dependent reject test, the other is the Cache-Control test, which skips on `next dev`. After the window freed, `specs/actions.spec.ts` **3/3** |
 | Cache-Control on `next start` (by hand, port 3001 with a session from port 3000) | every `/app` page returns `no-store` |
 
+Ninth pass: service colours, two-way dots and request focus, against `just dev` + `just demo`.
+
+| Command | Result |
+|---|---|
+| `just codegen`, `just wasm` | pass. New field `Filters.trace_only`; ABI 3, `HOP_STRIDE` 7; WASM 599 KiB |
+| `just check` | pass |
+| `just test` | pass: **518** Rust tests (new: hop origin, trace isolation on the map and in the tracks, a causal-order proptest under clock skew; the frame proptest now also varies `trace_only`), web vitest **181/181** (new: `hopPhase`, service colours, `speedFor`/`traceRange`, service-coloured timeline drawing), SDK 18/18, demo + scripts 24/24 |
+| `just test-e2e` | the new `specs/trace-focus.spec.ts` failed three times first, each time on a test bug: a `\b` regex, and a `current: true` filter that also matched `aria-current="false"`. It also found a real bug: a request picked seconds after it happened lacked services in the engine, because replay stops the live stream. Fixed by reloading the request's range. Then 2/2, and the full suite **92 pass, 1 skipped** (Cache-Control on `next dev`) |
+| `just test-integration` | **70 pass, 1 skipped** (broker outage), 0 fail |
+| Visual check (temporary Playwright screenshots of the map during a request replay; spec deleted) | dots in the gateway's colour. The request goes gateway→orders and waits at orders; orders→inventory/payments start only after that; the response ring goes back from postgres to inventory; nodes off the request are dimmed |
+
 ## Not run, and why
 
 - **CI** (`.github/workflows/ci.yml`): a GitHub remote exists (`origin`, one commit `upd1`), but I
@@ -440,6 +485,13 @@ Eighth pass: test coverage, against `just dev` + `just demo`.
 - Map routing guarantees are for left-to-right edges. Cycles and edges within one column fall
   back to a direct line, which can still cross others. Large graphs (over 400 layout items) skip
   crossing minimisation. At low zoom, parallel lanes in one gap are only a few pixels apart.
+- Request dots and colours:
+  - The dot's colour is the service of the trace's root span as loaded. If the root is missing,
+    the topmost loaded ancestor's service is used instead.
+  - Adding a new service can shift the other services' colours, because colours are assigned in
+    ID order.
+  - With many parallel calls, the waiting dots at a callee overlap.
+  - The focused request is not in the URL, so it is lost on reload.
 - Switched-off services and the replay range are not remembered across reloads. The loop runs
   only inside the loaded range; loading another range or returning to live clears it.
 

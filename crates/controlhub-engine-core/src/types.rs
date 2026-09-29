@@ -184,9 +184,19 @@ pub struct Filters {
     pub hide_inferred: bool,
     pub only_problems: bool,
     pub selected_trace_id: Option<String>,
+    /// With `selected_trace_id`: frames carry only that trace's hops, everything off its path is
+    /// dimmed, and the timeline tracks count only its spans, logs and events.
+    pub trace_only: bool,
     /// Service node IDs switched off by the user: dimmed on the map, left out of the timeline
     /// aggregates. Dependencies whose every caller is muted are dimmed too.
     pub muted_services: Vec<String>,
+}
+
+impl Filters {
+    /// The trace everything else is hidden for, when `trace_only` is on.
+    pub fn isolated_trace(&self) -> Option<&str> {
+        if self.trace_only { self.selected_trace_id.as_deref() } else { None }
+    }
 }
 
 /// Summary accompanying each computed frame.

@@ -446,6 +446,176 @@ fn hops_update_when_new_spans_arrive_and_are_evicted() {
     assert!(e.visible_state().hop_data.is_empty());
 }
 
+fn node_index(e: &Engine, id: &str) -> f32 {
+    e.topology().nodes.iter().find(|n| n.id == id).unwrap().index as f32
+}
+
+/// chain_engine plus a second trace `t2` (gateway -> orders at 4..6 ms) and an unrelated log.
+fn two_trace_engine() -> Engine {
+    let mut e = chain_engine();
+    e.apply_batch(Batch {
+        items: vec![
+            TimelineItem::Span(span("t2", "g2", None, "gateway", 3, 4 * MS, 6 * MS, false)),
+            TimelineItem::Span(span("t2", "o1", Some("g2"), "orders", 2, 4 * MS + US, 6 * MS - US, true)),
+            TimelineItem::Log(LogItem { trace_id: Some("t1".into()), ..log("l1", "orders", 3 * MS, 17) }),
+            TimelineItem::Log(LogItem { trace_id: Some("t2".into()), ..log("l2", "orders", 5 * MS, 17) }),
+        ],
+    })
+    .unwrap();
+    e
+}
+
+#[test]
+fn hops_carry_the_service_where_their_trace_started() {
+    let mut e = chain_engine();
+    e.seek(BASE + 5 * MS, 1);
+    let gateway = node_index(&e, "svc_gateway");
+    let vs = e.visible_state();
+    assert_eq!(hops(&vs).len(), 2);
+    // Both the gateway -> orders call and the orders -> database call belong to a request that
+    // entered the system at the gateway.
+    assert!(hops(&vs).iter().all(|h| h[6] == gateway), "{:?}", hops(&vs));
+
+    // Root not loaded: the topmost loaded ancestor's service is the origin.
+    let mut e = engine_with(vec![
+        TimelineItem::Span(span("t9", "o1", Some("missing"), "orders", 2, 0, 10 * MS, false)),
+        TimelineItem::Span(span("t9", "o2", Some("o1"), "orders", 3, MS, 9 * MS, false)),
+        TimelineItem::Span(span("t9", "p1", Some("o2"), "payments", 2, 2 * MS, 8 * MS, false)),
+    ]);
+    e.seek(BASE + 5 * MS, 1);
+    let orders = node_index(&e, "svc_orders");
+    let vs = e.visible_state();
+    assert_eq!(hops(&vs).len(), 1);
+    assert_eq!(hops(&vs)[0][6], orders);
+}
+
+#[test]
+fn isolated_trace_shows_only_its_hops_and_dims_everything_off_its_path() {
+    let mut e = two_trace_engine();
+    e.seek(BASE + 5 * MS, 1);
+    assert_eq!(hops(&e.visible_state()).len(), 3);
+
+    // Selecting without isolation only highlights.
+    e.set_filters(Filters { selected_trace_id: Some("t2".into()), ..Filters::default() });
+    let vs = e.visible_state();
+    assert_eq!(hops(&vs).len(), 3);
+    assert!(vs.node_data.chunks(NODE_STRIDE).all(|n| n[6] as u32 & FLAG_DIMMED == 0));
+
+    e.set_filters(Filters { selected_trace_id: Some("t2".into()), trace_only: true, ..Filters::default() });
+    let vs = e.visible_state();
+    let call = edge_between(&e, "svc_gateway", "svc_orders");
+    let db = edge_between(&e, "svc_orders", "res_db");
+    let hs = hops(&vs);
+    assert_eq!(hs.len(), 1, "only the t2 call: {hs:?}");
+    assert_eq!(hs[0][0] as u32, call);
+    assert_eq!(hs[0][5] as u32 & (HOP_HIGHLIGHT | HOP_DIMMED | HOP_ERROR), HOP_HIGHLIGHT | HOP_ERROR);
+    assert_eq!(vs.summary.hops_in_window, 1);
+    assert_eq!(node_flags(&e, &vs, "svc_gateway") & FLAG_DIMMED, 0);
+    assert_eq!(node_flags(&e, &vs, "svc_orders") & FLAG_DIMMED, 0);
+    assert_eq!(node_flags(&e, &vs, "res_db") & FLAG_DIMMED, FLAG_DIMMED, "t2 never touches the database");
+    assert_eq!(edge_flags(&vs, call) & FLAG_DIMMED, 0);
+    assert_eq!(edge_flags(&vs, db) & FLAG_DIMMED, FLAG_DIMMED);
+
+    // trace_only without a selected trace changes nothing.
+    e.set_filters(Filters { trace_only: true, ..Filters::default() });
+    let vs = e.visible_state();
+    assert_eq!(hops(&vs).len(), 3);
+    assert!(vs.node_data.chunks(NODE_STRIDE).all(|n| n[6] as u32 & FLAG_DIMMED == 0));
+    // An unknown trace isolates nothing to show.
+    e.set_filters(Filters { selected_trace_id: Some("nope".into()), trace_only: true, ..Filters::default() });
+    let vs = e.visible_state();
+    assert!(vs.hop_data.is_empty());
+    assert!(vs.node_data.chunks(NODE_STRIDE).all(|n| n[6] as u32 & FLAG_DIMMED != 0));
+}
+
+#[test]
+fn isolated_trace_limits_the_timeline_tracks_to_that_trace() {
+    let mut e = two_trace_engine();
+    e.apply_batch(Batch {
+        items: vec![TimelineItem::Span(span("t3", "p1", None, "payments", 2, 2 * MS, 3 * MS, false))],
+    })
+    .unwrap();
+    let all = e.timeline_tracks(BASE, BASE + 12 * MS, 12, 100);
+    assert_eq!(all.services.len(), 3);
+
+    e.set_filters(Filters { selected_trace_id: Some("t2".into()), trace_only: true, ..Filters::default() });
+    let t = e.timeline_tracks(BASE, BASE + 12 * MS, 12, 100);
+    let names: Vec<&str> = t.services.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names.len(), 2, "{names:?}");
+    assert!(names.contains(&"gateway") && names.contains(&"orders"));
+    // t2: the gateway root and the orders server span are requests; orders failed; its error log.
+    assert_eq!(t.requests.iter().sum::<u32>(), 2);
+    assert_eq!(t.errors.iter().sum::<u32>(), 2, "failed span + t2's error log, not t1's");
+    assert!(t.clips.iter().all(|c| c.trace_id == "t2"), "{:?}", t.clips);
+    assert_eq!(t.clips.len(), 2);
+}
+
+/// Sub-interval of `[lo, hi]` between the fractions `a` and `b` (per mille, in either order).
+fn within(lo: i64, hi: i64, a: i64, b: i64) -> (i64, i64) {
+    let (a, b) = (a.min(b), a.max(b));
+    (lo + (hi - lo) * a / 1000, lo + (hi - lo) * b / 1000)
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(160))]
+
+    /// However far the services' clocks drift apart, the animation stays causal: a request
+    /// reaches a service before that service calls on, the callee's calls return before it
+    /// answers, and calls a service makes one after another stay in that order.
+    #[test]
+    fn nested_hops_stay_in_causal_order_under_clock_skew(
+        skew in prop::collection::vec(-5_000i64..5_000, 3),
+        f in prop::collection::vec(0i64..=1000, 10),
+    ) {
+        // True times in µs; gateway -> orders -> payments, then orders -> database.
+        let root = (0, 20_000);
+        let gw_call = within(root.0, root.1, f[0], f[1]);
+        let orders = within(gw_call.0, gw_call.1, f[2], f[3]);
+        let mid = (orders.0 + orders.1) / 2;
+        let pay_call = within(orders.0, mid, f[4], f[5]);
+        let payments = within(pay_call.0, pay_call.1, f[6], f[7]);
+        let db_call = within(mid, orders.1, f[8], f[9]);
+        let rec = |(s, e): (i64, i64), k: i64| ((s + k) * US, (e + k) * US);
+        let sp = |id: &str, parent: Option<&str>, svc: &str, kind: u8, t: (i64, i64)| span("t", id, parent, svc, kind, t.0, t.1, false);
+        let (g, o, p) = (skew[0], skew[1], skew[2]);
+        let items = vec![
+            sp("g0", None, "gateway", 2, rec(root, g)),
+            sp("g1", Some("g0"), "gateway", 3, rec(gw_call, g)),
+            sp("o0", Some("g1"), "orders", 2, rec(orders, o)),
+            sp("o1", Some("o0"), "orders", 3, rec(pay_call, o)),
+            sp("p0", Some("o1"), "payments", 2, rec(payments, p)),
+            SpanItem { target_entity_id: Some("res_db".into()), ..sp("o2", Some("o0"), "orders", 3, rec(db_call, o)) },
+        ];
+        let mut e = Engine::new(EngineConfig::default());
+        e.load_topology(TopologySnapshot {
+            nodes: vec![TopologyNode { id: "res_db".into(), name: "postgres".into(), kind: EntityKindDto::Database, provenance: ProvenanceDto::Inferred }],
+            edges: vec![],
+        });
+        e.apply_batch(Batch { items: items.into_iter().map(TimelineItem::Span).collect() }).unwrap();
+        e.set_hop_window(60 * SEC, 60 * SEC);
+        e.seek(BASE, 1);
+        let vs = e.visible_state();
+        let hs = hops(&vs);
+        prop_assert_eq!(hs.len(), 3);
+        let by = |from: &str, to: &str| -> Vec<f32> {
+            let edge = edge_between(&e, from, to) as f32;
+            hs.iter().find(|h| h[0] == edge).map(|h| h.to_vec()).unwrap_or_default()
+        };
+        let (gw_o, o_p, o_db) = (by("svc_gateway", "svc_orders"), by("svc_orders", "svc_payments"), by("svc_orders", "res_db"));
+        prop_assert!(!gw_o.is_empty() && !o_p.is_empty() && !o_db.is_empty());
+        let eps = 1e-3;
+        for h in [&gw_o, &o_p, &o_db] {
+            prop_assert!(h[1] <= h[2] && h[2] <= h[3] && h[3] <= h[4], "{:?}", h);
+            prop_assert_eq!(h[6], node_index(&e, "svc_gateway"));
+        }
+        for child in [&o_p, &o_db] {
+            prop_assert!(child[1] + eps >= gw_o[2], "orders calls on before the request arrived: {:?} {:?}", gw_o, child);
+            prop_assert!(child[4] <= gw_o[3] + eps, "orders answers before its call returned: {:?} {:?}", gw_o, child);
+        }
+        prop_assert!(o_p[4] <= o_db[1] + eps, "sequential calls swapped: {:?} {:?}", o_p, o_db);
+    }
+}
+
 // ------------------------------------------------------------- properties
 
 fn arb_items() -> impl Strategy<Value = (Vec<SpanItem>, Vec<LogItem>)> {

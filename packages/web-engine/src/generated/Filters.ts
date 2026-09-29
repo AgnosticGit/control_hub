@@ -2,6 +2,11 @@
 
 export type Filters = { search: string, hide_inferred: boolean, only_problems: boolean, selected_trace_id: string | null, 
 /**
+ * With `selected_trace_id`: frames carry only that trace's hops, everything off its path is
+ * dimmed, and the timeline tracks count only its spans, logs and events.
+ */
+trace_only: boolean, 
+/**
  * Service node IDs switched off by the user: dimmed on the map, left out of the timeline
  * aggregates. Dependencies whose every caller is muted are dimmed too.
  */

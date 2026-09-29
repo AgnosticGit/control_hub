@@ -31,6 +31,11 @@ Ordered by priority within each stage. `[x]` = done and verified (see STATUS.md)
 - [x] Layered map layout with corridor routing (no crossings, no lines under cards), service
       switches with dimming on map and timeline
 - [ ] Route cycles and same-column edges around cards too; remember switched-off services
+- [x] Per-service colours on map and timeline; two-way request dots (request dot, wait, response
+      ring) in the colour of the service where the request started; focus on one request
+      (isolated on map and timeline, replayed on a loop)
+- [ ] Focused request in the URL (shareable, survives reload); stable colours when services are
+      added; apply skew correction to the trace waterfall too
 
 ## Stage 3 — timeline
 - [x] Modes, speeds, step, range, compare, completeness, synchronized panels, proptest, e2e

@@ -11,8 +11,13 @@
 use crate::types::SpanItem;
 
 /// Floats per hop in [`crate::VisibleState::hop_data`]:
-/// `edge_index, t0, t1, t2, t3, flags`, times in milliseconds relative to the frame time.
-pub const HOP_STRIDE: usize = 6;
+/// `edge_index, t0, t1, t2, t3, flags, origin`, times in milliseconds relative to the frame
+/// time. `origin` is the node index of the service where the hop's trace started (its root
+/// span), or -1 when no ancestor with a known service is loaded.
+pub const HOP_STRIDE: usize = 7;
+
+/// `Hop::origin` when the trace's starting service is unknown.
+pub(crate) const NO_ORIGIN: u32 = u32::MAX;
 
 pub const HOP_ERROR: u32 = 1;
 /// Callee not instrumented: only departure and return are known.
@@ -31,6 +36,8 @@ pub(crate) struct Hop {
     pub t: [i64; 4],
     pub flags: u32,
     pub trace: u64,
+    /// Node index of the service where the trace started, or [`NO_ORIGIN`].
+    pub origin: u32,
 }
 
 /// Clamps timestamps into non-decreasing order; returns whether anything moved.
@@ -65,7 +72,7 @@ impl Hop {
         if server.is_error || (client && parent.is_error) {
             flags |= HOP_ERROR;
         }
-        Self { edge, t, flags, trace }
+        Self { edge, t, flags, trace, origin: NO_ORIGIN }
     }
 
     /// A client span to a resource that is not instrumented, shifted by its service's skew.
@@ -75,7 +82,12 @@ impl Hop {
             flags |= HOP_ERROR;
         }
         let (s, e) = (client.start_ns.saturating_add(shift), client.end_ns.saturating_add(shift));
-        Self { edge, t: [s, s, e, e], flags, trace }
+        Self { edge, t: [s, s, e, e], flags, trace, origin: NO_ORIGIN }
+    }
+
+    pub(crate) fn with_origin(mut self, origin: Option<u32>) -> Self {
+        self.origin = origin.unwrap_or(NO_ORIGIN);
+        self
     }
 }
 
@@ -215,7 +227,7 @@ mod tests {
             len in 0i64..400,
         ) {
             let hops: Vec<Hop> = raw.iter().enumerate()
-                .map(|(i, &(s, d, e))| Hop { edge: e, t: [s, s, s + d, s + d], flags: 0, trace: i as u64 })
+                .map(|(i, &(s, d, e))| Hop { edge: e, t: [s, s, s + d, s + d], flags: 0, trace: i as u64, origin: NO_ORIGIN })
                 .collect();
             let to = from + len;
             let index = HopIndex::new(hops.clone());

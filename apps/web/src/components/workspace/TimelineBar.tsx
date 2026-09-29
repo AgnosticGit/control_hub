@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { TimelineTracksView } from "./timeline/TimelineTracksView";
-import { formatSpan } from "./timeline/scale";
+import { formatSpan, type View } from "./timeline/scale";
 import { SPEEDS, type EngineState, type Mode, type Speed, type WorkspaceActions } from "./useWorkspaceEngine";
 import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime, nowNs } from "@/lib/time";
 
@@ -28,6 +28,8 @@ interface Props {
   /** Service node IDs switched off by the user. */
   muted: string[];
   onMuted: (ids: string[]) => void;
+  /** Time span of the focused request: the tracks zoom to it whenever it changes. */
+  focus?: View | null;
   /** Height of the whole dock in px (resizable by the caller). */
   height: number;
   state: EngineState;
@@ -37,7 +39,7 @@ interface Props {
   onCompare: (a: bigint, b: bigint) => void;
 }
 
-export function TimelineBar({ projectId, environmentId, filterKey, muted, onMuted, height, state, actions, markA, onMarkA, onCompare }: Props) {
+export function TimelineBar({ projectId, environmentId, filterKey, muted, onMuted, focus = null, height, state, actions, markA, onMarkA, onCompare }: Props) {
   const [showRange, setShowRange] = useState(false);
   const playing = state.mode === "replay";
   const summary = state.summary;
@@ -164,6 +166,7 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
         filterKey={filterKey}
         muted={muted}
         onMuted={onMuted}
+        focus={focus}
       />
     </section>
   );

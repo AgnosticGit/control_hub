@@ -16,6 +16,7 @@ import {
   HOP_DIMMED,
   HOP_ERROR,
   HOP_HIGHLIGHT,
+  HOP_LEAF,
   HOP_STRIDE,
   NODE_STRIDE,
   type EntityKindDto,
@@ -24,7 +25,8 @@ import {
 } from "@controlhub/web-engine";
 import { DEFAULT_EDGE_STYLE, dashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
 import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
-import { animTimeMs, callProgress, type AnimClock } from "./hops";
+import { animTimeMs, hopPhase, type AnimClock } from "./hops";
+import { serviceColors } from "./service-colors";
 
 export interface MapCallbacks {
   onViewport(x: number, y: number, width: number, height: number, scale: number): void;
@@ -101,6 +103,7 @@ export class PixiMap {
   private routes = new Map<number, Route>();
   private names: string[] = [];
   private kinds: EntityKindDto[] = [];
+  private colors = new Map<number, number>();
   private selectedIndex: number | null = null;
   private fitted = false;
   private reducedMotion = false;
@@ -148,6 +151,7 @@ export class PixiMap {
       kinds[n.index] = n.kind;
     }
     this.kinds = kinds;
+    this.colors = serviceColors(nodes);
     this.routeNodes = nodes.map((n) => ({ index: n.index, x: n.x, y: n.y }));
     this.routeEdges = (topology?.edges ?? []).map((e) => ({ index: e.index, source: e.source, target: e.target, points: e.points }));
     this.reroute();
@@ -416,7 +420,9 @@ export class PixiMap {
       const requests = f.nodeData[o + 5] ?? 0;
       const flags = f.nodeData[o + 6] ?? 0;
       const idx = f.nodeIndices[i] ?? 0;
-      const color = STATUS_COLORS[status] ?? STATUS_COLORS[0] ?? 0x64748b;
+      const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS[0] ?? 0x64748b;
+      // A service keeps its own colour unless it is degraded or failing.
+      const color = status >= 2 ? statusColor : (this.colors.get(idx) ?? statusColor);
       const inferred = (flags & FLAG_INFERRED) !== 0;
       const dimmed = (flags & FLAG_DIMMED) !== 0;
       const n = dimmed ? this.nodesDim : this.nodes;
@@ -437,7 +443,7 @@ export class PixiMap {
       n.roundRect(ix, iy, 30, 30, 9).fill({ color, alpha: 0.14 });
       const resource = (flags & FLAG_RESOURCE) !== 0;
       drawKindIcon(n, this.kinds[idx], resource, ix + 15, iy + 15, color);
-      n.circle(left + CARD_W - 12, top + 12, 3.5).fill({ color, alpha: status > 0 ? 1 : 0.6 });
+      n.circle(left + CARD_W - 12, top + 12, 3.5).fill({ color: statusColor, alpha: status > 0 ? 1 : 0.6 });
 
       if (lod >= 1) {
         seen.add(idx);
@@ -471,9 +477,10 @@ export class PixiMap {
   }
 
   /**
-   * Every dot is one recorded call. It travels from the caller to the callee over the call's
-   * recorded duration (client span start to end), so its position along the line is the share
-   * of the call that has elapsed at the animation time.
+   * Every dot is one recorded call, coloured by the service where its request started. The
+   * request (filled dot) goes caller -> callee over t0..t1, waits at the callee while it works,
+   * and the answer (hollow ring) goes back callee -> caller over t2..t3. Since the engine keeps
+   * a callee's calls inside its own t1..t2, a dot only leaves a service after one arrived.
    */
   private drawHops() {
     const g = this.hops;
@@ -487,20 +494,28 @@ export class PixiMap {
       const edge = data[o] ?? 0;
       const geom = this.edgeGeom.get(edge);
       if (!geom) continue;
-      const p = callProgress(data[o + 1] ?? 0, data[o + 4] ?? 0, now);
-      if (p === null) continue;
       const flags = data[o + 5] ?? 0;
+      const phase = hopPhase(data[o + 1] ?? 0, data[o + 2] ?? 0, data[o + 3] ?? 0, data[o + 4] ?? 0, now, (flags & HOP_LEAF) !== 0);
+      if (phase === null) continue;
+      const origin = data[o + 6] ?? -1;
+      const color = (origin >= 0 ? this.colors.get(origin) : undefined) ?? ACCENT;
       const error = (flags & HOP_ERROR) !== 0;
-      const color = error ? EDGE_ERROR : ACCENT;
       const k = (flags & HOP_DIMMED) !== 0 ? DIM_ALPHA : 1;
       if (!lit.has(edge)) {
         lit.add(edge);
-        line(g, geom.path.pts).stroke({ color, width: 3, alpha: 0.35 * k, ...LINE_STYLE });
+        line(g, geom.path.pts).stroke({ color, width: 3, alpha: 0.3 * k, ...LINE_STYLE });
       }
       const r = (flags & HOP_HIGHLIGHT) !== 0 ? 6.5 : 4.5;
-      const [px, py] = pointAt(geom.path, p);
-      g.circle(px, py, r * 2.4).fill({ color, alpha: 0.16 * k });
-      g.circle(px, py, r).fill({ color, alpha: 0.95 * k }).stroke({ color: 0xffffff, width: 1, alpha: 0.6 * k });
+      const [px, py] = pointAt(geom.path, phase.p);
+      if (error) g.circle(px, py, r * 2.6).fill({ color: EDGE_ERROR, alpha: 0.28 * k });
+      else g.circle(px, py, r * 2.4).fill({ color, alpha: 0.14 * k });
+      if (phase.dir === "request") {
+        g.circle(px, py, r).fill({ color, alpha: 0.95 * k }).stroke({ color: 0xffffff, width: 1.2, alpha: 0.7 * k });
+      } else if (phase.dir === "wait") {
+        g.circle(px, py, r * 0.75).fill({ color, alpha: 0.5 * k });
+      } else {
+        g.circle(px, py, r).fill({ color: CARD_BG, alpha: 0.9 * k }).stroke({ color: error ? EDGE_ERROR : color, width: 2.2, alpha: k });
+      }
     }
   }
 }

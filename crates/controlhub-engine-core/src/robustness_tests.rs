@@ -145,6 +145,7 @@ fn check_frame(e: &Engine, vs: &VisibleState) -> Result<(), TestCaseError> {
         prop_assert!(shown.contains(&(h[0] as u32)), "hop on a hidden edge: {:?}", h);
         prop_assert!(h[1] <= h[2] && h[2] <= h[3] && h[3] <= h[4], "hop times out of order: {:?}", h);
         prop_assert!((h[5] as u32) < 32, "hop flags");
+        prop_assert!(h[6] == -1.0 || (h[6] >= 0.0 && (h[6] as usize) < n), "hop origin {:?}", h);
     }
     Ok(())
 }
@@ -1069,6 +1070,7 @@ proptest! {
         muted in prop::collection::vec(prop::sample::select(vec!["svc_a", "svc_b", "res_db", "x"]), 0..3),
         viewport in prop::option::of((-2000.0f32..2000.0, -2000.0f32..2000.0, 0.0f32..3000.0, 0.0f32..3000.0, 0.1f32..3.0)),
         max_hops in 0u32..5,
+        trace_only in any::<bool>(),
     ) {
         let mut e = Engine::new(EngineConfig { max_hops, ..EngineConfig::default() });
         e.load_topology(db_node());
@@ -1079,6 +1081,7 @@ proptest! {
             hide_inferred,
             only_problems,
             selected_trace_id: trace.map(Into::into),
+            trace_only,
             muted_services: muted.into_iter().map(Into::into).collect(),
         };
         e.set_filters(filters.clone());
@@ -1107,11 +1110,20 @@ proptest! {
             let x = &topo.edges[i as usize];
             prop_assert!(passing.contains(&x.source) && passing.contains(&x.target), "edge {} to a filtered node", i);
         }
-        // Dimmed flags follow `muted_services` exactly.
+        // Dimmed flags follow `muted_services` exactly; an isolated trace dims more, never less,
+        // and leaves only that trace's hops in the frame.
         let dimmed = e.dimmed_nodes();
+        let isolated = filters.isolated_trace().is_some();
         for (k, &i) in vs.node_indices.iter().enumerate() {
             let flag = vs.node_data[k * NODE_STRIDE + 6] as u32 & FLAG_DIMMED != 0;
-            prop_assert_eq!(flag, dimmed[i as usize]);
+            if isolated {
+                prop_assert!(flag || !dimmed[i as usize]);
+            } else {
+                prop_assert_eq!(flag, dimmed[i as usize]);
+            }
+        }
+        if isolated {
+            prop_assert!(vs.hop_data.chunks(HOP_STRIDE).all(|h| h[5] as u32 & HOP_HIGHLIGHT != 0));
         }
         if filters.muted_services.iter().all(|m| !m.starts_with("svc_")) {
             prop_assert!(dimmed.iter().all(|d| !d));

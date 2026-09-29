@@ -16,6 +16,8 @@ export interface Row {
   nodeId?: string;
   /** Switched off by the user: drawn faded. */
   dimmed?: boolean;
+  /** `#rrggbb` of a service row, the same colour the service has on the map. */
+  color?: string;
 }
 
 export interface ActionBar {
@@ -85,6 +87,13 @@ const C = {
   error: "#ef4444",
   ok: "#22c55e",
 };
+
+/** `rgba(...)` of a `#rrggbb` colour. */
+export function withAlpha(hex: string, a: number): string {
+  const n = Number.parseInt(hex.replace("#", ""), 16);
+  const v = Number.isFinite(n) ? n : 0;
+  return `rgba(${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255}, ${a})`;
+}
 
 export function actionColor(state: string): string {
   if (state === "succeeded") return C.ok;
@@ -176,7 +185,16 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-function clips(ctx: CanvasRenderingContext2D, t: TimelineTracks, track: number, y: number, h: number, g: ReturnType<typeof bucketGeometry>, width: number) {
+function clips(
+  ctx: CanvasRenderingContext2D,
+  t: TimelineTracks,
+  track: number,
+  y: number,
+  h: number,
+  g: ReturnType<typeof bucketGeometry>,
+  width: number,
+  base: string,
+) {
   const list = t.clips.filter((c) => c.track === track);
   const depth = Math.min(3, list.reduce((d, c) => Math.max(d, c.depth), 0));
   const lane = (h - 4) / (depth + 1);
@@ -187,9 +205,9 @@ function clips(ctx: CanvasRenderingContext2D, t: TimelineTracks, track: number, 
     const w = Math.max(1.5, (c.end_ms - c.start_ms) * 1e6 * g.pxPerNs);
     if (x + w < 0 || x > width) continue;
     const yy = y + 2 + Math.min(c.depth, depth) * lane;
-    const color = c.error ? C.error : c.depth === 0 ? C.accent : C.accent2;
+    const color = c.error ? C.error : base;
     roundRect(ctx, x, yy + 0.5, w, lane - 1, 2.5);
-    ctx.fillStyle = c.error ? "rgba(239, 68, 68, 0.35)" : c.depth === 0 ? "rgba(59, 130, 246, 0.35)" : "rgba(34, 211, 238, 0.3)";
+    ctx.fillStyle = withAlpha(color, c.depth === 0 ? 0.35 : 0.2);
     ctx.fill();
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
@@ -206,7 +224,7 @@ function clips(ctx: CanvasRenderingContext2D, t: TimelineTracks, track: number, 
   }
 }
 
-function heat(ctx: CanvasRenderingContext2D, counts: number[], y: number, h: number, g: ReturnType<typeof bucketGeometry>, width: number) {
+function heat(ctx: CanvasRenderingContext2D, counts: number[], y: number, h: number, g: ReturnType<typeof bucketGeometry>, width: number, base: string) {
   let max = 0;
   for (const v of counts) if (v > max) max = v;
   if (max <= 0) return;
@@ -216,7 +234,7 @@ function heat(ctx: CanvasRenderingContext2D, counts: number[], y: number, h: num
     if (v <= 0) continue;
     const x = g.x0 + i * g.bucketPx;
     if (x + w < 0 || x > width) continue;
-    ctx.fillStyle = `rgba(59, 130, 246, ${0.2 + 0.7 * (v / max)})`;
+    ctx.fillStyle = withAlpha(base, 0.2 + 0.7 * (v / max));
     ctx.fillRect(x, y + 4, w, h - 8);
   }
 }
@@ -340,8 +358,9 @@ export function draw(ctx: CanvasRenderingContext2D, d: DrawInput) {
     } else if (r.kind === "service" && r.track !== undefined) {
       const s = t.services[r.track];
       if (!s) return;
-      if (s.clipped) clips(ctx, t, r.track, y, r.height, g, width);
-      else heat(ctx, s.counts, y, r.height, g, width);
+      const color = r.color ?? C.accent;
+      if (s.clipped) clips(ctx, t, r.track, y, r.height, g, width, color);
+      else heat(ctx, s.counts, y, r.height, g, width, color);
     }
   });
   ctx.globalAlpha = 1;

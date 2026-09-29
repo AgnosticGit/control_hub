@@ -2,7 +2,7 @@ export type * from "./generated";
 export * from "./protocol";
 
 /** Must equal `engineAbiVersion()` exported by the WASM build. */
-export const ENGINE_ABI_VERSION = 2;
+export const ENGINE_ABI_VERSION = 3;
 
 /** Per-node stride in `nodeData`: x, y, radius, status, active, window_requests, flags. */
 export const NODE_STRIDE = 7;
@@ -10,11 +10,12 @@ export const NODE_STRIDE = 7;
 export const EDGE_STRIDE = 8;
 
 /**
- * Per-hop stride in `hopData`: edge_index, t0, t1, t2, t3, flags. Times are milliseconds relative
- * to `summary.time_ns`: request leaves the caller (t0), reaches the callee (t1), the callee
- * answers (t2), the answer is back (t3).
+ * Per-hop stride in `hopData`: edge_index, t0, t1, t2, t3, flags, origin. Times are milliseconds
+ * relative to `summary.time_ns`: request leaves the caller (t0), reaches the callee (t1), the
+ * callee answers (t2), the answer is back (t3). `origin` is the node index of the service where
+ * the hop's trace started, or -1 when unknown.
  */
-export const HOP_STRIDE = 6;
+export const HOP_STRIDE = 7;
 export const HOP_ERROR = 1;
 /** Callee not instrumented: only t0 and t3 are known (t1 = t0, t2 = t3). */
 export const HOP_LEAF = 2;

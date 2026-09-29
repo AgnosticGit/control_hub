@@ -29,7 +29,7 @@ fn parse_config(config_json: &str) -> Result<EngineConfig, serde_json::Error> {
 /// Version of the engine ABI; the TS wrapper refuses to run against a mismatching build.
 #[wasm_bindgen(js_name = engineAbiVersion)]
 pub fn engine_abi_version() -> u32 {
-    2
+    3
 }
 
 #[wasm_bindgen]

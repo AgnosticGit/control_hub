@@ -56,9 +56,15 @@ impl Engine {
         out.events = vec![0; n];
         let mut durations: Vec<Vec<f32>> = vec![Vec::new(); n];
 
+        // With an isolated trace only its items count, and only its services get a row.
+        let only = self.filters.isolated_trace();
+        let in_trace = |trace: Option<&str>| only.is_none_or(|o| trace == Some(o));
+        let trace_services: Option<HashSet<&str>> =
+            only.map(|o| self.spans.values().filter(|s| s.trace_id == o).map(|s| s.service_id.as_str()).collect());
         let mut track_of: HashMap<u32, usize> = HashMap::new();
         for (i, node) in self.nodes.iter().enumerate() {
-            if node.kind == EntityKind::Service && self.passes_filter(i) {
+            let in_view = trace_services.as_ref().is_none_or(|set| set.contains(node.id.as_str()));
+            if node.kind == EntityKind::Service && self.passes_filter(i) && in_view {
                 track_of.insert(i as u32, out.services.len());
                 out.services.push(ServiceTrack {
                     node: i as u32,
@@ -72,7 +78,7 @@ impl Engine {
         // Muted services keep their own row but are left out of the aggregate rows.
         let muted: HashSet<&str> = self.filters.muted_services.iter().map(String::as_str).collect();
 
-        for s in self.spans.values() {
+        for s in self.spans.values().filter(|s| in_trace(Some(&s.trace_id))) {
             let Some(&ti) = self.node_index.get(&s.service_id).and_then(|node| track_of.get(node)) else {
                 continue;
             };
@@ -106,7 +112,7 @@ impl Engine {
             muted.contains(service_id)
                 || self.node_index.get(service_id).is_some_and(|node| !track_of.contains_key(node))
         };
-        for l in self.logs.values() {
+        for l in self.logs.values().filter(|l| in_trace(l.trace_id.as_deref())) {
             if l.severity >= 17
                 && !hidden(&l.service_id)
                 && let Some(b) = bucket(l.time_ns)
@@ -114,7 +120,7 @@ impl Engine {
                 out.errors[b] += 1;
             }
         }
-        for e in self.events.values() {
+        for e in self.events.values().filter(|e| in_trace(e.trace_id.as_deref())) {
             if e.service_id.as_deref().is_some_and(hidden) {
                 continue;
             }
