@@ -37,6 +37,8 @@ Ordered by priority within each stage. `[x]` = done and verified.
 - [x] Map key: an info icon on the map shows every dot, line and card with its meaning (hover,
       focus or click; colours shared with the renderer). Only the icon stays on the map; the key
       opens as a full-screen panel with no scrolling, in larger type, and carries the animation note
+- [x] Faint background grid on the system map: anchored to the world (moves with pan), step adapts to
+      zoom, every fifth line slightly brighter
 - [ ] Layout proptest `random_graphs_keep_cards_and_corridors_apart` found a case where a card sits
       on a corridor (n = 9, saved in `proptest-regressions/layout.txt`); fix `layout.rs`
 - [ ] Focused request in the URL (shareable, survives reload); stable colours when services are

@@ -43,6 +43,49 @@ test.describe("workspace on demo data", () => {
     await page.screenshot({ path: "../../test-results/e2e/workspace.png" });
   });
 
+  test("the map has a faint grid that moves with the map when it is dragged", async ({ page }) => {
+    const canvas = page.locator("main canvas");
+    await expect(canvas.or(page.getByText(/WebGL is unavailable/))).toBeVisible();
+    test.skip((await page.getByText(/WebGL is unavailable/).count()) > 0, "no WebGL in this browser");
+    const errors = collectErrors(page);
+
+    // Columns along a row near the top edge (no cards there) that are a little brighter than the rest.
+    const gridColumns = async () => {
+      const png = (await canvas.screenshot()).toString("base64");
+      return page.evaluate(async (b64) => {
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        const bmp = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+        const c = new OffscreenCanvas(bmp.width, bmp.height);
+        const ctx = c.getContext("2d");
+        if (!ctx) return { cols: [] as number[], peak: 0 };
+        ctx.drawImage(bmp, 0, 0);
+        const width = Math.floor(bmp.width * 0.6);
+        const row = ctx.getImageData(0, 6, width, 1).data;
+        const lum: number[] = [];
+        for (let x = 0; x < width; x++) lum.push((row[x * 4]! + row[x * 4 + 1]! + row[x * 4 + 2]!) / 3);
+        const base = [...lum].sort((a, b) => a - b)[Math.floor(lum.length / 2)]!;
+        const cols = lum.flatMap((v, x) => (v - base >= 2 ? [x] : []));
+        return { cols, peak: Math.max(...lum) - base };
+      }, png);
+    };
+
+    const before = await gridColumns();
+    expect(before.cols.length).toBeGreaterThanOrEqual(5);
+    // Very pale: lines are barely brighter than the background.
+    expect(before.peak).toBeLessThan(40);
+    const gaps = before.cols.slice(1).map((x, i) => x - before.cols[i]!).filter((g) => g > 2);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(14);
+
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error("map canvas has no box");
+    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.3 + 7, box.y + box.height * 0.5, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(async () => (await gridColumns()).cols.join(",")).not.toBe(before.cols.join(","));
+    expect(errors).toEqual([]);
+  });
+
   test("timeline modes: pause, replay, return to live", async ({ page }) => {
     const timeline = page.getByLabel("Timeline");
     await expect(timeline.getByText("live", { exact: true })).toBeVisible();

@@ -28,6 +28,7 @@ import { DEFAULT_EDGE_STYLE, dashes, edgePath, endDirection, pointAt, type EdgeP
 import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
 import { dashedRect, nodeSubLabel } from "./external";
 import { ACCENT, CARD_BG, EDGE_ERROR, EDGE_INFERRED, EDGE_OK, EDGE_WARN, EXTERNAL_COLOR, STATUS_COLORS } from "./map-colors";
+import { gridLines } from "./grid";
 import { animTimeMs, hopPhase, type AnimClock } from "./hops";
 import { serviceColors } from "./service-colors";
 
@@ -46,6 +47,9 @@ const ROUTE_BOX = { ...CARD_BOX, portSpan: CARD_H - 20 };
 const LINE_STYLE = { join: "round", cap: "round" } as const;
 /** Opacity of switched-off services and everything attached to them. */
 const DIM_ALPHA = 0.22;
+const GRID_COLOR = 0x94a3b8;
+const GRID_MINOR_ALPHA = 0.04;
+const GRID_MAJOR_ALPHA = 0.08;
 
 interface EdgeGeom {
   path: EdgePath;
@@ -70,6 +74,8 @@ interface NodeText {
 export class PixiMap {
   private app: Application | null = null;
   private readonly world = new Container();
+  private readonly grid = new Graphics();
+  private gridKey = "";
   private readonly edges = new Graphics();
   private readonly edgesDim = new Graphics({ alpha: DIM_ALPHA });
   private readonly hops = new Graphics();
@@ -128,7 +134,8 @@ export class PixiMap {
     host.appendChild(app.canvas);
     // Hops above cards so a request waiting at its callee stays visible on the card border.
     this.world.addChild(this.edgesDim, this.nodesDim, this.edges, this.nodes, this.hops, this.labels);
-    app.stage.addChild(this.world);
+    app.stage.addChild(this.grid, this.world);
+    app.ticker.add(() => this.drawGrid());
     this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // With reduced motion hops are drawn once per frame (no interpolation between frames).
     if (!this.reducedMotion) app.ticker.add(() => this.drawHops());
@@ -349,6 +356,26 @@ export class PixiMap {
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("wheel", wheel);
     });
+  }
+
+  /** Screen-space grid under the map; redrawn only when pan, zoom or the canvas size change. */
+  private drawGrid() {
+    const app = this.app;
+    if (!app) return;
+    const { width, height } = app.screen;
+    const s = this.world.scale.x;
+    const key = `${this.world.x}|${this.world.y}|${s}|${width}|${height}`;
+    if (key === this.gridKey) return;
+    this.gridKey = key;
+    const g = this.grid;
+    g.clear();
+    const xs = gridLines(this.world.x, s, width);
+    const ys = gridLines(this.world.y, s, height);
+    for (const major of [false, true]) {
+      for (const l of xs) if (l.major === major) g.moveTo(Math.round(l.pos) + 0.5, 0).lineTo(Math.round(l.pos) + 0.5, height);
+      for (const l of ys) if (l.major === major) g.moveTo(0, Math.round(l.pos) + 0.5).lineTo(width, Math.round(l.pos) + 0.5);
+      g.stroke({ color: GRID_COLOR, width: 1, alpha: major ? GRID_MAJOR_ALPHA : GRID_MINOR_ALPHA });
+    }
   }
 
   private draw(f: Frame) {
