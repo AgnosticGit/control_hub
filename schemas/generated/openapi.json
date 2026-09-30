@@ -2198,7 +2198,8 @@
           "cache",
           "queue",
           "infrastructure_resource",
-          "external_dependency"
+          "external_dependency",
+          "external_client"
         ]
       },
       "EnvironmentDto": {
@@ -2990,6 +2991,13 @@
           },
           "service_name": {
             "type": "string"
+          },
+          "source_entity_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Uninstrumented caller of a root server span (an external client node), when known."
           },
           "span_id": {
             "type": "string"

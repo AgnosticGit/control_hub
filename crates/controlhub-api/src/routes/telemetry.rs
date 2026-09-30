@@ -7,13 +7,13 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use controlhub_domain::{Scope, TraceId};
+use controlhub_domain::{EntityId, Scope, TraceId};
 use controlhub_engine_core::{
     EntityKindDto, EventItem, LogItem, ProvenanceDto, RelationKindDto, SpanItem, TimelineItem,
 };
 use controlhub_storage::ch::{
-    CallEdgeRow, EventRow, LogQuery, LogRow, LogServiceRow, ResourceEdgeRow, ServiceSummaryRow, SpanRow,
-    TimelineLogRow, TimelineSpanRow, TraceQuery, TraceSummaryRow,
+    CallEdgeRow, EventRow, ExternalClientEdgeRow, LogQuery, LogRow, LogServiceRow, ResourceEdgeRow, ServiceSummaryRow,
+    SpanRow, TimelineLogRow, TimelineSpanRow, TraceQuery, TraceSummaryRow,
 };
 use controlhub_storage::pg::WatermarkRow;
 use serde::{Deserialize, Serialize};
@@ -271,13 +271,14 @@ pub async fn topology(
 ) -> ApiResult<Json<TopologyResponse>> {
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
     let r = q.resolve()?;
-    let (services, logs, calls, resources) = tokio::try_join!(
+    let (services, logs, calls, resources, clients) = tokio::try_join!(
         state.ch.service_summaries(&scope, r.from, r.to),
         state.ch.log_services(&scope, r.from, r.to),
         state.ch.call_edges(&scope, r.from, r.to),
         state.ch.resource_edges(&scope, r.from, r.to),
+        state.ch.external_client_edges(&scope, r.from, r.to),
     )?;
-    let (nodes, edges) = build_topology(&services, &logs, calls, resources);
+    let (nodes, edges) = build_topology(&services, &logs, calls, resources, clients, &external_clients_id(&scope));
     Ok(Json(TopologyResponse {
         nodes,
         edges,
@@ -287,11 +288,22 @@ pub async fn topology(
     }))
 }
 
+/// One node per environment for everything that calls it without being instrumented
+/// (browser, frontend, curl, partner systems). A fixed set keeps untrusted telemetry from
+/// creating unbounded nodes.
+pub(crate) fn external_clients_id(scope: &Scope) -> String {
+    EntityId::derive_resource(scope, "client", "external", "clients").to_string()
+}
+
+const EXTERNAL_CLIENTS_NAME: &str = "External clients";
+
 fn build_topology(
     services: &[ServiceSummaryRow],
     logs: &[LogServiceRow],
     calls: Vec<CallEdgeRow>,
     resources: Vec<ResourceEdgeRow>,
+    clients: Vec<ExternalClientEdgeRow>,
+    clients_id: &str,
 ) -> (Vec<TopologyNodeDto>, Vec<TopologyEdgeDto>) {
     let mut nodes: BTreeMap<String, TopologyNodeDto> = BTreeMap::new();
     for (id, name) in services
@@ -325,6 +337,17 @@ fn build_topology(
             "queue" => EntityKindDto::Queue,
             _ => EntityKindDto::ExternalDependency,
         };
+        let reason = if kind == EntityKindDto::ExternalDependency {
+            format!(
+                "HTTP client spans call '{}' and no service in this environment answered: an external service outside the project",
+                rsc.target_name
+            )
+        } else {
+            format!(
+                "client spans carry {} semantic-convention attributes for '{}'; the resource itself is not instrumented",
+                rsc.target_kind, rsc.target_name
+            )
+        };
         nodes.entry(rsc.target_entity_id.clone()).or_insert_with(|| TopologyNodeDto {
             id: rsc.target_entity_id.clone(),
             name: rsc.target_name.clone(),
@@ -336,13 +359,30 @@ fn build_topology(
             target: rsc.target_entity_id,
             relation: RelationKindDto::DependsOn,
             provenance: ProvenanceDto::Inferred,
-            reasons: vec![format!(
-                "client spans carry {} semantic-convention attributes for '{}'; the resource itself is not instrumented",
-                rsc.target_kind, rsc.target_name
-            )],
+            reasons: vec![reason],
             calls: rsc.calls,
             errors: rsc.errors,
             last_seen_ns: ns(rsc.last_seen),
+        });
+    }
+    for c in clients {
+        nodes.entry(clients_id.to_owned()).or_insert_with(|| TopologyNodeDto {
+            id: clients_id.to_owned(),
+            name: EXTERNAL_CLIENTS_NAME.to_owned(),
+            kind: EntityKindDto::ExternalClient,
+            provenance: ProvenanceDto::Inferred,
+        });
+        edges.push(TopologyEdgeDto {
+            source: clients_id.to_owned(),
+            target: c.service_id,
+            relation: RelationKindDto::Calls,
+            provenance: ProvenanceDto::Inferred,
+            reasons: vec![
+                "server spans without an instrumented caller: requests from outside the project (browser, frontend, external system)".into(),
+            ],
+            calls: c.calls,
+            errors: c.errors,
+            last_seen_ns: ns(c.last_seen),
         });
     }
     (nodes.into_values().collect(), edges)
@@ -786,7 +826,10 @@ pub struct TimelineResponse {
     pub completeness: Completeness,
 }
 
-pub(crate) fn span_item(s: TimelineSpanRow) -> TimelineItem {
+/// `clients_id`: the environment's external clients node (see [`external_clients_id`]), set as
+/// the source of root server spans.
+pub(crate) fn span_item(s: TimelineSpanRow, clients_id: &str) -> TimelineItem {
+    let from_outside = s.kind == 2 && s.parent_span_id.is_empty();
     TimelineItem::Span(SpanItem {
         trace_id: s.trace_id,
         span_id: s.span_id,
@@ -794,6 +837,7 @@ pub(crate) fn span_item(s: TimelineSpanRow) -> TimelineItem {
         service_id: s.service_id,
         service_name: s.service_name,
         target_entity_id: nonempty(s.target_entity_id),
+        source_entity_id: from_outside.then(|| clients_id.to_owned()),
         name: s.name,
         kind: s.kind,
         start_ns: s.start_time,
@@ -830,10 +874,11 @@ fn timeline_items(
     logs: Vec<TimelineLogRow>,
     events: Vec<EventRow>,
     limit: u32,
+    clients_id: &str,
 ) -> (Vec<TimelineItem>, bool, bool, bool) {
     let (st, lt, et) = (spans.len() > limit as usize, logs.len() > limit as usize, events.len() > limit as usize);
     let mut items = Vec::with_capacity(spans.len() + logs.len() + events.len());
-    items.extend(spans.into_iter().take(limit as usize).map(span_item));
+    items.extend(spans.into_iter().take(limit as usize).map(|s| span_item(s, clients_id)));
     items.extend(logs.into_iter().take(limit as usize).map(log_item));
     items.extend(events.into_iter().take(limit as usize).map(event_item));
     (items, st, lt, et)
@@ -856,7 +901,7 @@ pub async fn timeline(
         state.ch.timeline_logs(&scope, r.from, r.to, limit + 1),
         state.ch.events(&scope, r.from, r.to, None, limit + 1),
     )?;
-    let (items, st, lt, et) = timeline_items(spans, logs, events, limit);
+    let (items, st, lt, et) = timeline_items(spans, logs, events, limit, &external_clients_id(&scope));
     Ok(Json(TimelineResponse {
         items,
         from_ns: ns(r.from),
@@ -1229,7 +1274,7 @@ mod tests {
     #[test]
     fn span_items_flag_only_otlp_error_status() {
         for (status, err) in [(0, false), (1, false), (2, true), (3, false)] {
-            let TimelineItem::Span(s) = span_item(tl_span("s", status)) else { panic!("span") };
+            let TimelineItem::Span(s) = span_item(tl_span("s", status), "cl") else { panic!("span") };
             assert_eq!(s.is_error, err, "status {status}");
             assert_eq!((s.parent_span_id, s.target_entity_id), (None, None));
         }
@@ -1242,13 +1287,13 @@ mod tests {
         let spans: Vec<_> = (0..3).map(|i| tl_span(&i.to_string(), 0)).collect();
         let logs: Vec<_> = (0..2).map(|i| tl_log(&i.to_string())).collect();
         let events: Vec<_> = (0..1).map(|i| event_row(&i.to_string())).collect();
-        let (items, st, lt, et) = timeline_items(spans.clone(), logs.clone(), events.clone(), 2);
+        let (items, st, lt, et) = timeline_items(spans.clone(), logs.clone(), events.clone(), 2, "cl");
         assert_eq!((st, lt, et), (true, false, false));
         assert_eq!(items.len(), 2 + 2 + 1);
-        let (items, st, lt, et) = timeline_items(spans, logs, events, 1);
+        let (items, st, lt, et) = timeline_items(spans, logs, events, 1, "cl");
         assert_eq!((st, lt, et), (true, true, false));
         assert_eq!(items.len(), 3);
-        let (items, st, lt, et) = timeline_items(vec![], vec![], vec![], 1);
+        let (items, st, lt, et) = timeline_items(vec![], vec![], vec![], 1, "cl");
         assert!(items.is_empty() && !st && !lt && !et);
     }
 
@@ -1360,7 +1405,7 @@ mod tests {
         };
         let resources = vec![res("db1", "database"), res("q1", "queue"), res("x1", "http"), res("a", "database")];
         let (nodes, edges) =
-            build_topology(&[svc("a", 1, 1.0, 1)], &[log_svc("b", 1), log_svc("a", 1)], calls, resources);
+            build_topology(&[svc("a", 1, 1.0, 1)], &[log_svc("b", 1), log_svc("a", 1)], calls, resources, vec![], "c");
         let v = serde_json::to_value(&nodes).unwrap();
         let by_id = |id: &str| v.as_array().unwrap().iter().find(|n| n["id"] == id).cloned().unwrap();
         assert_eq!(nodes.len(), 5, "a, b, db1, q1, x1 (a is not duplicated)");
@@ -1380,6 +1425,70 @@ mod tests {
                 serde_json::to_value(ProvenanceDto::Inferred).unwrap()
             );
             assert_eq!(e.reasons.len(), 1);
+        }
+    }
+
+    #[test]
+    fn external_services_and_clients_are_marked_as_outside_the_project() {
+        let ext = ResourceEdgeRow {
+            service_id: "api".into(),
+            target_entity_id: "x1".into(),
+            target_name: "api.cdek.ru".into(),
+            target_kind: "external".into(),
+            calls: 4,
+            errors: 1,
+            last_seen: 7,
+        };
+        let clients = vec![
+            ExternalClientEdgeRow { service_id: "api".into(), calls: 10, errors: 2, last_seen: 8 },
+            ExternalClientEdgeRow { service_id: "gateway".into(), calls: 1, errors: 0, last_seen: 3 },
+        ];
+        let (nodes, edges) =
+            build_topology(&[svc("api", 10, 1.0, 1), svc("gateway", 1, 1.0, 1)], &[], vec![], vec![ext], clients, "cl");
+        let node = |id: &str| nodes.iter().find(|n| n.id == id).unwrap();
+        assert_eq!(nodes.len(), 4, "api, gateway, one external service, one shared external clients node");
+        assert_eq!((node("x1").kind, node("x1").name.as_str()), (EntityKindDto::ExternalDependency, "api.cdek.ru"));
+        assert_eq!((node("cl").kind, node("cl").name.as_str()), (EntityKindDto::ExternalClient, "External clients"));
+        assert_eq!(node("cl").provenance, ProvenanceDto::Inferred);
+
+        let edge = |s: &str, t: &str| edges.iter().find(|e| e.source == s && e.target == t).unwrap();
+        let out = edge("api", "x1");
+        assert_eq!((out.relation, out.calls, out.errors), (RelationKindDto::DependsOn, 4, 1));
+        assert!(out.reasons[0].contains("external service"), "{:?}", out.reasons);
+        let inb = edge("cl", "api");
+        assert_eq!(
+            (inb.relation, inb.provenance, inb.calls, inb.errors),
+            (RelationKindDto::Calls, ProvenanceDto::Inferred, 10, 2)
+        );
+        assert!(inb.reasons[0].contains("outside the project"), "{:?}", inb.reasons);
+        assert_eq!(edge("cl", "gateway").calls, 1);
+    }
+
+    #[test]
+    fn external_clients_id_is_stable_per_environment_and_scoped() {
+        let scope = |e: &str| Scope {
+            tenant_id: controlhub_domain::TenantId::parse("t-1").unwrap(),
+            project_id: controlhub_domain::ProjectId::parse("p-1").unwrap(),
+            environment_id: controlhub_domain::EnvironmentId::parse(e).unwrap(),
+        };
+        assert_eq!(external_clients_id(&scope("e-1")), external_clients_id(&scope("e-1")));
+        assert_ne!(external_clients_id(&scope("e-1")), external_clients_id(&scope("e-2")));
+    }
+
+    #[test]
+    fn only_root_server_spans_come_from_external_clients() {
+        let item = |kind: u8, parent: &str| {
+            let TimelineItem::Span(s) =
+                span_item(TimelineSpanRow { kind, parent_span_id: parent.into(), ..tl_span("s", 0) }, "cl")
+            else {
+                panic!("span")
+            };
+            s.source_entity_id
+        };
+        assert_eq!(item(2, "").as_deref(), Some("cl"));
+        assert_eq!(item(2, "p"), None, "an instrumented caller exists");
+        for kind in [0, 1, 3, 4, 5] {
+            assert_eq!(item(kind, ""), None, "kind {kind}");
         }
     }
 

@@ -1,6 +1,7 @@
 //! Local development bootstrap: migrations, least-privilege service
-//! credentials, seed tenant/project/environment, users and ingestion tokens.
-//! Writes generated secrets to the gitignored `.controlhub/` directory only.
+//! credentials, the demo tenant/project/environment and its ingestion token, and the one
+//! account the developer configured in `.controlhub/owner.env`. Test accounts are not created
+//! here (see `test_fixtures`). Writes generated secrets to the gitignored `.controlhub/` only.
 
 use std::path::Path;
 
@@ -9,7 +10,7 @@ use controlhub_domain::{EnvironmentId, ProjectId, Scope, TenantId};
 use controlhub_runtime::env_required;
 use controlhub_storage::ch::{ChConfig, ChStore};
 use controlhub_storage::pg::PgStore;
-use controlhub_storage::secrets::{generate_password, generate_token, hash_password, hash_token, token_prefix};
+use controlhub_storage::secrets::{generate_token, hash_password, hash_token, token_prefix};
 use serde_json::json;
 
 use crate::routes::signup::{MAX_PASSWORD_BYTES, MIN_PASSWORD_CHARS, normalise_email};
@@ -17,12 +18,42 @@ use crate::routes::signup::{MAX_PASSWORD_BYTES, MIN_PASSWORD_CHARS, normalise_em
 const CH_MIGRATIONS: &[(&str, &str)] =
     &[("0001_telemetry.sql", include_str!("../../../infra/migrations/clickhouse/0001_telemetry.sql"))];
 
-struct SeedScope {
-    scope: Scope,
-    tenant_name: &'static str,
-    project_name: &'static str,
-    env_name: &'static str,
-    is_demo: bool,
+pub(crate) struct SeedScope {
+    pub tenant: &'static str,
+    pub project: &'static str,
+    pub env: &'static str,
+    pub tenant_name: &'static str,
+    pub project_name: &'static str,
+    pub env_name: &'static str,
+    pub is_demo: bool,
+}
+
+impl SeedScope {
+    pub fn scope(&self) -> anyhow::Result<Scope> {
+        Ok(Scope {
+            tenant_id: TenantId::parse(self.tenant)?,
+            project_id: ProjectId::parse(self.project)?,
+            environment_id: EnvironmentId::parse(self.env)?,
+        })
+    }
+}
+
+const DEMO_SCOPE: SeedScope = SeedScope {
+    tenant: "local",
+    project: "demo",
+    env: "local-demo",
+    tenant_name: "Local",
+    project_name: "Demo system",
+    env_name: "local-demo",
+    is_demo: true,
+};
+
+/// Revokes the active ingestion tokens with this name in `scope` and issues a new one.
+pub(crate) async fn rotate_ingest_token(pg: &PgStore, scope: &Scope, name: &str) -> anyhow::Result<String> {
+    pg.revoke_ingest_tokens_named(scope, name).await?;
+    let token = generate_token("chi_")?;
+    pg.create_ingest_token(scope, name, &hash_token(&token), &token_prefix(&token), None, None).await?;
+    Ok(token)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -31,44 +62,54 @@ struct Owner {
     password: String,
 }
 
-/// The developer's own account from `CONTROLHUB_OWNER_EMAIL` / `CONTROLHUB_OWNER_PASSWORD`.
-/// Both unset (or empty) means no owner; only one of them set is a configuration error.
-fn configured_owner(email: Option<&str>, password: Option<&str>) -> anyhow::Result<Option<Owner>> {
+/// Email domains reserved for accounts that tests create; they are deleted after test runs and
+/// by every bootstrap, so the owner may not use them.
+pub(crate) const TEST_EMAIL_DOMAINS: &[&str] = &["controlhub.local", "example.test"];
+
+/// The developer's own account from `CONTROLHUB_OWNER_EMAIL` / `CONTROLHUB_OWNER_PASSWORD`,
+/// the only account a bootstrap creates. Both are required.
+fn configured_owner(email: Option<&str>, password: Option<&str>) -> anyhow::Result<Owner> {
     let email = email.map(str::trim).filter(|s| !s.is_empty());
     let password = password.filter(|s| !s.is_empty());
     match (email, password) {
-        (None, None) => Ok(None),
         (Some(e), Some(p)) => {
             let email =
                 normalise_email(e).map_err(|_| anyhow::anyhow!("CONTROLHUB_OWNER_EMAIL is not a valid email"))?;
+            let domain = email.rsplit('@').next().unwrap_or_default();
+            anyhow::ensure!(
+                !TEST_EMAIL_DOMAINS.contains(&domain),
+                "CONTROLHUB_OWNER_EMAIL uses @{domain}, which is reserved for test accounts (deleted after test runs)"
+            );
             anyhow::ensure!(
                 p.len() <= MAX_PASSWORD_BYTES,
                 "CONTROLHUB_OWNER_PASSWORD is longer than {MAX_PASSWORD_BYTES} bytes"
             );
-            Ok(Some(Owner { email, password: p.to_owned() }))
+            Ok(Owner { email, password: p.to_owned() })
         }
         _ => anyhow::bail!(
-            "set both CONTROLHUB_OWNER_EMAIL and CONTROLHUB_OWNER_PASSWORD in .controlhub/owner.env, or neither"
+            "no owner account configured: put CONTROLHUB_OWNER_EMAIL and CONTROLHUB_OWNER_PASSWORD into .controlhub/owner.env (gitignored)"
         ),
     }
 }
 
-fn scope(t: &str, p: &str, e: &str) -> anyhow::Result<Scope> {
-    Ok(Scope {
-        tenant_id: TenantId::parse(t)?,
-        project_id: ProjectId::parse(p)?,
-        environment_id: EnvironmentId::parse(e)?,
-    })
-}
-
-pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
+/// Admin connection to PostgreSQL (bootstrap and test fixtures only).
+pub(crate) async fn admin_pg() -> anyhow::Result<PgStore> {
     let pg_port = std::env::var("CH_PG_PORT").unwrap_or_else(|_| "15432".into());
     let pg_admin_url = format!(
         "postgres://{}:{}@127.0.0.1:{pg_port}/controlhub",
         env_required("CH_PG_ADMIN_USER")?,
         env_required("CH_PG_ADMIN_PASSWORD")?
     );
-    let pg = PgStore::connect(&pg_admin_url, 2).await.context("connect postgres as admin")?;
+    PgStore::connect(&pg_admin_url, 2).await.context("connect postgres as admin")
+}
+
+pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
+    // Checked first, so a missing owner.env fails before anything is changed.
+    let owner = configured_owner(
+        std::env::var("CONTROLHUB_OWNER_EMAIL").ok().as_deref(),
+        std::env::var("CONTROLHUB_OWNER_PASSWORD").ok().as_deref(),
+    )?;
+    let pg = admin_pg().await?;
     pg.migrate().await.context("postgres migrations")?;
     tracing::info!("postgres migrations applied");
 
@@ -122,77 +163,30 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
     ch.ensure_user("controlhub_executor", &env_required("CH_CH_EXECUTOR_PASSWORD")?, &["SELECT ON controlhub.*"])
         .await?;
 
-    // Seed scopes: a demo project and a second tenant used by isolation tests.
-    let seeds = [
-        SeedScope {
-            scope: scope("local", "demo", "local-demo")?,
-            tenant_name: "Local",
-            project_name: "Demo system",
-            env_name: "local-demo",
-            is_demo: true,
-        },
-        SeedScope {
-            scope: scope("isolation-tenant", "isolation", "isolation-test")?,
-            tenant_name: "Isolation test tenant",
-            project_name: "Isolation",
-            env_name: "isolation-test",
-            is_demo: true,
-        },
-        // Not a demo environment: demo-only actions must be refused here.
-        SeedScope {
-            scope: scope("isolation-tenant", "isolation", "isolation-prod")?,
-            tenant_name: "Isolation test tenant",
-            project_name: "Isolation",
-            env_name: "isolation-prod",
-            is_demo: false,
-        },
-    ];
-    for s in &seeds {
-        pg.upsert_scope(&s.scope, s.tenant_name, s.project_name, s.env_name, s.is_demo).await?;
-    }
+    let demo = DEMO_SCOPE.scope()?;
+    pg.upsert_scope(&demo, DEMO_SCOPE.tenant_name, DEMO_SCOPE.project_name, DEMO_SCOPE.env_name, DEMO_SCOPE.is_demo)
+        .await?;
 
-    let mut users = Vec::new();
-    for (email, name, project, role) in [
-        ("admin@controlhub.local", "Local admin", "demo", "owner"),
-        ("viewer@controlhub.local", "Local viewer", "demo", "viewer"),
-        ("operator@controlhub.local", "Local operator", "demo", "operator"),
-        ("isolation@controlhub.local", "Isolation tenant user", "isolation", "owner"),
-    ] {
-        let password = generate_password()?;
-        let pw = password.clone();
-        let hash = tokio::task::spawn_blocking(move || hash_password(&pw)).await??;
-        let id = pg.upsert_user(email, name, &hash).await?;
-        pg.upsert_membership(id, project, role).await?;
-        users.push(json!({ "email": email, "password": password, "project_id": project, "role": role }));
+    // The only account: the developer's own, password from the gitignored owner.env, so it
+    // survives `just reset`. Accounts left by tests or by older bootstraps are removed.
+    let removed = pg.delete_users_in_domains(TEST_EMAIL_DOMAINS).await?;
+    if removed > 0 {
+        tracing::info!(removed, "test accounts removed");
     }
-
-    // A persistent personal account whose password is chosen by the developer (gitignored
-    // .controlhub/owner.env), so it survives `just reset`. Never written to local-credentials.json.
-    let owner = configured_owner(
-        std::env::var("CONTROLHUB_OWNER_EMAIL").ok().as_deref(),
-        std::env::var("CONTROLHUB_OWNER_PASSWORD").ok().as_deref(),
-    )?;
-    if let Some(o) = &owner {
-        if o.password.chars().count() < MIN_PASSWORD_CHARS {
-            tracing::warn!(
-                "the owner password is shorter than {MIN_PASSWORD_CHARS} characters (the sign-up minimum); fine for local dev only"
-            );
-        }
-        let pw = o.password.clone();
-        let hash = tokio::task::spawn_blocking(move || hash_password(&pw)).await??;
-        let name = o.email.split('@').next().unwrap_or_default().to_owned();
-        let id = pg.upsert_user(&o.email, &name, &hash).await?;
-        pg.upsert_membership(id, "demo", "owner").await?;
-        tracing::info!(email = %o.email, "owner account ensured (owner of the demo project)");
+    if owner.password.chars().count() < MIN_PASSWORD_CHARS {
+        tracing::warn!(
+            "the owner password is shorter than {MIN_PASSWORD_CHARS} characters (the sign-up minimum); fine for local dev only"
+        );
     }
+    let pw = owner.password.clone();
+    let hash = tokio::task::spawn_blocking(move || hash_password(&pw)).await??;
+    let name = owner.email.split('@').next().unwrap_or_default().to_owned();
+    let id = pg.upsert_user(&owner.email, &name, &hash).await?;
+    pg.upsert_membership(id, "demo", "owner").await?;
+    tracing::info!(email = %owner.email, "owner account ensured (owner of the demo project)");
 
     let mut tokens = serde_json::Map::new();
-    for (name, s) in [("demo-local", &seeds[0].scope), ("isolation-test", &seeds[1].scope)] {
-        pg.revoke_ingest_tokens_named(s, name).await?;
-        let token = generate_token("chi_")?;
-        pg.create_ingest_token(s, name, &hash_token(&token), &token_prefix(&token), None, None).await?;
-        tokens.insert(name.to_owned(), json!(token));
-    }
+    tokens.insert("demo-local".into(), json!(rotate_ingest_token(&pg, &demo, "demo-local").await?));
 
     std::fs::create_dir_all(out_dir)?;
     let creds = json!({
@@ -202,13 +196,12 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
         "otlp_http_endpoint": "http://127.0.0.1:4318",
         "project_id": "demo",
         "environment_id": "local-demo",
-        "users": users,
-        "owner": owner.as_ref().map(|o| json!({
-            "email": o.email,
+        "owner": {
+            "email": owner.email,
             "project_id": "demo",
             "role": "owner",
             "password": "set in .controlhub/owner.env",
-        })),
+        },
         "ingest_tokens": tokens,
     });
     std::fs::write(out_dir.join("local-credentials.json"), serde_json::to_string_pretty(&creds)?)?;
@@ -229,22 +222,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn no_owner_unless_configured() {
-        assert_eq!(configured_owner(None, None).unwrap(), None);
-        assert_eq!(configured_owner(Some("  "), Some("")).unwrap(), None, "empty lines in owner.env count as unset");
+    fn bootstrap_refuses_to_run_without_an_owner_account() {
+        let msg = |e: anyhow::Error| e.to_string();
+        assert!(msg(configured_owner(None, None).unwrap_err()).contains(".controlhub/owner.env"));
+        assert!(
+            msg(configured_owner(Some("  "), Some("")).unwrap_err()).contains("no owner account"),
+            "empty lines in owner.env count as unset"
+        );
     }
 
     #[test]
     fn owner_email_is_normalised_and_the_password_kept_verbatim() {
-        let o = configured_owner(Some(" Me@Example.COM "), Some(" pass word ")).unwrap().unwrap();
+        let o = configured_owner(Some(" Me@Example.COM "), Some(" pass word ")).unwrap();
         assert_eq!(o, Owner { email: "me@example.com".into(), password: " pass word ".into() });
+    }
+
+    #[test]
+    fn the_owner_cannot_use_a_test_domain_that_test_runs_delete() {
+        for email in ["me@controlhub.local", "Me@Example.Test"] {
+            let err = configured_owner(Some(email), Some("long enough password")).unwrap_err().to_string();
+            assert!(err.contains("reserved for test accounts"), "{err}");
+        }
+        assert!(configured_owner(Some("me@controlhub.local.example.com"), Some("pw")).is_ok());
     }
 
     #[test]
     fn half_configured_or_invalid_owner_fails_the_bootstrap() {
         let msg = |e: anyhow::Error| e.to_string();
-        assert!(msg(configured_owner(Some("me@example.com"), None).unwrap_err()).contains("both"));
-        assert!(msg(configured_owner(None, Some("secret")).unwrap_err()).contains("both"));
+        assert!(msg(configured_owner(Some("me@example.com"), None).unwrap_err()).contains("no owner account"));
+        assert!(msg(configured_owner(None, Some("secret")).unwrap_err()).contains("no owner account"));
         assert!(msg(configured_owner(Some("not-an-email"), Some("secret")).unwrap_err()).contains("valid email"));
         let long = "x".repeat(MAX_PASSWORD_BYTES + 1);
         assert!(msg(configured_owner(Some("me@example.com"), Some(&long)).unwrap_err()).contains("longer"));

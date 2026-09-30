@@ -35,6 +35,13 @@ Run `just doctor` to check what is missing. The scripts never install system pac
 
 ## Quick start (local demo)
 
+First create `.controlhub/owner.env` (gitignored) with your own account:
+
+```
+CONTROLHUB_OWNER_EMAIL=you@example.com
+CONTROLHUB_OWNER_PASSWORD=a long password
+```
+
 ```
 just bootstrap      # pnpm install, generate secrets into .controlhub/, start PG/ClickHouse/Kafka, migrate, seed
 just wasm           # build the WASM engine into apps/web/public/wasm
@@ -42,8 +49,10 @@ just dev            # ingest :4318/:4317, processor, API :8080, web :3000
 just demo           # in a second terminal: gateway :7001, orders :7002, demo Postgres, load generator
 ```
 
-Open http://127.0.0.1:3000/app and sign in with the credentials from `.controlhub/local-credentials.json`.
-They are generated fresh on every bootstrap; there is no default admin password.
+Open http://127.0.0.1:3000/app and sign in with that owner account (owner of the demo project). It is
+the only account a bootstrap creates; there is no default admin password. Test accounts are created
+by `just test-integration` / `just test-e2e` for the duration of the run and deleted afterwards
+(`controlhub-api test-fixtures [--remove]`, emails in `@controlhub.local` / `@example.test`).
 
 To inject a fault, which only works on the demo stand and only from localhost:
 
@@ -55,9 +64,9 @@ just demo-fault orders --clear
 Within a few seconds the `orders` node on the map turns amber or red. Error traces and correlated ERROR logs
 show up in the bottom panel, and you can scrub the timeline back to before the fault.
 
-The same faults can go through the controlled-actions flow instead: sign in as
-`operator@controlhub.local`, open **Actions**, and propose "Inject faults" on `orders`. Then sign in
-as `admin@controlhub.local` in another browser and approve it. The executor (started by `just dev`)
+The same faults can go through the controlled-actions flow instead: open **Actions** and propose
+"Inject faults" on `orders`, then approve it as a second user of the project (the e2e suite does this
+with its temporary operator and admin accounts). The executor (started by `just dev`)
 applies the change, verifies it from telemetry about 25 s later, and the plan detail shows the
 policy checks, the result, the verification and the audit trail.
 

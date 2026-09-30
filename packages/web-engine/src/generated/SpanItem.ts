@@ -4,7 +4,11 @@ export type SpanItem = { trace_id: string, span_id: string, parent_span_id: stri
 /**
  * Resource / dependency entity this span calls (e.g. a database), when known.
  */
-target_entity_id: string | null, name: string, 
+target_entity_id: string | null, 
+/**
+ * Uninstrumented caller of a root server span (an external client node), when known.
+ */
+source_entity_id: string | null, name: string, 
 /**
  * OTLP SpanKind: 0 unspecified, 1 internal, 2 server, 3 client, 4 producer, 5 consumer.
  */

@@ -65,23 +65,25 @@ test:
     pnpm --filter @controlhub/web test
     node --test "examples/demo-system/test/*.test.mjs" "scripts/test/*.test.mjs"
 
-# Integration tests against the running stack (needs: just dev + just demo)
+# Integration tests against the running stack (needs: just dev + just demo).
+# Test accounts exist only for the duration of the run.
 test-integration:
     cargo build -q -p controlhub-cli
-    node --test "tests/integration/*.test.mjs"
+    node scripts/test-with-fixtures.mjs node --test "tests/integration/*.test.mjs"
 
 # Disruptive: stops Kafka, expects 503 from ingest, restarts it and checks recovery
 test-broker-outage:
-    node tests/integration/broker-outage.test.mjs --run
+    node scripts/test-with-fixtures.mjs node tests/integration/broker-outage.test.mjs --run
 
 # The controlhub CLI, e.g. `just cli discover --path ../my-app`
 # (`exit $LASTEXITCODE` keeps the CLI's exit code under PowerShell; in sh it expands to plain `exit`)
 cli *ARGS:
     cargo run -q -p controlhub-cli -- {{ARGS}}; exit $LASTEXITCODE
 
-# Browser tests against the running stack (needs: just dev + just demo)
+# Browser tests against the running stack (needs: just dev + just demo).
+# Test accounts exist only for the duration of the run.
 test-e2e:
-    pnpm --filter @controlhub/e2e test
+    node scripts/test-with-fixtures.mjs pnpm --filter @controlhub/e2e test
 
 # Reproducible engine benchmark on synthetic data
 bench:

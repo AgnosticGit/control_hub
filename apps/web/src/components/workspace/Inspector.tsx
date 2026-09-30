@@ -5,6 +5,7 @@ import type { NodeDiff, NodeMetrics, TopologyView } from "@controlhub/web-engine
 import type { EngineState, WorkspaceActions } from "./useWorkspaceEngine";
 import { Icon } from "@/components/ui/Icon";
 import { formatClock } from "@/lib/time";
+import { externalExplanation, externalLabel } from "@/renderer/external";
 
 const STATUS_CLASS: Record<string, string> = {
   healthy: "text-accent",
@@ -57,18 +58,21 @@ export function Inspector({ state, actions, selectedId, onSelect, compare, onClo
 
   const edges = relations(topology, node.index);
   const tone = metrics ? (STATUS_TONE[metrics.status] ?? STATUS_TONE.unknown) : STATUS_TONE.unknown;
+  const external = externalLabel(node.kind);
+  const explanation = externalExplanation(node.kind);
 
   return (
     <div className="text-sm">
       <div className="flex items-start gap-3 border-b border-border p-4">
         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone?.box ?? ""}`}>
-          <Icon name={node.kind === "service" ? "server" : "database"} className="h-5 w-5" />
+          <Icon name={external ? "globe" : node.kind === "service" ? "server" : "database"} className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold break-all">{node.name}</h2>
           <p className="text-xs text-muted">
             {node.kind} · {node.provenance}
           </p>
+          {external ? <span className="badge mt-1 border border-dashed border-current text-text">{external}</span> : null}
         </div>
         <button type="button" aria-label="Close inspector" onClick={() => onSelect(null)} className="btn btn-icon btn-sm">
           <Icon name="x" className="h-3.5 w-3.5" />
@@ -76,6 +80,7 @@ export function Inspector({ state, actions, selectedId, onSelect, compare, onClo
       </div>
 
       <div className="space-y-4 p-4">
+        {explanation ? <p className="text-xs text-muted">{explanation}</p> : null}
         {metrics ? (
           <section aria-label="Metrics at selected time" className="space-y-3">
             <div className="flex items-center gap-2">

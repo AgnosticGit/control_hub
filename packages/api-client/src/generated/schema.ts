@@ -525,7 +525,7 @@ export interface components {
             comment?: string | null;
         };
         /** @enum {string} */
-        EntityKindDto: "service" | "instance" | "repository" | "deployment" | "database" | "cache" | "queue" | "infrastructure_resource" | "external_dependency";
+        EntityKindDto: "service" | "instance" | "repository" | "deployment" | "database" | "cache" | "queue" | "infrastructure_resource" | "external_dependency" | "external_client";
         EnvironmentDto: {
             id: string;
             /** @description Demo environments must always be labelled in the UI. */
@@ -739,6 +739,8 @@ export interface components {
             parent_span_id?: string | null;
             service_id: string;
             service_name: string;
+            /** @description Uninstrumented caller of a root server span (an external client node), when known. */
+            source_entity_id?: string | null;
             span_id: string;
             start_ns: string;
             /** @description Resource / dependency entity this span calls (e.g. a database), when known. */

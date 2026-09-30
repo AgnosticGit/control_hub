@@ -146,6 +146,14 @@ pub struct ResourceEdgeRow {
 }
 
 #[derive(Debug, Clone, Row, Serialize, Deserialize)]
+pub struct ExternalClientEdgeRow {
+    pub service_id: String,
+    pub calls: u64,
+    pub errors: u64,
+    pub last_seen: i64,
+}
+
+#[derive(Debug, Clone, Row, Serialize, Deserialize)]
 pub struct TraceSummaryRow {
     pub trace_id: String,
     pub trace_start: i64,
@@ -422,7 +430,11 @@ impl ChStore {
         Ok(bind_scope(q, s).bind(from).bind(to).fetch_all().await?)
     }
 
-    /// Inferred dependencies on uninstrumented resources (databases etc.).
+    /// Inferred dependencies on uninstrumented resources (databases etc.) and external HTTP
+    /// services. A host counts as external only when no call to it in the window was answered by
+    /// an instrumented service (a server/consumer child span, which may start up to 5 min later).
+    /// Decided per host, not per call: services export in batches, so the newest calls to an
+    /// internal service routinely arrive before their answers.
     pub async fn resource_edges(&self, s: &Scope, from: i64, to: i64) -> Result<Vec<ResourceEdgeRow>> {
         let q = self.client.query(&format!(
             "SELECT service_id, target_entity_id, any(target_name) AS target_name, any(target_kind) AS target_kind,
@@ -430,7 +442,29 @@ impl ChStore {
              FROM spans FINAL
              WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)
                AND target_entity_id != ''
+               AND (spans.target_kind != 'external' OR target_entity_id NOT IN (
+                 SELECT target_entity_id FROM spans FINAL
+                 WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)
+                   AND target_kind = 'external'
+                   AND (trace_id, span_id) IN (
+                     SELECT trace_id, parent_span_id FROM spans FINAL
+                     WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)
+                       AND kind IN (2, 5) AND parent_span_id != '')))
              GROUP BY service_id, target_entity_id"
+        ));
+        let q = bind_scope(q, s).bind(from).bind(to);
+        let q = bind_scope(q, s).bind(from).bind(to);
+        Ok(bind_scope(q, s).bind(from).bind(to.saturating_add(SPAN_LOOKBACK_NS)).fetch_all().await?)
+    }
+
+    /// Requests that entered a service from outside: root server spans (no instrumented caller).
+    pub async fn external_client_edges(&self, s: &Scope, from: i64, to: i64) -> Result<Vec<ExternalClientEdgeRow>> {
+        let q = self.client.query(&format!(
+            "SELECT service_id, count() AS calls, countIf(status_code = 2) AS errors, max(end_time) AS last_seen
+             FROM spans FINAL
+             WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)
+               AND kind = 2 AND parent_span_id = ''
+             GROUP BY service_id"
         ));
         Ok(bind_scope(q, s).bind(from).bind(to).fetch_all().await?)
     }

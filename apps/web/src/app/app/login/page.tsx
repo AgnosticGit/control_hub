@@ -50,7 +50,7 @@ function LoginForm() {
         <Logo className="h-11 w-11" />
         <h1 className="mt-4 text-xl font-semibold">Sign in to ControlHub</h1>
         <p className="mt-1 text-sm text-muted">
-          Local demo credentials are in <code className="font-mono text-xs">.controlhub/local-credentials.json</code>.
+          Locally, sign in with the owner account from <code className="font-mono text-xs">.controlhub/owner.env</code>.
         </p>
       </div>
       <label className="block text-sm">

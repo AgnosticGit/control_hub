@@ -1,6 +1,7 @@
 "use client";
 
-import { NODE_STRIDE, type Frame, type TopologyView } from "@controlhub/web-engine";
+import { NODE_STRIDE, type EntityKindDto, type Frame, type TopologyView } from "@controlhub/web-engine";
+import { externalLabel } from "@/renderer/external";
 
 const STATUS_LABEL = ["No data", "Healthy", "Degraded", "Failing"];
 const STATUS_CLASS = ["text-muted", "text-accent", "text-warn", "text-error"];
@@ -14,7 +15,7 @@ interface Props {
 
 /** Accessible, non-GPU representation of the map. */
 export function NodeTable({ frame, topology, selectedId, onSelect }: Props) {
-  const rows: Array<{ id: string; name: string; kind: string; provenance: string; status: number; active: number; requests: number }> = [];
+  const rows: Array<{ id: string; name: string; kind: EntityKindDto; provenance: string; status: number; active: number; requests: number }> = [];
   if (frame && topology) {
     for (let i = 0; i < frame.nodeIndices.length; i++) {
       const node = topology.nodes[frame.nodeIndices[i] ?? -1];
@@ -57,7 +58,7 @@ export function NodeTable({ frame, topology, selectedId, onSelect }: Props) {
                 {r.name}
               </button>
             </td>
-            <td className="px-4 py-1.5 text-muted">{r.kind}</td>
+            <td className="px-4 py-1.5 text-muted">{externalLabel(r.kind) ?? r.kind}</td>
             <td className={`px-4 py-1.5 ${STATUS_CLASS[r.status] ?? ""}`}>{STATUS_LABEL[r.status] ?? "?"}</td>
             <td className="px-4 py-1.5 text-right tabular-nums">{r.active}</td>
             <td className="px-4 py-1.5 text-right tabular-nums">{r.requests}</td>

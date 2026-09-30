@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::OwnedSemaphorePermit;
 use utoipa::IntoParams;
 
-use super::telemetry::{event_item, log_item, now_ns, parse_ns, span_item};
+use super::telemetry::{event_item, external_clients_id, log_item, now_ns, parse_ns, span_item};
 use crate::auth::{CurrentUser, Role, authorize};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -116,6 +116,7 @@ async fn run(
     let mut last_sent = Instant::now();
     let mut last_session_check = Instant::now();
     let mut failures = 0u32;
+    let clients_id = external_clients_id(&scope);
 
     if !send(&mut tx, &ServerMessage::Hello { resume: cursor.to_string(), poll_ms: POLL.as_millis() as u64 }).await {
         return;
@@ -169,7 +170,7 @@ async fn run(
                     send(&mut tx, &ServerMessage::Heartbeat { resume: cursor.to_string() }).await
                 } else {
                     let mut items = Vec::with_capacity(spans.len() + logs.len() + events.len());
-                    items.extend(spans.into_iter().map(span_item));
+                    items.extend(spans.into_iter().map(|s| span_item(s, &clients_id)));
                     items.extend(logs.into_iter().map(log_item));
                     items.extend(events.into_iter().map(event_item));
                     send(&mut tx, &ServerMessage::Batch { resume: cursor.to_string(), items: &items }).await

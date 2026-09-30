@@ -71,10 +71,10 @@ console.error("[bootstrap] starting infrastructure (postgres, clickhouse, kafka)
 await compose(["up", "-d", "--wait", "--wait-timeout", "240"]);
 
 console.error("[bootstrap] migrations, service users, seed data…");
-// Optional personal account that survives resets: CONTROLHUB_OWNER_EMAIL / CONTROLHUB_OWNER_PASSWORD.
+// The only account, surviving resets: CONTROLHUB_OWNER_EMAIL / CONTROLHUB_OWNER_PASSWORD.
 const owner = loadEnvFile(".controlhub/owner.env");
 await run("cargo", ["run", "-q", "-p", "controlhub-api", "--", "bootstrap", "--out-dir", dir], {
   env: { ...process.env, ...infra, ...owner },
 });
-if (owner.CONTROLHUB_OWNER_EMAIL) console.error(`[bootstrap] owner account: ${owner.CONTROLHUB_OWNER_EMAIL} (password from .controlhub/owner.env)`);
-console.error(`[bootstrap] done. Credentials: ${join(dir, "local-credentials.json")}`);
+console.error(`[bootstrap] owner account: ${owner.CONTROLHUB_OWNER_EMAIL} (password from .controlhub/owner.env)`);
+console.error(`[bootstrap] done. Ingestion tokens: ${join(dir, "local-credentials.json")}`);

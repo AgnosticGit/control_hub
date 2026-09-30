@@ -158,6 +158,17 @@ pub struct CreatedAccount {
 
 /// Random, unguessable ids for a signed-up tenant, so they never collide with seeded or
 /// other customers' ids and reveal nothing about how many accounts exist.
+/// `LIKE` patterns for addresses in exactly these domains (lowercased, wildcards escaped;
+/// blank domains dropped).
+fn email_domain_patterns(domains: &[&str]) -> Vec<String> {
+    domains
+        .iter()
+        .map(|d| d.trim().to_ascii_lowercase())
+        .filter(|d| !d.is_empty())
+        .map(|d| format!("%@{}", d.replace('\\', r"\\").replace('%', r"\%").replace('_', r"\_")))
+        .collect()
+}
+
 fn new_account_scope() -> Result<Scope> {
     let id = |prefix: &str| format!("{prefix}-{}", Uuid::new_v4().simple());
     scope_from(id("t"), id("p"), id("e"))
@@ -326,6 +337,34 @@ impl PgStore {
             .await?;
         tx.commit().await?;
         Ok(Some(CreatedAccount { user_id, scope }))
+    }
+
+    /// Deletes every user whose email is in one of `domains`, with their sessions, memberships,
+    /// API tokens and action plans. Local test fixtures only (needs the admin connection).
+    /// Returns the number of users deleted.
+    pub async fn delete_users_in_domains(&self, domains: &[&str]) -> Result<u64> {
+        let patterns = email_domain_patterns(domains);
+        let mut tx = self.pool.begin().await?;
+        let ids: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM users WHERE lower(email) LIKE ANY($1)")
+            .bind(&patterns)
+            .fetch_all(&mut *tx)
+            .await?;
+        if ids.is_empty() {
+            tx.rollback().await?;
+            return Ok(0);
+        }
+        for sql in [
+            "DELETE FROM action_plans WHERE created_by = ANY($1) OR decided_by = ANY($1)",
+            "DELETE FROM api_tokens WHERE created_by = ANY($1)",
+            "UPDATE ingest_tokens SET created_by = NULL WHERE created_by = ANY($1)",
+            "DELETE FROM sessions WHERE user_id = ANY($1)",
+            "DELETE FROM memberships WHERE user_id = ANY($1)",
+            "DELETE FROM users WHERE id = ANY($1)",
+        ] {
+            sqlx::query(sql).bind(&ids).execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+        Ok(ids.len() as u64)
     }
 
     pub async fn upsert_membership(&self, user_id: Uuid, project_id: &str, role: &str) -> Result<()> {
@@ -796,6 +835,17 @@ mod tests {
                 other => panic!("{t:?}/{p:?}/{e:?} must be refused, got {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn email_domain_patterns_match_only_that_exact_domain() {
+        assert_eq!(
+            email_domain_patterns(&["controlhub.local", "Example.TEST"]),
+            ["%@controlhub.local", "%@example.test"]
+        );
+        // LIKE wildcards in a domain are escaped, so they can never widen a delete.
+        assert_eq!(email_domain_patterns(&["%", "a_b.test", r"x\y"]), [r"%@\%", r"%@a\_b.test", r"%@x\\y"]);
+        assert!(email_domain_patterns(&["", "  "]).is_empty(), "an empty domain would match every address ending in @");
     }
 
     #[test]

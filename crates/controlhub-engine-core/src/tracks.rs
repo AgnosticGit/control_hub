@@ -218,6 +218,7 @@ mod tests {
             service_id: format!("svc_{svc}"),
             service_name: svc.into(),
             target_entity_id: None,
+            source_entity_id: None,
             name: format!("{svc} {id}"),
             kind,
             start_ns: start,

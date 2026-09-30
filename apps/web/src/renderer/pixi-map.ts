@@ -9,6 +9,7 @@ import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
 import {
   EDGE_STRIDE,
   FLAG_DIMMED,
+  FLAG_EXTERNAL,
   FLAG_HIGHLIGHT,
   FLAG_INFERRED,
   FLAG_PROBLEM,
@@ -25,6 +26,7 @@ import {
 } from "@controlhub/web-engine";
 import { DEFAULT_EDGE_STYLE, dashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
 import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
+import { EXTERNAL_COLOR, dashedRect, nodeSubLabel } from "./external";
 import { animTimeMs, hopPhase, type AnimClock } from "./hops";
 import { serviceColors } from "./service-colors";
 
@@ -381,9 +383,11 @@ export class PixiMap {
           ? ratio >= 0.5
             ? EDGE_ERROR
             : EDGE_WARN
-          : inferred
-            ? EDGE_INFERRED
-            : EDGE_OK;
+          : (flags & FLAG_EXTERNAL) !== 0
+            ? EXTERNAL_COLOR
+            : inferred
+              ? EDGE_INFERRED
+              : EDGE_OK;
       const index = f.edgeIndices[i] ?? 0;
       const route = this.routes.get(index);
       // A route is only valid for the positions it was computed for (topology may lag a frame).
@@ -421,8 +425,9 @@ export class PixiMap {
       const flags = f.nodeData[o + 6] ?? 0;
       const idx = f.nodeIndices[i] ?? 0;
       const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS[0] ?? 0x64748b;
+      const external = (flags & FLAG_EXTERNAL) !== 0;
       // A service keeps its own colour unless it is degraded or failing.
-      const color = status >= 2 ? statusColor : (this.colors.get(idx) ?? statusColor);
+      const color = status >= 2 ? statusColor : external ? EXTERNAL_COLOR : (this.colors.get(idx) ?? statusColor);
       const inferred = (flags & FLAG_INFERRED) !== 0;
       const dimmed = (flags & FLAG_DIMMED) !== 0;
       const n = dimmed ? this.nodesDim : this.nodes;
@@ -432,9 +437,16 @@ export class PixiMap {
       if (status > 0) {
         n.roundRect(left - 3, top - 3, CARD_W + 6, CARD_H + 6, 15).stroke({ color, width: 6, alpha: status >= 2 ? 0.22 : 0.1 });
       }
-      n.roundRect(left, top, CARD_W, CARD_H, 12)
-        .fill({ color: CARD_BG, alpha: 0.96 })
-        .stroke({ color, width: 1.5, alpha: inferred ? 0.45 : 0.85 });
+      if (external) {
+        // Outside the project: dashed border, no solid frame, so it never reads as one of our services.
+        n.roundRect(left, top, CARD_W, CARD_H, 4).fill({ color: CARD_BG, alpha: 0.9 });
+        for (const dash of dashedRect(left, top, CARD_W, CARD_H)) line(n, dash);
+        n.stroke({ color, width: 1.75, alpha: 0.9, ...LINE_STYLE });
+      } else {
+        n.roundRect(left, top, CARD_W, CARD_H, 12)
+          .fill({ color: CARD_BG, alpha: 0.96 })
+          .stroke({ color, width: 1.5, alpha: inferred ? 0.45 : 0.85 });
+      }
       if ((flags & FLAG_HIGHLIGHT) !== 0) n.roundRect(left - 5, top - 5, CARD_W + 10, CARD_H + 10, 16).stroke({ color: ACCENT, width: 2 });
       if (idx === this.selectedIndex) n.roundRect(left - 8, top - 8, CARD_W + 16, CARD_H + 16, 18).stroke({ color: 0xffffff, width: 2, alpha: 0.9 });
 
@@ -455,7 +467,7 @@ export class PixiMap {
           this.textPool.set(idx, t);
           this.labels.addChild(name, sub);
         }
-        const subValue = active > 0 ? `${active} active · ${requests} req/30s` : `${requests} req/30s`;
+        const subValue = nodeSubLabel(external, active, requests);
         if (subValue !== t.subValue) {
           t.sub.text = subValue;
           t.subValue = subValue;
@@ -550,6 +562,14 @@ function arrow(gr: Graphics, path: EdgePath, color: number) {
 }
 
 function drawKindIcon(g: Graphics, kind: EntityKindDto | undefined, resource: boolean, cx: number, cy: number, color: number) {
+  if (kind === "external_dependency" || kind === "external_client") {
+    // Globe; an external client also gets an arrow pointing in.
+    g.circle(cx, cy, 8.5).stroke({ color, width: 1.5 });
+    g.ellipse(cx, cy, 3.6, 8.5).stroke({ color, width: 1.1, alpha: 0.8 });
+    g.moveTo(cx - 8.5, cy).lineTo(cx + 8.5, cy).stroke({ color, width: 1.1, alpha: 0.8 });
+    if (kind === "external_client") g.circle(cx + 8, cy - 8, 2.5).fill({ color });
+    return;
+  }
   if (kind === "database" || (resource && kind === undefined)) {
     const w = 8;
     g.ellipse(cx, cy - 5, w, 2.8).stroke({ color, width: 1.5 });

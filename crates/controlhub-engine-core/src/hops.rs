@@ -125,6 +125,7 @@ mod tests {
             service_id: "svc".into(),
             service_name: "svc".into(),
             target_entity_id: None,
+            source_entity_id: None,
             name: "op".into(),
             kind,
             start_ns: start,

@@ -15,7 +15,17 @@ pub enum EntityKind {
     Cache,
     Queue,
     InfrastructureResource,
+    /// Third-party system this project calls (payment provider, delivery API...); sends no telemetry here.
     ExternalDependency,
+    /// Uninstrumented caller of this project (browser, frontend, curl, partner system).
+    ExternalClient,
+}
+
+impl EntityKind {
+    /// Outside this project's architecture: drawn distinctly, never counted as a service.
+    pub fn is_external(self) -> bool {
+        matches!(self, Self::ExternalDependency | Self::ExternalClient)
+    }
 }
 
 /// Typed relationships. Only kinds actually produced by the system are listed.
@@ -127,6 +137,7 @@ mod tests {
             Some("infrastructure_resource")
         );
         assert_eq!(s(serde_json::json!(EntityKind::ExternalDependency)).as_deref(), Some("external_dependency"));
+        assert_eq!(s(serde_json::json!(EntityKind::ExternalClient)).as_deref(), Some("external_client"));
         assert_eq!(s(serde_json::json!(RelationKind::DependsOn)).as_deref(), Some("depends_on"));
         assert_eq!(s(serde_json::json!(RelationKind::ConsumesFrom)).as_deref(), Some("consumes_from"));
         assert_eq!(s(serde_json::json!(Provenance::Inferred)).as_deref(), Some("inferred"));

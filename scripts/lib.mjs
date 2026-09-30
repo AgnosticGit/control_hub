@@ -16,6 +16,38 @@ export function parseEnv(text) {
   return out;
 }
 
+/**
+ * setup → body → teardown, where teardown always runs (also after a failed setup or body).
+ * Resolves with the body's exit code; a failed setup or teardown turns it into 1.
+ */
+export async function withFixtures({ setup, body, teardown, log = console.error }) {
+  let code = 1;
+  try {
+    await setup();
+    code = await body();
+  } catch (e) {
+    log(`[fixtures] ${e.message}`);
+    code = 1;
+  } finally {
+    try {
+      await teardown();
+    } catch (e) {
+      log(`[fixtures] cleanup failed: ${e.message}`);
+      code = code || 1;
+    }
+  }
+  return code;
+}
+
+/** Exit code of a command (never rejects on a non-zero exit). */
+export function exitCode(cmd, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawnCmd(cmd, args, { cwd: root, stdio: "inherit", ...opts });
+    child.on("exit", (code) => resolve(code ?? 1));
+    child.on("error", reject);
+  });
+}
+
 export function loadEnvFile(rel) {
   const p = join(root, rel);
   return existsSync(p) ? parseEnv(readFileSync(p, "utf8")) : {};

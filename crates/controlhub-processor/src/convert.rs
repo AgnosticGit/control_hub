@@ -163,7 +163,61 @@ fn span_target(scope: &Scope, kind: i32, attrs: &[(String, String)]) -> Option<(
         let id = EntityId::derive_resource(scope, "queue", system, name);
         return Some((id.to_string(), format!("{system}: {name}"), "queue".into()));
     }
+    if kind == 3
+        && (attr(attrs, "http.request.method").is_some() || attr(attrs, "http.method").is_some())
+        && let Some(host) = http_peer_host(attrs)
+    {
+        // Candidate only: the API drops it when an instrumented service answered the call.
+        let id = EntityId::derive_resource(scope, "external", "http", &host);
+        return Some((id.to_string(), host, "external".into()));
+    }
     None
+}
+
+/// Host (plus a non-default port) an HTTP client span talks to: `server.address`/`server.port`,
+/// else the URL authority. Telemetry is untrusted, so anything that is not a plain host name,
+/// IP or port number is ignored.
+fn http_peer_host(attrs: &[(String, String)]) -> Option<String> {
+    let url = attr(attrs, "url.full").or_else(|| attr(attrs, "http.url")).and_then(url_authority);
+    let raw = attr(attrs, "server.address")
+        .or_else(|| attr(attrs, "net.peer.name"))
+        .map(str::to_owned)
+        .or_else(|| url.as_ref().map(|(h, _)| h.clone()))?;
+    let host = raw.trim().trim_end_matches('.').to_ascii_lowercase();
+    let valid = !host.is_empty()
+        && host.len() <= 253
+        && host.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':' | '[' | ']'));
+    if !valid {
+        return None;
+    }
+    let port = attr(attrs, "server.port")
+        .or_else(|| attr(attrs, "net.peer.port"))
+        .map(str::to_owned)
+        .or_else(|| url.and_then(|(_, p)| p))
+        .and_then(|p| p.trim().parse::<u16>().ok())
+        .filter(|p| !matches!(p, 0 | 80 | 443));
+    Some(match port {
+        Some(p) if host.contains(':') && !host.starts_with('[') => format!("[{host}]:{p}"),
+        Some(p) => format!("{host}:{p}"),
+        None => host,
+    })
+}
+
+/// Host and port of an absolute URL, without credentials, path or query.
+fn url_authority(url: &str) -> Option<(String, Option<String>)> {
+    let rest = url.split_once("://")?.1;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let (host, port) = if host_port.starts_with('[') {
+        let (h, tail) = host_port.split_once(']')?;
+        (format!("{h}]"), tail.strip_prefix(':'))
+    } else {
+        match host_port.split_once(':') {
+            Some((h, p)) => (h.to_owned(), Some(p)),
+            None => (host_port.to_owned(), None),
+        }
+    };
+    Some((host, port.map(str::to_owned)))
 }
 
 fn scope_of(env: &IngestEnvelope) -> Result<Scope, ConvertError> {
@@ -612,7 +666,92 @@ mod tests {
             span_target(&s, 4, &attrs(&[("messaging.system", "rabbitmq")])).map(|t| t.1).as_deref(),
             Some("rabbitmq: rabbitmq")
         );
-        assert!(span_target(&s, 3, &attrs(&[("http.url", "https://x")])).is_none());
+        assert!(
+            span_target(&s, 3, &attrs(&[("http.url", "https://x")])).is_none(),
+            "a URL without an HTTP method is not treated as an HTTP call"
+        );
+    }
+
+    #[test]
+    fn http_client_spans_target_the_host_they_call() {
+        let s = scope();
+        let attrs = |pairs: &[(&str, &str)]| -> Vec<(String, String)> {
+            pairs.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect()
+        };
+        let target = |kind: i32, pairs: &[(&str, &str)]| span_target(&s, kind, &attrs(pairs));
+
+        let (id, name, kind) =
+            target(3, &[("http.request.method", "POST"), ("server.address", "API.CDEK.ru."), ("server.port", "443")])
+                .unwrap();
+        assert_eq!((name.as_str(), kind.as_str()), ("api.cdek.ru", "external"));
+        assert_eq!(id, EntityId::derive_resource(&s, "external", "http", "api.cdek.ru").to_string());
+
+        let host = |pairs: &[(&str, &str)]| target(3, pairs).map(|t| t.1);
+        assert_eq!(host(&[("http.method", "GET"), ("net.peer.name", "b.example")]).as_deref(), Some("b.example"));
+        assert_eq!(
+            host(&[("http.request.method", "GET"), ("url.full", "https://user:pw@pay.example/v1?token=x")]).as_deref(),
+            Some("pay.example"),
+            "credentials, path and query never become part of the name"
+        );
+        // A non-default port tells apart services on one host (e.g. everything on 127.0.0.1 locally).
+        assert_eq!(
+            host(&[("http.request.method", "GET"), ("url.full", "https://pay.example:8443/v1?token=x")]).as_deref(),
+            Some("pay.example:8443")
+        );
+        assert_eq!(
+            host(&[("http.request.method", "GET"), ("server.address", "127.0.0.1"), ("server.port", "7010")])
+                .as_deref(),
+            Some("127.0.0.1:7010")
+        );
+        assert_eq!(
+            host(&[("http.method", "GET"), ("net.peer.name", "b"), ("net.peer.port", "80")]).as_deref(),
+            Some("b")
+        );
+        assert_eq!(host(&[("http.method", "GET"), ("http.url", "http://[::1]:9000/x")]).as_deref(), Some("[::1]:9000"));
+        assert_eq!(
+            host(&[("http.method", "GET"), ("server.address", "::1"), ("server.port", "9000")]).as_deref(),
+            Some("[::1]:9000"),
+            "a bare IPv6 address is bracketed before the port is added"
+        );
+        for bad in ["0", "65536", "-1", "80a", ""] {
+            assert_eq!(
+                host(&[("http.method", "GET"), ("server.address", "c.example"), ("server.port", bad)]).as_deref(),
+                Some("c.example"),
+                "invalid port {bad:?} is ignored"
+            );
+        }
+        assert_ne!(
+            target(3, &[("http.method", "GET"), ("server.address", "127.0.0.1"), ("server.port", "7010")]).map(|t| t.0),
+            target(3, &[("http.method", "GET"), ("server.address", "127.0.0.1"), ("server.port", "7011")]).map(|t| t.0),
+        );
+        assert_eq!(
+            host(&[
+                ("http.request.method", "GET"),
+                ("server.address", "a.example"),
+                ("url.full", "https://b.example/")
+            ])
+            .as_deref(),
+            Some("a.example"),
+            "server.address wins over the URL"
+        );
+
+        // Server, internal and producer spans are not outgoing HTTP calls.
+        for kind in [1, 2, 4, 5] {
+            assert!(target(kind, &[("http.request.method", "GET"), ("server.address", "a.example")]).is_none());
+        }
+        // No host, or a host that is not a plain name/IP (untrusted input), gives no target.
+        assert!(target(3, &[("http.request.method", "GET")]).is_none());
+        assert!(target(3, &[("http.request.method", "GET"), ("url.full", "/relative/path")]).is_none());
+        assert!(target(3, &[("http.request.method", "GET"), ("server.address", "<script>")]).is_none());
+        assert!(target(3, &[("http.request.method", "GET"), ("server.address", "a b")]).is_none());
+        assert!(target(3, &[("http.request.method", "GET"), ("server.address", &"a".repeat(254))]).is_none());
+        // Database attributes take precedence over HTTP ones.
+        assert_eq!(
+            target(3, &[("db.system", "postgresql"), ("http.request.method", "GET"), ("server.address", "db1")])
+                .map(|t| t.2)
+                .as_deref(),
+            Some("database")
+        );
     }
 
     #[test]

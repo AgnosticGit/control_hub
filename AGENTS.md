@@ -12,7 +12,7 @@ ControlHub is an observability, history-exploration and (later) controlled-manag
 | `crates/controlhub-runtime` | tracing setup, shutdown, admin/metrics server |
 | `crates/controlhub-ingest` | OTLP HTTP/gRPC + events ingest → Kafka (ACK after broker ACK) |
 | `crates/controlhub-processor` | Kafka → ClickHouse, offsets in PostgreSQL |
-| `crates/controlhub-api` | REST `/api/v1`, sessions, API tokens, actions API, WebSocket live, OpenAPI, `bootstrap` subcommand |
+| `crates/controlhub-api` | REST `/api/v1`, sessions, API tokens, actions API, WebSocket live, OpenAPI, `bootstrap` and `test-fixtures` subcommands |
 | `crates/controlhub-actions` | Action catalog, typed `Action`, validation, policy, state machine (pure, no I/O) |
 | `crates/controlhub-executor` | Separate process that runs approved plans (demo adapter) and verifies them; the only one allowed Docker |
 | `crates/controlhub-cli` | `controlhub` CLI: doctor/discover/plan/apply/verify/context and the read-only `mcp` server |
@@ -31,7 +31,7 @@ ControlHub is an observability, history-exploration and (later) controlled-manag
 
 ```
 just doctor          # tools, ports, bootstrap state
-just bootstrap       # install deps, generate local secrets, start infra, migrate, seed
+just bootstrap       # install deps, generate local secrets, start infra, migrate, seed (needs .controlhub/owner.env)
 just dev             # ingest + processor + API + executor + web
 just stop            # stop leftovers of just dev / just demo (keeps containers)
 just reset           # DESTRUCTIVE: wipe data volumes, then bootstrap again (owner from .controlhub/owner.env)
@@ -56,4 +56,7 @@ See `.cursor/rules/controlhub-core.mdc` and `controlhub-testing.mdc` (always app
  vitest `*.test.ts`, `tests/integration/*.test.mjs`, Playwright `tests/e2e/specs/*.spec.ts`. A bug fix starts
  with a failing regression test. Never delete or weaken a test to get green.
 - Never overwrite user changes, never `git reset`/`clean`, never commit `.controlhub/`.
+- The only persistent account is the owner from `.controlhub/owner.env`. Never seed other accounts in
+  bootstrap; tests get theirs from `test-fixtures` (via `just test-integration` / `just test-e2e`), which
+  deletes them after the run. Run a single spec with `node scripts/test-with-fixtures.mjs <command>`.
 - Report only checks you actually ran.

@@ -36,6 +36,11 @@ Ordered by priority within each stage. `[x]` = done and verified.
       (isolated on map and timeline, replayed on a loop)
 - [ ] Focused request in the URL (shareable, survives reload); stable colours when services are
       added; apply skew correction to the trace waterfall too
+- [x] Systems outside the project on the map: "External clients" (uninstrumented callers such as a
+      browser frontend) and external HTTP services, drawn as dashed external cards with request
+      and response dots; internal hosts answered by an instrumented service are excluded
+- [ ] External systems: gRPC peers, one client node per `user_agent`/origin instead of a shared
+      one, marking a known-internal host that is currently down instead of showing it external
 
 ## Stage 3 — timeline
 - [x] Modes, speeds, step, range, compare, completeness, synchronized panels, proptest, e2e
@@ -54,6 +59,8 @@ Ordered by priority within each stage. `[x]` = done and verified.
 - [x] Self-service sign-up (email + password, own tenant/project, off by default outside dev) and
       an in-app Integration page (token, OTel env vars, Node, Collector, connection status)
 - [x] `/otlp` proxy on the web app and `just dev ngrok` for a public dev stand
+- [x] No seeded accounts: bootstrap creates only the owner from `.controlhub/owner.env`; test accounts
+      exist only during `just test-integration` / `just test-e2e` (`test-fixtures`, removed afterwards)
 - [ ] Email verification, password reset, account deletion; per-client sign-up limits
 - [ ] Publish `@controlhub/sdk-node` and CLI binaries (needs explicit permission)
 - [ ] Integration plans for non-Node projects (today: a manual OTLP step)

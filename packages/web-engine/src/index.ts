@@ -32,6 +32,8 @@ export const FLAG_RESOURCE = 8;
 export const FLAG_PROBLEM = 16;
 /** Node or edge belongs to a switched-off (muted) service: drawn dimmed. */
 export const FLAG_DIMMED = 32;
+/** Node outside the project's architecture (external dependency or client), or an edge touching one. */
+export const FLAG_EXTERNAL = 64;
 
 /** Health status encoding used in render buffers. */
 export const STATUS = { unknown: 0, healthy: 1, degraded: 2, failing: 3 } as const;

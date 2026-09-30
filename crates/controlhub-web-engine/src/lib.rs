@@ -198,6 +198,7 @@ mod tests {
             ("FLAG_RESOURCE", core::FLAG_RESOURCE),
             ("FLAG_PROBLEM", core::FLAG_PROBLEM),
             ("FLAG_DIMMED", core::FLAG_DIMMED),
+            ("FLAG_EXTERNAL", core::FLAG_EXTERNAL),
         ] {
             assert_eq!(ts_const(name), value, "{name}");
         }

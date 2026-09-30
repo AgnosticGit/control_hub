@@ -97,5 +97,19 @@ controlhub CLI `context` / `mcp` ──read-only API token──▶ controlhub-a
 - **Inferred edges** go to resources such as databases or peers named in client span attributes
   (`db.system`, `server.address`, …). The map draws them dashed and lists the reasons they were
   inferred.
+- **Systems outside the project** are inferred too and drawn as light, dashed "external" cards
+  with a globe icon; the inspector says they are not part of the project:
+  - *External service* (`external_dependency`): an HTTP CLIENT span (`http.request.method`) to a
+    host (`server.address`/`server.port`, else the URL authority; a non-default port is part of
+    the name, path/query/credentials never are). The host is dropped when any call to it in the
+    window was answered by an instrumented service, so internal calls stay internal even while
+    the newest answers are still in an export batch. A down internal service can briefly look
+    external.
+  - *External clients* (`external_client`): one node per environment for requests that arrived
+    without an instrumented caller (root SERVER spans: browser, frontend, curl, partner). Timeline
+    items of such spans carry `source_entity_id`, so the engine animates the request from that
+    node to the service and the answer back.
+  - Their metrics come from the calling / receiving service's spans; external clients are not
+    counted again in the summary totals. HTTP only for now (no gRPC peers).
 - **Declared edges** (planned) will come from configuration. They are flagged separately and are
   never mixed with observed edges.

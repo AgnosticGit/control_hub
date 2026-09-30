@@ -15,6 +15,7 @@ fn span(trace: &str, id: &str, parent: Option<&str>, svc: &str, kind: u8, start:
         service_id: format!("svc_{svc}"),
         service_name: svc.into(),
         target_entity_id: None,
+        source_entity_id: None,
         name: format!("{svc} op"),
         kind,
         start_ns: BASE + start,
@@ -305,6 +306,152 @@ fn hop_cap_is_reported() {
     let vs = e.visible_state();
     assert_eq!((vs.summary.hops_in_window, vs.summary.hops_shown), (2, 1));
     assert_eq!(vs.hop_data.len(), HOP_STRIDE);
+}
+
+// ------------------------------------------------------------------ external systems
+
+fn ext_node(id: &str, name: &str, kind: EntityKindDto) -> TopologyNode {
+    TopologyNode { id: id.into(), name: name.into(), kind, provenance: ProvenanceDto::Inferred }
+}
+
+/// Browser -> api (root server span, 0..10 ms) -> api calls a payment provider (2..6 ms, failed).
+fn external_items(trace: &str, offset: i64) -> Vec<TimelineItem> {
+    vec![
+        TimelineItem::Span(SpanItem {
+            source_entity_id: Some("ext_clients".into()),
+            ..span(trace, "w1", None, "api", 2, offset, offset + 10 * MS, false)
+        }),
+        TimelineItem::Span(SpanItem {
+            target_entity_id: Some("ext_pay".into()),
+            ..span(trace, "w2", Some("w1"), "api", 3, offset + 2 * MS, offset + 6 * MS, true)
+        }),
+    ]
+}
+
+fn external_engine() -> Engine {
+    let mut e = Engine::new(EngineConfig::default());
+    e.load_topology(TopologySnapshot {
+        nodes: vec![
+            ext_node("ext_clients", "External clients", EntityKindDto::ExternalClient),
+            ext_node("ext_pay", "pay.example.test", EntityKindDto::ExternalDependency),
+        ],
+        edges: vec![],
+    });
+    e.apply_batch(Batch { items: external_items("t1", 0) }).unwrap();
+    e
+}
+
+#[test]
+fn external_clients_and_dependencies_get_edges_and_request_response_hops() {
+    let mut e = external_engine();
+    e.seek(BASE + 5 * MS, 1);
+    let topo = e.topology();
+    let inbound = edge_between(&e, "ext_clients", "svc_api");
+    let outbound = edge_between(&e, "svc_api", "ext_pay");
+    let edge = |i: u32| topo.edges.iter().find(|x| x.index == i).unwrap();
+    assert_eq!((edge(inbound).relation, edge(inbound).provenance), (RelationKindDto::Calls, ProvenanceDto::Inferred));
+    assert!(edge(inbound).reasons.iter().any(|r| r.contains("outside the project")), "{:?}", edge(inbound).reasons);
+    assert_eq!(edge(outbound).relation, RelationKindDto::DependsOn);
+
+    let vs = e.visible_state();
+    let hs = hops(&vs);
+    assert_eq!(hs.len(), 2);
+    // The request arrives from outside at the server span start and the answer leaves at its end.
+    let inb = hs.iter().find(|h| h[0] == inbound as f32).unwrap();
+    assert_eq!((&inb[1..5], inb[5] as u32), (&[-5.0, -5.0, 5.0, 5.0][..], HOP_LEAF));
+    let api = e.topology().nodes.iter().find(|n| n.id == "svc_api").unwrap().index;
+    assert_eq!(inb[6], api as f32, "coloured by the service where the trace starts");
+    let out = hs.iter().find(|h| h[0] == outbound as f32).unwrap();
+    assert_eq!((&out[1..5], out[5] as u32), (&[-3.0, -3.0, 1.0, 1.0][..], HOP_LEAF | HOP_ERROR));
+}
+
+#[test]
+fn external_nodes_and_their_edges_are_flagged() {
+    let mut e = external_engine();
+    e.seek(BASE + 5 * MS, 1);
+    let vs = e.visible_state();
+    assert_eq!(node_flags(&e, &vs, "ext_clients") & FLAG_EXTERNAL, FLAG_EXTERNAL);
+    assert_eq!(node_flags(&e, &vs, "ext_pay") & FLAG_EXTERNAL, FLAG_EXTERNAL);
+    assert_eq!(node_flags(&e, &vs, "svc_api") & FLAG_EXTERNAL, 0);
+    assert_eq!(edge_flags(&vs, edge_between(&e, "ext_clients", "svc_api")) & FLAG_EXTERNAL, FLAG_EXTERNAL);
+    assert_eq!(edge_flags(&vs, edge_between(&e, "svc_api", "ext_pay")) & FLAG_EXTERNAL, FLAG_EXTERNAL);
+}
+
+#[test]
+fn external_client_metrics_come_from_the_requests_it_sent() {
+    let mut e = external_engine();
+    e.seek(BASE + 11 * MS, 1);
+    let m = e.node_metrics("ext_clients", None).unwrap();
+    assert_eq!((m.window_requests, m.window_errors, m.status), (1, 0, HealthStatusDto::Healthy));
+    assert!(m.status_reason.contains("services it calls"), "{}", m.status_reason);
+    let pay = e.node_metrics("ext_pay", None).unwrap();
+    assert_eq!((pay.window_requests, pay.window_errors), (1, 1));
+
+    // Totals do not count the same entry request twice (once for the client, once for the api).
+    let mut plain = engine_with(external_items("t1", 0));
+    plain.load_topology(TopologySnapshot {
+        nodes: vec![ext_node("ext_pay", "pay.example.test", EntityKindDto::ExternalDependency)],
+        edges: vec![],
+    });
+    plain.seek(BASE + 11 * MS, 1);
+    let (with, without) = (e.visible_state().summary, plain.visible_state().summary);
+    assert_eq!((with.window_requests, with.window_errors), (without.window_requests, without.window_errors));
+}
+
+#[test]
+fn selecting_a_trace_highlights_its_external_client() {
+    let mut e = external_engine();
+    e.set_filters(Filters { selected_trace_id: Some("t1".into()), ..Filters::default() });
+    e.seek(BASE + 5 * MS, 1);
+    let vs = e.visible_state();
+    assert_eq!(node_flags(&e, &vs, "ext_clients") & FLAG_HIGHLIGHT, FLAG_HIGHLIGHT);
+    assert_eq!(edge_flags(&vs, edge_between(&e, "ext_clients", "svc_api")) & FLAG_HIGHLIGHT, FLAG_HIGHLIGHT);
+}
+
+#[test]
+fn source_is_ignored_unless_it_is_a_known_node_on_a_root_server_span() {
+    let items = vec![
+        // Unknown node: nothing is invented.
+        TimelineItem::Span(SpanItem {
+            source_entity_id: Some("not_in_topology".into()),
+            ..span("t1", "a", None, "api", 2, 0, MS, false)
+        }),
+        // Has an instrumented parent: the caller is the parent's service, not an external client.
+        TimelineItem::Span(span("t2", "p", None, "gateway", 3, 0, 2 * MS, false)),
+        TimelineItem::Span(SpanItem {
+            source_entity_id: Some("ext_clients".into()),
+            ..span("t2", "c", Some("p"), "api", 2, 0, MS, false)
+        }),
+        // Not a server span.
+        TimelineItem::Span(SpanItem {
+            source_entity_id: Some("ext_clients".into()),
+            ..span("t3", "i", None, "api", 1, 0, MS, false)
+        }),
+    ];
+    let mut e = Engine::new(EngineConfig::default());
+    e.load_topology(TopologySnapshot {
+        nodes: vec![ext_node("ext_clients", "External clients", EntityKindDto::ExternalClient)],
+        edges: vec![],
+    });
+    e.apply_batch(Batch { items }).unwrap();
+    e.seek(BASE + MS / 2, 1);
+    let topo = e.topology();
+    let clients = topo.nodes.iter().find(|n| n.id == "ext_clients").unwrap().index;
+    assert!(topo.edges.iter().all(|x| x.source != clients), "{:?}", topo.edges);
+    assert_eq!(topo.edges.len(), 1, "only gateway -> api");
+}
+
+#[test]
+fn live_requests_from_a_known_external_client_merge_without_rebuilds() {
+    let mut e = external_engine();
+    e.seek(BASE + 10 * MS, 1);
+    assert_eq!(e.diagnostics().timeline_rebuilds, 1);
+    for i in 1..=3i64 {
+        e.apply_batch(Batch { items: external_items(&format!("t{}", i + 1), i * 20 * MS) }).unwrap();
+        e.seek(BASE + (i * 20 + 10) * MS, i as u64 + 1);
+    }
+    assert_eq!(e.diagnostics().timeline_rebuilds, 1, "edges to external nodes are already known");
+    assert_eq!(e.diagnostics().timeline_merges, 3);
 }
 
 #[test]
@@ -628,22 +775,32 @@ fn arb_items() -> impl Strategy<Value = (Vec<SpanItem>, Vec<LogItem>)> {
         v.into_iter()
             .map(|(id, s, start, dur, err, kind)| {
                 let parent = if id % 3 == 0 { None } else { Some(format!("p{}", id / 3)) };
-                span(
-                    &format!("t{}", id % 7),
-                    &format!("s{id}"),
-                    parent.as_deref(),
-                    s,
-                    kind,
-                    start * SEC,
-                    (start + dur) * SEC,
-                    err,
-                )
+                SpanItem {
+                    source_entity_id: (id % 2 == 0).then(|| "ext_clients".into()),
+                    ..span(
+                        &format!("t{}", id % 7),
+                        &format!("s{id}"),
+                        parent.as_deref(),
+                        s,
+                        kind,
+                        start * SEC,
+                        (start + dur) * SEC,
+                        err,
+                    )
+                }
             })
             .collect::<Vec<_>>()
     });
     let logs = prop::collection::vec((0u32..40, svc, 0i64..130, prop::sample::select(vec![9u8, 13, 17])), 0..60)
         .prop_map(|v| v.into_iter().map(|(id, s, t, sev)| log(&format!("l{id}"), s, t * SEC, sev)).collect::<Vec<_>>());
     (spans, logs)
+}
+
+fn external_client_topology() -> TopologySnapshot {
+    TopologySnapshot {
+        nodes: vec![ext_node("ext_clients", "External clients", EntityKindDto::ExternalClient)],
+        edges: vec![],
+    }
 }
 
 fn dedup_last_wins(spans: &[SpanItem], logs: &[LogItem]) -> (Vec<SpanItem>, Vec<LogItem>) {
@@ -697,6 +854,7 @@ proptest! {
             .chain(logs.iter().cloned().map(TimelineItem::Log)).collect();
 
         let mut a = Engine::new(EngineConfig::default());
+        a.load_topology(external_client_topology());
         a.apply_batch(Batch { items: items.clone() }).unwrap();
 
         // Shuffle deterministically, duplicate everything, split into two batches.
@@ -710,6 +868,7 @@ proptest! {
         let cut = split.min(shuffled.len());
         let second = shuffled.split_off(cut);
         let mut b = Engine::new(EngineConfig::default());
+        b.load_topology(external_client_topology());
         b.apply_batch(Batch { items: shuffled }).unwrap();
         b.apply_batch(Batch { items: second }).unwrap();
 
@@ -754,12 +913,14 @@ proptest! {
         };
 
         let mut inc = Engine::new(cfg.clone());
+        inc.load_topology(external_client_topology());
         let size = items.len().div_ceil(chunks).max(1);
         for (g, chunk) in items.chunks(size).enumerate() {
             inc.apply_batch(Batch { items: chunk.to_vec() }).unwrap();
             inc.seek(BASE + t * SEC, g as u64 + 1);
         }
         let mut full = Engine::new(cfg);
+        full.load_topology(external_client_topology());
         full.apply_batch(Batch { items }).unwrap();
         if let Some(ev) = evict {
             inc.evict_before(BASE + ev * SEC);

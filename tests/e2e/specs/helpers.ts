@@ -11,7 +11,36 @@ interface Creds {
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const creds = JSON.parse(readFileSync(join(root, ".controlhub", "local-credentials.json"), "utf8")) as Creds;
+function readJson<T>(name: string, hint: string): T {
+  try {
+    return JSON.parse(readFileSync(join(root, ".controlhub", name), "utf8")) as T;
+  } catch {
+    throw new Error(`missing .controlhub/${name}: ${hint}`);
+  }
+}
+const local = readJson<Omit<Creds, "users">>("local-credentials.json", "run `just bootstrap`");
+// Test accounts and the isolation token exist only while `just test-e2e` runs.
+const fixtures = readJson<Pick<Creds, "users" | "ingest_tokens">>("test-credentials.json", "run the suite via `just test-e2e`");
+const creds: Creds = { ...local, users: fixtures.users, ingest_tokens: { ...local.ingest_tokens, ...fixtures.ingest_tokens } };
+
+/** The developer's own account from the gitignored `.controlhub/owner.env`, or null. */
+export function ownerAccount(): { email: string; password: string } | null {
+  let text: string;
+  try {
+    text = readFileSync(join(root, ".controlhub", "owner.env"), "utf8");
+  } catch {
+    return null;
+  }
+  const env = new Map<string, string>();
+  for (const line of text.split(/\r?\n/)) {
+    const t = line.trim();
+    const i = t.indexOf("=");
+    if (t && !t.startsWith("#") && i > 0) env.set(t.slice(0, i), t.slice(i + 1));
+  }
+  const email = env.get("CONTROLHUB_OWNER_EMAIL")?.trim().toLowerCase();
+  const password = env.get("CONTROLHUB_OWNER_PASSWORD");
+  return email && password ? { email, password } : null;
+}
 
 export function user(email: string) {
   const u = creds.users.find((x) => x.email === email);
@@ -95,4 +124,46 @@ export async function ingestLog(opts: {
     body,
   });
   if (res.status !== 200) throw new Error(`log ingest failed: ${res.status}`);
+}
+
+export interface SpanInput {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  name: string;
+  /** OTLP SpanKind: 2 server, 3 client. */
+  kind: number;
+  startNs: bigint;
+  endNs: bigint;
+  attributes?: Record<string, string>;
+}
+
+const keyValue = (field: number, k: string, v: string) => len(field, Buffer.concat([str(1, k), len(2, str(1, v))]));
+
+/** Sends spans of one service through the real ingest endpoint (`isolation-test` by default). */
+export async function ingestSpans(service: string, spans: SpanInput[], env = "isolation-test") {
+  const encoded = spans.map((s) =>
+    len(
+      2,
+      Buffer.concat([
+        len(1, Buffer.from(s.traceId, "hex")),
+        len(2, Buffer.from(s.spanId, "hex")),
+        ...(s.parentSpanId ? [len(4, Buffer.from(s.parentSpanId, "hex"))] : []),
+        str(5, s.name),
+        tag(6, 0),
+        varint(s.kind),
+        fixed64(7, s.startNs),
+        fixed64(8, s.endNs),
+        ...Object.entries(s.attributes ?? {}).map(([k, v]) => keyValue(9, k, v)),
+      ]),
+    ),
+  );
+  const resource = len(1, keyValue(1, "service.name", service));
+  const body = len(1, Buffer.concat([resource, len(2, Buffer.concat(encoded))]));
+  const res = await fetch(`${creds.otlp_http_endpoint}/v1/traces`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${creds.ingest_tokens[env]}`, "content-type": "application/x-protobuf" },
+    body,
+  });
+  if (res.status !== 200) throw new Error(`trace ingest failed: ${res.status}`);
 }

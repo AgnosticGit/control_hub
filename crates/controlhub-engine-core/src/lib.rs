@@ -38,6 +38,9 @@ pub const FLAG_RESOURCE: u32 = 8;
 pub const FLAG_PROBLEM: u32 = 16;
 /// Node or edge of a muted service (see `Filters::muted_services`): drawn dimmed.
 pub const FLAG_DIMMED: u32 = 32;
+/// Node outside the project's architecture (external dependency or external client), or an
+/// edge touching one.
+pub const FLAG_EXTERNAL: u32 = 64;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
@@ -474,9 +477,12 @@ impl Engine {
         for (i, n) in self.nodes.iter().enumerate() {
             let m = &window[i];
             statuses[i] = m.status.as_u8();
-            total_active += m.active;
-            win_req += m.started;
-            win_err += m.errors;
+            // An external client's requests are the root server spans its callee already counts.
+            if n.kind != EntityKind::ExternalClient {
+                total_active += m.active;
+                win_req += m.started;
+                win_err += m.errors;
+            }
 
             if self.filters.hide_inferred && n.provenance == Provenance::Inferred {
                 continue;
@@ -507,6 +513,9 @@ impl Engine {
             }
             if n.kind != EntityKind::Service {
                 flags |= FLAG_RESOURCE;
+            }
+            if n.kind.is_external() {
+                flags |= FLAG_EXTERNAL;
             }
             if problem {
                 flags |= FLAG_PROBLEM;
@@ -559,6 +568,9 @@ impl Engine {
             }
             if ratio >= self.config.degraded_error_ratio && calls > 0 {
                 flags |= FLAG_PROBLEM;
+            }
+            if sn.kind.is_external() || tn.kind.is_external() {
+                flags |= FLAG_EXTERNAL;
             }
             let off_trace = isolated && !highlight.1.contains(&(i as u32));
             if off_trace || dimmed.get(s).copied().unwrap_or(false) || dimmed.get(tg).copied().unwrap_or(false) {
@@ -658,6 +670,13 @@ impl Engine {
                 }
                 continue;
             }
+            if let Some(src) = self.external_caller(s) {
+                if let Some(&e) = self.edge_index.get(&(src, node, RelationKind::Calls)) {
+                    let origin = self.trace_origin(s, &roots);
+                    hops.push(Hop::leaf(e, s, trace, self.skew_ns(s, &mut skew)).with_origin(origin));
+                }
+                continue;
+            }
             let (true, Some(parent)) = (s.kind == 2 || s.kind == 5, s.parent_span_id.as_deref()) else {
                 continue;
             };
@@ -674,6 +693,14 @@ impl Engine {
             }
         }
         HopIndex::new(hops)
+    }
+
+    /// External client node that sent a root server span, when the topology has it.
+    fn external_caller(&self, s: &SpanItem) -> Option<u32> {
+        if s.kind != 2 || s.parent_span_id.is_some() {
+            return None;
+        }
+        s.source_entity_id.as_ref().and_then(|id| self.node_index.get(id)).copied()
     }
 
     /// Service node of each loaded trace's root span (the earliest one if there are several).
@@ -911,6 +938,12 @@ impl Engine {
                 .get(&(node, target, RelationKind::DependsOn))
                 .map_or(EdgeLookup::Missing, |&e| EdgeLookup::Existing(e));
         }
+        if let Some(src) = self.external_caller(s) {
+            return self
+                .edge_index
+                .get(&(src, node, RelationKind::Calls))
+                .map_or(EdgeLookup::Missing, |&e| EdgeLookup::Existing(e));
+        }
         let (true, Some(parent)) = (s.kind == 2 || s.kind == 5, s.parent_span_id.as_deref()) else {
             return EdgeLookup::NoEdge;
         };
@@ -999,20 +1032,24 @@ impl Engine {
             .filter_map(|s| self.node_index.get(&s.service_id).map(|&n| ((s.trace_id.as_str(), s.span_id.as_str()), n)))
             .collect();
 
-        let mut span_edges: Vec<((String, String), u32, u32, Provenance)> = Vec::new();
+        /// (trace id, span id), from node, to node, relation, provenance.
+        type SpanEdge = ((String, String), u32, u32, RelationKind, Provenance);
+        let mut span_edges: Vec<SpanEdge> = Vec::new();
         let mut unresolved = 0u32;
         let mut unresolved_keys = HashSet::new();
         for s in self.spans.values() {
             let Some(&node) = self.node_index.get(&s.service_id) else { continue };
             let key = (s.trace_id.clone(), s.span_id.clone());
             if let Some(&target) = s.target_entity_id.as_ref().and_then(|t| self.node_index.get(t)) {
-                span_edges.push((key, node, target, Provenance::Inferred));
+                span_edges.push((key, node, target, RelationKind::DependsOn, Provenance::Inferred));
+            } else if let Some(src) = self.external_caller(s) {
+                span_edges.push((key, src, node, RelationKind::Calls, Provenance::Inferred));
             } else if (s.kind == 2 || s.kind == 5)
                 && let Some(parent) = s.parent_span_id.as_deref()
             {
                 match span_service.get(&(s.trace_id.as_str(), parent)) {
                     Some(&caller) if caller != node => {
-                        span_edges.push((key, caller, node, Provenance::Observed));
+                        span_edges.push((key, caller, node, RelationKind::Calls, Provenance::Observed));
                     }
                     Some(_) => {}
                     None => {
@@ -1025,8 +1062,7 @@ impl Engine {
         // Sort so edge indices are assigned deterministically regardless of HashMap order.
         span_edges.sort_by(|a, b| a.0.cmp(&b.0));
         let mut edge_of_span: HashMap<(String, String), u32> = HashMap::new();
-        for (key, a, b, prov) in span_edges {
-            let rel = if prov == Provenance::Inferred { RelationKind::DependsOn } else { RelationKind::Calls };
+        for (key, a, b, rel, prov) in span_edges {
             let idx = match self.edge_index.get(&(a, b, rel)) {
                 Some(&i) => i,
                 None => {
@@ -1034,7 +1070,11 @@ impl Engine {
                     if prov == Provenance::Inferred
                         && let Some(e) = self.edges.get_mut(i as usize)
                     {
-                        e.reasons.push("client span references this resource (db.system / peer attributes)".into());
+                        e.reasons.push(if rel == RelationKind::DependsOn {
+                            "client span references this resource (db.system / peer attributes)".into()
+                        } else {
+                            "server span has no instrumented caller: the request came from outside the project".into()
+                        });
                     }
                     i
                 }
@@ -1078,11 +1118,18 @@ impl Engine {
     fn window_for(&self, now: &StateVec, past: &StateVec) -> Vec<WindowMetrics> {
         let d = |n: usize, f: usize| now.node(n, f).wrapping_sub(past.node(n, f));
         let mut incoming: Vec<(i64, i64, i64)> = vec![(0, 0, 0); self.nodes.len()];
+        let mut outgoing: Vec<(i64, i64, i64)> = vec![(0, 0, 0); self.nodes.len()];
         for (i, e) in self.edges.iter().enumerate() {
-            if let Some(slot) = incoming.get_mut(e.target as usize) {
-                slot.0 += now.edge(i, E_CALLS) - past.edge(i, E_CALLS);
-                slot.1 += now.edge(i, E_ERRORS) - past.edge(i, E_ERRORS);
-                slot.2 += now.edge(i, E_ACTIVE);
+            let m = (
+                now.edge(i, E_CALLS) - past.edge(i, E_CALLS),
+                now.edge(i, E_ERRORS) - past.edge(i, E_ERRORS),
+                now.edge(i, E_ACTIVE),
+            );
+            for slot in [incoming.get_mut(e.target as usize), outgoing.get_mut(e.source as usize)].into_iter().flatten()
+            {
+                slot.0 += m.0;
+                slot.1 += m.1;
+                slot.2 += m.2;
             }
         }
         self.nodes
@@ -1102,7 +1149,10 @@ impl Engine {
                     status: HealthStatus::Unknown,
                     reason: String::new(),
                 };
-                let (calls_in, errors_in, active_in) = incoming.get(i).copied().unwrap_or((0, 0, 0));
+                // An external client only calls; everything else that is not a service is called.
+                let client = n.kind == EntityKind::ExternalClient;
+                let side = if client { &outgoing } else { &incoming };
+                let (calls_in, errors_in, active_in) = side.get(i).copied().unwrap_or((0, 0, 0));
                 if n.kind != EntityKind::Service {
                     m.active = active_in;
                     m.started = calls_in;
@@ -1110,7 +1160,13 @@ impl Engine {
                     m.errors = errors_in;
                     (m.status, m.reason) = classify(calls_in, errors_in, &self.config);
                     if m.status != HealthStatus::Unknown {
-                        m.reason.push_str(" — derived from caller spans; resource itself is not instrumented");
+                        m.reason.push_str(if client {
+                            " — derived from spans of the services it calls; the client itself is not instrumented"
+                        } else {
+                            " — derived from caller spans; resource itself is not instrumented"
+                        });
+                    } else if client {
+                        m.reason = "not instrumented; no requests from it in window".into();
                     } else {
                         m.reason = "not instrumented; no caller activity in window".into();
                     }
@@ -1146,6 +1202,12 @@ impl Engine {
             if let Some(t) = s.target_entity_id.as_ref().and_then(|t| self.node_index.get(t)) {
                 nodes.insert(*t);
                 if let Some(&e) = self.edge_index.get(&(n, *t, RelationKind::DependsOn)) {
+                    edges.insert(e);
+                }
+            }
+            if let Some(src) = self.external_caller(s) {
+                nodes.insert(src);
+                if let Some(&e) = self.edge_index.get(&(src, n, RelationKind::Calls)) {
                     edges.insert(e);
                 }
             }

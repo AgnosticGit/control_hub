@@ -20,6 +20,7 @@ fn span(trace: &str, id: &str, parent: Option<&str>, svc: &str, kind: u8, start:
         service_id: format!("svc_{svc}"),
         service_name: svc.into(),
         target_entity_id: None,
+        source_entity_id: None,
         name: format!("{svc} op"),
         kind,
         start_ns: BASE + start,
@@ -138,7 +139,7 @@ fn check_frame(e: &Engine, vs: &VisibleState) -> Result<(), TestCaseError> {
         prop_assert!(c[2] > 0.0, "radius");
         prop_assert!(c[3] <= 3.0 && c[3] >= 0.0, "status");
         prop_assert!(c[4] >= 0.0 && c[5] >= 0.0, "counters");
-        prop_assert!((c[6] as u32) < 64, "flags");
+        prop_assert!((c[6] as u32) < FLAG_EXTERNAL * 2, "flags");
     }
     let shown: HashSet<u32> = vs.edge_indices.iter().copied().collect();
     for h in vs.hop_data.chunks(HOP_STRIDE) {
@@ -417,11 +418,18 @@ proptest! {
         hop in (any::<i64>(), any::<i64>()),
     ) {
         let mut e = Engine::new(EngineConfig { rolling_window_ns: window, ..EngineConfig::default() });
-        e.load_topology(db_node());
+        let mut topo = db_node();
+        topo.nodes.push(TopologyNode {
+            id: "ext_clients".into(),
+            name: "External clients".into(),
+            kind: EntityKindDto::ExternalClient,
+            provenance: ProvenanceDto::Inferred,
+        });
+        e.load_topology(topo);
         let mut items = Vec::new();
         for (i, (a, b, err, kind)) in raw.iter().copied().enumerate() {
             let (start, end) = (a.min(b), a.max(b));
-            let parent = (i > 0).then(|| format!("s{}", i - 1));
+            let parent = (i > 0 && i % 4 != 0).then(|| format!("s{}", i - 1));
             items.push(TimelineItem::Span(SpanItem {
                 trace_id: "t".into(),
                 span_id: format!("s{i}"),
@@ -429,6 +437,7 @@ proptest! {
                 service_id: format!("svc_{}", i % 3),
                 service_name: format!("{}", i % 3),
                 target_entity_id: (kind == 3 && i % 2 == 0).then(|| "res_db".into()),
+                source_entity_id: (i % 4 == 0).then(|| "ext_clients".into()),
                 name: "op".into(),
                 kind,
                 start_ns: start,

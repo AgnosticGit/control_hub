@@ -7,6 +7,7 @@ mod error;
 mod openapi;
 mod routes;
 mod state;
+mod test_fixtures;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -39,6 +40,13 @@ enum Command {
     Bootstrap {
         #[arg(long, default_value = ".controlhub")]
         out_dir: PathBuf,
+    },
+    /// Create (or with --remove delete) the accounts and scopes the integration/e2e tests use.
+    TestFixtures {
+        #[arg(long, default_value = ".controlhub")]
+        out_dir: PathBuf,
+        #[arg(long)]
+        remove: bool,
     },
     /// Print the OpenAPI document.
     Openapi,
@@ -160,6 +168,10 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Bootstrap { out_dir }) => {
             init_tracing("controlhub-api");
             bootstrap::run(&out_dir).await
+        }
+        Some(Command::TestFixtures { out_dir, remove }) => {
+            init_tracing("controlhub-api");
+            if remove { test_fixtures::remove(&out_dir).await } else { test_fixtures::create(&out_dir).await }
         }
         Some(Command::Serve(args)) => {
             init_tracing("controlhub-api");

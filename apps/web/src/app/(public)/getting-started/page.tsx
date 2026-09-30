@@ -20,8 +20,9 @@ just bootstrap   # generate local secrets, start infra, migrate, seed
 just dev         # ingest + processor + API + web on http://localhost:3000
 just demo        # demo services + load generator (second terminal)`}</pre>
       <p>
-        Login credentials are generated per machine and written to <code>.controlhub/local-credentials.json</code>{" "}
-        (gitignored). There is no shared default password.
+        Before <code>just bootstrap</code>, put your own email and password into <code>.controlhub/owner.env</code>{" "}
+        (gitignored) as <code>CONTROLHUB_OWNER_EMAIL</code> and <code>CONTROLHUB_OWNER_PASSWORD</code>. That owner
+        account is the only one created; there is no shared default password and no generated demo account.
       </p>
       <h2>Your own account and services</h2>
       <p>

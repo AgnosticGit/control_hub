@@ -108,6 +108,9 @@ pub struct SpanItem {
     /// Resource / dependency entity this span calls (e.g. a database), when known.
     #[serde(default)]
     pub target_entity_id: Option<String>,
+    /// Uninstrumented caller of a root server span (an external client node), when known.
+    #[serde(default)]
+    pub source_entity_id: Option<String>,
     pub name: String,
     /// OTLP SpanKind: 0 unspecified, 1 internal, 2 server, 3 client, 4 producer, 5 consumer.
     pub kind: u8,
@@ -435,4 +438,4 @@ macro_rules! dto_enum {
 dto_enum!(HealthStatusDto, HealthStatus, { Unknown, Healthy, Degraded, Failing });
 dto_enum!(ProvenanceDto, Provenance, { Observed, Declared, Inferred });
 dto_enum!(RelationKindDto, RelationKind, { Calls, DependsOn, RunsOn, DeployedFrom, Owns, PublishesTo, ConsumesFrom });
-dto_enum!(EntityKindDto, EntityKind, { Service, Instance, Repository, Deployment, Database, Cache, Queue, InfrastructureResource, ExternalDependency });
+dto_enum!(EntityKindDto, EntityKind, { Service, Instance, Repository, Deployment, Database, Cache, Queue, InfrastructureResource, ExternalDependency, ExternalClient });

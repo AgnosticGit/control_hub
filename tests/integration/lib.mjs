@@ -8,12 +8,39 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-export const creds = JSON.parse(readFileSync(join(root, '.controlhub', 'local-credentials.json'), 'utf8'));
+const readJson = (name, hint) => {
+  try {
+    return JSON.parse(readFileSync(join(root, '.controlhub', name), 'utf8'));
+  } catch {
+    throw new Error(`missing .controlhub/${name}: ${hint}`);
+  }
+};
+const local = readJson('local-credentials.json', 'run `just bootstrap`');
+// Test accounts and the isolation token exist only while `just test-integration` runs.
+const fixtures = readJson('test-credentials.json', 'run the suite via `just test-integration`');
+export const creds = { ...local, users: fixtures.users, ingest_tokens: { ...local.ingest_tokens, ...fixtures.ingest_tokens } };
 export const API = process.env.CONTROLHUB_API_URL ?? creds.api_url;
 export const OTLP = creds.otlp_http_endpoint;
 export const ORIGIN = 'http://localhost:3000';
 export const WEB = process.env.CONTROLHUB_WEB_URL ?? ORIGIN;
 export const user = (email) => creds.users.find((u) => u.email === email);
+
+/** The developer's own account from the gitignored `.controlhub/owner.env`, or null. */
+export function ownerAccount() {
+  try {
+    const env = Object.fromEntries(
+      readFileSync(join(root, '.controlhub', 'owner.env'), 'utf8')
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l && !l.startsWith('#') && l.includes('='))
+        .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
+    );
+    const email = env.CONTROLHUB_OWNER_EMAIL?.trim();
+    return email && env.CONTROLHUB_OWNER_PASSWORD ? { email: email.toLowerCase(), password: env.CONTROLHUB_OWNER_PASSWORD } : null;
+  } catch {
+    return null;
+  }
+}
 
 export class Session {
   constructor() {
