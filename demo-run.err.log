@@ -1,6 +1,0 @@
-node scripts/demo.mjs
-[demo] starting demo Postgres…
- Container controlhub-demo-postgres-1  Starting
- Container controlhub-demo-postgres-1  Started
- Container controlhub-demo-postgres-1  Waiting
- Container controlhub-demo-postgres-1  Healthy
