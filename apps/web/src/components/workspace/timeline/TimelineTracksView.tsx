@@ -11,7 +11,21 @@ import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime } from "@/lib
 import type { EngineState, WorkspaceActions } from "../useWorkspaceEngine";
 import { RULER_H, bucketGeometry, draw, drawRuler, rowTop, totalHeight, type ActionBar, type Row } from "./draw";
 import { placeAbove, rangeBetween, viewAround } from "./range";
-import { clampView, follow, formatSpan, panBy, timeAt, xOf, zoomAt, zoomCentered, type View } from "./scale";
+import {
+  clampView,
+  follow,
+  followLive,
+  formatSpan,
+  futureShare,
+  hasFuture,
+  panBy,
+  timeAt,
+  withFuture,
+  xOf,
+  zoomAt,
+  zoomCentered,
+  type View,
+} from "./scale";
 
 const BUCKET_PX = 3;
 const CLIP_CAP = 400;
@@ -95,9 +109,14 @@ interface Hover {
 }
 
 export function TimelineTracksView({ projectId, environmentId, state, actions, markA, filterKey, muted, onMuted, focus = null }: Props) {
-  const bounds = useMemo<View>(() => ({ from: state.rangeFrom, to: state.rangeTo }), [state.rangeFrom, state.rangeTo]);
-  const [userView, setUserView] = useState<View | null>(null);
+  /** What is loaded; replay ranges stay inside it. */
+  const data = useMemo<View>(() => ({ from: state.rangeFrom, to: state.rangeTo }), [state.rangeFrom, state.rangeTo]);
   const [width, setWidth] = useState(0);
+  const share = hasFuture(state.mode) ? futureShare(width) : 0;
+  /** What can be shown: after live data, a short stretch that has not happened yet. */
+  const bounds = useMemo<View>(() => withFuture(data, share), [data, share]);
+  const future = share > 0 ? data.to : null;
+  const [userView, setUserView] = useState<View | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState<View | null>(null);
@@ -119,11 +138,19 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const rowsRef = useRef<HTMLCanvasElement | null>(null);
 
   let view = userView ? clampView(userView, bounds) : bounds;
-  const playing = state.mode === "replay" || state.mode === "live";
-  if (userView && playing && (state.cursor < view.from || state.cursor > view.to)) {
-    // Page along with the playhead (derived-state update during render).
-    view = follow(view, state.cursor, bounds);
-    setUserView(view);
+  if (userView) {
+    // Keep the playhead in view (derived-state update during render): live keeps the free
+    // stretch on the right, replay pages along.
+    const next =
+      state.mode === "live"
+        ? followLive(view, state.cursor, bounds, share)
+        : state.mode === "replay" && (state.cursor < view.from || state.cursor > view.to)
+          ? follow(view, state.cursor, bounds)
+          : view;
+    if (next !== view) {
+      view = next;
+      setUserView(next);
+    }
   }
   const fitted = userView === null;
   const setView = (v: View) => setUserView(v.from === bounds.from && v.to === bounds.to ? null : v);
@@ -148,10 +175,10 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     for (const p of plans.data ?? []) {
       const from = isoNs(p.started_at);
       if (from === null) continue;
-      out.push({ id: p.id, title: p.title, target: p.target, state: p.state, from, to: isoNs(p.finished_at) ?? bounds.to });
+      out.push({ id: p.id, title: p.title, target: p.target, state: p.state, from, to: isoNs(p.finished_at) ?? data.to });
     }
     return out;
-  }, [plans.data, bounds.to]);
+  }, [plans.data, data.to]);
 
   const nodeIds = useMemo(() => {
     const ids = new Map<number, string>();
@@ -205,13 +232,13 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const hoverX = hover?.x ?? null;
   useEffect(() => {
     const ctx = setupCanvas(rulerRef.current, width, RULER_H);
-    if (ctx) drawRuler(ctx, { width, view, cursor: state.cursor, markA, hoverX, range });
-  }, [width, view, state.cursor, markA, hoverX, range]);
+    if (ctx) drawRuler(ctx, { width, view, cursor: state.cursor, markA, hoverX, range, future });
+  }, [width, view, state.cursor, markA, hoverX, range, future]);
 
   useEffect(() => {
     const ctx = setupCanvas(rowsRef.current, width, height);
-    if (ctx) draw(ctx, { width, rows, view, tracks, actions: actionBars, cursor: state.cursor, markA, hoverX, range });
-  }, [width, height, rows, view, tracks, actionBars, state.cursor, markA, hoverX, range]);
+    if (ctx) draw(ctx, { width, rows, view, tracks, actions: actionBars, cursor: state.cursor, markA, hoverX, range, future });
+  }, [width, height, rows, view, tracks, actionBars, state.cursor, markA, hoverX, range, future]);
 
   // Wheel and drag need the latest values without re-binding listeners.
   const live = useRef({ view, bounds, width, setView });
@@ -311,8 +338,8 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     else if (d.mode === "select") {
       if (!d.moved && Math.abs(e.clientX - d.x) < DRAG_PX) return;
       d.moved = true;
-      setDraft(rangeBetween(d.t, timeAt(localX(e.clientX), view, width), bounds));
-    } else if (d.mode === "edge") setDraft(rangeBetween(d.fixed, timeAt(localX(e.clientX), view, width), bounds));
+      setDraft(rangeBetween(d.t, timeAt(localX(e.clientX), view, width), data));
+    } else if (d.mode === "edge") setDraft(rangeBetween(d.fixed, timeAt(localX(e.clientX), view, width), data));
     else if (width > 0) setView(panBy(d.view, BigInt(Math.round((-(e.clientX - d.x) / width) * Number(d.view.to - d.view.from))), bounds));
   };
   const onPointerUp = (e: React.PointerEvent<HTMLElement>) => {
@@ -358,8 +385,8 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
       ArrowRight: () => state.cursor + step,
       PageUp: () => state.cursor - span / 10n,
       PageDown: () => state.cursor + span / 10n,
-      Home: () => bounds.from,
-      End: () => bounds.to,
+      Home: () => data.from,
+      End: () => data.to,
     };
     const next = keys[e.key];
     if (!next) return;
@@ -367,9 +394,14 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     actions.seek(next());
   };
 
-  const span = bounds.to - bounds.from;
-  const percent = span > 0n ? Math.round(xOf(state.cursor, bounds, 100)) : 100;
-  const tip = hover && hover.y !== null && !dragging ? describe({ x: hover.x, y: hover.y }, rows, view, width, tracks, actionBars) : null;
+  const percent = data.to > data.from ? Math.round(xOf(state.cursor, data, 100)) : 100;
+  const futureX = future !== null && width > 0 ? xOf(future, view, width) : null;
+  const tip =
+    hover && hover.y !== null && !dragging
+      ? future !== null && width > 0 && timeAt(hover.x, view, width) > future
+        ? ["Future", "Nothing has happened here yet. Move the cursor here to go back to live."]
+        : describe({ x: hover.x, y: hover.y }, rows, view, width, tracks, actionBars)
+      : null;
 
   return (
     <div
@@ -414,6 +446,14 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
           {...pointer}
         >
           <canvas ref={rulerRef} aria-hidden className="absolute inset-0" style={{ width, height: RULER_H }} />
+          {futureX !== null && futureX < width - 40 ? (
+            <span
+              className="pointer-events-none absolute inset-y-0 right-0 flex items-center justify-center text-[10px] font-semibold tracking-[0.18em] text-text/70"
+              style={{ left: Math.max(0, futureX) }}
+            >
+              FUTURE
+            </span>
+          ) : null}
         </div>
       </div>
 

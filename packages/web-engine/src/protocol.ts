@@ -27,6 +27,8 @@ export type WorkerRequest =
   | { kind: "setHopWindow"; beforeNs: string; afterNs: string }
   | { kind: "nodeMetrics"; id: number; nodeId: string; atNs?: string }
   | { kind: "compare"; id: number; aNs: string; bNs: string }
+  /** Time of the first recorded item strictly after `afterNs`, or null. */
+  | { kind: "nextEvent"; id: number; afterNs: string }
   | { kind: "pick"; id: number; x: number; y: number }
   /** Layered timeline aggregates over `[fromNs, toNs)`; see `TimelineTracks`. */
   | { kind: "timelineTracks"; id: number; fromNs: string; toNs: string; buckets: number; clipCap: number }
@@ -72,6 +74,7 @@ export interface ResultMap {
   evictBefore: null;
   nodeMetrics: NodeMetrics | null;
   compare: NodeDiff[];
+  nextEvent: string | null;
   pick: string | null;
   timelineTracks: TimelineTracks;
   diagnostics: Diagnostics;

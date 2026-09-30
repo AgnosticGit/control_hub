@@ -30,10 +30,60 @@ test.describe("service colours and request focus on demo data", () => {
 
     await expect(page.getByText("Request", { exact: true })).toBeVisible();
     await expect(page.getByText("Response", { exact: true })).toBeVisible();
-    const note = page.getByLabel("Request animation");
-    await expect(note).toContainText("filled dot = request, ring = response");
-    await expect(note).toContainText("dot colour = service where the request started");
+    // The map carries only the key icon; what the dots show is explained inside the key.
+    await expect(page.getByText(/Requests from recorded spans/)).toHaveCount(0);
+    await page.getByRole("button", { name: "Show map key" }).hover();
+    const key = page.getByRole("dialog", { name: "Map key" });
+    await expect(key).toContainText("Requests from recorded spans, 8 s behind live");
+    await expect(key).toContainText("Its colour is the service where the request started.");
     expect(errors).toEqual([]);
+  });
+
+  test("the map key icon explains every dot, line and card on hover, focus and click", async ({ page }) => {
+    const button = page.getByRole("button", { name: "Show map key" });
+    const key = page.getByRole("dialog", { name: "Map key" });
+    await expect(key).toHaveCount(0);
+
+    await button.hover();
+    await expect(key).toBeVisible();
+    await expect(button).toHaveAttribute("aria-expanded", "true");
+    for (const title of ["Moving dots: recorded requests", "Lines: calls between components", "Cards: services and dependencies"]) {
+      await expect(key.getByRole("heading", { name: title })).toBeVisible();
+    }
+    const entry = (label: string) => key.getByRole("listitem").filter({ has: page.getByText(label, { exact: true }) });
+    await expect(entry("Ring")).toContainText("response on its way back");
+    await expect(entry("Red halo")).toContainText("call failed");
+    await expect(entry("Dashed line")).toContainText("Inferred");
+    await expect(entry("Dashed card")).toContainText("Outside the project");
+    // Everything fits on screen: nothing to scroll, readable text.
+    const fits = await key.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const inner = [el, ...Array.from(el.querySelectorAll("*"))].every((n) => n.scrollHeight <= n.clientHeight + 1);
+      return inner && r.top >= 0 && r.bottom <= window.innerHeight;
+    });
+    expect(fits).toBe(true);
+    const size = await entry("Ring").getByText("Ring", { exact: true }).evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    expect(size).toBeGreaterThanOrEqual(14);
+    await page.screenshot({ path: "../../test-results/e2e/map-key.png" });
+
+    await page.mouse.move(0, 0);
+    await expect(key).toHaveCount(0);
+
+    await button.click();
+    await page.mouse.move(0, 0);
+    await expect(key).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(key).toHaveCount(0);
+    await expect(button).toHaveAttribute("aria-expanded", "false");
+
+    await button.click();
+    await page.mouse.move(0, 0);
+    await key.getByRole("button", { name: "Close map key" }).click();
+    await expect(key).toHaveCount(0);
+
+    await button.click();
+    await page.mouse.click(5, 5);
+    await expect(key).toHaveCount(0);
   });
 
   test("selecting a request shows only it on the map and timeline and replays it", async ({ page }) => {

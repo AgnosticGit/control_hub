@@ -64,8 +64,49 @@ export function panBy(v: View, deltaNs: bigint, bounds: View): View {
   return clampView({ from: v.from + deltaNs, to: v.to + deltaNs }, bounds);
 }
 
+/** Width (px) of the free stretch right of "now": the word FUTURE with room on both sides. */
+export const FUTURE_PX = 72;
+
+/** Share of a `width` px timeline taken by the free stretch; none when it would crowd the data. */
+export function futureShare(width: number): number {
+  return width >= FUTURE_PX * 4 ? FUTURE_PX / width : 0;
+}
+
+/** `data` extended to the right so that `data.to` ("now") sits `share` of the width from the right edge. */
+export function withFuture(data: View, share: number): View {
+  if (share <= 0 || share >= 1) return data;
+  const pad = BigInt(Math.round((Number(span(data)) * share) / (1 - share)));
+  return { from: data.from, to: data.to + pad };
+}
+
+/** Everything but a fixed historical range can still grow, so it gets the free stretch. */
+export function hasFuture(mode: string): boolean {
+  return mode !== "historical";
+}
+
+/**
+ * Live: keeps `now` at most `1 - share` into the view. Once it gets there (or is out of view)
+ * the window moves with it, so the free space on the right stays the same.
+ */
+export function followLive(v: View, t: bigint, bounds: View, share: number): View {
+  const now = inside(t, bounds);
+  const lead = BigInt(Math.round(Number(span(v)) * (1 - share)));
+  if (now >= v.from && (now <= v.from + lead || (now <= v.to && v.to >= bounds.to))) return v;
+  const from = now - lead;
+  return clampView({ from, to: from + span(v) }, bounds);
+}
+
+/**
+ * A time outside `bounds` is followed as far as the bounds go: the view can never contain it,
+ * so chasing it would move the view on every call.
+ */
+function inside(t: bigint, bounds: View): bigint {
+  return t < bounds.from ? bounds.from : t > bounds.to ? bounds.to : t;
+}
+
 /** When `t` leaves the view, page so that it sits a quarter into the window. */
-export function follow(v: View, t: bigint, bounds: View): View {
+export function follow(v: View, time: bigint, bounds: View): View {
+  const t = inside(time, bounds);
   if (t >= v.from && t <= v.to) return v;
   const w = span(v);
   const from = t - w / 4n;

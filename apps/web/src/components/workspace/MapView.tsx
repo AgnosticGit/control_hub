@@ -7,6 +7,7 @@ import type { EdgeStyle } from "@/renderer/edge-path";
 import type { PixiMap } from "@/renderer/pixi-map";
 import { setEdgeStyle, useEdgeStyle } from "./edgeStyleStore";
 import { LIVE_ANIM_DELAY_MS, animClockFor, type Mode, type Speed, type WorkspaceActions } from "./useWorkspaceEngine";
+import { MapKey } from "./MapKey";
 import { NodeTable } from "./NodeTable";
 
 type ZoomAction = "in" | "out" | "fit";
@@ -262,23 +263,13 @@ function AnimationNote({ mode, speed, summary }: { mode: Mode; speed: Speed; sum
       : mode === "replay"
         ? `replay at ${speed}×${speed <= 0.001 ? " — 1 ms of recorded time per second" : ""}`
         : "frozen at the selected time";
-  const capped = summary && summary.hops_shown < summary.hops_in_window;
+  const capped = summary && summary.hops_shown < summary.hops_in_window ? `Showing ${summary.hops_shown} of ${summary.hops_in_window} requests` : null;
   return (
-    <div
-      className="pointer-events-none absolute top-3 right-3 max-w-xs rounded-xl border border-border bg-surface/85 px-3 py-2 text-[11px] text-muted backdrop-blur"
-      aria-label="Request animation"
-    >
-      <div className="font-medium text-text">Requests from recorded spans</div>
-      <div>{clock}</div>
-      <div title="The request dot travels caller → callee until the callee's span starts, waits there while the callee works, and the answer ring travels back until the caller's span ends.">
-        filled dot = request, ring = response
-      </div>
-      <div>dot colour = service where the request started</div>
+    <div className="pointer-events-none absolute top-3 right-3 flex items-center gap-2">
       {capped ? (
-        <div className="text-warn">
-          showing {summary.hops_shown} of {summary.hops_in_window} requests
-        </div>
+        <span className="rounded-lg border border-warn/40 bg-surface/90 px-2 py-1 text-[11px] text-warn backdrop-blur">{capped}</span>
       ) : null}
+      <MapKey animation={`Requests from recorded spans, ${clock}.`} capped={capped} />
     </div>
   );
 }

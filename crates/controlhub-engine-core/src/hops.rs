@@ -6,7 +6,8 @@
 //! client span and the callee's server span. When the callee is not instrumented
 //! (a database behind a client span), only `t0` and `t3` are known: the hop is a
 //! "leaf" with `t1 = t0` and `t2 = t3`, and nothing is invented about how the
-//! time splits between network and callee.
+//! time splits between network and callee. The reverse, an external client calling an
+//! instrumented service, knows `t1` and `t2` but not `t0` and `t3` (see [`Hop::inbound`]).
 
 use crate::types::SpanItem;
 
@@ -83,6 +84,17 @@ impl Hop {
         }
         let (s, e) = (client.start_ns.saturating_add(shift), client.end_ns.saturating_add(shift));
         Self { edge, t: [s, s, e, e], flags, trace, origin: NO_ORIGIN }
+    }
+
+    /// A root server span called by an external client. Arrival and answer are the server
+    /// span's bounds, so the dot reaches the service before anything the service calls leaves.
+    /// The client's own send and receive times are not recorded: each leg is drawn outside the
+    /// span with half its duration, the same length a leaf leg has.
+    pub(crate) fn inbound(edge: u32, server: &SpanItem, trace: u64, shift: i64) -> Self {
+        let (s, e) = (server.start_ns.saturating_add(shift), server.end_ns.saturating_add(shift));
+        let leg = e.saturating_sub(s) / 2;
+        let flags = if server.is_error { HOP_ERROR } else { 0 };
+        Self { edge, t: [s.saturating_sub(leg), s, e, e.saturating_add(leg)], flags, trace, origin: NO_ORIGIN }
     }
 
     pub(crate) fn with_origin(mut self, origin: Option<u32>) -> Self {
@@ -180,6 +192,15 @@ mod tests {
     }
 
     #[test]
+    fn inbound_arrives_at_the_server_start_and_answers_at_its_end() {
+        let h = Hop::inbound(1, &span(2, 100, 140, true), 3, 5);
+        assert_eq!((h.t, h.flags), ([85, 105, 145, 165], HOP_ERROR));
+        assert_eq!(Hop::inbound(0, &span(2, 7, 7, false), 0, 0).t, [7; 4], "zero length stays a point");
+        let far = Hop::inbound(0, &span(2, i64::MIN, i64::MAX, false), 0, i64::MAX);
+        assert!(far.t.windows(2).all(|w| w[0] <= w[1]), "{:?}", far.t);
+    }
+
+    #[test]
     fn unshifted_skew_is_clamped_into_order() {
         let h = Hop::call(0, &span(3, 10, 20, false), &span(2, 0, 30, false), 0, (0, 0));
         assert_eq!(h.t, [10, 10, 30, 30]);
@@ -218,6 +239,31 @@ mod tests {
             prop_assert!(h.t.windows(2).all(|w| w[0] <= w[1]), "{:?}", h.t);
             prop_assert_eq!(h.flags & HOP_ERROR != 0, server.is_error || ((p.0 == 3 || p.0 == 4) && parent.is_error));
             prop_assert_eq!(h.flags & (HOP_LEAF | HOP_HIGHLIGHT | HOP_DIMMED), 0);
+        }
+
+        /// A service's outgoing calls (inside its server span) leave only after the inbound
+        /// request has arrived and are back before it answers.
+        #[test]
+        fn inbound_brackets_the_calls_it_causes(
+            start in -1_000i64..1_000,
+            len in 0i64..1_000,
+            call in (0.0f64..1.0, 0.0f64..1.0),
+            shift in -2_000i64..2_000,
+            leaf_call in any::<bool>(),
+        ) {
+            let server = span(2, start, start + len, false);
+            let (a, b) = (call.0.min(call.1), call.0.max(call.1));
+            let (cs, ce) = (start + (len as f64 * a) as i64, start + (len as f64 * b) as i64);
+            let client = span(3, cs, ce, false);
+            let inbound = Hop::inbound(0, &server, 0, shift);
+            let out = if leaf_call {
+                Hop::leaf(1, &client, 0, shift)
+            } else {
+                Hop::call(1, &client, &span(2, cs, ce, false), 0, (shift, shift))
+            };
+            prop_assert!(inbound.t.windows(2).all(|w| w[0] <= w[1]), "{:?}", inbound.t);
+            prop_assert!(inbound.t[1] <= out.t[0], "{:?} {:?}", inbound.t, out.t);
+            prop_assert!(out.t[3] <= inbound.t[2], "{:?} {:?}", inbound.t, out.t);
         }
 
         /// The index returns exactly the hops overlapping the closed window, in departure order.

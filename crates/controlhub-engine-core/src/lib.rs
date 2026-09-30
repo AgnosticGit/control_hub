@@ -673,7 +673,7 @@ impl Engine {
             if let Some(src) = self.external_caller(s) {
                 if let Some(&e) = self.edge_index.get(&(src, node, RelationKind::Calls)) {
                     let origin = self.trace_origin(s, &roots);
-                    hops.push(Hop::leaf(e, s, trace, self.skew_ns(s, &mut skew)).with_origin(origin));
+                    hops.push(Hop::inbound(e, s, trace, self.skew_ns(s, &mut skew)).with_origin(origin));
                 }
                 continue;
             }

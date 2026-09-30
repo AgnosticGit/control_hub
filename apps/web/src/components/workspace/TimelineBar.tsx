@@ -66,7 +66,7 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
               <Icon name="pause" className="h-4 w-4" />
             </button>
           ) : (
-            <button type="button" className="btn btn-icon btn-sm btn-primary" onClick={actions.play} aria-label="Play replay" title="Play">
+            <button type="button" className="btn btn-icon btn-sm btn-primary" onClick={() => void actions.play()} aria-label="Play replay" title="Play">
               <Icon name="play" className="h-4 w-4" />
             </button>
           )}

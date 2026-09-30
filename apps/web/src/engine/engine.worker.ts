@@ -263,6 +263,8 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       return requireEngine().getNodeMetrics(msg.nodeId, msg.atNs ? BigInt(msg.atNs) : undefined) ?? null;
     case "compare":
       return requireEngine().compare(BigInt(msg.aNs), BigInt(msg.bNs));
+    case "nextEvent":
+      return requireEngine().nextEventTime(BigInt(msg.afterNs))?.toString() ?? null;
     case "pick":
       return requireEngine().pick(msg.x, msg.y) ?? null;
     case "timelineTracks":

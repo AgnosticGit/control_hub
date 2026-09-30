@@ -308,9 +308,10 @@ test.describe("workspace controls on demo data", () => {
     await expect(ruler).toHaveAttribute("aria-valuenow", "0");
     await page.keyboard.press("End");
     await expect(ruler).toHaveAttribute("aria-valuenow", "100");
+    // A tenth of the view back; the view is the data plus the 1/9 after "now" that has not happened yet.
     await page.keyboard.press("PageUp");
     await expect.poll(async () => Number(await ruler.getAttribute("aria-valuenow"))).toBeGreaterThanOrEqual(88);
-    await expect.poll(async () => Number(await ruler.getAttribute("aria-valuenow"))).toBeLessThanOrEqual(92);
+    await expect.poll(async () => Number(await ruler.getAttribute("aria-valuenow"))).toBeLessThanOrEqual(90);
     await page.keyboard.press("PageDown");
     await expect(ruler).toHaveAttribute("aria-valuenow", "100");
     await page.keyboard.press("Shift+ArrowLeft");

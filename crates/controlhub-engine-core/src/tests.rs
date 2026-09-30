@@ -358,11 +358,27 @@ fn external_clients_and_dependencies_get_edges_and_request_response_hops() {
     assert_eq!(hs.len(), 2);
     // The request arrives from outside at the server span start and the answer leaves at its end.
     let inb = hs.iter().find(|h| h[0] == inbound as f32).unwrap();
-    assert_eq!((&inb[1..5], inb[5] as u32), (&[-5.0, -5.0, 5.0, 5.0][..], HOP_LEAF));
+    assert_eq!((&inb[1..5], inb[5] as u32), (&[-10.0, -5.0, 5.0, 10.0][..], 0));
     let api = e.topology().nodes.iter().find(|n| n.id == "svc_api").unwrap().index;
     assert_eq!(inb[6], api as f32, "coloured by the service where the trace starts");
     let out = hs.iter().find(|h| h[0] == outbound as f32).unwrap();
     assert_eq!((&out[1..5], out[5] as u32), (&[-3.0, -3.0, 1.0, 1.0][..], HOP_LEAF | HOP_ERROR));
+}
+
+#[test]
+fn an_inbound_request_arrives_before_its_service_calls_anything() {
+    // Regression: the inbound hop from an external client was drawn as a leaf, so its dot
+    // reached the api halfway through the server span (0 ms here), after the api's own call
+    // to the payment provider had already left (-3 ms).
+    let mut e = external_engine();
+    e.seek(BASE + 5 * MS, 1);
+    let vs = e.visible_state();
+    let hs = hops(&vs);
+    let inb = hs.iter().find(|h| h[0] == edge_between(&e, "ext_clients", "svc_api") as f32).unwrap();
+    let out = hs.iter().find(|h| h[0] == edge_between(&e, "svc_api", "ext_pay") as f32).unwrap();
+    assert_eq!(inb[5] as u32 & HOP_LEAF, 0, "the callee is instrumented: arrival and answer are measured");
+    assert!(inb[2] <= out[1], "arrives at {} but the api calls out at {}", inb[2], out[1]);
+    assert!(inb[3] >= out[4], "answers at {} before the api's call is back at {}", inb[3], out[4]);
 }
 
 #[test]

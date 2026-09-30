@@ -37,6 +37,11 @@ export function playStart(cursor: bigint, rangeFrom: bigint, rangeTo: bigint, lo
   return cursor >= rangeTo ? rangeFrom : cursor;
 }
 
+/** Where a replay that starts over begins: the first recorded item in the range, else its start. */
+export function firstItemStart(first: bigint | null, rangeFrom: bigint, rangeTo: bigint): bigint {
+  return first !== null && first >= rangeFrom && first < rangeTo ? first : rangeFrom;
+}
+
 /** The view that shows `range` with a little context on each side. */
 export function viewAround(range: View, bounds: View): View {
   const pad = (range.to - range.from) / 10n;

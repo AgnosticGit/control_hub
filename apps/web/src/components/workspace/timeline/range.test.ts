@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { placeAbove, playStart, rangeBetween, replayStep, viewAround } from "./range";
+import { firstItemStart, placeAbove, playStart, rangeBetween, replayStep, viewAround } from "./range";
 
 const bounds = { from: 1000n, to: 2_000_000n };
 
@@ -41,6 +41,20 @@ describe("playStart", () => {
 
   it("restarts from the beginning at the end of the range without a loop", () => {
     expect(playStart(bounds.to, bounds.from, bounds.to, null)).toBe(bounds.from);
+  });
+});
+
+describe("firstItemStart", () => {
+  it("starts over at the first recorded item instead of the empty range start", () => {
+    expect(firstItemStart(500_000n, bounds.from, bounds.to)).toBe(500_000n);
+    expect(firstItemStart(bounds.from, bounds.from, bounds.to)).toBe(bounds.from);
+  });
+
+  it("falls back to the range start when there is nothing inside the range", () => {
+    expect(firstItemStart(null, bounds.from, bounds.to)).toBe(bounds.from);
+    expect(firstItemStart(bounds.to, bounds.from, bounds.to)).toBe(bounds.from);
+    expect(firstItemStart(bounds.to + 1n, bounds.from, bounds.to)).toBe(bounds.from);
+    expect(firstItemStart(bounds.from - 1n, bounds.from, bounds.to)).toBe(bounds.from);
   });
 });
 

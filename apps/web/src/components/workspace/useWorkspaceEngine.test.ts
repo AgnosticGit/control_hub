@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { NS_PER_MS } from "@/lib/time";
-import { LIVE_ANIM_DELAY_MS, SPEEDS, animClockFor, asCompleteness, hopWindowFor, type Mode } from "./useWorkspaceEngine";
+import { LIVE_ANIM_DELAY_MS, SPEEDS, animClockFor, asCompleteness, hopWindowFor, seeksIntoFuture, type Mode } from "./useWorkspaceEngine";
+
+describe("seeksIntoFuture", () => {
+  it("is a seek past the loaded data of a range that still grows (it returns to live)", () => {
+    for (const mode of ["live", "paused", "replay"] as const) {
+      expect(seeksIntoFuture(101n, 100n, mode)).toBe(true);
+      expect(seeksIntoFuture(100n, 100n, mode)).toBe(false);
+      expect(seeksIntoFuture(50n, 100n, mode)).toBe(false);
+    }
+  });
+
+  it("never applies to a fixed historical range", () => {
+    expect(seeksIntoFuture(1_000n, 100n, "historical")).toBe(false);
+  });
+});
 
 describe("animClockFor", () => {
   it("animates live requests on the wall clock, delayed for SDK export batching", () => {

@@ -1,10 +1,84 @@
 import { describe, expect, it } from "vitest";
-import { MIN_VIEW_NS, follow, formatSpan, formatTick, panBy, tickStep, ticks, timeAt, xOf, zoomAt, zoomCentered } from "./scale";
+import {
+  FUTURE_PX,
+  MIN_VIEW_NS,
+  follow,
+  followLive,
+  formatSpan,
+  formatTick,
+  futureShare,
+  hasFuture,
+  panBy,
+  tickStep,
+  ticks,
+  timeAt,
+  withFuture,
+  xOf,
+  zoomAt,
+  zoomCentered,
+} from "./scale";
 
 const MS = 1_000_000n;
 const SEC = 1_000_000_000n;
 const T0 = 1_790_000_000n * SEC;
 const bounds = { from: T0, to: T0 + 900n * SEC };
+
+describe("futureShare", () => {
+  it("keeps the free stretch at a fixed width in pixels", () => {
+    expect(FUTURE_PX).toBe(72);
+    expect(futureShare(720)).toBeCloseTo(0.1, 9);
+    expect(futureShare(1440)).toBeCloseTo(0.05, 9);
+  });
+
+  it("drops it on a timeline too narrow to spare the room", () => {
+    expect(futureShare(0)).toBe(0);
+    expect(futureShare(FUTURE_PX * 4 - 1)).toBe(0);
+    expect(futureShare(FUTURE_PX * 4)).toBeCloseTo(0.25, 9);
+  });
+});
+
+describe("withFuture", () => {
+  it("puts now the given share from the right edge and keeps the start", () => {
+    const shown = withFuture(bounds, futureShare(1000));
+    expect(shown.from).toBe(bounds.from);
+    expect(1000 - xOf(bounds.to, shown, 1000)).toBeCloseTo(FUTURE_PX, 6);
+  });
+
+  it("adds nothing to an empty range or without a share", () => {
+    expect(withFuture({ from: T0, to: T0 }, 0.1)).toEqual({ from: T0, to: T0 });
+    expect(withFuture(bounds, 0)).toBe(bounds);
+    expect(hasFuture("historical")).toBe(false);
+    expect(hasFuture("paused")).toBe(true);
+  });
+});
+
+describe("followLive", () => {
+  const share = 0.1;
+  const shown = withFuture(bounds, share);
+  const v = { from: T0 + 100n * SEC, to: T0 + 200n * SEC };
+
+  it("leaves the view alone while now is left of the free stretch", () => {
+    expect(followLive(v, T0 + 150n * SEC, shown, share)).toBe(v);
+    expect(followLive(v, T0 + 190n * SEC, shown, share)).toBe(v);
+  });
+
+  it("moves the window with now so that the free stretch on the right stays", () => {
+    const moved = followLive(v, T0 + 191n * SEC, shown, share);
+    expect(moved.to - moved.from).toBe(100n * SEC);
+    expect(xOf(T0 + 191n * SEC, moved, 1000)).toBeCloseTo(900, 6);
+    expect(followLive(moved, T0 + 191n * SEC, shown, share)).toBe(moved);
+  });
+
+  it("jumps back to now when the view was scrolled into the past", () => {
+    const back = followLive(v, T0 + 500n * SEC, shown, share);
+    expect(xOf(T0 + 500n * SEC, back, 1000)).toBeCloseTo(900, 6);
+  });
+
+  it("stays inside the shown range", () => {
+    const end = followLive(v, shown.to, shown, share);
+    expect(end.to).toBe(shown.to);
+  });
+});
 
 describe("zoomCentered", () => {
   it("centres the window on the cursor, within the loaded range", () => {
@@ -46,6 +120,20 @@ describe("panBy and follow", () => {
     expect(follow(v, T0 + 4n * MS, bounds)).toBe(v);
     const f = follow(v, T0 + 20n * MS, bounds);
     expect(f).toEqual({ from: T0 + 18n * MS, to: T0 + 26n * MS });
+  });
+
+  // Regression: Play from the free stretch put the cursor a few ms before the loaded range; the
+  // view kept being re-paged on every render ("Too many re-renders").
+  it("settles when the playhead is outside the loaded range", () => {
+    const v = { from: T0 + 300n * SEC, to: T0 + 600n * SEC };
+    for (const t of [T0 - 3n * MS, bounds.to + 5n * SEC]) {
+      const live = (view: typeof v, time: bigint, b: typeof bounds) => followLive(view, time, b, 0.1);
+      for (const move of [follow, live]) {
+        const once = move(v, t, bounds);
+        expect(move(once, t, bounds)).toBe(once);
+        expect(once.from >= bounds.from && once.to <= bounds.to).toBe(true);
+      }
+    }
   });
 });
 

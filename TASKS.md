@@ -34,6 +34,11 @@ Ordered by priority within each stage. `[x]` = done and verified.
 - [x] Per-service colours on map and timeline; two-way request dots (request dot, wait, response
       ring) in the colour of the service where the request started; focus on one request
       (isolated on map and timeline, replayed on a loop)
+- [x] Map key: an info icon on the map shows every dot, line and card with its meaning (hover,
+      focus or click; colours shared with the renderer). Only the icon stays on the map; the key
+      opens as a full-screen panel with no scrolling, in larger type, and carries the animation note
+- [ ] Layout proptest `random_graphs_keep_cards_and_corridors_apart` found a case where a card sits
+      on a corridor (n = 9, saved in `proptest-regressions/layout.txt`); fix `layout.rs`
 - [ ] Focused request in the URL (shareable, survives reload); stable colours when services are
       added; apply skew correction to the trace waterfall too
 - [x] Systems outside the project on the map: "External clients" (uninstrumented callers such as a
@@ -46,6 +51,10 @@ Ordered by priority within each stage. `[x]` = done and verified.
 - [x] Modes, speeds, step, range, compare, completeness, synchronized panels, proptest, e2e
 - [x] e2e test: reload the page and check that history is restored
 - [x] Replay range: drag on the tracks, looping play, ✕ resets to the whole timeline
+- [x] FUTURE stretch after "now" (72 px, labelled FUTURE, not for a fixed historical range);
+      moving the cursor into it (drag, click or keyboard) returns to live
+- [x] Play that starts over (cursor at or after the end) begins at the first loaded item, not at
+      the empty start of the range
 - [ ] Late-data indicator per range (rows that arrived after the watermark was shown)
 - [ ] Snapshots (periodic topology/health snapshots in ClickHouse) for fast long-range seek
 

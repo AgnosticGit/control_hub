@@ -1,6 +1,6 @@
 import type { TimelineTracks } from "@controlhub/web-engine";
 import { describe, expect, it } from "vitest";
-import { RULER_H, actionColor, bucketGeometry, draw, drawRuler, rowTop, totalHeight, withAlpha, type DrawInput, type Row } from "./draw";
+import { FUTURE_EDGE, FUTURE_FILL, RULER_H, actionColor, bucketGeometry, draw, drawRuler, rowTop, totalHeight, withAlpha, type DrawInput, type Row } from "./draw";
 import type { View } from "./scale";
 
 interface Call {
@@ -261,6 +261,30 @@ describe("draw", () => {
     draw(outside.ctx, input({ rows: [row("g", "group", 40)], cursor: 5_000_000_000n }));
     expect(outside.calls.some((c) => c.name === "fillRect" && c.fillStyle === "#22d3ee")).toBe(false);
   });
+
+  it("tints the time after the data ends and marks the edge", () => {
+    const { ctx, calls } = fakeCtx();
+    draw(ctx, input({ rows: [row("g", "group", 40)], future: 800_000_000n, cursor: 900_000_000n }));
+    const tint = calls.filter((c) => c.name === "fillRect" && c.fillStyle === FUTURE_FILL);
+    expect(tint.map((c) => c.args)).toEqual([[800, 0, 200, 40]]);
+    const edge = calls.filter((c) => c.name === "fillRect" && c.fillStyle === FUTURE_EDGE);
+    expect(edge.length).toBeGreaterThan(0);
+    for (const e of edge) expect(e.args[0]).toBe(800);
+    expect(calls.some((c) => c.name === "fillRect" && c.fillStyle === "#22d3ee")).toBe(true);
+  });
+
+  it("tints the whole view when it lies after the data, and nothing when it lies before", () => {
+    const after = fakeCtx();
+    draw(after.ctx, input({ rows: [row("g", "group", 40)], future: -5n }));
+    expect(after.calls.filter((c) => c.name === "fillRect" && c.fillStyle === FUTURE_FILL).map((c) => c.args)).toEqual([[0, 0, WIDTH, 40]]);
+    expect(after.calls.some((c) => c.fillStyle === FUTURE_EDGE)).toBe(false);
+
+    for (const future of [null, undefined, 2_000_000_000n]) {
+      const none = fakeCtx();
+      draw(none.ctx, input({ rows: [row("g", "group", 40)], future }));
+      expect(none.calls.some((c) => c.fillStyle === FUTURE_FILL || c.fillStyle === FUTURE_EDGE)).toBe(false);
+    }
+  });
 });
 
 describe("drawRuler", () => {
@@ -277,5 +301,14 @@ describe("drawRuler", () => {
     const { ctx, named } = fakeCtx();
     drawRuler(ctx, { width: WIDTH, view: VIEW, cursor: 0n, markA: 5_000_000_000n, hoverX: null, range: { from: 0n, to: 1n } });
     expect(named("fillText").map((c) => c.args[0])).not.toContain("A");
+  });
+
+  it("tints the future on the ruler too and keeps tick labels out of it", () => {
+    const { ctx, calls, named } = fakeCtx();
+    drawRuler(ctx, { width: WIDTH, view: VIEW, cursor: 0n, markA: null, hoverX: null, range: null, future: 750_000_000n });
+    expect(calls.filter((c) => c.name === "fillRect" && c.fillStyle === FUTURE_FILL).map((c) => c.args)).toEqual([[750, 0, 250, RULER_H]]);
+    const labelXs = named("fillText").map((c) => Number(c.args[1]));
+    expect(labelXs.length).toBeGreaterThan(0);
+    for (const x of labelXs) expect(x).toBeLessThan(750);
   });
 });

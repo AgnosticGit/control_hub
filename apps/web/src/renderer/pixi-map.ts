@@ -26,7 +26,8 @@ import {
 } from "@controlhub/web-engine";
 import { DEFAULT_EDGE_STYLE, dashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
 import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
-import { EXTERNAL_COLOR, dashedRect, nodeSubLabel } from "./external";
+import { dashedRect, nodeSubLabel } from "./external";
+import { ACCENT, CARD_BG, EDGE_ERROR, EDGE_INFERRED, EDGE_OK, EDGE_WARN, EXTERNAL_COLOR, STATUS_COLORS } from "./map-colors";
 import { animTimeMs, hopPhase, type AnimClock } from "./hops";
 import { serviceColors } from "./service-colors";
 
@@ -35,13 +36,6 @@ export interface MapCallbacks {
   onPick(worldX: number, worldY: number): void;
 }
 
-const STATUS_COLORS = [0x64748b, 0x22d3ee, 0xf59e0b, 0xef4444];
-const EDGE_OK = 0x3b82f6;
-const EDGE_INFERRED = 0x475569;
-const EDGE_ERROR = 0xef4444;
-const EDGE_WARN = 0xf59e0b;
-const ACCENT = 0x22d3ee;
-const CARD_BG = 0x0e1729;
 const MIN_SCALE = 0.15;
 const MAX_SCALE = 4;
 /** Node card size in world units (layout spacing is 300 × 140). */

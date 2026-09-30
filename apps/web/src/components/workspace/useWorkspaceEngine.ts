@@ -6,7 +6,8 @@ import { EngineClient } from "@/engine/client";
 import { scopedUrl } from "@/lib/api";
 import { NS_PER_MS, NS_PER_SEC, clampNs, nowNs, parseNs } from "@/lib/time";
 import type { AnimClock } from "@/renderer/hops";
-import { playStart, replayStep } from "./timeline/range";
+import { firstItemStart, playStart, replayStep } from "./timeline/range";
+import { hasFuture } from "./timeline/scale";
 
 export type Mode = "live" | "paused" | "replay" | "historical";
 /** Replay speeds; 0.001x shows one millisecond of recorded time per second. */
@@ -22,6 +23,11 @@ export const LIVE_ANIM_DELAY_MS = 8000;
 export function animClockFor(mode: Mode, speed: Speed): AnimClock {
   if (mode === "live") return { kind: "wall", delayMs: LIVE_ANIM_DELAY_MS };
   return { kind: "frame", rate: mode === "replay" ? speed : 0 };
+}
+
+/** A seek past the loaded data of a range that is still growing: it lands in the future. */
+export function seeksIntoFuture(t: bigint, rangeTo: bigint, mode: Mode): boolean {
+  return t > rangeTo && hasFuture(mode);
 }
 
 /** Hop window around the frame time that covers the animation time until the next frame. */
@@ -355,10 +361,19 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
   const actions = useMemo(() => {
     const a = {
     pause: () => patch({ mode: stateRef.current.mode === "historical" ? "historical" : "paused" }),
-    play: () => {
+    play: async () => {
       const s = stateRef.current;
       const start = playStart(s.cursor, s.rangeFrom, s.rangeTo, s.loop);
-      if (start !== s.cursor) seek(start);
+      if (!s.loop && start !== s.cursor) {
+        // Starting over: skip the empty stretch before the first recorded item.
+        const first = await clientRef.current
+          ?.call({ kind: "nextEvent", afterNs: (s.rangeFrom - 1n).toString() })
+          .catch(() => null);
+        const now = stateRef.current;
+        seek(firstItemStart(parseNs(first), now.rangeFrom, now.rangeTo));
+      } else if (start !== s.cursor) {
+        seek(start);
+      }
       patch({ mode: "replay" });
     },
     /** Sets or clears the replay range; picking one leaves live mode. */
@@ -380,6 +395,11 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     },
     seek: (t: bigint) => {
       const s = stateRef.current;
+      if (seeksIntoFuture(t, s.rangeTo, s.mode)) {
+        // Nothing to show after the loaded data: moving there means "back to now".
+        if (s.mode !== "live") void a.returnToLive();
+        return;
+      }
       if (s.mode === "live" || s.mode === "replay") patch({ mode: "paused" });
       seek(t);
     },
