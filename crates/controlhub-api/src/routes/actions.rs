@@ -16,8 +16,9 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::AuditEntryDto;
-use crate::auth::{CurrentUser, Role, authorize};
+use crate::auth::{Authorized, CurrentUser, authorize, authorize_as};
 use crate::error::{ApiError, ApiResult};
+use crate::permissions::Permission;
 use crate::state::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -221,7 +222,7 @@ pub async fn catalog(
     user: CurrentUser,
     Path((project_id, environment_id)): Path<(String, String)>,
 ) -> ApiResult<Json<ActionCatalogResponse>> {
-    let (_, is_demo) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
+    let (_, is_demo) = authorize(&state, &user, &project_id, &environment_id, Permission::ActionsView).await?;
     Ok(Json(ActionCatalogResponse {
         environment_is_demo: is_demo,
         actions: actions::CATALOG
@@ -259,7 +260,7 @@ pub async fn list(
     user: CurrentUser,
     Path((project_id, environment_id)): Path<(String, String)>,
 ) -> ApiResult<Json<Vec<ActionPlanDto>>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::ActionsView).await?;
     Ok(Json(state.pg.list_action_plans(&scope, 100).await?.into_iter().map(Into::into).collect()))
 }
 
@@ -271,7 +272,7 @@ pub async fn detail(
     user: CurrentUser,
     Path((project_id, environment_id, id)): Path<(String, String, String)>,
 ) -> ApiResult<Json<ActionPlanDetail>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::ActionsView).await?;
     let id = plan_id(&id)?;
     let row = state.pg.action_plan(&scope, id).await?.ok_or(ApiError::NotFound)?;
     let audit =
@@ -289,7 +290,7 @@ pub async fn propose(
     Path((project_id, environment_id)): Path<(String, String)>,
     Json(req): Json<ProposeActionRequest>,
 ) -> ApiResult<Json<ActionPlanDto>> {
-    let (scope, is_demo) = authorize(&state, &user, &project_id, &environment_id, Role::Operator).await?;
+    let (scope, is_demo) = authorize(&state, &user, &project_id, &environment_id, Permission::ActionsPropose).await?;
     user.session_id()?;
     let reason = actions::validate_reason(&req.reason).map_err(ApiError::BadRequest)?;
     let action = actions::validate(&req.action_type, &req.target, &req.params)
@@ -351,7 +352,7 @@ pub async fn approve(
     Path((project_id, environment_id, id)): Path<(String, String, String)>,
     Json(req): Json<DecisionRequest>,
 ) -> ApiResult<Json<ActionPlanDto>> {
-    let (scope, is_demo) = authorize(&state, &user, &project_id, &environment_id, Role::Admin).await?;
+    let (scope, is_demo) = authorize(&state, &user, &project_id, &environment_id, Permission::ActionsApprove).await?;
     user.session_id()?;
     let comment = clean_comment(req.comment.as_deref())?;
     let row = state.pg.action_plan(&scope, plan_id(&id)?).await?.ok_or(ApiError::NotFound)?;
@@ -401,7 +402,7 @@ pub async fn reject(
     Path((project_id, environment_id, id)): Path<(String, String, String)>,
     Json(req): Json<DecisionRequest>,
 ) -> ApiResult<Json<ActionPlanDto>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Admin).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::ActionsApprove).await?;
     user.session_id()?;
     let comment = clean_comment(req.comment.as_deref())?
         .ok_or_else(|| ApiError::BadRequest("comment is required when rejecting".into()))?;
@@ -438,13 +439,18 @@ pub async fn cancel(
     Path((project_id, environment_id, id)): Path<(String, String, String)>,
     Json(req): Json<DecisionRequest>,
 ) -> ApiResult<Json<ActionPlanDto>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Operator).await?;
+    let Authorized { scope, actor, .. } =
+        authorize_as(&state, &user, &project_id, &environment_id, Permission::ActionsView).await?;
+    if !actor.has(Permission::ActionsPropose) && !actor.has(Permission::ActionsApprove) {
+        return Err(ApiError::Forbidden("insufficient permissions"));
+    }
     user.session_id()?;
     let comment = clean_comment(req.comment.as_deref())?;
     let row = state.pg.action_plan(&scope, plan_id(&id)?).await?.ok_or(ApiError::NotFound)?;
-    if row.created_by != user.user_id {
-        // Only admins may cancel someone else's plan.
-        authorize(&state, &user, &project_id, &environment_id, Role::Admin).await?;
+    // Own plans need propose; someone else's plan needs approve.
+    let need = if row.created_by == user.user_id { Permission::ActionsPropose } else { Permission::ActionsApprove };
+    if !actor.has(need) {
+        return Err(ApiError::Forbidden("insufficient permissions"));
     }
     let actor = user.user_id.to_string();
     let updated = state

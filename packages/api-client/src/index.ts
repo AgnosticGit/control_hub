@@ -50,13 +50,22 @@ export class ApiRequestError extends Error {
   }
 }
 
-/** Unwraps an openapi-fetch result, throwing a typed error on failure. */
-export function unwrap<T>(result: { data?: T; error?: unknown; response: Response }): T {
-  if (result.data !== undefined && result.response.ok) return result.data;
+function requestError(result: { error?: unknown; response: Response }): ApiRequestError {
   const err = result.error as { code?: unknown; message?: unknown } | undefined;
-  throw new ApiRequestError(
+  return new ApiRequestError(
     result.response.status,
     typeof err?.code === "string" ? err.code : "http_error",
     typeof err?.message === "string" ? err.message : `HTTP ${result.response.status}`,
   );
+}
+
+/** Unwraps an openapi-fetch result, throwing a typed error on failure. */
+export function unwrap<T>(result: { data?: T; error?: unknown; response: Response }): T {
+  if (result.data !== undefined && result.response.ok) return result.data;
+  throw requestError(result);
+}
+
+/** For responses without a body (204): succeeds on any 2xx, throws a typed error otherwise. */
+export function unwrapEmpty(result: { error?: unknown; response: Response }): void {
+  if (!result.response.ok) throw requestError(result);
 }

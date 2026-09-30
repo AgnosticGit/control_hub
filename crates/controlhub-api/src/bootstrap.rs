@@ -13,6 +13,7 @@ use controlhub_storage::pg::PgStore;
 use controlhub_storage::secrets::{generate_token, hash_password, hash_token, token_prefix};
 use serde_json::json;
 
+use crate::permissions::{self, Builtin};
 use crate::routes::signup::{MAX_PASSWORD_BYTES, MIN_PASSWORD_CHARS, normalise_email};
 
 const CH_MIGRATIONS: &[(&str, &str)] =
@@ -112,6 +113,10 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
     let pg = admin_pg().await?;
     pg.migrate().await.context("postgres migrations")?;
     tracing::info!("postgres migrations applied");
+    for b in Builtin::ALL {
+        let updated = pg.sync_builtin_role(b.key(), &permissions::to_strings(&b.permissions())).await?;
+        tracing::debug!(role = b.key(), updated, "built-in role permissions synced");
+    }
 
     pg.ensure_service_role(
         "controlhub_api",
@@ -119,7 +124,13 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
         &[
             "SELECT ON consumer_offsets, processing_errors",
             // INSERT only (no UPDATE/DELETE): self-service sign-up creates a user with a new tenant.
-            "SELECT, INSERT ON tenants, projects, environments, users, memberships",
+            "SELECT, INSERT ON tenants, projects, environments, users",
+            // Users edit their own profile, password and onboarding state; project admins rename projects.
+            "UPDATE (display_name, password_hash, onboarding_completed_at) ON users",
+            "UPDATE (name) ON projects",
+            // Members, role templates and invite links are managed from the web app (permission checks in the API).
+            "SELECT, INSERT, UPDATE, DELETE ON memberships, project_roles",
+            "SELECT, INSERT, UPDATE ON project_invites",
             "SELECT, INSERT, UPDATE ON sessions",
             "SELECT, INSERT ON audit_log",
             "SELECT, INSERT, UPDATE ON ingest_tokens, api_tokens",
@@ -182,7 +193,7 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
     let hash = tokio::task::spawn_blocking(move || hash_password(&pw)).await??;
     let name = owner.email.split('@').next().unwrap_or_default().to_owned();
     let id = pg.upsert_user(&owner.email, &name, &hash).await?;
-    pg.upsert_membership(id, "demo", "owner").await?;
+    pg.upsert_membership(id, "demo", Builtin::Owner.key()).await?;
     tracing::info!(email = %owner.email, "owner account ensured (owner of the demo project)");
 
     let mut tokens = serde_json::Map::new();

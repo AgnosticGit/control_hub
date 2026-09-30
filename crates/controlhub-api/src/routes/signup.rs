@@ -104,17 +104,31 @@ fn clean_name(raw: Option<&str>, field: &str, default: &str) -> Result<String, A
     Ok(name.to_owned())
 }
 
-fn validate(req: RegisterRequest) -> Result<Registration, ApiError> {
-    let email = normalise_email(&req.email)?;
-    if req.password.chars().count() < MIN_PASSWORD_CHARS {
+/// A name the user must give (profile, new project): trimmed, 1-100 printable characters.
+pub(crate) fn required_name(raw: &str, field: &str) -> Result<String, ApiError> {
+    if raw.trim().is_empty() {
+        return Err(ApiError::BadRequest(format!("{field} must not be empty")));
+    }
+    clean_name(Some(raw), field, "")
+}
+
+/// Rules for a new password (sign-up and password change) of the account with `email`.
+pub(crate) fn check_new_password(email: &str, password: &str) -> Result<(), ApiError> {
+    if password.chars().count() < MIN_PASSWORD_CHARS {
         return Err(ApiError::BadRequest(format!("password must be at least {MIN_PASSWORD_CHARS} characters")));
     }
-    if req.password.len() > MAX_PASSWORD_BYTES {
+    if password.len() > MAX_PASSWORD_BYTES {
         return Err(ApiError::BadRequest(format!("password must be at most {MAX_PASSWORD_BYTES} bytes")));
     }
-    if req.password.trim().to_lowercase() == email {
+    if password.trim().to_lowercase() == email {
         return Err(ApiError::BadRequest("password must not be your email".into()));
     }
+    Ok(())
+}
+
+fn validate(req: RegisterRequest) -> Result<Registration, ApiError> {
+    let email = normalise_email(&req.email)?;
+    check_new_password(&email, &req.password)?;
     let local = email.split('@').next().unwrap_or_default().to_owned();
     Ok(Registration {
         display_name: clean_name(req.display_name.as_deref(), "display name", &local)?,
@@ -173,7 +187,7 @@ pub async fn register(
             request_id: None,
         })
         .await;
-    let (headers, body) = start_session(&state, created.user_id, r.email, r.display_name).await?;
+    let (headers, body) = start_session(&state, created.user_id, r.email).await?;
     Ok((StatusCode::CREATED, headers, Json(body)).into_response())
 }
 
@@ -264,6 +278,14 @@ mod tests {
             let mut r = req("bob@example.com", "correct horse battery");
             r.project_name = Some(bad.clone());
             assert!(validate(r).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn required_names_must_not_be_blank() {
+        assert_eq!(required_name("  Shop ", "name").unwrap(), "Shop");
+        for bad in ["", "   ", "a\u{0}b", &"x".repeat(MAX_NAME_CHARS + 1)] {
+            assert!(matches!(required_name(bad, "name"), Err(ApiError::BadRequest(_))), "{bad:?}");
         }
     }
 

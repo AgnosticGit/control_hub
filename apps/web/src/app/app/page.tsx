@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Logo } from "@/components/ui/Icon";
+import { SetupCard } from "@/components/account/AccountHome";
+import { Icon, Logo } from "@/components/ui/Icon";
 import { useSession } from "@/lib/session";
 
 export default function AppIndex() {
@@ -25,9 +26,22 @@ export default function AppIndex() {
   }
   return (
     <main className="mx-auto max-w-2xl p-8">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Logo className="h-9 w-9" />
         <h1 className="text-2xl font-semibold tracking-tight">Choose an environment</h1>
+        <nav aria-label="Account" className="ml-auto flex gap-2">
+          <Link href="/app/account/projects" className="btn btn-sm">
+            <Icon name="plus" className="h-3.5 w-3.5" />
+            New project
+          </Link>
+          <Link href="/app/account" className="btn btn-sm">
+            <Icon name="user" className="h-3.5 w-3.5" />
+            Your account
+          </Link>
+        </nav>
+      </div>
+      <div className="mt-6">
+        <SetupCard />
       </div>
       {projects.length === 0 ? <p className="card mt-6 p-4 text-sm text-muted">You are not a member of any project.</p> : null}
       <ul className="mt-6 space-y-4">
@@ -37,7 +51,7 @@ export default function AppIndex() {
               <span className="flex h-6 w-6 items-center justify-center rounded-md bg-violet/20 text-xs font-bold text-violet">
                 {p.name.slice(0, 1).toUpperCase()}
               </span>
-              {p.name} <span className="badge border-border-strong text-muted">{p.role}</span>
+              {p.name} <span className="badge border-border-strong text-muted">{p.role_name}</span>
             </div>
             <ul className="mt-3 flex flex-wrap gap-2">
               {p.environments.map((e) => (

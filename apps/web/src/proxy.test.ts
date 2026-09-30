@@ -52,8 +52,15 @@ describe("proxy (/app)", () => {
     }
   });
 
+  it("lets the invite page through without a session, so a visitor sees the invite before signing in", () => {
+    const res = proxy(request("/app/invite", null));
+    expect(res.headers.get("location")).toBeNull();
+    expect(res.headers.get("content-security-policy")).toContain("'nonce-");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+
   it("does not treat look-alike paths as public pages", () => {
-    for (const path of ["/app/loginx", "/app/registerx", "/app/p1/register", "/app/register-admin"]) {
+    for (const path of ["/app/loginx", "/app/registerx", "/app/p1/register", "/app/register-admin", "/app/invites", "/app/p1/invite"]) {
       expect(isPublicAppPath(path)).toBe(false);
       expect(proxy(request(path, null)).status).toBe(307);
     }

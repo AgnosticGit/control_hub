@@ -2,12 +2,12 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { Logo } from "@/components/ui/Icon";
 import { api, ApiRequestError, unwrap } from "@/lib/api";
 import { useHydrated } from "@/lib/hydrated";
-import { afterSignupPath, formText, MIN_PASSWORD_CHARS, signupProblem } from "@/lib/signup";
+import { afterSignupPath, formText, MIN_PASSWORD_CHARS, safeNext, signupProblem } from "@/lib/signup";
 
 function errorText(err: unknown): string {
   if (!(err instanceof ApiRequestError)) return "Cannot reach the ControlHub API.";
@@ -25,8 +25,9 @@ function errorText(err: unknown): string {
   }
 }
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
+  const next = safeNext(useSearchParams().get("next"));
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -57,7 +58,7 @@ export default function RegisterPage() {
         }),
       );
       qc.setQueryData(["session"], session);
-      router.replace(afterSignupPath(session.projects));
+      router.replace(afterSignupPath(next));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -117,11 +118,19 @@ export default function RegisterPage() {
         </button>
         <p className="text-center text-sm text-muted">
           Already have an account?{" "}
-          <Link href="/app/login" className="text-accent hover:underline">
+          <Link href={next ? `/app/login?next=${encodeURIComponent(next)}` : "/app/login"} className="text-accent hover:underline">
             Sign in
           </Link>
         </p>
       </form>
     </main>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense>
+      <RegisterForm />
+    </Suspense>
   );
 }

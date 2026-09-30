@@ -19,8 +19,9 @@ use controlhub_storage::pg::WatermarkRow;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::auth::{CurrentUser, Role, authorize};
+use crate::auth::{CurrentUser, authorize};
 use crate::error::{ApiError, ApiResult};
+use crate::permissions::Permission;
 use crate::state::AppState;
 
 const NS_PER_MIN: i64 = 60_000_000_000;
@@ -168,7 +169,7 @@ pub async fn services(
     Path((project_id, environment_id)): Path<(String, String)>,
     Query(q): Query<RangeParams>,
 ) -> ApiResult<Json<ServicesResponse>> {
-    let (scope, is_demo) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
+    let (scope, is_demo) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let r = q.resolve()?;
     let (spans, logs) = tokio::try_join!(
         state.ch.service_summaries(&scope, r.from, r.to),
@@ -269,7 +270,7 @@ pub async fn topology(
     Path((project_id, environment_id)): Path<(String, String)>,
     Query(q): Query<RangeParams>,
 ) -> ApiResult<Json<TopologyResponse>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let r = q.resolve()?;
     let (services, logs, calls, resources, clients) = tokio::try_join!(
         state.ch.service_summaries(&scope, r.from, r.to),
@@ -454,7 +455,7 @@ pub async fn traces(
     Path((project_id, environment_id)): Path<(String, String)>,
     Query(q): Query<TraceListParams>,
 ) -> ApiResult<Json<TraceListResponse>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let (query, limit) = q.to_query()?;
     let rows = state.ch.traces(&scope, &query).await?;
     let (traces, next_cursor, has_more) = trace_page(rows, limit);
@@ -650,7 +651,7 @@ pub async fn trace_detail(
     user: CurrentUser,
     Path((project_id, environment_id, trace_id)): Path<(String, String, String)>,
 ) -> ApiResult<Json<TraceDetailResponse>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let trace_id = TraceId::parse(trace_id).map_err(|_| ApiError::BadRequest("invalid trace id".into()))?;
     const SPAN_LIMIT: u32 = 5_000;
     let spans = state.ch.trace_spans(&scope, trace_id.as_str(), SPAN_LIMIT + 1).await?;
@@ -723,7 +724,7 @@ pub async fn logs(
     Path((project_id, environment_id)): Path<(String, String)>,
     Query(q): Query<LogParams>,
 ) -> ApiResult<Json<LogListResponse>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let (query, limit) = q.to_query()?;
     let rows = state.ch.logs(&scope, &query).await?;
     let (logs, next_cursor, has_more) = log_page(rows, limit);
@@ -791,7 +792,7 @@ pub async fn events(
     Path((project_id, environment_id)): Path<(String, String)>,
     Query(q): Query<EventParams>,
 ) -> ApiResult<Json<EventListResponse>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let r = RangeParams { from: q.from.clone(), to: q.to.clone() }.resolve()?;
     let limit = limit(q.limit, 200, 1_000);
     let rows = state.ch.events(&scope, r.from, r.to, q.trace_id.as_deref(), limit + 1).await?;
@@ -893,7 +894,7 @@ pub async fn timeline(
     Path((project_id, environment_id)): Path<(String, String)>,
     Query(q): Query<TimelineParams>,
 ) -> ApiResult<Json<TimelineResponse>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let r = RangeParams { from: q.from.clone(), to: q.to.clone() }.resolve()?;
     let limit = limit(q.limit, 20_000, 100_000);
     let (spans, logs, events) = tokio::try_join!(

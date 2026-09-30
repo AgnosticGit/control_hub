@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { api, ApiRequestError, scopedPath, unwrap, type Schemas } from "@/lib/api";
+import { can, canCancelPlan, canDecidePlan } from "@/lib/permissions";
 import { useSession } from "@/lib/session";
 import { AppShell } from "@/components/shell/AppShell";
 import { Icon } from "@/components/ui/Icon";
@@ -189,9 +190,7 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
 
   const project = session.data?.projects.find((p) => p.id === projectId);
   const env = project?.environments.find((e) => e.id === environmentId);
-  const role = project?.role;
-  const isAdmin = role === "admin" || role === "owner";
-  const canPropose = role !== undefined && role !== "viewer";
+  const canPropose = can(project, "actions.propose");
   const me = session.data?.user.email;
 
   const catalog = useQuery({
@@ -269,7 +268,7 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
           {canPropose && catalog.data ? (
             <ProposeForm specs={catalog.data.actions} onPropose={(b) => propose.mutate(b)} pending={propose.isPending} />
           ) : (
-            <p className="card p-4 text-sm text-muted">{canPropose ? "Loading catalog…" : "Proposing actions requires the operator role."}</p>
+            <p className="card p-4 text-sm text-muted">{canPropose ? "Loading catalog…" : "Your role in this project does not include proposing actions."}</p>
           )}
 
           {error ? (
@@ -314,7 +313,7 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
                   <td className="px-2 text-xs text-muted">{p.created_by}</td>
                   <td className="px-2 text-xs text-muted">{when(p.created_at)}</td>
                   <td className="space-x-1 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    {p.state === "proposed" && isAdmin && !mine ? (
+                    {p.state === "proposed" && canDecidePlan(project, mine) ? (
                       <>
                         <button
                           type="button"
@@ -339,7 +338,7 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
                         </button>
                       </>
                     ) : null}
-                    {(p.state === "proposed" || p.state === "approved") && (mine || isAdmin) ? (
+                    {(p.state === "proposed" || p.state === "approved") && canCancelPlan(project, mine) ? (
                       <button
                         type="button"
                         className="btn btn-sm"

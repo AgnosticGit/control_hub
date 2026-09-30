@@ -37,13 +37,22 @@ test('sign-up creates an owner of a fresh, non-demo project and signs in', async
   const { body, project, env } = account;
   assert.equal(body.user.email, account.email, 'email is normalised');
   assert.equal(body.user.display_name, account.email.split('@')[0]);
+  assert.equal(body.user.onboarding_done, false, 'a new account is offered onboarding');
   assert.equal(body.projects.length, 1, 'sees only its own project');
   assert.equal(project.name, 'Shop backend');
   assert.equal(project.role, 'owner');
+  assert.equal(project.role_name, 'Owner');
+  assert.equal(project.permissions.length, 10, `all permissions: ${project.permissions}`);
   assert.match(project.id, /^p-[0-9a-f]{32}$/);
   assert.match(project.tenant_id, /^t-[0-9a-f]{32}$/);
   assert.deepEqual([env.name, env.is_demo], ['production', false]);
   assert.match(env.id, /^e-[0-9a-f]{32}$/);
+
+  const roles = await account.session.json(`/api/v1/projects/${project.id}/roles`);
+  assert.equal(roles.status, 200);
+  assert.deepEqual(roles.body.map((r) => [r.builtin, r.holders]), [['owner', 1], ['admin', 0], ['operator', 0], ['viewer', 0]]);
+  const members = await account.session.json(`/api/v1/projects/${project.id}/members`);
+  assert.deepEqual(members.body.map((m) => [m.email, m.role, m.is_owner]), [[account.email, 'owner', true]]);
 
   const me = await account.session.json('/api/v1/session');
   assert.equal(me.status, 200);

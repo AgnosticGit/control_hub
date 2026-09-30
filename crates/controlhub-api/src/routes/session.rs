@@ -2,12 +2,15 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Response};
+use controlhub_storage::pg::AccountRow;
 use controlhub_storage::secrets::{generate_token, hash_token, verify_password};
 use serde::{Deserialize, Serialize};
+use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
 
-use crate::auth::{CSRF_COOKIE, Credential, CurrentUser, SESSION_COOKIE, check_origin};
+use crate::auth::{CSRF_COOKIE, Credential, CurrentUser, SESSION_COOKIE, check_origin, effective_permissions};
 use crate::error::{ApiError, ApiResult};
+use crate::permissions;
 use crate::state::AppState;
 
 /// Precomputed Argon2 hash used when the user does not exist, so both paths
@@ -28,6 +31,26 @@ pub struct UserDto {
     pub id: String,
     pub email: String,
     pub display_name: String,
+    /// RFC 3339.
+    pub created_at: String,
+    /// Onboarding finished or skipped; it is offered, never required.
+    pub onboarding_done: bool,
+}
+
+impl From<AccountRow> for UserDto {
+    fn from(a: AccountRow) -> Self {
+        Self {
+            id: a.id.to_string(),
+            email: a.email,
+            display_name: a.display_name,
+            created_at: a.created_at.format(&Rfc3339).unwrap_or_default(),
+            onboarding_done: a.onboarding_completed_at.is_some(),
+        }
+    }
+}
+
+pub(crate) async fn user_dto(state: &AppState, user_id: uuid::Uuid) -> ApiResult<UserDto> {
+    Ok(state.pg.account(user_id).await?.ok_or(ApiError::Unauthenticated)?.into())
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -43,7 +66,13 @@ pub struct ProjectDto {
     pub id: String,
     pub tenant_id: String,
     pub name: String,
+    /// Built-in role key (`owner`, `admin`, `operator`, `viewer`), `custom` for a role template or
+    /// `individual` for an individual permission set. API tokens always report `viewer`.
     pub role: String,
+    /// Display name of the role (template name, or `Individual`).
+    pub role_name: String,
+    /// Effective permission ids in this project (see `GET /api/v1/permissions`).
+    pub permissions: Vec<String>,
     pub environments: Vec<EnvironmentDto>,
 }
 
@@ -72,15 +101,20 @@ pub async fn projects_for(state: &AppState, user: &CurrentUser) -> ApiResult<Vec
     let mut memberships = state.pg.memberships(user.user_id).await?;
     if let Some(s) = token_scope {
         memberships.retain(|m| m.project_id == s.project_id.as_str() && m.tenant_id == s.tenant_id.as_str());
-        for m in &mut memberships {
-            m.role = "viewer".to_owned();
-        }
     }
     let ids: Vec<String> = memberships.iter().map(|m| m.project_id.clone()).collect();
     let envs = state.pg.environments_for_projects(&ids).await?;
     Ok(memberships
         .into_iter()
         .map(|m| ProjectDto {
+            permissions: permissions::to_strings(&effective_permissions(&user.credential, &m.permissions)),
+            role: match (token_scope, &m.role_key, m.role_id) {
+                (Some(_), _, _) => "viewer".to_owned(),
+                (None, Some(key), _) => key.clone(),
+                (None, None, Some(_)) => "custom".to_owned(),
+                (None, None, None) => "individual".to_owned(),
+            },
+            role_name: if token_scope.is_some() { "API token".to_owned() } else { m.role_name },
             environments: envs
                 .iter()
                 .filter(|e| e.project_id == m.project_id && e.tenant_id == m.tenant_id)
@@ -90,7 +124,6 @@ pub async fn projects_for(state: &AppState, user: &CurrentUser) -> ApiResult<Vec
             id: m.project_id,
             tenant_id: m.tenant_id,
             name: m.project_name,
-            role: m.role,
         })
         .collect())
 }
@@ -119,7 +152,7 @@ pub async fn login(
         return Err(ApiError::Unauthenticated);
     };
     state.login_throttle.success(&email).await;
-    let (headers, body) = start_session(&state, user.id, user.email, user.display_name).await?;
+    let (headers, body) = start_session(&state, user.id, user.email).await?;
     Ok((headers, Json(body)).into_response())
 }
 
@@ -129,7 +162,6 @@ pub(crate) async fn start_session(
     state: &AppState,
     user_id: uuid::Uuid,
     email: String,
-    display_name: String,
 ) -> ApiResult<(HeaderMap, SessionResponse)> {
     let session_token = generate_token("chs_")?;
     let csrf_token = generate_token("chc_")?;
@@ -154,16 +186,9 @@ pub(crate) async fn start_session(
         })
         .await;
 
-    let current = CurrentUser {
-        credential: crate::auth::Credential::Session(session_id),
-        user_id,
-        email: email.clone(),
-        display_name: display_name.clone(),
-    };
-    let body = SessionResponse {
-        projects: projects_for(state, &current).await?,
-        user: UserDto { id: user_id.to_string(), email, display_name },
-    };
+    let current = CurrentUser { credential: crate::auth::Credential::Session(session_id), user_id, email };
+    let body =
+        SessionResponse { projects: projects_for(state, &current).await?, user: user_dto(state, user_id).await? };
     let max_age = state.config.session_ttl.whole_seconds();
     let mut headers = HeaderMap::new();
     headers.append(
@@ -180,7 +205,7 @@ pub(crate) async fn start_session(
 pub async fn session(State(state): State<AppState>, user: CurrentUser) -> ApiResult<Json<SessionResponse>> {
     Ok(Json(SessionResponse {
         projects: projects_for(&state, &user).await?,
-        user: UserDto { id: user.user_id.to_string(), email: user.email, display_name: user.display_name },
+        user: user_dto(&state, user.user_id).await?,
     }))
 }
 

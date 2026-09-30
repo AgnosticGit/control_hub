@@ -57,6 +57,11 @@ export async function login(page: Page, email: string, next = "/app") {
   await expect(page).not.toHaveURL(/\/app\/login/);
 }
 
+/** The page's own alert; skips Next.js's empty route announcer, which also has role=alert. */
+export function pageAlert(page: Page) {
+  return page.getByRole("alert").filter({ hasText: /\S/ });
+}
+
 /** Uncaught page errors and console errors, for "renders without errors" checks. */
 export function collectErrors(page: Page): string[] {
   const errors: string[] = [];

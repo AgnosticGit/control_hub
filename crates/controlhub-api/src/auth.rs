@@ -14,31 +14,15 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::error::ApiError;
+use crate::permissions::{self, Actor, Permission, PermissionSet};
 use crate::state::AppState;
 
 pub const SESSION_COOKIE: &str = "controlhub_session";
 pub const CSRF_COOKIE: &str = "controlhub_csrf";
 pub const CSRF_HEADER: &str = "x-csrf-token";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Role {
-    Viewer = 0,
-    Operator = 1,
-    Admin = 2,
-    Owner = 3,
-}
-
-impl Role {
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "viewer" => Some(Role::Viewer),
-            "operator" => Some(Role::Operator),
-            "admin" => Some(Role::Admin),
-            "owner" => Some(Role::Owner),
-            _ => None,
-        }
-    }
-}
+/// The most an API token can do, whatever its owner may do: read telemetry and plans.
+pub const API_TOKEN_PERMISSIONS: [Permission; 2] = [Permission::TelemetryView, Permission::ActionsView];
 
 pub const API_TOKEN_PREFIX: &str = "cha_";
 
@@ -56,7 +40,6 @@ pub struct CurrentUser {
     pub credential: Credential,
     pub user_id: Uuid,
     pub email: String,
-    pub display_name: String,
 }
 
 impl CurrentUser {
@@ -140,7 +123,6 @@ impl FromRequestParts<AppState> for CurrentUser {
                 credential: Credential::ApiToken { token_id: p.token_id, scope: p.scope },
                 user_id: p.user_id,
                 email: p.email,
-                display_name: p.display_name,
             });
         }
         let token = cookie_value(parts, SESSION_COOKIE).ok_or(ApiError::Unauthenticated)?;
@@ -153,7 +135,6 @@ impl FromRequestParts<AppState> for CurrentUser {
             credential: Credential::Session(session.session_id),
             user_id: session.user_id,
             email: session.email,
-            display_name: session.display_name,
         })
     }
 }
@@ -170,37 +151,108 @@ impl OptionalFromRequestParts<AppState> for CurrentUser {
     }
 }
 
-/// Resolve and authorize a project/environment scope for the user.
+/// Effective permissions of a credential: an API token never exceeds [`API_TOKEN_PERMISSIONS`].
+pub fn effective_permissions(credential: &Credential, member: &[String]) -> PermissionSet {
+    let set = permissions::from_stored(member);
+    match credential {
+        Credential::Session(_) => set,
+        Credential::ApiToken { .. } => set.into_iter().filter(|p| API_TOKEN_PERMISSIONS.contains(p)).collect(),
+    }
+}
+
+fn require(permissions: &PermissionSet, need: Permission, credential: &Credential) -> Result<(), ApiError> {
+    if permissions.contains(&need) {
+        return Ok(());
+    }
+    Err(match credential {
+        Credential::ApiToken { .. } if !API_TOKEN_PERMISSIONS.contains(&need) => {
+            ApiError::Forbidden("API tokens are read-only")
+        }
+        _ => ApiError::Forbidden("insufficient permissions"),
+    })
+}
+
+/// A project the principal is a member of, with its permissions there.
+#[derive(Debug, Clone)]
+pub struct ProjectAccess {
+    pub tenant_id: TenantId,
+    pub project_id: ProjectId,
+    pub actor: Actor,
+}
+
+/// Resolve a project for the user and require `need` there.
+/// Unknown and foreign projects both return 404 so existence is not leaked.
+pub async fn authorize_project(
+    state: &AppState,
+    user: &CurrentUser,
+    project_id: &str,
+    need: Permission,
+) -> Result<ProjectAccess, ApiError> {
+    let project = ProjectId::parse(project_id).map_err(|_| ApiError::NotFound)?;
+    if let Credential::ApiToken { scope, .. } = &user.credential
+        && scope.project_id != project
+    {
+        return Err(ApiError::NotFound);
+    }
+    let memberships = state.pg.memberships(user.user_id).await?;
+    let m = memberships.iter().find(|m| m.project_id == project.as_str()).ok_or(ApiError::NotFound)?;
+    let permissions = effective_permissions(&user.credential, &m.permissions);
+    require(&permissions, need, &user.credential)?;
+    let tenant_id = TenantId::parse(m.tenant_id.clone()).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let actor = Actor { user_id: user.user_id, permissions, is_owner: m.is_owner() && user.is_session() };
+    Ok(ProjectAccess { tenant_id, project_id: project, actor })
+}
+
+/// An authorized project/environment scope.
+#[derive(Debug, Clone)]
+pub struct Authorized {
+    pub scope: Scope,
+    pub is_demo: bool,
+    pub actor: Actor,
+}
+
+/// Resolve a project/environment scope for the user and require `need` in that project.
 /// Unknown and unauthorized scopes both return 404 so existence is not leaked.
+pub async fn authorize_as(
+    state: &AppState,
+    user: &CurrentUser,
+    project_id: &str,
+    environment_id: &str,
+    need: Permission,
+) -> Result<Authorized, ApiError> {
+    let project = ProjectId::parse(project_id).map_err(|_| ApiError::NotFound)?;
+    let env = EnvironmentId::parse(environment_id).map_err(|_| ApiError::NotFound)?;
+    if let Credential::ApiToken { scope, .. } = &user.credential
+        && (scope.project_id != project || scope.environment_id != env)
+    {
+        return Err(ApiError::NotFound);
+    }
+    let memberships = state.pg.memberships(user.user_id).await?;
+    let m = memberships.iter().find(|m| m.project_id == project.as_str()).ok_or(ApiError::NotFound)?;
+    let env_row = state.pg.environment(project.as_str(), env.as_str()).await?.ok_or(ApiError::NotFound)?;
+    if env_row.tenant_id != m.tenant_id {
+        return Err(ApiError::NotFound);
+    }
+    let permissions = effective_permissions(&user.credential, &m.permissions);
+    require(&permissions, need, &user.credential)?;
+    let tenant = TenantId::parse(m.tenant_id.clone()).map_err(|e| ApiError::Internal(e.to_string()))?;
+    Ok(Authorized {
+        scope: Scope { tenant_id: tenant, project_id: project, environment_id: env },
+        is_demo: env_row.is_demo,
+        actor: Actor { user_id: user.user_id, permissions, is_owner: m.is_owner() && user.is_session() },
+    })
+}
+
+/// [`authorize_as`] for routes that only need the scope and whether it is a demo environment.
 pub async fn authorize(
     state: &AppState,
     user: &CurrentUser,
     project_id: &str,
     environment_id: &str,
-    min: Role,
+    need: Permission,
 ) -> Result<(Scope, bool), ApiError> {
-    let project = ProjectId::parse(project_id).map_err(|_| ApiError::NotFound)?;
-    let env = EnvironmentId::parse(environment_id).map_err(|_| ApiError::NotFound)?;
-    if let Credential::ApiToken { scope, .. } = &user.credential {
-        if scope.project_id != project || scope.environment_id != env {
-            return Err(ApiError::NotFound);
-        }
-        if min > Role::Viewer {
-            return Err(ApiError::Forbidden("API tokens are read-only"));
-        }
-    }
-    let memberships = state.pg.memberships(user.user_id).await?;
-    let m = memberships.iter().find(|m| m.project_id == project.as_str()).ok_or(ApiError::NotFound)?;
-    let role = Role::parse(&m.role).ok_or(ApiError::Forbidden("unknown role"))?;
-    let env_row = state.pg.environment(project.as_str(), env.as_str()).await?.ok_or(ApiError::NotFound)?;
-    if env_row.tenant_id != m.tenant_id {
-        return Err(ApiError::NotFound);
-    }
-    if role < min {
-        return Err(ApiError::Forbidden("insufficient role"));
-    }
-    let tenant = TenantId::parse(m.tenant_id.clone()).map_err(|e| ApiError::Internal(e.to_string()))?;
-    Ok((Scope { tenant_id: tenant, project_id: project, environment_id: env }, env_row.is_demo))
+    let a = authorize_as(state, user, project_id, environment_id, need).await?;
+    Ok((a.scope, a.is_demo))
 }
 
 /// Simple in-memory login throttle: max failures per key within a window.
@@ -266,16 +318,32 @@ mod tests {
         }
     }
 
+    fn all_stored() -> Vec<String> {
+        Permission::ALL.iter().map(|p| p.as_str().to_owned()).collect()
+    }
+
     #[test]
-    fn roles_parse_exactly_and_are_ordered() {
-        assert_eq!(Role::parse("viewer"), Some(Role::Viewer));
-        assert_eq!(Role::parse("operator"), Some(Role::Operator));
-        assert_eq!(Role::parse("admin"), Some(Role::Admin));
-        assert_eq!(Role::parse("owner"), Some(Role::Owner));
-        for bad in ["", "Admin", "ADMIN", " admin", "superuser", "root"] {
-            assert_eq!(Role::parse(bad), None, "{bad:?}");
-        }
-        assert!(Role::Viewer < Role::Operator && Role::Operator < Role::Admin && Role::Admin < Role::Owner);
+    fn api_tokens_are_capped_to_read_permissions_of_their_owner() {
+        let token = Credential::ApiToken { token_id: Uuid::nil(), scope: scope("demo", "local-demo") };
+        let owner = effective_permissions(&token, &all_stored());
+        assert_eq!(owner, API_TOKEN_PERMISSIONS.into_iter().collect::<PermissionSet>());
+        let telemetry_only = effective_permissions(&token, &["telemetry.view".to_owned()]);
+        assert_eq!(telemetry_only, [Permission::TelemetryView].into(), "never more than the owner has");
+        let session = Credential::Session(Uuid::nil());
+        assert_eq!(effective_permissions(&session, &all_stored()).len(), Permission::ALL.len());
+        assert!(effective_permissions(&session, &["root".to_owned(), "".to_owned()]).is_empty(), "unknown stored ids");
+    }
+
+    #[test]
+    fn missing_permissions_are_forbidden_with_a_reason() {
+        let token = Credential::ApiToken { token_id: Uuid::nil(), scope: scope("demo", "local-demo") };
+        let session = Credential::Session(Uuid::nil());
+        let viewer: PermissionSet = [Permission::TelemetryView, Permission::ActionsView].into();
+        assert!(require(&viewer, Permission::TelemetryView, &session).is_ok());
+        assert_eq!(forbidden(require(&viewer, Permission::TokensManage, &session)), "insufficient permissions");
+        assert_eq!(forbidden(require(&viewer, Permission::TokensManage, &token)), "API tokens are read-only");
+        let none = PermissionSet::new();
+        assert_eq!(forbidden(require(&none, Permission::TelemetryView, &token)), "insufficient permissions");
     }
 
     #[test]
@@ -377,7 +445,6 @@ mod tests {
             credential: Credential::ApiToken { token_id: Uuid::nil(), scope: scope(p, e) },
             user_id: Uuid::nil(),
             email: "a@example.test".into(),
-            display_name: "A".into(),
         }
     }
 
@@ -387,41 +454,43 @@ mod tests {
         let u = token_user("demo", "local-demo");
         for (p, e) in [("demo", "other-env"), ("other", "local-demo"), ("isolation", "isolation-test")] {
             assert!(
-                matches!(authorize(&s, &u, p, e, Role::Viewer).await, Err(ApiError::NotFound)),
+                matches!(authorize(&s, &u, p, e, Permission::TelemetryView).await, Err(ApiError::NotFound)),
                 "{p}/{e} must be 404 (not 403) for a token of another scope"
             );
-        }
-    }
-
-    #[tokio::test]
-    async fn api_tokens_never_get_more_than_viewer() {
-        let s = test_state(true);
-        let u = token_user("demo", "local-demo");
-        for min in [Role::Operator, Role::Admin, Role::Owner] {
-            match authorize(&s, &u, "demo", "local-demo", min).await {
-                Err(ApiError::Forbidden(m)) => assert_eq!(m, "API tokens are read-only"),
-                other => panic!("{min:?}: {other:?}"),
-            }
+            assert!(
+                matches!(authorize_project(&s, &u, p, Permission::MembersView).await, Err(ApiError::NotFound))
+                    || p == "demo",
+                "{p}: another project is 404 for a token"
+            );
         }
     }
 
     #[tokio::test]
     async fn malformed_scope_ids_are_404_before_any_lookup() {
         let s = test_state(true);
-        let session = CurrentUser {
-            credential: Credential::Session(Uuid::nil()),
-            user_id: Uuid::nil(),
-            email: String::new(),
-            display_name: String::new(),
-        };
+        let session =
+            CurrentUser { credential: Credential::Session(Uuid::nil()), user_id: Uuid::nil(), email: String::new() };
         for (p, e) in [("", "env"), ("demo", ""), ("de mo", "env"), ("demo", "env/../x"), ("demo", "e'; --")] {
             assert!(
-                matches!(authorize(&s, &session, p, e, Role::Viewer).await, Err(ApiError::NotFound)),
+                matches!(authorize(&s, &session, p, e, Permission::TelemetryView).await, Err(ApiError::NotFound)),
                 "{p:?}/{e:?}"
             );
         }
+        for p in ["", "de mo", "a/../b"] {
+            assert!(matches!(
+                authorize_project(&s, &session, p, Permission::MembersView).await,
+                Err(ApiError::NotFound)
+            ));
+        }
         // Well-formed IDs reach storage, which is down here: that must be an error, never access.
-        assert!(matches!(authorize(&s, &session, "demo", "local-demo", Role::Viewer).await, Err(ApiError::Storage(_))));
+        assert!(matches!(
+            authorize(&s, &session, "demo", "local-demo", Permission::TelemetryView).await,
+            Err(ApiError::Storage(_))
+        ));
+        assert!(matches!(
+            authorize_project(&s, &session, "demo", Permission::MembersView).await,
+            Err(ApiError::Storage(_))
+        ));
     }
 
     #[test]

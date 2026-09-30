@@ -91,7 +91,7 @@ test("admin rejects an operator's plan with a required comment; the operator see
 
 test("viewer sees plans but cannot propose", async ({ page }) => {
   await login(page, "viewer@controlhub.local", `${WORKSPACE}/actions`);
-  await expect(page.getByText("Proposing actions requires the operator role.")).toBeVisible();
+  await expect(page.getByText("Your role in this project does not include proposing actions.")).toBeVisible();
   await expect(page.getByRole("table", { name: "Action plans" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
 });

@@ -80,7 +80,7 @@ test.describe("app navigation", () => {
     await expect(page).toHaveURL(/\/app$/);
     await expect(page.getByRole("heading", { level: 1, name: "Choose an environment" })).toBeVisible();
     await expect(page.getByText("Isolation", { exact: false }).first()).toBeVisible();
-    await expect(page.getByText("owner", { exact: true })).toBeVisible();
+    await expect(page.getByText("Owner", { exact: true }), "the role name is shown per project").toBeVisible();
     const prod = page.getByRole("link", { name: /isolation-prod/ });
     const testEnv = page.getByRole("link", { name: /isolation-test/ });
     await expect(prod).toBeVisible();

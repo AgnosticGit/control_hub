@@ -44,7 +44,6 @@ test.describe("service colours and request focus on demo data", () => {
     // A request that crosses several services.
     const big = list.getByRole("button").filter({ hasText: /\D([4-9]|\d{2,})sp$/ }).first();
     await expect(big).toBeVisible();
-    const spanCount = Number((await big.textContent())?.match(/(\d+)sp$/)?.[1] ?? 0);
     await big.click();
 
     const focus = page.getByRole("region", { name: "Focused request" });
@@ -53,7 +52,11 @@ test.describe("service colours and request focus on demo data", () => {
     await expect(only).toBeChecked();
     const size = focus.getByLabel("Request size");
     await expect(size).toContainText(/\d+ spans · \d+ services/);
-    const services = Number((await size.textContent())?.match(/(\d+) services/)?.[1] ?? 0);
+    // Read from the focused request itself: the live list may have shifted since the click.
+    const sizeText = (await size.textContent()) ?? "";
+    const spanCount = Number(sizeText.match(/(\d+) spans/)?.[1] ?? 0);
+    const services = Number(sizeText.match(/(\d+) services/)?.[1] ?? 0);
+    expect(spanCount).toBeGreaterThanOrEqual(4);
     expect(services).toBeGreaterThan(1);
 
     // Replayed on a loop over the request's own time span.

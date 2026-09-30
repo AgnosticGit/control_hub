@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiRequestError, isUnauthenticated, scopedPath, scopedUrl } from "./api";
+import { ApiRequestError, apiSentence, isUnauthenticated, scopedPath, scopedUrl } from "./api";
 
 describe("scopedUrl", () => {
   it("builds the scoped API path with a query string", () => {
@@ -37,5 +37,28 @@ describe("isUnauthenticated", () => {
     expect(isUnauthenticated(new Error("401"))).toBe(false);
     expect(isUnauthenticated({ status: 401 })).toBe(false);
     expect(isUnauthenticated(null)).toBe(false);
+  });
+});
+
+describe("apiSentence", () => {
+  const err = (message: string) => new ApiRequestError(409, "conflict", message);
+
+  it("drops the error-kind prefix and makes a sentence", () => {
+    expect(apiSentence(err("conflict: you are the last owner; make someone else an owner first"))).toBe(
+      "You are the last owner; make someone else an owner first.",
+    );
+    expect(apiSentence(err("invalid request: project name must not be empty"))).toBe("Project name must not be empty.");
+    expect(apiSentence(err("forbidden: only an owner can invite with the Owner role"))).toBe("Only an owner can invite with the Owner role.");
+  });
+
+  it("keeps messages without a prefix and existing punctuation", () => {
+    expect(apiSentence(err("Already done."))).toBe("Already done.");
+    expect(apiSentence(err("HTTP 502"))).toBe("HTTP 502.");
+  });
+
+  it("falls back for empty messages and non-API errors", () => {
+    expect(apiSentence(err("conflict: "))).toBe("Cannot reach the ControlHub API.");
+    expect(apiSentence(new Error("boom"))).toBe("Cannot reach the ControlHub API.");
+    expect(apiSentence(null, "Could not save.")).toBe("Could not save.");
   });
 });

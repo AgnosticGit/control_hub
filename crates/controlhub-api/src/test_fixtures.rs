@@ -9,9 +9,12 @@ use controlhub_storage::secrets::{generate_password, hash_password};
 use serde_json::json;
 
 use crate::bootstrap::{SeedScope, TEST_EMAIL_DOMAINS, admin_pg, rotate_ingest_token};
+use crate::permissions::Builtin;
 
 const CREDENTIALS_FILE: &str = "test-credentials.json";
 const ISOLATION_TOKEN: &str = "isolation-test";
+/// Role templates created by the test suites start with this and are deleted with the accounts.
+const TEST_ROLE_PREFIX: &str = "[test] ";
 
 /// A second tenant for isolation tests; `isolation-prod` is not a demo environment, so
 /// demo-only actions must be refused there.
@@ -36,12 +39,15 @@ const SCOPES: [SeedScope; 2] = [
     },
 ];
 
-/// (email, display name, project, role).
-const USERS: [(&str, &str, &str, &str); 4] = [
-    ("admin@controlhub.local", "Test admin", "demo", "owner"),
-    ("viewer@controlhub.local", "Test viewer", "demo", "viewer"),
-    ("operator@controlhub.local", "Test operator", "demo", "operator"),
-    ("isolation@controlhub.local", "Isolation tenant user", "isolation", "owner"),
+/// (email, display name, project, built-in role). `member-a`/`member-b` are only for the role
+/// and member tests, which change their permissions; the others keep theirs for the whole run.
+const USERS: [(&str, &str, &str, Builtin); 6] = [
+    ("admin@controlhub.local", "Test admin", "demo", Builtin::Owner),
+    ("viewer@controlhub.local", "Test viewer", "demo", Builtin::Viewer),
+    ("operator@controlhub.local", "Test operator", "demo", Builtin::Operator),
+    ("isolation@controlhub.local", "Isolation tenant user", "isolation", Builtin::Owner),
+    ("member-a@controlhub.local", "Member A", "demo", Builtin::Viewer),
+    ("member-b@controlhub.local", "Member B", "demo", Builtin::Viewer),
 ];
 
 pub async fn create(out_dir: &Path) -> anyhow::Result<()> {
@@ -55,8 +61,8 @@ pub async fn create(out_dir: &Path) -> anyhow::Result<()> {
         let pw = password.clone();
         let hash = tokio::task::spawn_blocking(move || hash_password(&pw)).await??;
         let id = pg.upsert_user(email, name, &hash).await?;
-        pg.upsert_membership(id, project, role).await?;
-        users.push(json!({ "email": email, "password": password, "project_id": project, "role": role }));
+        pg.upsert_membership(id, project, role.key()).await?;
+        users.push(json!({ "email": email, "password": password, "project_id": project, "role": role.key() }));
     }
     let token = rotate_ingest_token(&pg, &SCOPES[0].scope()?, ISOLATION_TOKEN).await?;
     let creds = json!({
@@ -75,12 +81,13 @@ pub async fn create(out_dir: &Path) -> anyhow::Result<()> {
 pub async fn remove(out_dir: &Path) -> anyhow::Result<()> {
     let pg = admin_pg().await?;
     let removed = pg.delete_users_in_domains(TEST_EMAIL_DOMAINS).await?;
+    let roles = pg.delete_custom_roles_with_prefix(TEST_ROLE_PREFIX).await?;
     pg.revoke_ingest_tokens_named(&SCOPES[0].scope()?, ISOLATION_TOKEN).await?;
     match std::fs::remove_file(out_dir.join(CREDENTIALS_FILE)) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
         _ => {}
     }
-    tracing::info!(removed, "test accounts removed");
+    tracing::info!(removed, roles, "test accounts and roles removed");
     Ok(())
 }
 

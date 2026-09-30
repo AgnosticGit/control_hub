@@ -94,5 +94,15 @@ test("viewer has no token management", async ({ page }) => {
   await expect(page.getByText("DEMO", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Tokens" })).toHaveCount(0);
   await page.goto(`${WORKSPACE}/tokens`);
-  await expect(page.getByText("Token management requires the admin role.")).toBeVisible();
+  await expect(page.getByText("Your role in this project does not include access to tokens.")).toBeVisible();
+});
+
+test("operator sees tokens read-only", async ({ page }) => {
+  await login(page, "operator@controlhub.local", WORKSPACE);
+  await page.getByRole("link", { name: "Tokens" }).click();
+  await expect(page.getByRole("heading", { name: "Tokens" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Tokens" })).toBeVisible();
+  await expect(page.getByRole("note")).toContainText("Create, rotate and revoke tokens");
+  await expect(page.getByRole("button", { name: "Create token" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Revoke" })).toHaveCount(0);
 });

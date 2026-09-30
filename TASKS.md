@@ -86,5 +86,14 @@ Ordered by priority within each stage. `[x]` = done and verified.
 ## Cross-cutting
 - [ ] Surface drops from the SDK's OTel batch processors as counters
 - [ ] Audit logins fail-closed and audit failed logins
-- [ ] User and membership management (API + UI)
+- [x] Per-project permissions and roles: 10 permissions, built-in Owner/Admin/Operator/Viewer,
+      custom role templates, individual permission sets, anti-escalation, "Members & roles" page
+- [x] Integration test for the last-owner guard (second owner joins through an Owner invite)
+- [x] Invite links to join a project: hashed secret in the URL fragment, expiry 1-30 days, use
+      limit, revocation, role capped by the creator's permissions (re-checked at accept time)
+- [x] Personal account (`/app/account`): profile, password change, sessions (revoke one / all
+      others), projects (create up to 20 owned, rename, leave)
+- [x] Skippable onboarding after sign-up (`/app/onboarding`): connect, invite, done; "Finish setup"
+      stays in the sidebar and account until finished or skipped
+- [ ] Invite by email (needs outgoing mail); transfer or delete a project
 - [ ] Load test ingest → ClickHouse and publish measured numbers

@@ -20,6 +20,8 @@ pub enum ApiError {
     TooManyRequests,
     #[error("conflict: {0}")]
     Conflict(&'static str),
+    #[error("gone: {0}")]
+    Gone(&'static str),
     #[error("denied by policy: {0}")]
     PolicyDenied(String),
     #[error("storage unavailable")]
@@ -44,6 +46,7 @@ impl IntoResponse for ApiError {
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             ApiError::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
             ApiError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
+            ApiError::Gone(_) => (StatusCode::GONE, "gone"),
             ApiError::PolicyDenied(_) => (StatusCode::FORBIDDEN, "policy_denied"),
             ApiError::Storage(e) => {
                 tracing::error!(error = %e, "storage error");
@@ -83,6 +86,7 @@ mod tests {
             (ApiError::BadRequest("x".into()), StatusCode::BAD_REQUEST, "bad_request"),
             (ApiError::TooManyRequests, StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
             (ApiError::Conflict("x"), StatusCode::CONFLICT, "conflict"),
+            (ApiError::Gone("x"), StatusCode::GONE, "gone"),
             (ApiError::PolicyDenied("x".into()), StatusCode::FORBIDDEN, "policy_denied"),
             (
                 ApiError::Storage(controlhub_storage::StorageError::Other("x".into())),

@@ -7,12 +7,7 @@ import { Suspense, useState } from "react";
 import { Logo } from "@/components/ui/Icon";
 import { api, ApiRequestError, unwrap } from "@/lib/api";
 import { useHydrated } from "@/lib/hydrated";
-import { formText } from "@/lib/signup";
-
-function safeNext(next: string | null): string {
-  // Only same-app relative paths; never absolute or protocol-relative URLs.
-  return next && next.startsWith("/app") && !next.startsWith("//") ? next : "/app";
-}
+import { formText, safeNext } from "@/lib/signup";
 
 function LoginForm() {
   const router = useRouter();
@@ -33,7 +28,7 @@ function LoginForm() {
     try {
       const session = unwrap(await api.POST("/api/v1/session/login", { body: { email, password } }));
       qc.setQueryData(["session"], session);
-      router.replace(safeNext(params.get("next")));
+      router.replace(safeNext(params.get("next")) ?? "/app");
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 429) setError("Too many attempts. Try again later.");
       else if (err instanceof ApiRequestError && err.status === 401) setError("Invalid email or password.");
@@ -71,7 +66,10 @@ function LoginForm() {
       </button>
       <p className="text-center text-sm text-muted">
         New to ControlHub?{" "}
-        <Link href="/app/register" className="text-accent hover:underline">
+        <Link
+          href={safeNext(params.get("next")) ? `/app/register?next=${encodeURIComponent(params.get("next") ?? "")}` : "/app/register"}
+          className="text-accent hover:underline"
+        >
           Create an account
         </Link>
       </p>

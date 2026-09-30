@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { afterSignupPath, formText, signupProblem } from "./signup";
+import { afterSignupPath, formText, safeNext, signupProblem } from "./signup";
 
 const PW = "correct horse battery";
 
@@ -35,13 +35,27 @@ describe("formText", () => {
   });
 });
 
-describe("afterSignupPath", () => {
-  it("opens the integration guide of the first environment", () => {
-    expect(afterSignupPath([{ id: "p-1", environments: [{ id: "e 1" }] }])).toBe("/app/p-1/e%201/integration");
+describe("safeNext", () => {
+  it("keeps same-app paths", () => {
+    expect(safeNext("/app")).toBe("/app");
+    expect(safeNext("/app/invite")).toBe("/app/invite");
+    expect(safeNext("/app/demo/local-demo/tokens")).toBe("/app/demo/local-demo/tokens");
   });
 
-  it("falls back to the environment picker", () => {
-    expect(afterSignupPath([])).toBe("/app");
-    expect(afterSignupPath([{ id: "p", environments: [] }])).toBe("/app");
+  it("refuses anything that could leave the app", () => {
+    for (const bad of [null, undefined, "", "/", "https://evil.example/app", "//evil.example/app", "/apple", "/app\\..\\x", "javascript:alert(1)", "/\\evil.example"]) {
+      expect(safeNext(bad)).toBeNull();
+    }
+  });
+});
+
+describe("afterSignupPath", () => {
+  it("starts onboarding by default", () => {
+    expect(afterSignupPath(null)).toBe("/app/onboarding");
+    expect(afterSignupPath("https://evil.example")).toBe("/app/onboarding");
+  });
+
+  it("returns to a safe next path, e.g. an invite", () => {
+    expect(afterSignupPath("/app/invite")).toBe("/app/invite");
   });
 });

@@ -1,5 +1,5 @@
 // Tests for `@controlhub/api-client` (the package has no test runner of its own).
-import { ApiRequestError, createApiClient, unwrap } from "@controlhub/api-client";
+import { ApiRequestError, createApiClient, unwrap, unwrapEmpty } from "@controlhub/api-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const BASE = "https://controlhub.test";
@@ -102,6 +102,24 @@ describe("unwrap", () => {
 
   it("treats data on a non-OK response as an error", () => {
     expect(() => unwrap({ data: { a: 1 }, response: new Response(null, { status: 500 }) })).toThrow(ApiRequestError);
+  });
+
+  it("unwrapEmpty accepts a 204 without a body and still throws on errors", async () => {
+    reply = () => new Response(null, { status: 204 });
+    const api = createApiClient(BASE);
+    const path = { project_id: "demo", role_id: "r1" };
+    await expect(api.DELETE("/api/v1/projects/{project_id}/roles/{role_id}", { params: { path } }).then(unwrapEmpty)).resolves.toBeUndefined();
+    expect(last().method).toBe("DELETE");
+    expect(last().headers.get("x-csrf-token")).toBe("tok=123");
+    reply = () =>
+      new Response(JSON.stringify({ code: "conflict", message: "the role is still assigned to members" }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      });
+    await expect(api.DELETE("/api/v1/projects/{project_id}/roles/{role_id}", { params: { path } }).then(unwrapEmpty)).rejects.toMatchObject({
+      status: 409,
+      code: "conflict",
+    });
   });
 
   it("round-trips a real 401 from the client", async () => {

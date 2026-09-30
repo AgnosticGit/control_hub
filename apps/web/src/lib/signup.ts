@@ -18,9 +18,13 @@ export function signupProblem(email: string, password: string, confirm: string):
   return null;
 }
 
-/** Where a new account lands: the integration guide of its first environment. */
-export function afterSignupPath(projects: ReadonlyArray<{ id: string; environments: ReadonlyArray<{ id: string }> }>): string {
-  const p = projects[0];
-  const e = p?.environments[0];
-  return p && e ? `/app/${encodeURIComponent(p.id)}/${encodeURIComponent(e.id)}/integration` : "/app";
+/** A `next` redirect target: only same-app relative paths, never absolute or protocol-relative URLs. */
+export function safeNext(next: string | null | undefined): string | null {
+  if (!next || !next.startsWith("/app") || next.startsWith("//") || next.includes("\\")) return null;
+  return next === "/app" || next.startsWith("/app/") || next.startsWith("/app?") ? next : null;
+}
+
+/** Where a new account lands: back to where it came from (e.g. an invite), otherwise onboarding. */
+export function afterSignupPath(next: string | null | undefined): string {
+  return safeNext(next) ?? "/app/onboarding";
 }

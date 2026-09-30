@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { api, isUnauthenticated, unwrap } from "./api";
@@ -20,12 +20,11 @@ export function useSession() {
   return query;
 }
 
+/** Signs out and reloads into the login page, so no cached data of the account survives and no
+ *  query of the old page can redirect with its own `next`. */
 export function useLogout() {
-  const router = useRouter();
-  const qc = useQueryClient();
   return async () => {
     await api.POST("/api/v1/session/logout");
-    qc.clear();
-    router.replace("/app/login");
+    window.location.replace("/app/login");
   };
 }

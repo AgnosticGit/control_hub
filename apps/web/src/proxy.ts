@@ -8,7 +8,7 @@ function nonce(): string {
 
 /** Pages under /app reachable without a session cookie. */
 export function isPublicAppPath(pathname: string): boolean {
-  return ["/app/login", "/app/register"].some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  return ["/app/login", "/app/register", "/app/invite"].some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 // 1. Strict per-request CSP for the private app (Next.js applies the nonce from the request header).

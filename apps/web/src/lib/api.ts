@@ -1,9 +1,9 @@
 "use client";
 
-import { createApiClient, unwrap, ApiRequestError, type Schemas } from "@controlhub/api-client";
+import { createApiClient, unwrap, unwrapEmpty, ApiRequestError, type Schemas } from "@controlhub/api-client";
 
 export const api = createApiClient();
-export { unwrap, ApiRequestError };
+export { unwrap, unwrapEmpty, ApiRequestError };
 export type { Schemas };
 
 export type SessionResponse = Schemas["SessionResponse"];
@@ -21,4 +21,13 @@ export function scopedUrl(projectId: string, environmentId: string, resource: st
 
 export function isUnauthenticated(e: unknown) {
   return e instanceof ApiRequestError && e.status === 401;
+}
+
+/** An API error message as a sentence for people: "conflict: you are…" → "You are….". */
+export function apiSentence(e: unknown, fallback = "Cannot reach the ControlHub API."): string {
+  if (!(e instanceof ApiRequestError)) return fallback;
+  const text = e.message.replace(/^[a-z][a-z ]*: /, "").trim();
+  if (!text) return fallback;
+  const sentence = text.charAt(0).toUpperCase() + text.slice(1);
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
 }

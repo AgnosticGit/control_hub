@@ -3,9 +3,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Icon, Logo, type IconName } from "@/components/ui/Icon";
+import { can } from "@/lib/permissions";
 import { useLogout, useSession } from "@/lib/session";
 
-export type NavId = "overview" | "integration" | "actions" | "tokens";
+export type NavId = "overview" | "integration" | "actions" | "tokens" | "settings";
 
 interface Props {
   projectId: string;
@@ -23,15 +24,15 @@ export function AppShell({ projectId, environmentId, active, top, status, childr
   const logout = useLogout();
   const project = session.data?.projects.find((p) => p.id === projectId);
   const env = project?.environments.find((e) => e.id === environmentId);
-  const isAdmin = project?.role === "admin" || project?.role === "owner";
   const base = `/app/${encodeURIComponent(projectId)}/${encodeURIComponent(environmentId)}`;
   const email = session.data?.user.email ?? "";
 
   const nav: Array<{ id: NavId; href: string; label: string; icon: IconName; show: boolean }> = [
     { id: "overview", href: base, label: "Overview", icon: "map", show: true },
     { id: "integration", href: `${base}/integration`, label: "Integration", icon: "file", show: true },
-    { id: "actions", href: `${base}/actions`, label: "Actions", icon: "bolt", show: true },
-    { id: "tokens", href: `${base}/tokens`, label: "Tokens", icon: "key", show: isAdmin },
+    { id: "actions", href: `${base}/actions`, label: "Actions", icon: "bolt", show: can(project, "actions.view") },
+    { id: "tokens", href: `${base}/tokens`, label: "Tokens", icon: "key", show: can(project, "tokens.view") },
+    { id: "settings", href: `${base}/settings`, label: "Members & roles", icon: "users", show: can(project, "members.view") },
   ];
 
   return (
@@ -90,6 +91,15 @@ export function AppShell({ projectId, environmentId, active, top, status, childr
         </nav>
 
         <div className="mt-auto space-y-3 p-3">
+          {session.data && !session.data.user.onboarding_done ? (
+            <Link
+              href={`/app/onboarding?project=${encodeURIComponent(projectId)}`}
+              className="flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-text hover:bg-accent/15"
+            >
+              <Icon name="rocket" className="h-4 w-4 text-accent" />
+              Finish setup
+            </Link>
+          ) : null}
           {status ? (
             <div className="rounded-xl border border-border bg-surface/70 p-3">
               <div className="label mb-2">System status</div>
@@ -97,12 +107,12 @@ export function AppShell({ projectId, environmentId, active, top, status, childr
             </div>
           ) : null}
           <div className="flex items-center gap-2 rounded-xl border border-border bg-surface/70 p-2">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/20 text-xs font-semibold text-accent">
-              {email.slice(0, 1).toUpperCase() || "?"}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-xs text-muted" title={email}>
-              {email}
-            </span>
+            <Link href="/app/account" className="flex min-w-0 flex-1 items-center gap-2 rounded-lg hover:text-text" aria-label="Your account" title={email}>
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/20 text-xs font-semibold text-accent">
+                {email.slice(0, 1).toUpperCase() || "?"}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-xs text-muted">{email}</span>
+            </Link>
             <button type="button" onClick={() => void logout()} className="btn btn-icon btn-sm" aria-label="Sign out" title="Sign out">
               <Icon name="logout" className="h-3.5 w-3.5" />
             </button>

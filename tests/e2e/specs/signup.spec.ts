@@ -11,7 +11,7 @@ async function fillSignup(page: Page, email: string, password = PASSWORD, confir
   await page.getByLabel("Repeat password").fill(confirm);
 }
 
-test("a visitor signs up, gets their own project and connects a service from the integration guide", async ({ page, baseURL }) => {
+test("a visitor signs up, connects a service during onboarding and lands in their own project", async ({ page, baseURL }) => {
   const origin = new URL(baseURL ?? "http://127.0.0.1:3000").origin;
   const email = newEmail();
   const project = `E2E shop ${randomHex(3)}`;
@@ -26,16 +26,12 @@ test("a visitor signs up, gets their own project and connects a service from the
   await page.getByLabel("Project name (optional)").fill(project);
   await page.getByRole("button", { name: "Create account" }).click();
 
-  await expect(page).toHaveURL(/\/app\/p-[0-9a-f]{32}\/e-[0-9a-f]{32}\/integration$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Connect your services" })).toBeVisible();
-  const sidebar = page.getByRole("complementary", { name: "Sidebar" });
-  await expect(sidebar.getByText(project)).toBeVisible();
-  await expect(sidebar.getByText("production")).toBeVisible();
-  await expect(sidebar.getByText("DEMO", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Integration" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await expect(page).toHaveURL(/\/app\/onboarding$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Connect your system" })).toBeVisible();
+  await expect(page.getByText(`Project: ${project} / production`)).toBeVisible();
+  const steps = page.getByRole("list", { name: "Setup steps" });
+  await expect(steps.getByRole("listitem").nth(0)).toHaveAttribute("aria-current", "step");
+  await expect(page.getByRole("button", { name: "Continue" })).toHaveCount(0);
   const cookies = await page.context().cookies();
   expect(cookies.find((c) => c.name === "controlhub_session")?.httpOnly).toBe(true);
   expect(urls.filter((u) => u.includes(encodeURIComponent(PASSWORD)) || u.includes("password"))).toEqual([]);
@@ -63,9 +59,27 @@ test("a visitor signs up, gets their own project and connects a service from the
     timeout: 30_000,
   });
 
-  // The secret is shown once: it is gone after a reload, and the token is listed by name only.
+  // The secret is shown once: it is gone after a reload.
   await page.reload();
   await expect(page.getByLabel("New ingestion token")).toHaveCount(0);
+
+  // With data arriving the step can be completed; the invite step is skipped.
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Invite your team" })).toBeVisible();
+  await expect(steps.getByRole("listitem").nth(1)).toHaveAttribute("aria-current", "step");
+  await page.getByRole("button", { name: "Skip this step" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "You're all set" })).toBeVisible();
+  await expect(page.getByText(`Receiving telemetry from ${service}.`)).toBeVisible();
+  await page.getByRole("button", { name: `Open ${project}` }).click();
+
+  await expect(page).toHaveURL(/\/app\/p-[0-9a-f]{32}\/e-[0-9a-f]{32}$/);
+  const sidebar = page.getByRole("complementary", { name: "Sidebar" });
+  await expect(sidebar.getByText(project)).toBeVisible();
+  await expect(sidebar.getByText("production")).toBeVisible();
+  await expect(sidebar.getByText("DEMO", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Finish setup" })).toHaveCount(0);
+
+  // The token is listed by name only.
   await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Tokens" }).click();
   const tokens = page.getByRole("table", { name: "Tokens" });
   await expect(tokens).toContainText(`integration ${service}`);
@@ -77,7 +91,9 @@ test("a new account can sign out and sign back in with its password", async ({ p
   await page.goto("/app/register");
   await fillSignup(page, email);
   await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Connect your services" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Connect your system" })).toBeVisible();
+  await page.getByRole("button", { name: "Skip setup" }).click();
+  await expect(page).toHaveURL(/\/app\/p-[0-9a-f]{32}\/e-[0-9a-f]{32}$/);
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/app\/login$/);

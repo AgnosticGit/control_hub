@@ -5,6 +5,7 @@ mod auth;
 mod bootstrap;
 mod error;
 mod openapi;
+mod permissions;
 mod routes;
 mod state;
 mod test_fixtures;
@@ -84,7 +85,7 @@ struct ServeArgs {
 }
 
 fn router(state: state::AppState) -> Router {
-    use routes::{session, telemetry};
+    use routes::{account, invites, roles, session, telemetry};
     let scoped = "/api/v1/projects/{project_id}/environments/{environment_id}";
     Router::new()
         .route("/api/v1/health", get(routes::health))
@@ -93,7 +94,29 @@ fn router(state: state::AppState) -> Router {
         .route("/api/v1/session/register", post(routes::signup::register))
         .route("/api/v1/session/logout", post(session::logout))
         .route("/api/v1/session", get(session::session))
-        .route("/api/v1/projects", get(session::projects))
+        .route("/api/v1/projects", get(session::projects).post(account::create_project))
+        .route("/api/v1/projects/{project_id}", axum::routing::patch(account::rename_project))
+        .route("/api/v1/projects/{project_id}/leave", post(account::leave_project))
+        .route("/api/v1/account", axum::routing::patch(account::update))
+        .route("/api/v1/account/password", post(account::change_password))
+        .route("/api/v1/account/sessions", get(account::sessions))
+        .route("/api/v1/account/sessions/revoke-others", post(account::revoke_other_sessions))
+        .route("/api/v1/account/sessions/{session_id}", axum::routing::delete(account::revoke_session))
+        .route("/api/v1/projects/{project_id}/invites", get(invites::list).post(invites::create))
+        .route("/api/v1/projects/{project_id}/invites/{invite_id}", axum::routing::delete(invites::revoke))
+        .route("/api/v1/invites/preview", post(invites::preview))
+        .route("/api/v1/invites/accept", post(invites::accept))
+        .route("/api/v1/permissions", get(roles::catalog))
+        .route("/api/v1/projects/{project_id}/roles", get(roles::list_roles).post(roles::create_role))
+        .route(
+            "/api/v1/projects/{project_id}/roles/{role_id}",
+            axum::routing::patch(roles::update_role).delete(roles::delete_role),
+        )
+        .route("/api/v1/projects/{project_id}/members", get(roles::list_members))
+        .route(
+            "/api/v1/projects/{project_id}/members/{user_id}",
+            axum::routing::patch(roles::update_member).delete(roles::remove_member),
+        )
         .route(&format!("{scoped}/services"), get(telemetry::services))
         .route(&format!("{scoped}/topology"), get(telemetry::topology))
         .route(&format!("{scoped}/traces"), get(telemetry::traces))
@@ -239,8 +262,90 @@ mod tests {
         ]
         .iter()
         .map(|p| format!("{SCOPED}{p}"))
-        .chain(["/api/v1/session".to_owned(), "/api/v1/projects".to_owned()])
+        .chain(
+            ["/api/v1/session", "/api/v1/projects", "/api/v1/permissions", PROJECT_ROLES, PROJECT_MEMBERS]
+                .map(str::to_owned),
+        )
         .collect()
+    }
+
+    const PROJECT_ROLES: &str = "/api/v1/projects/demo/roles";
+    const PROJECT_MEMBERS: &str = "/api/v1/projects/demo/members";
+
+    /// Role and member mutations (method, uri).
+    fn member_mutations() -> Vec<(Method, String)> {
+        vec![
+            (Method::POST, PROJECT_ROLES.to_owned()),
+            (Method::PATCH, format!("{PROJECT_ROLES}/{PLAN}")),
+            (Method::DELETE, format!("{PROJECT_ROLES}/{PLAN}")),
+            (Method::PATCH, format!("{PROJECT_MEMBERS}/{PLAN}")),
+            (Method::DELETE, format!("{PROJECT_MEMBERS}/{PLAN}")),
+        ]
+    }
+
+    #[tokio::test]
+    async fn member_and_role_mutations_need_a_session_and_never_accept_api_tokens() {
+        let body = r#"{"name":"Manager","permissions":["telemetry.view"],"role_id":null}"#;
+        for (m, uri) in member_mutations() {
+            let (s, _, _) = send(state(), req(m.clone(), &uri, &[], body)).await;
+            assert_eq!(s, StatusCode::UNAUTHORIZED, "{m} {uri}");
+            let (s, _, b) = send(state(), req(m.clone(), &uri, &[("authorization", "Bearer cha_x")], body)).await;
+            assert_eq!(s, StatusCode::FORBIDDEN, "{m} {uri}");
+            assert_eq!(b["message"], "forbidden: API tokens are read-only", "{m} {uri}");
+            // With a session cookie the session lookup hits storage (down here): fail closed.
+            let (s, _, _) = send(state(), req(m.clone(), &uri, &[("cookie", "controlhub_session=chs_x")], body)).await;
+            assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "{m} {uri}");
+        }
+    }
+
+    /// Account, project and invite mutations (method, uri).
+    fn account_mutations() -> Vec<(Method, String)> {
+        vec![
+            (Method::PATCH, "/api/v1/account".to_owned()),
+            (Method::POST, "/api/v1/account/password".to_owned()),
+            (Method::POST, "/api/v1/account/sessions/revoke-others".to_owned()),
+            (Method::DELETE, format!("/api/v1/account/sessions/{PLAN}")),
+            (Method::POST, "/api/v1/projects".to_owned()),
+            (Method::PATCH, "/api/v1/projects/demo".to_owned()),
+            (Method::POST, "/api/v1/projects/demo/leave".to_owned()),
+            (Method::POST, "/api/v1/projects/demo/invites".to_owned()),
+            (Method::DELETE, format!("/api/v1/projects/demo/invites/{PLAN}")),
+            (Method::POST, "/api/v1/invites/accept".to_owned()),
+        ]
+    }
+
+    #[tokio::test]
+    async fn account_project_and_invite_mutations_need_a_session_and_never_accept_api_tokens() {
+        let body = r#"{"name":"P","display_name":"D","current_password":"x","new_password":"y","role_id":"r","token":"chv_x"}"#;
+        for (m, uri) in account_mutations() {
+            let (s, _, _) = send(state(), req(m.clone(), &uri, &[], body)).await;
+            assert_eq!(s, StatusCode::UNAUTHORIZED, "{m} {uri}");
+            let (s, _, b) = send(state(), req(m.clone(), &uri, &[("authorization", "Bearer cha_x")], body)).await;
+            assert_eq!(s, StatusCode::FORBIDDEN, "{m} {uri}");
+            assert_eq!(b["message"], "forbidden: API tokens are read-only", "{m} {uri}");
+            let (s, _, _) = send(state(), req(m.clone(), &uri, &[("cookie", "controlhub_session=chs_x")], body)).await;
+            assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "{m} {uri}: session lookup fails closed");
+        }
+        for uri in ["/api/v1/account/sessions", "/api/v1/projects/demo/invites"] {
+            let (s, _, _) = send(state(), req(Method::GET, uri, &[], "")).await;
+            assert_eq!(s, StatusCode::UNAUTHORIZED, "GET {uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn invite_preview_checks_origin_and_the_secret_format_before_storage() {
+        let preview = "/api/v1/invites/preview";
+        let (s, _, b) =
+            send(state(), req(Method::POST, preview, &[("origin", "http://evil.example")], r#"{"token":"chv_x"}"#))
+                .await;
+        assert_eq!((s, b["message"].as_str()), (StatusCode::FORBIDDEN, Some("forbidden: origin not allowed")));
+        for token in ["", "cha_apitoken", "chs_session", "chv_<script>", "chv_a b"] {
+            let body = serde_json::json!({ "token": token }).to_string();
+            let (s, _, _) = send(state(), req(Method::POST, preview, &[], &body)).await;
+            assert_eq!(s, StatusCode::NOT_FOUND, "{token:?} is never looked up");
+        }
+        let (s, _, _) = send(state(), req(Method::POST, preview, &[], r#"{"token":"chv_wellformed"}"#)).await;
+        assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "well-formed secrets reach storage (down here)");
     }
 
     fn post_routes() -> Vec<String> {
@@ -486,6 +591,27 @@ mod tests {
             ("/api/v1/session/logout".into(), "post"),
             ("/api/v1/session".into(), "get"),
             ("/api/v1/projects".into(), "get"),
+            ("/api/v1/permissions".into(), "get"),
+            ("/api/v1/projects/{project_id}/roles".into(), "get"),
+            ("/api/v1/projects/{project_id}/roles".into(), "post"),
+            ("/api/v1/projects/{project_id}/roles/{role_id}".into(), "patch"),
+            ("/api/v1/projects/{project_id}/roles/{role_id}".into(), "delete"),
+            ("/api/v1/projects/{project_id}/members".into(), "get"),
+            ("/api/v1/projects/{project_id}/members/{user_id}".into(), "patch"),
+            ("/api/v1/projects/{project_id}/members/{user_id}".into(), "delete"),
+            ("/api/v1/projects".into(), "post"),
+            ("/api/v1/projects/{project_id}".into(), "patch"),
+            ("/api/v1/projects/{project_id}/leave".into(), "post"),
+            ("/api/v1/account".into(), "patch"),
+            ("/api/v1/account/password".into(), "post"),
+            ("/api/v1/account/sessions".into(), "get"),
+            ("/api/v1/account/sessions/revoke-others".into(), "post"),
+            ("/api/v1/account/sessions/{session_id}".into(), "delete"),
+            ("/api/v1/projects/{project_id}/invites".into(), "get"),
+            ("/api/v1/projects/{project_id}/invites".into(), "post"),
+            ("/api/v1/projects/{project_id}/invites/{invite_id}".into(), "delete"),
+            ("/api/v1/invites/preview".into(), "post"),
+            ("/api/v1/invites/accept".into(), "post"),
         ];
         for (p, m) in [
             ("/services", "get"),

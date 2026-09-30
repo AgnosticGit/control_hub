@@ -10,7 +10,8 @@ import { API, ORIGIN, root, user, Session, DEMO, ISO, nowNs, postOversized } fro
 
 const spec = JSON.parse(readFileSync(join(root, 'schemas', 'generated', 'openapi.json'), 'utf8'));
 // Sign-up is public like login; its Origin/input/rate rules are covered in signup.test.mjs.
-const PUBLIC = new Set(['/api/v1/health', '/api/v1/ready', '/api/v1/session/login', '/api/v1/session/register']);
+// Invite preview answers anyone holding the link; covered in invites.test.mjs.
+const PUBLIC = new Set(['/api/v1/health', '/api/v1/ready', '/api/v1/session/login', '/api/v1/session/register', '/api/v1/invites/preview']);
 // The live route is a WebSocket upgrade; its rules are covered in e2e-flow.test.mjs.
 const WEBSOCKET = /\/live$/;
 const FAKE_UUID = '00000000-0000-4000-8000-000000000000';
@@ -23,6 +24,10 @@ function concrete(path, project = 'demo', env = 'local-demo') {
     .replace('{environment_id}', env)
     .replace('{plan_id}', FAKE_UUID)
     .replace('{token_id}', FAKE_UUID)
+    .replace('{invite_id}', FAKE_UUID)
+    .replace('{session_id}', FAKE_UUID)
+    .replace('{role_id}', FAKE_UUID)
+    .replace('{user_id}', FAKE_UUID)
     .replace('{trace_id}', FAKE_TRACE);
 }
 
@@ -394,13 +399,14 @@ test('token management validates names, kinds, expiry, grace and unknown IDs', a
   assert.equal((await admin.mutate(`${DEMO}/tokens/${id}/rotate`, {})).status, 400, 'revoked tokens cannot be rotated');
 });
 
-test('operators and viewers cannot manage tokens; viewers cannot decide actions', async () => {
+test('operators see tokens read-only, viewers not at all; viewers cannot decide actions', async () => {
   const op = new Session();
   await op.login('operator@controlhub.local');
-  assert.equal((await op.json(`${DEMO}/tokens`)).status, 403);
-  assert.equal((await op.mutate(`${DEMO}/tokens`, { kind: 'api', name: 'op' })).status, 403);
+  assert.equal((await op.json(`${DEMO}/tokens`)).status, 200, 'Operator has tokens.view');
+  assert.equal((await op.mutate(`${DEMO}/tokens`, { kind: 'api', name: 'op' })).status, 403, 'but not tokens.manage');
   const viewer = new Session();
   await viewer.login('viewer@controlhub.local');
+  assert.equal((await viewer.json(`${DEMO}/tokens`)).status, 403);
   for (const verb of ['approve', 'reject', 'cancel']) {
     const r = await viewer.mutate(`${DEMO}/actions/${FAKE_UUID}/${verb}`, { comment: 'nope nope' });
     assert.equal(r.status, 403, `viewer ${verb}`);

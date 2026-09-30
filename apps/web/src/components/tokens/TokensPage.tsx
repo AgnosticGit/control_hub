@@ -6,6 +6,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { AppShell } from "@/components/shell/AppShell";
 import { Icon } from "@/components/ui/Icon";
 import { api, ApiRequestError, scopedPath, unwrap, type Schemas } from "@/lib/api";
+import { can } from "@/lib/permissions";
 import { useSession } from "@/lib/session";
 
 type TokenDto = Schemas["TokenDto"];
@@ -47,11 +48,12 @@ export function TokensPage({ projectId, environmentId }: { projectId: string; en
 
   const project = session.data?.projects.find((p) => p.id === projectId);
   const env = project?.environments.find((e) => e.id === environmentId);
-  const isAdmin = project?.role === "admin" || project?.role === "owner";
+  const canView = can(project, "tokens.view");
+  const canManage = can(project, "tokens.manage");
 
   const tokens = useQuery({
     queryKey: ["tokens", projectId, environmentId],
-    enabled: isAdmin,
+    enabled: canView,
     queryFn: async () => unwrap(await api.GET(BASE, { params: { path } })),
   });
   const refresh = () => qc.invalidateQueries({ queryKey: ["tokens", projectId, environmentId] });
@@ -98,10 +100,10 @@ export function TokensPage({ projectId, environmentId }: { projectId: string; en
       </Centered>
     );
   }
-  if (!isAdmin) {
+  if (!canView) {
     return (
       <Centered>
-        <p>Token management requires the admin role.</p>
+        <p>Your role in this project does not include access to tokens.</p>
       </Centered>
     );
   }
@@ -159,6 +161,13 @@ export function TokensPage({ projectId, environmentId }: { projectId: string; en
             </section>
           ) : null}
 
+          {canManage ? null : (
+            <p role="note" className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted">
+              You can see tokens here; creating, rotating and revoking them needs the “Create, rotate and revoke tokens” permission.
+            </p>
+          )}
+
+          {canManage ? (
           <form onSubmit={onSubmit} className="card flex flex-wrap items-end gap-3 p-5 text-sm">
             <label className="flex flex-col gap-1.5">
               <span className="label">Kind</span>
@@ -203,6 +212,7 @@ export function TokensPage({ projectId, environmentId }: { projectId: string; en
               Create token
             </button>
           </form>
+          ) : null}
 
           {error ? (
             <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
@@ -239,7 +249,7 @@ export function TokensPage({ projectId, environmentId }: { projectId: string; en
                       </span>
                     </td>
                     <td className="space-x-2 px-3 text-right whitespace-nowrap">
-                      {t.active ? (
+                      {t.active && canManage ? (
                         <>
                           <button
                             type="button"

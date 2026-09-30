@@ -23,8 +23,9 @@ use tokio::sync::OwnedSemaphorePermit;
 use utoipa::IntoParams;
 
 use super::telemetry::{event_item, external_clients_id, log_item, now_ns, parse_ns, span_item};
-use crate::auth::{CurrentUser, Role, authorize};
+use crate::auth::{CurrentUser, authorize};
 use crate::error::{ApiError, ApiResult};
+use crate::permissions::Permission;
 use crate::state::AppState;
 
 const POLL: Duration = Duration::from_secs(1);
@@ -89,7 +90,7 @@ pub async fn live(
     if user.is_session() {
         require_origin(&state, &headers)?;
     }
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let cursor = start_cursor(&q.resume, now_ns())?;
     let permit = state.live_slots.clone().try_acquire_owned().map_err(|_| ApiError::TooManyRequests)?;
     Ok(ws.max_message_size(64 * 1024).on_upgrade(move |socket| run(socket, state, scope, cursor, user, permit)))

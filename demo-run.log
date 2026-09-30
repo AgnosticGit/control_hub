@@ -1,0 +1,76 @@
+[36m[provider][0m payment provider stand-in listening on http://127.0.0.1:7010
+[35m[load][0m load generator: 5 req/s -> http://127.0.0.1:7001
+[32m[notifications][0m notifications listening on http://127.0.0.1:7005
+[35m[payments][0m payments listening on http://127.0.0.1:7004
+[31m[auth][0m auth listening on http://127.0.0.1:7007
+[36m[catalog][0m catalog listening on http://127.0.0.1:7006
+[33m[gateway][0m gateway listening on http://127.0.0.1:7001
+[33m[inventory][0m inventory listening on http://127.0.0.1:7003
+[34m[orders][0m orders listening on http://127.0.0.1:7002
+[35m[load][0m load: {"ok":47,"clientError":0,"serverError":0,"failed":1}
+[35m[load][0m load: {"ok":97,"clientError":0,"serverError":0,"failed":1}
+[35m[load][0m load: {"ok":140,"clientError":0,"serverError":5,"failed":1}
+[35m[load][0m load: {"ok":177,"clientError":0,"serverError":16,"failed":1}
+[35m[load][0m load: {"ok":216,"clientError":0,"serverError":27,"failed":1}
+[35m[load][0m load: {"ok":265,"clientError":0,"serverError":27,"failed":1}
+[35m[load][0m load: {"ok":315,"clientError":0,"serverError":27,"failed":1}
+[35m[load][0m load: {"ok":361,"clientError":0,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":410,"clientError":0,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":459,"clientError":0,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":508,"clientError":0,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":557,"clientError":0,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":606,"clientError":0,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":654,"clientError":1,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":703,"clientError":2,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":752,"clientError":2,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":801,"clientError":2,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":850,"clientError":2,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":899,"clientError":2,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":948,"clientError":2,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":997,"clientError":2,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":1046,"clientError":2,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":1095,"clientError":2,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":1144,"clientError":2,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":1193,"clientError":2,"serverError":30,"failed":1}
+[35m[load][0m load: {"ok":1229,"clientError":2,"serverError":42,"failed":1}
+[35m[load][0m load: {"ok":1258,"clientError":2,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1307,"clientError":2,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1356,"clientError":3,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1404,"clientError":3,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1453,"clientError":4,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1502,"clientError":4,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1551,"clientError":4,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1600,"clientError":4,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1649,"clientError":4,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1698,"clientError":4,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1747,"clientError":4,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1796,"clientError":4,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1844,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1893,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1942,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":1992,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2041,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2090,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2140,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2189,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2238,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2288,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2337,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2386,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2436,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2485,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2535,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2584,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2633,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2683,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2732,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2781,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2831,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2880,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2930,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":2979,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":3028,"clientError":5,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":3077,"clientError":6,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":3126,"clientError":6,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":3176,"clientError":6,"serverError":63,"failed":1}
+[35m[load][0m load: {"ok":3225,"clientError":6,"serverError":63,"failed":1}

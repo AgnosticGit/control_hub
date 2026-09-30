@@ -14,8 +14,9 @@ use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::auth::{API_TOKEN_PREFIX, CurrentUser, Role, authorize};
+use crate::auth::{API_TOKEN_PREFIX, CurrentUser, authorize};
 use crate::error::{ApiError, ApiResult};
+use crate::permissions::Permission;
 use crate::state::AppState;
 
 const INGEST_TOKEN_PREFIX: &str = "chi_";
@@ -214,7 +215,7 @@ pub async fn list(
     user: CurrentUser,
     Path((project_id, environment_id)): Path<(String, String)>,
 ) -> ApiResult<Json<Vec<TokenDto>>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Admin).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TokensView).await?;
     Ok(Json(state.pg.list_tokens(&scope).await?.into_iter().map(TokenDto::from_row).collect()))
 }
 
@@ -228,7 +229,7 @@ pub async fn create(
     Path((project_id, environment_id)): Path<(String, String)>,
     Json(req): Json<CreateTokenRequest>,
 ) -> ApiResult<Json<CreatedTokenResponse>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Admin).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TokensManage).await?;
     user.session_id()?;
     let name = validate_name(&req.name)?;
     let expires_at = expiry(req.kind, req.expires_in_days)?;
@@ -248,7 +249,7 @@ pub async fn revoke(
     Path((project_id, environment_id, token_id)): Path<(String, String, String)>,
     Json(req): Json<RevokeTokenRequest>,
 ) -> ApiResult<Json<TokenDto>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Admin).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TokensManage).await?;
     user.session_id()?;
     let reason = validate_reason(req.reason.as_deref())?;
     let row = find(&state, &scope, &token_id).await?;
@@ -273,7 +274,7 @@ pub async fn rotate(
     Path((project_id, environment_id, token_id)): Path<(String, String, String)>,
     Json(req): Json<RotateTokenRequest>,
 ) -> ApiResult<Json<CreatedTokenResponse>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Admin).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TokensManage).await?;
     user.session_id()?;
     let reason = validate_reason(req.reason.as_deref())?;
     let grace = req.grace_seconds.unwrap_or(0);

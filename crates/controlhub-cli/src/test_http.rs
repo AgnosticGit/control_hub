@@ -85,6 +85,7 @@ pub fn session_json() -> String {
     serde_json::json!({
         "user": { "id": "u", "email": "a@example.test", "display_name": "A" },
         "projects": [{ "id": "demo", "tenant_id": "local", "name": "Demo", "role": "viewer",
+            "role_name": "API token", "permissions": ["telemetry.view", "actions.view"],
             "environments": [{ "id": "local-demo", "name": "local-demo", "is_demo": true }] }]
     })
     .to_string()

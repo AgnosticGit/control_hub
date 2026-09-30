@@ -15,6 +15,27 @@ use crate::routes;
         routes::session::session,
         routes::session::logout,
         routes::session::projects,
+        routes::roles::catalog,
+        routes::roles::list_roles,
+        routes::roles::create_role,
+        routes::roles::update_role,
+        routes::roles::delete_role,
+        routes::roles::list_members,
+        routes::roles::update_member,
+        routes::roles::remove_member,
+        routes::invites::list,
+        routes::invites::create,
+        routes::invites::revoke,
+        routes::invites::preview,
+        routes::invites::accept,
+        routes::account::update,
+        routes::account::change_password,
+        routes::account::sessions,
+        routes::account::revoke_session,
+        routes::account::revoke_other_sessions,
+        routes::account::create_project,
+        routes::account::rename_project,
+        routes::account::leave_project,
         routes::telemetry::services,
         routes::telemetry::topology,
         routes::telemetry::traces,
@@ -37,8 +58,8 @@ use crate::routes;
         routes::actions::cancel,
     ),
     tags(
-        (name = "session"), (name = "projects"), (name = "telemetry"),
-        (name = "timeline"), (name = "audit"), (name = "tokens"), (name = "actions"), (name = "health")
+        (name = "session"), (name = "account"), (name = "projects"), (name = "telemetry"),
+        (name = "timeline"), (name = "audit"), (name = "tokens"), (name = "actions"), (name = "members"), (name = "health")
     ),
     modifiers(&BearerAuth)
 )]

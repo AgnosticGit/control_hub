@@ -1,5 +1,8 @@
+pub mod account;
 pub mod actions;
+pub mod invites;
 pub mod live;
+pub mod roles;
 pub mod session;
 pub mod signup;
 pub mod telemetry;
@@ -11,8 +14,9 @@ use controlhub_storage::pg::AuditRow;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::auth::{CurrentUser, Role, authorize};
+use crate::auth::{CurrentUser, authorize};
 use crate::error::ApiResult;
+use crate::permissions::Permission;
 use crate::state::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -68,7 +72,7 @@ pub async fn audit(
     user: CurrentUser,
     Path((project_id, environment_id)): Path<(String, String)>,
 ) -> ApiResult<Json<Vec<AuditEntryDto>>> {
-    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Role::Viewer).await?;
+    let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let rows = state.pg.audit_entries(scope.tenant_id.as_str(), scope.project_id.as_str(), 200).await?;
     Ok(Json(rows.into_iter().map(Into::into).collect()))
 }
