@@ -282,6 +282,14 @@ pub struct TimelineTracks {
     /// Events whose type is not `request.*`, capped.
     pub markers: Vec<EventMarker>,
     pub markers_total: u32,
+    /// Latest item of the tracks lying wholly before `from_ns` (span end, error log, event).
+    #[serde(with = "opt_nanos_string")]
+    #[cfg_attr(feature = "ts", ts(type = "string | null"))]
+    pub prev_item_ns: Option<i64>,
+    /// Earliest item of the tracks at or after `to_ns` (span start, error log, event).
+    #[serde(with = "opt_nanos_string")]
+    #[cfg_attr(feature = "ts", ts(type = "string | null"))]
+    pub next_item_ns: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

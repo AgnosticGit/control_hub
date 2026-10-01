@@ -46,6 +46,8 @@ function tracks(p: Partial<TimelineTracks> = {}): TimelineTracks {
     clips: [],
     markers: [],
     markers_total: 0,
+    prev_item_ns: null,
+    next_item_ns: null,
     ...p,
   };
 }

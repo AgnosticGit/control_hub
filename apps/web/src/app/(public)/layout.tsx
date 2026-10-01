@@ -37,7 +37,13 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
             <span className="font-semibold text-text">ControlHub</span>
             <span>Observability · Replay · Control</span>
           </span>
-          <span>ControlHub is an early development build. Not production-ready.</span>
+          <span>
+            Early access: ControlHub is an early development build. See{" "}
+            <Link href="/features" className="underline decoration-border-strong hover:text-text">
+              Features
+            </Link>{" "}
+            for what works today.
+          </span>
         </div>
       </footer>
     </div>

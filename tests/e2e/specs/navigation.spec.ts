@@ -36,8 +36,9 @@ test.describe("public site", () => {
     }
     await page.getByRole("link", { name: "ControlHub" }).first().click();
     await expect(page).toHaveURL(/\/$/);
-    await page.getByRole("link", { name: "Run it locally" }).click();
-    await expect(page).toHaveURL(/\/getting-started$/);
+    await expect(page.getByRole("link", { name: "Run it locally" })).toHaveCount(0);
+    await page.getByRole("link", { name: "Create account" }).click();
+    await expect(page).toHaveURL(/\/app\/register$/);
     await page.goto("/");
     await page.getByRole("link", { name: "How it works" }).click();
     await expect(page).toHaveURL(/\/features$/);

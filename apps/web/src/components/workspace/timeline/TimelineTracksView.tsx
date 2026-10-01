@@ -11,6 +11,7 @@ import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime } from "@/lib
 import type { EngineState, WorkspaceActions } from "../useWorkspaceEngine";
 import type { WorkspaceMemory } from "../workspace-memory";
 import { RULER_H, bucketGeometry, draw, drawRuler, rowTop, totalHeight, type ActionBar, type Row } from "./draw";
+import { centeredOn, nearestItems, tracksMatch, viewIsEmpty } from "./neighbours";
 import { placeAbove, rangeBetween, viewAround } from "./range";
 import {
   clampView,
@@ -221,6 +222,15 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     );
   }, [tracks?.services, nodeIds, mutedSet, colors]);
   const height = totalHeight(rows);
+  const groupAt = rows.findIndex((r) => r.kind === "group");
+  const baseRowsHeight = rowTop(rows, groupAt === -1 ? rows.length : groupAt);
+
+  // Zoomed into a stretch with nothing in it: offer the nearest item on either side.
+  const neighbours = !fitted && tracksMatch(tracks, view) && viewIsEmpty(tracks, view, actionBars) ? nearestItems(tracks, view, actionBars) : null;
+  const goToItem = (t: bigint) => {
+    setView(centeredOn(view, t, bounds));
+    actions.seek(t);
+  };
 
   const toggleService = (id: string, on: boolean) => onMuted(on ? muted.filter((m) => m !== id) : [...muted, id]);
   const soloService = (id: string) => onMuted(serviceIds.filter((s) => s !== id));
@@ -530,10 +540,42 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
           {...pointer}
         >
           <canvas ref={rowsRef} aria-hidden className="absolute inset-0" style={{ width, height }} />
+          {neighbours ? (
+            <div
+              className="pointer-events-none absolute inset-x-2 flex -translate-y-1/2 items-center gap-2"
+              style={{ top: baseRowsHeight / 2 }}
+            >
+              {neighbours.prev !== null ? (
+                <NeighbourButton dir="prev" distance={formatSpan(view.from - neighbours.prev)} onClick={() => neighbours.prev !== null && goToItem(neighbours.prev)} />
+              ) : null}
+              <span className="flex-1 truncate text-center text-[11px] text-muted">Nothing in this stretch of time</span>
+              {neighbours.next !== null ? (
+                <NeighbourButton dir="next" distance={formatSpan(neighbours.next - view.to)} onClick={() => neighbours.next !== null && goToItem(neighbours.next)} />
+              ) : null}
+            </div>
+          ) : null}
         </div>
         {tip && hover ? <CursorTooltip x={hover.clientX} y={hover.clientY} lines={tip} /> : null}
       </div>
     </div>
+  );
+}
+
+function NeighbourButton({ dir, distance, onClick }: { dir: "prev" | "next"; distance: string; onClick: () => void }) {
+  const label = dir === "prev" ? `Go to the nearest earlier item, ${distance} before` : `Go to the nearest later item, ${distance} after`;
+  return (
+    <button
+      type="button"
+      className="pointer-events-auto flex shrink-0 items-center gap-1.5 rounded-md border border-border-strong bg-surface-2 px-2 py-1 text-[11px] text-text shadow-sm hover:bg-surface-3"
+      aria-label={label}
+      title={label}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={onClick}
+    >
+      {dir === "prev" ? <Icon name="arrowLeft" className="h-3 w-3" /> : null}
+      <span className="font-mono text-muted">{distance}</span>
+      {dir === "next" ? <Icon name="arrowRight" className="h-3 w-3" /> : null}
+    </button>
   );
 }
 

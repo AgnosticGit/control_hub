@@ -27,4 +27,12 @@ clips: Array<SpanClip>,
 /**
  * Events whose type is not `request.*`, capped.
  */
-markers: Array<EventMarker>, markers_total: number, };
+markers: Array<EventMarker>, markers_total: number, 
+/**
+ * Latest item of the tracks lying wholly before `from_ns` (span end, error log, event).
+ */
+prev_item_ns: string | null, 
+/**
+ * Earliest item of the tracks at or after `to_ns` (span start, error log, event).
+ */
+next_item_ns: string | null, };

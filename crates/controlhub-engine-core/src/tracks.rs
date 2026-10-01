@@ -75,6 +75,15 @@ impl Engine {
             }
         }
         let mut in_view: Vec<Vec<&SpanItem>> = vec![Vec::new(); out.services.len()];
+        let mut prev: Option<i64> = None;
+        let mut next: Option<i64> = None;
+        let mut neighbour = |first: i64, last: i64| {
+            if last < from_ns {
+                prev = Some(prev.map_or(last, |p| p.max(last)));
+            } else if first >= to_ns {
+                next = Some(next.map_or(first, |n| n.min(first)));
+            }
+        };
         // Muted services keep their own row but are left out of the aggregate rows.
         let muted: HashSet<&str> = self.filters.muted_services.iter().map(String::as_str).collect();
 
@@ -82,6 +91,7 @@ impl Engine {
             let Some(&ti) = self.node_index.get(&s.service_id).and_then(|node| track_of.get(node)) else {
                 continue;
             };
+            neighbour(s.start_ns, s.end_ns);
             let request = is_request(s) && !muted.contains(s.service_id.as_str());
             if let Some(b) = bucket(s.start_ns) {
                 if let Some(c) = out.services.get_mut(ti).and_then(|t| t.counts.get_mut(b)) {
@@ -113,10 +123,11 @@ impl Engine {
                 || self.node_index.get(service_id).is_some_and(|node| !track_of.contains_key(node))
         };
         for l in self.logs.values().filter(|l| in_trace(l.trace_id.as_deref())) {
-            if l.severity >= 17
-                && !hidden(&l.service_id)
-                && let Some(b) = bucket(l.time_ns)
-            {
+            if l.severity < 17 || hidden(&l.service_id) {
+                continue;
+            }
+            neighbour(l.time_ns, l.time_ns);
+            if let Some(b) = bucket(l.time_ns) {
                 out.errors[b] += 1;
             }
         }
@@ -124,6 +135,7 @@ impl Engine {
             if e.service_id.as_deref().is_some_and(hidden) {
                 continue;
             }
+            neighbour(e.time_ns, e.time_ns);
             let Some(b) = bucket(e.time_ns) else { continue };
             out.events[b] += 1;
             if !e.event_type.starts_with("request.") {
@@ -137,6 +149,8 @@ impl Engine {
         }
         out.markers.sort_by(|a, b| a.time_ms.total_cmp(&b.time_ms).then_with(|| a.event_type.cmp(&b.event_type)));
         out.markers.truncate(MAX_MARKERS);
+        out.prev_item_ns = prev;
+        out.next_item_ns = next;
 
         out.latency_samples = durations.iter().map(|d| d.len() as u32).collect();
         out.latency_p95_ms = durations.iter_mut().map(|d| p95(d)).collect();
@@ -349,6 +363,57 @@ mod tests {
     }
 
     #[test]
+    fn nearest_items_outside_the_window() {
+        let log = |id: &str, t: i64, severity: u8| {
+            TimelineItem::Log(LogItem {
+                id: id.into(),
+                service_id: "svc_api".into(),
+                service_name: "api".into(),
+                time_ns: t,
+                severity,
+                trace_id: None,
+            })
+        };
+        let ev = |id: &str, t: i64| {
+            TimelineItem::Event(EventItem {
+                id: id.into(),
+                event_type: "deploy".into(),
+                service_id: None,
+                service_name: None,
+                time_ns: t,
+                trace_id: None,
+            })
+        };
+        let mut e = engine(vec![
+            TimelineItem::Span(span("t", "a", None, "api", 2, 0, 10 * MS, false)),
+            TimelineItem::Span(span("t", "b", None, "api", 2, 80 * MS, 90 * MS, false)),
+            TimelineItem::Span(span("t", "c", None, "web", 2, 60 * MS, 70 * MS, false)),
+            log("info", 30 * MS, 9),
+            log("err", 25 * MS, 17),
+            ev("deploy", 200 * MS),
+        ]);
+
+        let t = e.timeline_tracks(40 * MS, 50 * MS, 4, 0);
+        assert_eq!(t.prev_item_ns, Some(25 * MS), "error log after the span end; info logs are not drawn");
+        assert_eq!(t.next_item_ns, Some(60 * MS));
+
+        // A span ending at `from` overlaps the window; one starting at `to` is outside.
+        let t = e.timeline_tracks(10 * MS, 60 * MS, 4, 0);
+        assert_eq!(t.prev_item_ns, None);
+        assert_eq!(t.next_item_ns, Some(60 * MS));
+
+        let t = e.timeline_tracks(95 * MS, 150 * MS, 4, 0);
+        assert_eq!((t.prev_item_ns, t.next_item_ns), (Some(90 * MS), Some(200 * MS)));
+        let t = e.timeline_tracks(300 * MS, 400 * MS, 4, 0);
+        assert_eq!((t.prev_item_ns, t.next_item_ns), (Some(200 * MS), None));
+
+        // Services hidden by the filters are skipped, like on the tracks.
+        e.set_filters(Filters { search: "api".into(), ..Filters::default() });
+        let t = e.timeline_tracks(40 * MS, 50 * MS, 4, 0);
+        assert_eq!(t.next_item_ns, Some(80 * MS), "web is filtered out");
+    }
+
+    #[test]
     fn depth_counts_same_service_ancestors_and_is_bounded() {
         let mut items = vec![TimelineItem::Span(span("t", "s0", None, "api", 2, 0, 100 * MS, false))];
         for i in 1..20 {
@@ -439,6 +504,27 @@ mod tests {
                 prop_assert_eq!(clips as u32, in_view, "clips of {}", track.name);
             }
             prop_assert!(t.clips.windows(2).all(|w| (w[0].track, w[0].start_ms) <= (w[1].track, w[1].start_ms)));
+        }
+
+        /// Nearest items outside the window match a naive scan, and never lie inside it.
+        #[test]
+        fn nearest_items_match_a_naive_scan(
+            raw in prop::collection::vec((0u32..3, -50i64..250, 0i64..40), 0..60),
+            from in -20i64..200,
+            len in 1i64..120,
+        ) {
+            let spans: Vec<SpanItem> = raw.iter().enumerate().map(|(i, &(svc, start, dur))| {
+                span("t", &format!("s{i}"), None, ["a", "b", "c"][svc as usize], 2, start * MS, (start + dur) * MS, false)
+            }).collect();
+            let e = engine(spans.iter().cloned().map(TimelineItem::Span).collect());
+            let (from, to) = (from * MS, (from + len) * MS);
+            let t = e.timeline_tracks(from, to, 4, 0);
+            let prev = spans.iter().filter(|s| s.end_ns < from).map(|s| s.end_ns).max();
+            let next = spans.iter().filter(|s| s.start_ns >= to).map(|s| s.start_ns).min();
+            prop_assert_eq!(t.prev_item_ns, prev);
+            prop_assert_eq!(t.next_item_ns, next);
+            if let Some(p) = t.prev_item_ns { prop_assert!(p < from); }
+            if let Some(n) = t.next_item_ns { prop_assert!(n >= to); }
         }
 
         /// A service's clips appear only when all of its spans in view fit under the cap.

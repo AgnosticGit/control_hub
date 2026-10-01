@@ -37,7 +37,7 @@ Four things together, which neighboring tools do not combine truthfully:
 - Users sign in to the private `/app` workspace (cookie sessions, CSRF); public pages (landing, features, docs, getting started, integrations) explain and onboard.
 - Workspace is scoped to a project and environment: Overview (service map, inspector, timeline, traces/logs/events), Actions, Integration (tokens, OTel env vars, connection status), Tokens, Settings (members & roles), plus personal Account, onboarding and ControlHub Admin.
 - Typical scenes: an incident where a node on the map turns amber/red and the user scrubs the timeline back; connecting a new service with an ingest token; proposing and approving an action as two different people; an assistant pulling context via CLI/MCP.
-- Today it runs on a local demo stand (7-service demo system with fault injection); `just dev ngrok` exposes a public dev stand.
+- Delivered as a hosted SaaS: customers sign up, create an ingestion token and send telemetry to the ControlHub API with standard OpenTelemetry exporters; nothing is installed on their side beyond that. Public pages must never present ControlHub as something to run locally. (Development itself runs on a local demo stand with a 7-service demo system and fault injection; that is internal, not customer-facing.)
 
 ## Capabilities and Constraints
 

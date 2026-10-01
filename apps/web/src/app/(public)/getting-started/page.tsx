@@ -1,43 +1,70 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { collectorConfig, curlCheck, otelEnv } from "@/components/integration/snippets";
 import { Prose } from "../prose";
 
 export const metadata: Metadata = {
   title: "Getting started",
-  description: "Run ControlHub and the demo system locally with Docker, Rust and Node.js.",
+  description: "Connect your first service to ControlHub over the OpenTelemetry API and see it live on the service map.",
 };
+
+const example = { endpoint: "https://<your-endpoint>/otlp", token: null, serviceName: "checkout" };
+const link = "font-semibold underline decoration-border-strong hover:decoration-text";
 
 export default function GettingStartedPage() {
   return (
-    <Prose title="Getting started" lead="Run the full stack and a demo system on your machine.">
-      <h2>Prerequisites</h2>
+    <Prose title="Getting started" lead="Connect your first service in a few minutes. Everything goes through our API; there is nothing to install on our side.">
+      <h2>1. Create an account</h2>
+      <p>
+        <Link href="/app/register" className={link}>
+          Create an account
+        </Link>
+        . You get your own project with an environment straight away, and a short onboarding that walks through the next steps.
+      </p>
+
+      <h2>2. Create an ingestion token</h2>
+      <p>
+        In the workspace, open <strong>Integration</strong> and create a token. It is bound to one environment and shown once; we
+        keep only its hash. The same page shows your endpoint and ready-to-copy settings with the token filled in.
+      </p>
+
+      <h2>3. Point your exporter at ControlHub</h2>
+      <p>Any OpenTelemetry SDK reads these standard variables. Use the endpoint and token from your Integration page:</p>
+      <pre>{otelEnv(example)}</pre>
+      <p>Already running an OpenTelemetry Collector? Add ControlHub as one more exporter:</p>
+      <pre>{collectorConfig(example)}</pre>
+
+      <h2>4. Check the connection</h2>
+      <p>An empty export is a valid request, so this tells you the endpoint and token work before any service is changed:</p>
+      <pre>{curlCheck(example)}</pre>
+      <p>The Integration page shows when the first data arrives.</p>
+
+      <h2>5. Open the map</h2>
+      <p>
+        Services appear on the map as their spans arrive, with the calls between them. Drag the timeline back to see any earlier
+        moment, or click a service for its traces, logs and events.
+      </p>
+
+      <h2>Next</h2>
       <ul>
-        <li>Docker with Compose v2, Rust (pinned by rust-toolchain.toml), Node.js 22+, pnpm 10, just.</li>
-        <li>About 3 GB of free RAM for PostgreSQL, ClickHouse and Kafka.</li>
+        <li>
+          Invite your team and set their roles under <strong>Members &amp; roles</strong>.
+        </li>
+        <li>
+          Give your AI assistant read-only context with the <code>controlhub</code> CLI and MCP server, see{" "}
+          <Link href="/integrations" className={link}>
+            Integrations
+          </Link>
+          .
+        </li>
+        <li>
+          See what is available today and what is coming on the{" "}
+          <Link href="/features" className={link}>
+            Features
+          </Link>{" "}
+          page.
+        </li>
       </ul>
-      <h2>Steps</h2>
-      <pre>{`just doctor      # check tools
-just bootstrap   # generate local secrets, start infra, migrate, seed
-just dev         # ingest + processor + API + web on http://localhost:3000
-just demo        # demo services + load generator (second terminal)`}</pre>
-      <p>
-        Before <code>just bootstrap</code>, put your own email and password into <code>.controlhub/owner.env</code>{" "}
-        (gitignored) as <code>CONTROLHUB_OWNER_EMAIL</code> and <code>CONTROLHUB_OWNER_PASSWORD</code>. That owner
-        account is the only one created; there is no shared default password and no generated demo account.
-      </p>
-      <h2>Your own account and services</h2>
-      <p>
-        In dev mode anyone can create an account at <code>/app/register</code> (sign-up is closed by default outside dev,
-        see <code>CONTROLHUB_SIGNUP</code>). A new account gets its own project; its <strong>Integration</strong> page
-        creates an ingestion token and shows the OpenTelemetry settings for your services.
-      </p>
-      <pre>{`just dev ngrok   # like just dev, plus the dev stand at CONTROLHUB_PUBLIC_URL through ngrok`}</pre>
-      <p>
-        The tunnel exposes only the web app: pages, <code>/api/v1</code> and the OTLP endpoint <code>/otlp</code>. It is a
-        development stand, not a production deployment.
-      </p>
-      <h2>Inject a failure</h2>
-      <pre>{`just demo-fault orders --latency 800 --error-rate 0.3
-just demo-fault orders --clear`}</pre>
     </Prose>
   );
 }
