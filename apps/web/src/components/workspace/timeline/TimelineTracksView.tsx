@@ -9,6 +9,7 @@ import { api, scopedPath, unwrap } from "@/lib/api";
 import { RESOURCE_COLOR, cssColor, serviceColors } from "@/renderer/service-colors";
 import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime } from "@/lib/time";
 import type { EngineState, WorkspaceActions } from "../useWorkspaceEngine";
+import type { WorkspaceMemory } from "../workspace-memory";
 import { RULER_H, bucketGeometry, draw, drawRuler, rowTop, totalHeight, type ActionBar, type Row } from "./draw";
 import { placeAbove, rangeBetween, viewAround } from "./range";
 import {
@@ -49,6 +50,8 @@ interface Props {
   onMuted: (ids: string[]) => void;
   /** Time span of the focused request: the view zooms to it whenever it changes. */
   focus?: View | null;
+  /** Keeps the zoom while the timeline is unmounted. */
+  memory?: WorkspaceMemory;
 }
 
 function isoNs(iso: string | null | undefined): bigint | null {
@@ -108,7 +111,7 @@ interface Hover {
   clientY: number;
 }
 
-export function TimelineTracksView({ projectId, environmentId, state, actions, markA, filterKey, muted, onMuted, focus = null }: Props) {
+export function TimelineTracksView({ projectId, environmentId, state, actions, markA, filterKey, muted, onMuted, focus = null, memory }: Props) {
   /** What is loaded; replay ranges stay inside it. */
   const data = useMemo<View>(() => ({ from: state.rangeFrom, to: state.rangeTo }), [state.rangeFrom, state.rangeTo]);
   const [width, setWidth] = useState(0);
@@ -116,7 +119,8 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   /** What can be shown: after live data, a short stretch that has not happened yet. */
   const bounds = useMemo<View>(() => withFuture(data, share), [data, share]);
   const future = share > 0 ? data.to : null;
-  const [userView, setUserView] = useState<View | null>(null);
+  const [userView, setUserView] = useState<View | null>(() => memory?.timelineView() ?? null);
+  useEffect(() => memory?.saveTimelineView(userView), [memory, userView]);
   const [hover, setHover] = useState<Hover | null>(null);
   const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState<View | null>(null);

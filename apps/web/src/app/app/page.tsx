@@ -38,6 +38,12 @@ export default function AppIndex() {
             <Icon name="user" className="h-3.5 w-3.5" />
             Your account
           </Link>
+          {session.data?.system ? (
+            <Link href="/app/admin" className="btn btn-sm">
+              <Icon name="shield" className="h-3.5 w-3.5" />
+              ControlHub admin
+            </Link>
+          ) : null}
         </nav>
       </div>
       <div className="mt-6">

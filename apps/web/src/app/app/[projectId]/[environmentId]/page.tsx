@@ -1,10 +1,5 @@
-import { Workspace } from "@/components/workspace/Workspace";
-
-export default async function WorkspacePage({
-  params,
-}: {
-  params: Promise<{ projectId: string; environmentId: string }>;
-}) {
-  const { projectId, environmentId } = await params;
-  return <Workspace projectId={decodeURIComponent(projectId)} environmentId={decodeURIComponent(environmentId)} />;
+// The overview itself is rendered by `WorkspaceHost` in the /app layout, which keeps it alive
+// across navigation.
+export default function WorkspacePage() {
+  return null;
 }

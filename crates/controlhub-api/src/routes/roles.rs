@@ -96,12 +96,12 @@ pub struct MemberUpdateRequest {
     pub based_on: Option<String>,
 }
 
-fn parse_id(id: &str) -> ApiResult<Uuid> {
+pub(crate) fn parse_id(id: &str) -> ApiResult<Uuid> {
     Uuid::parse_str(id).map_err(|_| ApiError::NotFound)
 }
 
 /// Role names are shown to other members: trimmed, 1-64 characters, no control characters.
-fn validate_role_name(name: &str) -> ApiResult<&str> {
+pub(crate) fn validate_role_name(name: &str) -> ApiResult<&str> {
     let name = name.trim();
     let len = name.chars().count();
     if len == 0 || len > 64 || name.chars().any(char::is_control) {
@@ -117,7 +117,7 @@ fn requested_permissions(items: &[String]) -> ApiResult<PermissionSet> {
     parse_set(items).map_err(|e| ApiError::BadRequest(format!("permissions: {e}")))
 }
 
-fn grant_json(role_name: &str, permissions: &[String]) -> Value {
+pub(crate) fn grant_json(role_name: &str, permissions: &[String]) -> Value {
     json!({ "role": role_name, "permissions": permissions })
 }
 

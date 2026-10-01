@@ -80,6 +80,8 @@ pub struct ProjectDto {
 pub struct SessionResponse {
     pub user: UserDto,
     pub projects: Vec<ProjectDto>,
+    /// ControlHub administrator access; absent for everyone else and for API tokens.
+    pub system: Option<crate::routes::admin::SystemAccessDto>,
 }
 
 fn cookie(name: &str, value: &str, http_only: bool, secure: bool, max_age: i64) -> Result<HeaderValue, ApiError> {
@@ -187,8 +189,11 @@ pub(crate) async fn start_session(
         .await;
 
     let current = CurrentUser { credential: crate::auth::Credential::Session(session_id), user_id, email };
-    let body =
-        SessionResponse { projects: projects_for(state, &current).await?, user: user_dto(state, user_id).await? };
+    let body = SessionResponse {
+        projects: projects_for(state, &current).await?,
+        user: user_dto(state, user_id).await?,
+        system: crate::routes::admin::system_access_for(state, &current).await?,
+    };
     let max_age = state.config.session_ttl.whole_seconds();
     let mut headers = HeaderMap::new();
     headers.append(
@@ -206,6 +211,7 @@ pub async fn session(State(state): State<AppState>, user: CurrentUser) -> ApiRes
     Ok(Json(SessionResponse {
         projects: projects_for(&state, &user).await?,
         user: user_dto(&state, user.user_id).await?,
+        system: crate::routes::admin::system_access_for(&state, &user).await?,
     }))
 }
 

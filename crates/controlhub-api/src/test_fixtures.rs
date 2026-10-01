@@ -10,10 +10,12 @@ use serde_json::json;
 
 use crate::bootstrap::{SeedScope, TEST_EMAIL_DOMAINS, admin_pg, rotate_ingest_token};
 use crate::permissions::Builtin;
+use crate::system_permissions::SystemBuiltin;
 
 const CREDENTIALS_FILE: &str = "test-credentials.json";
 const ISOLATION_TOKEN: &str = "isolation-test";
-/// Role templates created by the test suites start with this and are deleted with the accounts.
+/// Role templates and projects created by the test suites start with this and are deleted with
+/// the accounts.
 const TEST_ROLE_PREFIX: &str = "[test] ";
 
 /// A second tenant for isolation tests; `isolation-prod` is not a demo environment, so
@@ -50,6 +52,15 @@ const USERS: [(&str, &str, &str, Builtin); 6] = [
     ("member-b@controlhub.local", "Member B", "demo", Builtin::Viewer),
 ];
 
+/// (email, display name, ControlHub role) for the admin panel tests; no project memberships.
+/// `sysmember` starts as a plain account that the tests promote, disable and enable.
+const SYSTEM_USERS: [(&str, &str, Option<SystemBuiltin>); 4] = [
+    ("superadmin@controlhub.local", "Test super admin", Some(SystemBuiltin::SuperAdmin)),
+    ("sysadmin@controlhub.local", "Test administrator", Some(SystemBuiltin::Admin)),
+    ("auditor@controlhub.local", "Test auditor", Some(SystemBuiltin::Auditor)),
+    ("sysmember@controlhub.local", "System member", None),
+];
+
 pub async fn create(out_dir: &Path) -> anyhow::Result<()> {
     let pg = admin_pg().await?;
     for s in &SCOPES {
@@ -64,6 +75,19 @@ pub async fn create(out_dir: &Path) -> anyhow::Result<()> {
         pg.upsert_membership(id, project, role.key()).await?;
         users.push(json!({ "email": email, "password": password, "project_id": project, "role": role.key() }));
     }
+    for (email, name, system_role) in SYSTEM_USERS {
+        let password = generate_password()?;
+        let pw = password.clone();
+        let hash = tokio::task::spawn_blocking(move || hash_password(&pw)).await??;
+        let id = pg.upsert_user(email, name, &hash).await?;
+        if let Some(role) = system_role {
+            pg.upsert_system_builtin(id, role.key()).await?;
+        }
+        users.push(json!({
+            "email": email, "password": password, "project_id": null, "role": null,
+            "system_role": system_role.map(SystemBuiltin::key),
+        }));
+    }
     let token = rotate_ingest_token(&pg, &SCOPES[0].scope()?, ISOLATION_TOKEN).await?;
     let creds = json!({
         "warning": "Test accounts for one test run; deleted afterwards. Never commit.",
@@ -72,7 +96,7 @@ pub async fn create(out_dir: &Path) -> anyhow::Result<()> {
     });
     std::fs::create_dir_all(out_dir)?;
     std::fs::write(out_dir.join(CREDENTIALS_FILE), serde_json::to_string_pretty(&creds)?)?;
-    tracing::info!(users = USERS.len(), "test accounts created");
+    tracing::info!(users = USERS.len() + SYSTEM_USERS.len(), "test accounts created");
     Ok(())
 }
 
@@ -81,13 +105,18 @@ pub async fn create(out_dir: &Path) -> anyhow::Result<()> {
 pub async fn remove(out_dir: &Path) -> anyhow::Result<()> {
     let pg = admin_pg().await?;
     let removed = pg.delete_users_in_domains(TEST_EMAIL_DOMAINS).await?;
-    let roles = pg.delete_custom_roles_with_prefix(TEST_ROLE_PREFIX).await?;
+    let roles = pg.delete_custom_roles_with_prefix(TEST_ROLE_PREFIX).await?
+        + pg.delete_system_roles_with_prefix(TEST_ROLE_PREFIX).await?;
+    let mut projects = 0;
+    for id in pg.project_ids_named_with_prefix(TEST_ROLE_PREFIX).await? {
+        projects += u64::from(pg.delete_project(&id).await?);
+    }
     pg.revoke_ingest_tokens_named(&SCOPES[0].scope()?, ISOLATION_TOKEN).await?;
     match std::fs::remove_file(out_dir.join(CREDENTIALS_FILE)) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
         _ => {}
     }
-    tracing::info!(removed, roles, "test accounts and roles removed");
+    tracing::info!(removed, roles, projects, "test accounts, roles and projects removed");
     Ok(())
 }
 
@@ -97,10 +126,17 @@ mod tests {
 
     #[test]
     fn every_test_account_is_in_a_domain_that_removal_covers() {
-        for (email, ..) in USERS {
+        let emails = USERS.iter().map(|u| u.0).chain(SYSTEM_USERS.iter().map(|u| u.0));
+        for email in emails {
             let domain = email.rsplit('@').next().unwrap_or_default();
             assert!(TEST_EMAIL_DOMAINS.contains(&domain), "{email} would survive the cleanup");
         }
+    }
+
+    #[test]
+    fn test_projects_never_match_the_demo_project() {
+        assert!(!"Demo system".starts_with(TEST_ROLE_PREFIX));
+        assert!(!TEST_ROLE_PREFIX.trim().is_empty(), "an empty prefix would delete every project");
     }
 
     #[test]

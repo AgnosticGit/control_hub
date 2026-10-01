@@ -86,6 +86,95 @@ test.describe("workspace on demo data", () => {
     expect(errors).toEqual([]);
   });
 
+  test("cards panned off-screen stay drawn, so panning back never draws them again", async ({ page }) => {
+    const canvas = page.locator("main canvas");
+    await expect(canvas.or(page.getByText(/WebGL is unavailable/))).toBeVisible();
+    test.skip((await page.getByText(/WebGL is unavailable/).count()) > 0, "no WebGL in this browser");
+    const map = page.getByRole("application", { name: /Service map/ });
+    await expect(map).toHaveAttribute("data-drawn-nodes", /\d/);
+    // The drawn cards after `n` more engine frames (each frame rewrites the attribute).
+    const drawnAfterFrames = async (n = 2) =>
+      new Set(
+        (
+          await map.evaluate(
+            (el, count) =>
+              new Promise<string>((resolve) => {
+                let seen = 0;
+                const mo = new MutationObserver(() => {
+                  if (++seen < count) return;
+                  mo.disconnect();
+                  resolve(el.getAttribute("data-drawn-nodes") ?? "");
+                });
+                mo.observe(el, { attributes: true, attributeFilter: ["data-drawn-nodes"] });
+              }),
+            n,
+          )
+        )
+          .split(",")
+          .filter(Boolean),
+      );
+    const missing = (all: Set<string>, now: Set<string>) => [...all].filter((i) => !now.has(i));
+
+    const systemMap = page.getByRole("main", { name: "System map" });
+    await systemMap.getByRole("button", { name: "Fit to screen" }).click();
+    const all = await drawnAfterFrames();
+    expect(all.size).toBeGreaterThan(3);
+    for (let i = 0; i < 3; i++) await systemMap.getByRole("button", { name: "Zoom in" }).click();
+    // Zoomed in, cards beyond the screen edge are still drawn.
+    expect(missing(all, await drawnAfterFrames())).toEqual([]);
+
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error("map canvas has no box");
+    const y = box.y + box.height * 0.5;
+    await page.mouse.move(box.x + box.width * 0.35, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.65, y, { steps: 6 });
+    // While the button is still held: nothing that was drawn disappears.
+    expect(missing(all, await drawnAfterFrames())).toEqual([]);
+    await page.mouse.up();
+    expect(missing(all, await drawnAfterFrames())).toEqual([]);
+    // And back again.
+    await page.mouse.move(box.x + box.width * 0.65, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.35, y, { steps: 6 });
+    expect(missing(all, await drawnAfterFrames())).toEqual([]);
+    await page.mouse.up();
+  });
+
+  test("returning to the overview from other pages shows it at once with its state kept", async ({ page }) => {
+    const timeline = page.getByLabel("Timeline");
+    await expect(page.getByText("Starting engine…")).toBeHidden();
+    await timeline.getByRole("button", { name: "Pause live" }).click();
+    await expect(timeline.getByText("paused", { exact: true })).toBeVisible();
+    await page.getByRole("checkbox", { name: "Table view" }).check();
+    await expect(page.getByRole("table")).toBeVisible();
+
+    let workers = 0;
+    page.on("worker", () => workers++);
+    const sidebar = page.getByRole("navigation", { name: "Workspace" });
+
+    await sidebar.getByRole("link", { name: "Integration" }).click();
+    await expect(page).toHaveURL(/\/integration$/);
+    await expect(page.getByRole("main", { name: "System map" })).toHaveCount(0);
+    await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Overview" }).click();
+    await expect(page).toHaveURL(new RegExp(`${WORKSPACE}$`));
+    await expect(page.getByRole("checkbox", { name: "Table view" })).toBeChecked();
+    await expect(page.getByText("Starting engine…")).toHaveCount(0);
+    await expect(page.getByLabel("Timeline").getByText("paused", { exact: true })).toBeVisible();
+
+    // A page outside the project (the account) keeps it too.
+    await page.getByRole("link", { name: "Your account" }).click();
+    await expect(page).toHaveURL(/\/app\/account/);
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`${WORKSPACE}$`));
+    await expect(page.getByRole("checkbox", { name: "Table view" })).toBeChecked();
+    await expect(page.getByText("Starting engine…")).toHaveCount(0);
+    await expect(page.getByLabel("Timeline").getByText("paused", { exact: true })).toBeVisible();
+
+    // The engine worker was never started again.
+    expect(workers).toBe(0);
+  });
+
   test("timeline modes: pause, replay, return to live", async ({ page }) => {
     const timeline = page.getByLabel("Timeline");
     await expect(timeline.getByText("live", { exact: true })).toBeVisible();

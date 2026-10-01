@@ -51,6 +51,12 @@ export function AccountShell({ active, title, description, children }: { active:
           ))}
         </nav>
         <div className="mt-auto space-y-2 p-3">
+          {session.data?.system ? (
+            <Link href="/app/admin" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-text">
+              <Icon name="shield" className="h-4 w-4" />
+              ControlHub admin
+            </Link>
+          ) : null}
           <Link href="/app" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-text">
             <Icon name="arrowLeft" className="h-4 w-4" />
             Back to projects

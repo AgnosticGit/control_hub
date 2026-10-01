@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { TimelineTracksView } from "./timeline/TimelineTracksView";
 import { formatSpan, type View } from "./timeline/scale";
+import type { WorkspaceMemory } from "./workspace-memory";
 import { SPEEDS, type EngineState, type Mode, type Speed, type WorkspaceActions } from "./useWorkspaceEngine";
 import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime, nowNs } from "@/lib/time";
 
@@ -37,9 +38,10 @@ interface Props {
   markA: bigint | null;
   onMarkA: (t: bigint | null) => void;
   onCompare: (a: bigint, b: bigint) => void;
+  memory?: WorkspaceMemory;
 }
 
-export function TimelineBar({ projectId, environmentId, filterKey, muted, onMuted, focus = null, height, state, actions, markA, onMarkA, onCompare }: Props) {
+export function TimelineBar({ projectId, environmentId, filterKey, muted, onMuted, focus = null, height, state, actions, markA, onMarkA, onCompare, memory }: Props) {
   const [showRange, setShowRange] = useState(false);
   const playing = state.mode === "replay";
   const summary = state.summary;
@@ -167,6 +169,7 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
         muted={muted}
         onMuted={onMuted}
         focus={focus}
+        memory={memory}
       />
     </section>
   );

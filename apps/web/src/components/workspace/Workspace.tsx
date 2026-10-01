@@ -17,6 +17,7 @@ import { TraceFocusBar } from "./TraceFocusBar";
 import type { View } from "./timeline/scale";
 import { useDebounced } from "./useDebounced";
 import { useWorkspaceEngine, type EngineState, type Mode, type WorkspaceActions } from "./useWorkspaceEngine";
+import { WorkspaceMemory } from "./workspace-memory";
 
 const PRESETS = [
   { label: "1h", minutes: 60 },
@@ -43,9 +44,11 @@ function usePersistedSize(key: string, fallback: number, min: number, max: numbe
   return [value, (v: number) => writePersisted(key, String(Math.round(v)))];
 }
 
-export function Workspace({ projectId, environmentId }: { projectId: string; environmentId: string }) {
+export function Workspace({ projectId, environmentId, visible = true }: { projectId: string; environmentId: string; visible?: boolean }) {
   const session = useSession();
   const { state, actions } = useWorkspaceEngine(projectId, environmentId);
+  // Survives the map and timeline unmounting while another page is shown.
+  const [memory] = useState(() => new WorkspaceMemory());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("logs");
   const [traceId, setTraceId] = useState<string | null>(null);
@@ -98,6 +101,7 @@ export function Workspace({ projectId, environmentId }: { projectId: string; env
     actions.pause();
   };
 
+  if (!visible) return null;
   if (session.isPending) return <p className="p-8 text-sm text-muted">Loading…</p>;
   if (session.data && !env) {
     return (
@@ -204,6 +208,7 @@ export function Workspace({ projectId, environmentId }: { projectId: string; env
                   mode={state.mode}
                   speed={state.speed}
                   summary={state.summary}
+                  memory={memory}
                 />
               )}
               {traceId && state.phase === "ready" ? (
@@ -298,6 +303,7 @@ export function Workspace({ projectId, environmentId }: { projectId: string; env
           onMuted={setMuted}
           focus={traceFocus}
           height={dockHeight}
+          memory={memory}
           state={state}
           actions={actions}
           markA={markA}

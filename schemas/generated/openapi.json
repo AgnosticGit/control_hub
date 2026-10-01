@@ -269,6 +269,1420 @@
         }
       }
     },
+    "/api/v1/admin/audit": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_audit_log",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "description": "Only entries of this project.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1-500, default 200.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminAuditEntryDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/members": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_list_members",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_add_member",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminMemberCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/members/{user_id}": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_remove_member",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_update_member",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/overview": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_overview",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOverview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/permissions": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_catalog",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PermissionInfo"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/projects": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_list_projects",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminProjectDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_create_project",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminProjectCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProjectDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/projects/{project_id}": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_delete_project",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted with its environments, members, roles, invites, tokens and plans"
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_rename_project",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProjectDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/environments": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_create_environment",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProjectDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/members": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_list_project_members",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_put_project_member",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminProjectMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/projects/{project_id}/members/{user_id}": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_remove_project_member",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/roles": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_list_roles",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RoleDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_create_role",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/roles/{role_id}": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_delete_role",
+        "parameters": [
+          {
+            "name": "role_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_update_role",
+        "parameters": [
+          {
+            "name": "role_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_list_users",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminUserDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{user_id}/disable": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_disable_user",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disabled; every session of the account is ended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{user_id}/enable": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_enable_user",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{user_id}/sessions/revoke": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "admin_revoke_user_sessions",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndedSessions"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
@@ -3321,6 +4735,241 @@
           }
         }
       },
+      "AdminAuditEntryDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "occurred_at",
+          "actor_id",
+          "actor_kind",
+          "action",
+          "outcome"
+        ],
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actor_email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Email of the acting account, when it still exists."
+          },
+          "actor_id": {
+            "type": "string"
+          },
+          "actor_kind": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "occurred_at": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AdminMemberCreateRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "role_id"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "role_id": {
+            "type": "string"
+          }
+        }
+      },
+      "AdminOverview": {
+        "type": "object",
+        "required": [
+          "projects",
+          "environments",
+          "users",
+          "disabled_users",
+          "active_sessions",
+          "administrators"
+        ],
+        "properties": {
+          "active_sessions": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "administrators": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "disabled_users": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "environments": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "projects": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "users": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AdminProjectCreateRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "owner_email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Email of an active account that becomes the owner; the acting administrator when absent."
+          }
+        }
+      },
+      "AdminProjectDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "created_at",
+          "members",
+          "owners",
+          "environments",
+          "protected"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentDto"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "members": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owners": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Emails of the project's owners."
+          },
+          "protected": {
+            "type": "boolean",
+            "description": "Cannot be deleted from the panel (the local demo project)."
+          },
+          "tenant_id": {
+            "type": "string"
+          }
+        }
+      },
+      "AdminProjectMemberRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "role"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "description": "Built-in project role: `owner`, `admin`, `operator` or `viewer`."
+          }
+        }
+      },
+      "AdminUserDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "display_name",
+          "created_at",
+          "disabled",
+          "projects",
+          "active_sessions"
+        ],
+        "properties": {
+          "active_sessions": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "projects": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Projects the account is a member of."
+          },
+          "system_role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name of the account's administrator role, if it has one."
+          }
+        }
+      },
       "AuditEntryDto": {
         "type": "object",
         "required": [
@@ -3527,6 +5176,19 @@
           }
         }
       },
+      "EndedSessions": {
+        "type": "object",
+        "required": [
+          "revoked"
+        ],
+        "properties": {
+          "revoked": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "EntityKindDto": {
         "type": "string",
         "enum": [
@@ -3557,6 +5219,17 @@
             "type": "boolean",
             "description": "Demo environments must always be labelled in the UI."
           },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "EnvironmentRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
           "name": {
             "type": "string"
           }
@@ -4521,6 +6194,17 @@
               "$ref": "#/components/schemas/ProjectDto"
             }
           },
+          "system": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SystemAccessDto",
+                "description": "ControlHub administrator access; absent for everyone else and for API tokens."
+              }
+            ]
+          },
           "user": {
             "$ref": "#/components/schemas/UserDto"
           }
@@ -4686,6 +6370,35 @@
             "description": "Resource / dependency entity this span calls (e.g. a database), when known."
           },
           "trace_id": {
+            "type": "string"
+          }
+        }
+      },
+      "SystemAccessDto": {
+        "type": "object",
+        "description": "The signed-in user's administrator access, for the session payload (`None` without any).",
+        "required": [
+          "role",
+          "role_name",
+          "permissions",
+          "is_super_admin"
+        ],
+        "properties": {
+          "is_super_admin": {
+            "type": "boolean"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Effective ids (see `GET /api/v1/admin/permissions`)."
+          },
+          "role": {
+            "type": "string",
+            "description": "`super_admin`, `admin`, `auditor`, `custom` (a role template) or `individual`."
+          },
+          "role_name": {
             "type": "string"
           }
         }
@@ -5164,6 +6877,10 @@
     },
     {
       "name": "health"
+    },
+    {
+      "name": "admin",
+      "description": "ControlHub administration: every project, account and administrator (browser sessions only)"
     }
   ]
 }

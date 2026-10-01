@@ -1,36 +1,69 @@
-// Permission-matrix logic for the Members & roles page. The API enforces every rule; these
-// mirror them so the UI can disable what would be refused and explain why.
+// Permission-matrix logic for the Members & roles page and the ControlHub admin panel. The API
+// enforces every rule; these mirror them so the UI can disable what would be refused and explain why.
 import { PERMISSIONS, type PermissionId } from "@/lib/permissions";
 
-/** Permissions another one cannot work without (same table as the API). */
-const IMPLIES: Partial<Record<PermissionId, PermissionId>> = {
-  "tokens.manage": "tokens.view",
-  "actions.propose": "actions.view",
-  "actions.approve": "actions.view",
-  "members.manage": "members.view",
-  "roles.manage": "members.view",
+/** One permission system: project permissions, or ControlHub administrator permissions. */
+export type PermissionModel = {
+  /** Ids in the API catalog's order. */
+  ids: readonly string[];
+  /** Permissions another one cannot work without (same table as the API). */
+  implies: Readonly<Record<string, string>>;
+  membersManage: string;
+  rolesManage: string;
+  /** Built-in key of the top role (project Owner, ControlHub Super Admin). */
+  ownerRole: string;
+  text: {
+    own: string;
+    needsMembersManage: string;
+    ownerChangesOwner: string;
+    strongerMember: string;
+    needsRolesManage: string;
+    strongerRole: string;
+  };
 };
 
-function isPermission(id: string): id is PermissionId {
-  return (PERMISSIONS as readonly string[]).includes(id);
-}
+export const PROJECT_MODEL: PermissionModel = {
+  ids: PERMISSIONS,
+  implies: {
+    "tokens.manage": "tokens.view",
+    "actions.propose": "actions.view",
+    "actions.approve": "actions.view",
+    "members.manage": "members.view",
+    "roles.manage": "members.view",
+  },
+  membersManage: "members.manage",
+  rolesManage: "roles.manage",
+  ownerRole: "owner",
+  text: {
+    own: "You cannot change your own membership.",
+    needsMembersManage: "Changing members needs the “Manage members and their roles” permission.",
+    ownerChangesOwner: "Only an owner can change another owner.",
+    strongerMember: "This member has permissions you do not have.",
+    needsRolesManage: "Editing roles needs the “Manage role templates” permission.",
+    strongerRole: "This role has permissions you do not have.",
+  },
+};
 
 /** Known ids plus what they imply, in catalog order. */
-export function normalise(ids: Iterable<string>): PermissionId[] {
-  const set = new Set<PermissionId>();
+export function normalise(ids: Iterable<string>): PermissionId[];
+export function normalise(ids: Iterable<string>, model: PermissionModel): string[];
+export function normalise(ids: Iterable<string>, model: PermissionModel = PROJECT_MODEL): string[] {
+  const set = new Set<string>();
   for (const id of ids) {
-    if (!isPermission(id)) continue;
+    if (!model.ids.includes(id)) continue;
     set.add(id);
-    const implied = IMPLIES[id];
+    const implied = model.implies[id];
     if (implied) set.add(implied);
   }
-  return PERMISSIONS.filter((p) => set.has(p));
+  return model.ids.filter((p) => set.has(p));
 }
 
 /** Ticking adds what the permission needs; unticking removes what needs it. */
-export function toggle(current: readonly string[], id: PermissionId, on: boolean): PermissionId[] {
-  if (on) return normalise([...current, id]);
-  return normalise(current).filter((p) => p !== id && IMPLIES[p] !== id);
+export function toggle(current: readonly string[], id: PermissionId, on: boolean): PermissionId[];
+export function toggle(current: readonly string[], id: string, on: boolean, model: PermissionModel): string[];
+export function toggle(current: readonly string[], id: string, on: boolean, model: PermissionModel = PROJECT_MODEL): string[] {
+  if (on) return normalise([...current, id], model);
+  return normalise(current, model).filter((p) => p !== id && model.implies[p] !== id);
 }
 
 export type CatalogEntry = { id: string; label: string; group: string };
@@ -52,19 +85,25 @@ function subset(a: readonly string[], b: readonly string[]): boolean {
 }
 
 /** Why `actor` may not change this member, or null if they may. */
-export function memberLock(actor: Actor, member: { user_id: string; permissions: readonly string[]; is_owner: boolean }): string | null {
-  if (member.user_id === actor.userId) return "You cannot change your own membership.";
-  if (!actor.permissions.includes("members.manage")) return "Changing members needs the “Manage members and their roles” permission.";
-  if (member.is_owner && !actor.isOwner) return "Only an owner can change another owner.";
-  if (!actor.isOwner && !subset(member.permissions, actor.permissions)) {
-    return "This member has permissions you do not have.";
-  }
+export function memberLock(
+  actor: Actor,
+  member: { user_id: string; permissions: readonly string[]; is_owner: boolean },
+  model: PermissionModel = PROJECT_MODEL,
+): string | null {
+  if (member.user_id === actor.userId) return model.text.own;
+  if (!actor.permissions.includes(model.membersManage)) return model.text.needsMembersManage;
+  if (member.is_owner && !actor.isOwner) return model.text.ownerChangesOwner;
+  if (!actor.isOwner && !subset(member.permissions, actor.permissions)) return model.text.strongerMember;
   return null;
 }
 
-export function assignableRole(actor: Actor, role: { permissions: readonly string[]; builtin?: string | null }): boolean {
-  if (role.builtin === "owner" && !actor.isOwner) return false;
-  return subset(normalise(role.permissions), actor.permissions);
+export function assignableRole(
+  actor: Actor,
+  role: { permissions: readonly string[]; builtin?: string | null },
+  model: PermissionModel = PROJECT_MODEL,
+): boolean {
+  if (role.builtin === model.ownerRole && !actor.isOwner) return false;
+  return subset(normalise(role.permissions, model), actor.permissions);
 }
 
 /** The role a new invite link starts with: Viewer if the actor may grant it, else the first they may. */
@@ -82,21 +121,26 @@ type MemberGrant = { role_id: string | null; role_name: string; permissions: str
 export function memberAfter(
   change: { role_id?: string | null; permissions?: string[] | null; based_on?: string | null },
   roles: ReadonlyArray<{ id: string; name: string; permissions: string[] }>,
+  model: PermissionModel = PROJECT_MODEL,
 ): Partial<MemberGrant> {
   if (change.role_id) {
     const role = roles.find((r) => r.id === change.role_id);
     return role ? { role_id: role.id, role_name: role.name, permissions: role.permissions, based_on: null } : {};
   }
   if (change.permissions) {
-    return { role_id: null, role_name: "Individual", permissions: normalise(change.permissions), based_on: change.based_on ?? null };
+    return { role_id: null, role_name: "Individual", permissions: normalise(change.permissions, model), based_on: change.based_on ?? null };
   }
   return {};
 }
 
 /** Why `actor` may not edit or delete this role, or null if they may. */
-export function roleLock(actor: Actor, role: { permissions: readonly string[]; builtin?: string | null }): string | null {
+export function roleLock(
+  actor: Actor,
+  role: { permissions: readonly string[]; builtin?: string | null },
+  model: PermissionModel = PROJECT_MODEL,
+): string | null {
   if (role.builtin) return "Built-in roles are read-only.";
-  if (!actor.permissions.includes("roles.manage")) return "Editing roles needs the “Manage role templates” permission.";
-  if (!subset(normalise(role.permissions), actor.permissions)) return "This role has permissions you do not have.";
+  if (!actor.permissions.includes(model.rolesManage)) return model.text.needsRolesManage;
+  if (!subset(normalise(role.permissions, model), actor.permissions)) return model.text.strongerRole;
   return null;
 }

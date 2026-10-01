@@ -1,5 +1,6 @@
 pub mod account;
 pub mod actions;
+pub mod admin;
 pub mod invites;
 pub mod live;
 pub mod roles;

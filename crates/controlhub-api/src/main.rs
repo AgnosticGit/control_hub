@@ -8,6 +8,7 @@ mod openapi;
 mod permissions;
 mod routes;
 mod state;
+mod system_permissions;
 mod test_fixtures;
 
 use std::net::SocketAddr;
@@ -85,7 +86,8 @@ struct ServeArgs {
 }
 
 fn router(state: state::AppState) -> Router {
-    use routes::{account, invites, roles, session, telemetry};
+    use axum::routing::{delete, patch};
+    use routes::{account, admin, invites, roles, session, telemetry};
     let scoped = "/api/v1/projects/{project_id}/environments/{environment_id}";
     Router::new()
         .route("/api/v1/health", get(routes::health))
@@ -136,6 +138,25 @@ fn router(state: state::AppState) -> Router {
         .route(&format!("{scoped}/actions/{{plan_id}}/approve"), post(routes::actions::approve))
         .route(&format!("{scoped}/actions/{{plan_id}}/reject"), post(routes::actions::reject))
         .route(&format!("{scoped}/actions/{{plan_id}}/cancel"), post(routes::actions::cancel))
+        .route("/api/v1/admin/overview", get(admin::overview))
+        .route("/api/v1/admin/permissions", get(admin::catalog))
+        .route("/api/v1/admin/projects", get(admin::list_projects).post(admin::create_project))
+        .route("/api/v1/admin/projects/{project_id}", patch(admin::rename_project).delete(admin::delete_project))
+        .route("/api/v1/admin/projects/{project_id}/environments", post(admin::create_environment))
+        .route(
+            "/api/v1/admin/projects/{project_id}/members",
+            get(admin::list_project_members).put(admin::put_project_member),
+        )
+        .route("/api/v1/admin/projects/{project_id}/members/{user_id}", delete(admin::remove_project_member))
+        .route("/api/v1/admin/users", get(admin::list_users))
+        .route("/api/v1/admin/users/{user_id}/disable", post(admin::disable_user))
+        .route("/api/v1/admin/users/{user_id}/enable", post(admin::enable_user))
+        .route("/api/v1/admin/users/{user_id}/sessions/revoke", post(admin::revoke_user_sessions))
+        .route("/api/v1/admin/members", get(admin::list_members).post(admin::add_member))
+        .route("/api/v1/admin/members/{user_id}", patch(admin::update_member).delete(admin::remove_member))
+        .route("/api/v1/admin/roles", get(admin::list_roles).post(admin::create_role))
+        .route("/api/v1/admin/roles/{role_id}", patch(admin::update_role).delete(admin::delete_role))
+        .route("/api/v1/admin/audit", get(admin::audit_log))
         .layer(RequestBodyLimitLayer::new(1024 * 1024))
         .layer(TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, Duration::from_secs(30)))
         .layer(SetResponseHeaderLayer::overriding(header::CACHE_CONTROL, HeaderValue::from_static("no-store")))
@@ -329,6 +350,54 @@ mod tests {
         for uri in ["/api/v1/account/sessions", "/api/v1/projects/demo/invites"] {
             let (s, _, _) = send(state(), req(Method::GET, uri, &[], "")).await;
             assert_eq!(s, StatusCode::UNAUTHORIZED, "GET {uri}");
+        }
+    }
+
+    /// ControlHub administration mutations (method, uri).
+    fn admin_mutations() -> Vec<(Method, String)> {
+        vec![
+            (Method::POST, "/api/v1/admin/projects".to_owned()),
+            (Method::PATCH, "/api/v1/admin/projects/p-1".to_owned()),
+            (Method::DELETE, "/api/v1/admin/projects/p-1".to_owned()),
+            (Method::POST, "/api/v1/admin/projects/p-1/environments".to_owned()),
+            (Method::PUT, "/api/v1/admin/projects/p-1/members".to_owned()),
+            (Method::DELETE, format!("/api/v1/admin/projects/p-1/members/{PLAN}")),
+            (Method::POST, format!("/api/v1/admin/users/{PLAN}/disable")),
+            (Method::POST, format!("/api/v1/admin/users/{PLAN}/enable")),
+            (Method::POST, format!("/api/v1/admin/users/{PLAN}/sessions/revoke")),
+            (Method::POST, "/api/v1/admin/members".to_owned()),
+            (Method::PATCH, format!("/api/v1/admin/members/{PLAN}")),
+            (Method::DELETE, format!("/api/v1/admin/members/{PLAN}")),
+            (Method::POST, "/api/v1/admin/roles".to_owned()),
+            (Method::PATCH, format!("/api/v1/admin/roles/{PLAN}")),
+            (Method::DELETE, format!("/api/v1/admin/roles/{PLAN}")),
+        ]
+    }
+
+    #[tokio::test]
+    async fn admin_routes_need_a_session_and_never_accept_api_tokens() {
+        let body = r#"{"name":"P","email":"a@example.test","role":"viewer","role_id":"r","permissions":[]}"#;
+        for (m, uri) in admin_mutations() {
+            let (s, _, _) = send(state(), req(m.clone(), &uri, &[], body)).await;
+            assert_eq!(s, StatusCode::UNAUTHORIZED, "{m} {uri}");
+            let (s, _, b) = send(state(), req(m.clone(), &uri, &[("authorization", "Bearer cha_x")], body)).await;
+            assert_eq!(s, StatusCode::FORBIDDEN, "{m} {uri}");
+            assert_eq!(b["message"], "forbidden: API tokens are read-only", "{m} {uri}");
+            let (s, _, _) = send(state(), req(m.clone(), &uri, &[("cookie", "controlhub_session=chs_x")], body)).await;
+            assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "{m} {uri}: session lookup fails closed");
+        }
+        for uri in [
+            "/api/v1/admin/overview",
+            "/api/v1/admin/permissions",
+            "/api/v1/admin/projects",
+            "/api/v1/admin/projects/p-1/members",
+            "/api/v1/admin/users",
+            "/api/v1/admin/members",
+            "/api/v1/admin/roles",
+            "/api/v1/admin/audit",
+        ] {
+            let (s, _, b) = send(state(), req(Method::GET, uri, &[], "")).await;
+            assert_eq!((s, b["code"].as_str()), (StatusCode::UNAUTHORIZED, Some("unauthenticated")), "GET {uri}");
         }
     }
 
@@ -612,6 +681,29 @@ mod tests {
             ("/api/v1/projects/{project_id}/invites/{invite_id}".into(), "delete"),
             ("/api/v1/invites/preview".into(), "post"),
             ("/api/v1/invites/accept".into(), "post"),
+            ("/api/v1/admin/overview".into(), "get"),
+            ("/api/v1/admin/permissions".into(), "get"),
+            ("/api/v1/admin/projects".into(), "get"),
+            ("/api/v1/admin/projects".into(), "post"),
+            ("/api/v1/admin/projects/{project_id}".into(), "patch"),
+            ("/api/v1/admin/projects/{project_id}".into(), "delete"),
+            ("/api/v1/admin/projects/{project_id}/environments".into(), "post"),
+            ("/api/v1/admin/projects/{project_id}/members".into(), "get"),
+            ("/api/v1/admin/projects/{project_id}/members".into(), "put"),
+            ("/api/v1/admin/projects/{project_id}/members/{user_id}".into(), "delete"),
+            ("/api/v1/admin/users".into(), "get"),
+            ("/api/v1/admin/users/{user_id}/disable".into(), "post"),
+            ("/api/v1/admin/users/{user_id}/enable".into(), "post"),
+            ("/api/v1/admin/users/{user_id}/sessions/revoke".into(), "post"),
+            ("/api/v1/admin/members".into(), "get"),
+            ("/api/v1/admin/members".into(), "post"),
+            ("/api/v1/admin/members/{user_id}".into(), "patch"),
+            ("/api/v1/admin/members/{user_id}".into(), "delete"),
+            ("/api/v1/admin/roles".into(), "get"),
+            ("/api/v1/admin/roles".into(), "post"),
+            ("/api/v1/admin/roles/{role_id}".into(), "patch"),
+            ("/api/v1/admin/roles/{role_id}".into(), "delete"),
+            ("/api/v1/admin/audit".into(), "get"),
         ];
         for (p, m) in [
             ("/services", "get"),

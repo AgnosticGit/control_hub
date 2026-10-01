@@ -100,6 +100,15 @@ export function AppShell({ projectId, environmentId, active, top, status, childr
               Finish setup
             </Link>
           ) : null}
+          {session.data?.system ? (
+            <Link
+              href="/app/admin"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-text"
+            >
+              <Icon name="shield" className="h-4 w-4" />
+              ControlHub admin
+            </Link>
+          ) : null}
           {status ? (
             <div className="rounded-xl border border-border bg-surface/70 p-3">
               <div className="label mb-2">System status</div>

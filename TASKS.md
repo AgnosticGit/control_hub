@@ -39,6 +39,10 @@ Ordered by priority within each stage. `[x]` = done and verified.
       opens as a full-screen panel with no scrolling, in larger type, and carries the animation note
 - [x] Faint background grid on the system map: anchored to the world (moves with pan), step adapts to
       zoom, every fifth line slightly brighter
+- [x] Cards panned off-screen and back are never drawn again: the renderer reports the viewport
+      with one screen of overscan and while dragging, so engine culling never drops a visible card
+- [x] The Overview stays mounted across sidebar navigation (`/app` layout keeps the workspace):
+      no engine restart or loading on return; map camera and timeline zoom survive a remount
 - [ ] Layout proptest `random_graphs_keep_cards_and_corridors_apart` found a case where a card sits
       on a corridor (n = 9, saved in `proptest-regressions/layout.txt`); fix `layout.rs`
 - [ ] Focused request in the URL (shareable, survives reload); stable colours when services are
@@ -106,5 +110,12 @@ Ordered by priority within each stage. `[x]` = done and verified.
       others), projects (create up to 20 owned, rename, leave)
 - [x] Skippable onboarding after sign-up (`/app/onboarding`): connect, invite, done; "Finish setup"
       stays in the sidebar and account until finished or skipped
-- [ ] Invite by email (needs outgoing mail); transfer or delete a project
+- [x] ControlHub administration (`/app/admin`, `/api/v1/admin/*`, browser sessions only): system
+      roles Super Admin / Administrator / Auditor plus custom templates and individual sets, with
+      the project anti-escalation rules (one Super Admin always remains); all projects (create with
+      an owner, rename, add environment, members, delete; demo protected), accounts (disable/enable,
+      end sessions), administrators, roles, audit log of every project; every change and refusal audited
+- [ ] Admin panel: delete accounts, transfer project ownership, edit/delete environments, paging
+      for long account and audit lists
+- [ ] Invite by email (needs outgoing mail); transfer a project
 - [ ] Load test ingest → ClickHouse and publish measured numbers

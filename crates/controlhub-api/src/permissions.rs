@@ -1,11 +1,52 @@
-//! Project permissions, built-in roles and the rules that keep anyone from granting more than
-//! they have. Pure (no I/O): handlers load the actor and target, these functions decide.
+//! Permissions, built-in roles and the rules that keep anyone from granting more than they
+//! have. The same rules govern project members (`Permission`) and ControlHub administrators
+//! (`crate::system_permissions::SystemPermission`). Pure (no I/O): handlers load the actor and
+//! target, these functions decide.
 
 use std::collections::BTreeSet;
+use std::fmt::Debug;
 
 use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
+
+/// Error texts of the rules, worded for one kind of permission.
+#[derive(Debug)]
+pub struct RuleText {
+    pub own_change: &'static str,
+    pub needs_members_manage: &'static str,
+    pub owner_changes_owner: &'static str,
+    pub stronger_target: &'static str,
+    pub owner_grants_owner: &'static str,
+    pub grant_exceeds_actor: &'static str,
+    pub last_owner: &'static str,
+    pub owner_invites_owner: &'static str,
+    pub invite_exceeds_actor: &'static str,
+    pub needs_roles_manage: &'static str,
+    pub stronger_template: &'static str,
+    pub template_exceeds_actor: &'static str,
+}
+
+/// A family of permissions with its own catalog, implications and rule texts.
+pub trait PermissionKind: Copy + Ord + Debug + 'static {
+    const ALL: &'static [Self];
+    /// Needed to change members (and to create invites).
+    const MEMBERS_MANAGE: Self;
+    /// Needed to change role templates.
+    const ROLES_MANAGE: Self;
+    const TEXT: RuleText;
+
+    fn id(self) -> &'static str;
+    fn title(self) -> &'static str;
+    fn section(self) -> &'static str;
+    /// A permission this one cannot work without.
+    fn requires(self) -> Option<Self>;
+
+    /// Exact match only: no trimming, no case folding, no wildcards.
+    fn from_id(s: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|p| p.id() == s)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Permission {
@@ -52,11 +93,6 @@ impl Permission {
         }
     }
 
-    /// Exact match only: no trimming, no case folding, no wildcards.
-    pub fn parse(s: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|p| p.as_str() == s)
-    }
-
     pub fn label(self) -> &'static str {
         match self {
             Permission::TelemetryView => "View map, timeline, traces and logs",
@@ -93,29 +129,70 @@ impl Permission {
     }
 }
 
+impl PermissionKind for Permission {
+    const ALL: &'static [Self] = &Permission::ALL;
+    const MEMBERS_MANAGE: Self = Permission::MembersManage;
+    const ROLES_MANAGE: Self = Permission::RolesManage;
+    const TEXT: RuleText = RuleText {
+        own_change: "you cannot change your own membership",
+        needs_members_manage: "requires the members.manage permission",
+        owner_changes_owner: "only an owner can change another owner",
+        stronger_target: "you cannot change a member who has permissions you do not have",
+        owner_grants_owner: "only an owner can grant the Owner role",
+        grant_exceeds_actor: "you can only grant permissions you have yourself",
+        last_owner: "a project needs at least one owner",
+        owner_invites_owner: "only an owner can invite with the Owner role",
+        invite_exceeds_actor: "you can only invite with permissions you have yourself",
+        needs_roles_manage: "requires the roles.manage permission",
+        stronger_template: "you cannot change a role that has permissions you do not have",
+        template_exceeds_actor: "a role can only contain permissions you have yourself",
+    };
+
+    fn id(self) -> &'static str {
+        self.as_str()
+    }
+    fn title(self) -> &'static str {
+        self.label()
+    }
+    fn section(self) -> &'static str {
+        self.group()
+    }
+    fn requires(self) -> Option<Self> {
+        self.implies()
+    }
+}
+
 /// Adds implied permissions.
-pub fn normalise(mut set: PermissionSet) -> PermissionSet {
-    let implied: Vec<Permission> = set.iter().filter_map(|p| p.implies()).collect();
+pub fn normalise<P: PermissionKind>(mut set: BTreeSet<P>) -> BTreeSet<P> {
+    let implied: Vec<P> = set.iter().filter_map(|p| p.requires()).collect();
     set.extend(implied);
     set
 }
 
 /// Input from a client: every entry must be a known permission.
 pub fn parse_set(items: &[String]) -> Result<PermissionSet, &'static str> {
-    if items.len() > Permission::ALL.len() * 4 {
+    parse_set_of(items)
+}
+
+pub fn parse_set_of<P: PermissionKind>(items: &[String]) -> Result<BTreeSet<P>, &'static str> {
+    if items.len() > P::ALL.len() * 4 {
         return Err("too many permissions");
     }
-    let set = items.iter().map(|s| Permission::parse(s).ok_or("unknown permission")).collect::<Result<_, _>>()?;
+    let set = items.iter().map(|s| P::from_id(s).ok_or("unknown permission")).collect::<Result<_, _>>()?;
     Ok(normalise(set))
 }
 
 /// Stored values: unknown entries (e.g. from a newer version) are never granted.
 pub fn from_stored(items: &[String]) -> PermissionSet {
-    normalise(items.iter().filter_map(|s| Permission::parse(s)).collect())
+    from_stored_of(items)
 }
 
-pub fn to_strings(set: &PermissionSet) -> Vec<String> {
-    set.iter().map(|p| p.as_str().to_owned()).collect()
+pub fn from_stored_of<P: PermissionKind>(items: &[String]) -> BTreeSet<P> {
+    normalise(items.iter().filter_map(|s| P::from_id(s)).collect())
+}
+
+pub fn to_strings<P: PermissionKind>(set: &BTreeSet<P>) -> Vec<String> {
+    set.iter().map(|p| p.id().to_owned()).collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,42 +225,43 @@ impl Builtin {
     }
 }
 
-/// The member making a change, with their effective permissions in the project.
+/// The member making a change, with their effective permissions. `is_owner`: the top role
+/// (project Owner, ControlHub Super Admin).
 #[derive(Debug, Clone)]
-pub struct Actor {
+pub struct Actor<P: PermissionKind = Permission> {
     pub user_id: Uuid,
-    pub permissions: PermissionSet,
+    pub permissions: BTreeSet<P>,
     pub is_owner: bool,
 }
 
-impl Actor {
-    pub fn has(&self, p: Permission) -> bool {
+impl<P: PermissionKind> Actor<P> {
+    pub fn has(&self, p: P) -> bool {
         self.permissions.contains(&p)
     }
 }
 
 /// The member being changed.
 #[derive(Debug, Clone)]
-pub struct Target {
+pub struct Target<P: PermissionKind = Permission> {
     pub user_id: Uuid,
     pub is_owner: bool,
     /// The member's current effective permissions.
-    pub permissions: PermissionSet,
+    pub permissions: BTreeSet<P>,
 }
 
 #[derive(Debug, Clone)]
-pub enum Grant {
-    /// A role template; `owner` for the built-in Owner role.
+pub enum Grant<P: PermissionKind = Permission> {
+    /// A role template; `owner` for the top built-in role.
     Role {
-        permissions: PermissionSet,
+        permissions: BTreeSet<P>,
         owner: bool,
     },
-    Individual(PermissionSet),
+    Individual(BTreeSet<P>),
     Remove,
 }
 
-impl Grant {
-    fn permissions(&self) -> Option<&PermissionSet> {
+impl<P: PermissionKind> Grant<P> {
+    fn permissions(&self) -> Option<&BTreeSet<P>> {
         match self {
             Grant::Role { permissions, .. } | Grant::Individual(permissions) => Some(permissions),
             Grant::Remove => None,
@@ -195,30 +273,36 @@ impl Grant {
     }
 }
 
-/// May `actor` apply `grant` to `target`? `owners` is the project's current number of owners.
-pub fn check_member_change(actor: &Actor, target: &Target, grant: &Grant, owners: i64) -> Result<(), &'static str> {
+/// May `actor` apply `grant` to `target`? `owners` is the current number of top-role holders.
+pub fn check_member_change<P: PermissionKind>(
+    actor: &Actor<P>,
+    target: &Target<P>,
+    grant: &Grant<P>,
+    owners: i64,
+) -> Result<(), &'static str> {
+    let t = &P::TEXT;
     if actor.user_id == target.user_id {
-        return Err("you cannot change your own membership");
+        return Err(t.own_change);
     }
-    if !actor.has(Permission::MembersManage) {
-        return Err("requires the members.manage permission");
+    if !actor.has(P::MEMBERS_MANAGE) {
+        return Err(t.needs_members_manage);
     }
     if target.is_owner && !actor.is_owner {
-        return Err("only an owner can change another owner");
+        return Err(t.owner_changes_owner);
     }
     if !actor.is_owner && !target.permissions.is_subset(&actor.permissions) {
-        return Err("you cannot change a member who has permissions you do not have");
+        return Err(t.stronger_target);
     }
     if grant.makes_owner() && !actor.is_owner {
-        return Err("only an owner can grant the Owner role");
+        return Err(t.owner_grants_owner);
     }
     if let Some(p) = grant.permissions()
         && !p.is_subset(&actor.permissions)
     {
-        return Err("you can only grant permissions you have yourself");
+        return Err(t.grant_exceeds_actor);
     }
     if target.is_owner && !grant.makes_owner() && owners <= 1 {
-        return Err("a project needs at least one owner");
+        return Err(t.last_owner);
     }
     Ok(())
 }
@@ -226,33 +310,35 @@ pub fn check_member_change(actor: &Actor, target: &Target, grant: &Grant, owners
 /// May `actor` hand out a role through an invite link? `owner` is the built-in Owner role.
 /// Checked when the link is created and again, against the creator's current membership, when
 /// it is accepted.
-pub fn check_invite(actor: &Actor, role: &PermissionSet, owner: bool) -> Result<(), &'static str> {
-    if !actor.has(Permission::MembersManage) {
-        return Err("requires the members.manage permission");
+pub fn check_invite<P: PermissionKind>(actor: &Actor<P>, role: &BTreeSet<P>, owner: bool) -> Result<(), &'static str> {
+    let t = &P::TEXT;
+    if !actor.has(P::MEMBERS_MANAGE) {
+        return Err(t.needs_members_manage);
     }
     if owner && !actor.is_owner {
-        return Err("only an owner can invite with the Owner role");
+        return Err(t.owner_invites_owner);
     }
     if !role.is_subset(&actor.permissions) {
-        return Err("you can only invite with permissions you have yourself");
+        return Err(t.invite_exceeds_actor);
     }
     Ok(())
 }
 
 /// May `actor` create (`old = None`), edit or delete (`new == old`) a role template?
-pub fn check_template_change(
-    actor: &Actor,
-    old: Option<&PermissionSet>,
-    new: &PermissionSet,
+pub fn check_template_change<P: PermissionKind>(
+    actor: &Actor<P>,
+    old: Option<&BTreeSet<P>>,
+    new: &BTreeSet<P>,
 ) -> Result<(), &'static str> {
-    if !actor.has(Permission::RolesManage) {
-        return Err("requires the roles.manage permission");
+    let t = &P::TEXT;
+    if !actor.has(P::ROLES_MANAGE) {
+        return Err(t.needs_roles_manage);
     }
     if old.is_some_and(|o| !o.is_subset(&actor.permissions)) {
-        return Err("you cannot change a role that has permissions you do not have");
+        return Err(t.stronger_template);
     }
     if !new.is_subset(&actor.permissions) {
-        return Err("a role can only contain permissions you have yourself");
+        return Err(t.template_exceeds_actor);
     }
     Ok(())
 }
@@ -266,7 +352,11 @@ pub struct PermissionInfo {
 }
 
 pub fn catalog() -> Vec<PermissionInfo> {
-    Permission::ALL.into_iter().map(|p| PermissionInfo { id: p.as_str(), label: p.label(), group: p.group() }).collect()
+    catalog_of::<Permission>()
+}
+
+pub fn catalog_of<P: PermissionKind>() -> Vec<PermissionInfo> {
+    P::ALL.iter().map(|p| PermissionInfo { id: p.id(), label: p.title(), group: p.section() }).collect()
 }
 
 #[cfg(test)]
@@ -292,10 +382,10 @@ mod tests {
     #[test]
     fn permissions_parse_exactly_and_round_trip() {
         for p in Permission::ALL {
-            assert_eq!(Permission::parse(p.as_str()), Some(p));
+            assert_eq!(Permission::from_id(p.as_str()), Some(p));
         }
         for bad in ["", "Telemetry.view", " telemetry.view", "telemetry.view ", "*", "telemetry.*", "admin", "owner"] {
-            assert_eq!(Permission::parse(bad), None, "{bad:?}");
+            assert_eq!(Permission::from_id(bad), None, "{bad:?}");
         }
         let ids: BTreeSet<&str> = Permission::ALL.iter().map(|p| p.as_str()).collect();
         assert_eq!(ids.len(), Permission::ALL.len(), "ids are unique");

@@ -15,6 +15,7 @@ use serde_json::json;
 
 use crate::permissions::{self, Builtin};
 use crate::routes::signup::{MAX_PASSWORD_BYTES, MIN_PASSWORD_CHARS, normalise_email};
+use crate::system_permissions::SystemBuiltin;
 
 const CH_MIGRATIONS: &[(&str, &str)] =
     &[("0001_telemetry.sql", include_str!("../../../infra/migrations/clickhouse/0001_telemetry.sql"))];
@@ -117,6 +118,10 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
         let updated = pg.sync_builtin_role(b.key(), &permissions::to_strings(&b.permissions())).await?;
         tracing::debug!(role = b.key(), updated, "built-in role permissions synced");
     }
+    for b in SystemBuiltin::ALL {
+        let updated = pg.sync_system_builtin_role(b.key(), &permissions::to_strings(&b.permissions())).await?;
+        tracing::debug!(role = b.key(), updated, "built-in system role permissions synced");
+    }
 
     pg.ensure_service_role(
         "controlhub_api",
@@ -128,6 +133,11 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
             // Users edit their own profile, password and onboarding state; project admins rename projects.
             "UPDATE (display_name, password_hash, onboarding_completed_at) ON users",
             "UPDATE (name) ON projects",
+            // ControlHub administrators (permission checks in the API): their grants and role
+            // templates, disabling accounts, and deleting a project only through the definer function.
+            "SELECT, INSERT, UPDATE, DELETE ON system_memberships, system_roles",
+            "UPDATE (disabled_at) ON users",
+            "EXECUTE ON FUNCTION controlhub_delete_project(text)",
             // Members, role templates and invite links are managed from the web app (permission checks in the API).
             "SELECT, INSERT, UPDATE, DELETE ON memberships, project_roles",
             "SELECT, INSERT, UPDATE ON project_invites",
@@ -194,7 +204,8 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
     let name = owner.email.split('@').next().unwrap_or_default().to_owned();
     let id = pg.upsert_user(&owner.email, &name, &hash).await?;
     pg.upsert_membership(id, "demo", Builtin::Owner.key()).await?;
-    tracing::info!(email = %owner.email, "owner account ensured (owner of the demo project)");
+    pg.upsert_system_builtin(id, SystemBuiltin::SuperAdmin.key()).await?;
+    tracing::info!(email = %owner.email, "owner account ensured (owner of the demo project, ControlHub Super Admin)");
 
     let mut tokens = serde_json::Map::new();
     tokens.insert("demo-local".into(), json!(rotate_ingest_token(&pg, &demo, "demo-local").await?));

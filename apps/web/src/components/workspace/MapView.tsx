@@ -9,6 +9,7 @@ import { setEdgeStyle, useEdgeStyle } from "./edgeStyleStore";
 import { LIVE_ANIM_DELAY_MS, animClockFor, type Mode, type Speed, type WorkspaceActions } from "./useWorkspaceEngine";
 import { MapKey } from "./MapKey";
 import { NodeTable } from "./NodeTable";
+import type { WorkspaceMemory } from "./workspace-memory";
 
 type ZoomAction = "in" | "out" | "fit";
 const ZOOM_BUTTONS: Array<{ label: string; icon: IconName; action: ZoomAction }> = [
@@ -33,9 +34,10 @@ interface Props {
   mode: Mode;
   speed: Speed;
   summary: FrameSummary | null;
+  memory: WorkspaceMemory;
 }
 
-export function MapView({ actions, topology, selectedId, onSelect, forceTable, mode, speed, summary }: Props) {
+export function MapView({ actions, topology, selectedId, onSelect, forceTable, mode, speed, summary, memory }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<PixiMap | null>(null);
   const [webglError, setWebglError] = useState<string | null>(null);
@@ -85,6 +87,8 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable, m
           return;
         }
         mapRef.current = map;
+        const camera = memory.camera();
+        if (camera) map.setCamera(camera);
         const topo = topologyRef.current;
         map.setClock(clockRef.current);
         map.setEdgeStyle(edgeStyleRef.current);
@@ -99,10 +103,11 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable, m
     return () => {
       disposed = true;
       off?.();
+      if (mapRef.current) memory.saveCamera(mapRef.current.getCamera());
       mapRef.current?.destroy();
       mapRef.current = null;
     };
-  }, [actions, showTable]);
+  }, [actions, showTable, memory]);
 
   useEffect(() => {
     mapRef.current?.setTopology(topology);

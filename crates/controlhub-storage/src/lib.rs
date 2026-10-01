@@ -2,6 +2,7 @@
 //! it as a parameter; there is no API for arbitrary SQL.
 
 pub mod actions;
+pub mod admin;
 pub mod ch;
 pub mod pg;
 pub mod secrets;

@@ -28,9 +28,17 @@ import { DEFAULT_EDGE_STYLE, dashes, edgePath, endDirection, pointAt, type EdgeP
 import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
 import { dashedRect, nodeSubLabel } from "./external";
 import { ACCENT, CARD_BG, EDGE_ERROR, EDGE_INFERRED, EDGE_OK, EDGE_WARN, EXTERNAL_COLOR, STATUS_COLORS } from "./map-colors";
+import { cullRect } from "./cull";
 import { gridLines } from "./grid";
 import { animTimeMs, hopPhase, type AnimClock } from "./hops";
 import { serviceColors } from "./service-colors";
+
+/** Pan (screen px) and zoom of the map. */
+export interface MapCamera {
+  x: number;
+  y: number;
+  scale: number;
+}
 
 export interface MapCallbacks {
   onViewport(x: number, y: number, width: number, height: number, scale: number): void;
@@ -73,6 +81,7 @@ interface NodeText {
 
 export class PixiMap {
   private app: Application | null = null;
+  private host: HTMLElement | null = null;
   private readonly world = new Container();
   private readonly grid = new Graphics();
   private gridKey = "";
@@ -130,6 +139,7 @@ export class PixiMap {
       return;
     }
     this.app = app;
+    this.host = host;
     app.canvas.setAttribute("aria-hidden", "true");
     host.appendChild(app.canvas);
     // Hops above cards so a request waiting at its callee stays visible on the card border.
@@ -206,6 +216,8 @@ export class PixiMap {
     }
     this.draw(frame);
     if (this.reducedMotion) this.drawHops();
+    // Which cards are drawn, for tests and debugging (node indices).
+    this.host?.setAttribute("data-drawn-nodes", Array.from(frame.nodeIndices).join(","));
   }
 
   fit() {
@@ -257,6 +269,18 @@ export class PixiMap {
     this.reportViewport();
   }
 
+  getCamera(): MapCamera {
+    return { x: this.world.x, y: this.world.y, scale: this.world.scale.x };
+  }
+
+  /** Restores a saved pan and zoom; the map then no longer fits itself to the first frame. */
+  setCamera(camera: MapCamera) {
+    this.fitted = true;
+    this.world.scale.set(Math.max(MIN_SCALE, Math.min(MAX_SCALE, camera.scale)));
+    this.world.position.set(camera.x, camera.y);
+    this.reportViewport();
+  }
+
   panBy(dx: number, dy: number) {
     this.world.position.set(this.world.x + dx, this.world.y + dy);
     this.reportViewport();
@@ -289,7 +313,8 @@ export class PixiMap {
     const app = this.app;
     if (!app) return;
     const s = this.world.scale.x;
-    this.callbacks.onViewport(-this.world.x / s, -this.world.y / s, app.screen.width / s, app.screen.height / s, s);
+    const r = cullRect({ x: -this.world.x / s, y: -this.world.y / s, width: app.screen.width / s, height: app.screen.height / s }, CARD_W / 2 + 8);
+    this.callbacks.onViewport(r.x, r.y, r.width, r.height, s);
   }
 
   /** Clicks anywhere on a card select it; the engine picks by the node centre. */
@@ -328,6 +353,7 @@ export class PixiMap {
       lastX = e.clientX;
       lastY = e.clientY;
       this.world.position.set(this.world.x + dx, this.world.y + dy);
+      this.reportViewport();
     };
     const up = (e: PointerEvent) => {
       if (!dragging) return;

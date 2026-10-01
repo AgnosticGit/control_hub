@@ -1,0 +1,28 @@
+---
+description: graphify knowledge graph context
+alwaysApply: true
+---
+
+This project has a graphify knowledge graph at graphify-out/.
+
+**Run graphify first when the task needs orientation in the codebase:**
+- architecture or "how does X work" questions;
+- changes that span several modules, crates or layers (e.g. API route + storage + web UI);
+- unfamiliar areas, refactors, renames, or tracing a bug whose location is unknown;
+- planning a feature or writing a prompt for a subagent that will explore code.
+
+Commands:
+- `graphify query "<question>"` — scoped subgraph for any codebase or architecture question
+- `graphify path "<A>" "<B>"` — dependency path between two symbols
+- `graphify explain "<concept>"` — all nodes related to a concept
+
+**Skip graphify and use Read/Grep/Glob directly when:**
+- the user points to a specific file, line or symbol and the change is local (typo, rename inside one file, small fix, config tweak);
+- graphify has already oriented you in this task and you need specific lines;
+- `graphify-out/graph.json` does not exist yet.
+
+Subagents that explore code across modules should be told about these commands in their prompt.
+
+- If `graphify-out/wiki/index.md` exists, navigate it instead of reading raw files
+- Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review when query/path/explain do not surface enough context
+- Do not run `graphify update .` yourself: the `stop` hook in `.cursor/hooks.json` refreshes the graph in the background after every agent turn. Run it manually only if you need the fresh graph mid-task.
