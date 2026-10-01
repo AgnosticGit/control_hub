@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { Logo } from "@/components/ui/Icon";
+import { AuthFrame } from "@/components/auth/AuthFrame";
 import { api, ApiRequestError, unwrap } from "@/lib/api";
 import { useHydrated } from "@/lib/hydrated";
 import { afterSignupPath, formText, MIN_PASSWORD_CHARS, safeNext, signupProblem } from "@/lib/signup";
@@ -67,29 +67,28 @@ function RegisterForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
+    <AuthFrame>
       {/* method=post: a submit before hydration must never put the password into the URL. */}
-      <form method="post" onSubmit={submit} className="card w-full max-w-sm space-y-5 p-8" noValidate>
-        <div className="flex flex-col items-center text-center">
-          <Logo className="h-11 w-11" />
-          <h1 className="mt-4 text-xl font-semibold">Create your ControlHub account</h1>
-          <p className="mt-1 text-sm text-muted">You get your own project and a guide to connect your services.</p>
+      <form method="post" onSubmit={submit} className="w-full max-w-sm space-y-5" noValidate>
+        <div>
+          <h1 className="text-[1.75rem] leading-tight font-bold tracking-[-0.02em]">Create your ControlHub account</h1>
+          <p className="mt-2 text-sm leading-relaxed text-muted">You get your own project and a guide to connect your services.</p>
         </div>
         <label className="block text-sm">
-          <span className="label">Email</span>
+          <span className="font-medium">Email</span>
           <input name="email" type="email" autoComplete="username" required maxLength={254} className="input mt-1.5 h-10 w-full" />
         </label>
         <label className="block text-sm">
-          <span className="label">Your name (optional)</span>
+          <span className="font-medium">Your name (optional)</span>
           <input name="display_name" autoComplete="name" maxLength={100} className="input mt-1.5 h-10 w-full" />
         </label>
         <label className="block text-sm">
-          <span className="label">Project name (optional)</span>
+          <span className="font-medium">Project name (optional)</span>
           <input name="project_name" maxLength={100} placeholder="My project" className="input mt-1.5 h-10 w-full" />
         </label>
         <div className="text-sm">
           <label className="block">
-            <span className="label">Password</span>
+            <span className="font-medium">Password</span>
             <input
               name="password"
               type="password"
@@ -105,25 +104,28 @@ function RegisterForm() {
           </p>
         </div>
         <label className="block text-sm">
-          <span className="label">Repeat password</span>
+          <span className="font-medium">Repeat password</span>
           <input name="confirm" type="password" autoComplete="new-password" required className="input mt-1.5 h-10 w-full" />
         </label>
         {error ? (
-          <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
+          <p role="alert" className="rounded-md border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
             {error}
           </p>
         ) : null}
         <button type="submit" disabled={busy || !hydrated} className="btn btn-primary h-10 w-full text-sm">
           {busy ? "Creating account…" : "Create account"}
         </button>
-        <p className="text-center text-sm text-muted">
+        <p className="text-sm text-muted">
           Already have an account?{" "}
-          <Link href={next ? `/app/login?next=${encodeURIComponent(next)}` : "/app/login"} className="text-accent hover:underline">
+          <Link
+            href={next ? `/app/login?next=${encodeURIComponent(next)}` : "/app/login"}
+            className="font-semibold text-text underline decoration-border-strong hover:decoration-text"
+          >
             Sign in
           </Link>
         </p>
       </form>
-    </main>
+    </AuthFrame>
   );
 }
 

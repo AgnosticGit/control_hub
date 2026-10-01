@@ -66,18 +66,13 @@ export function Icon({ name, className = "h-4 w-4", strokeWidth = 2 }: { name: I
   );
 }
 
-/** ControlHub mark: a hexagon with a node inside. */
+/** ControlHub mark: two service lines meeting at an interchange station. */
 export function Logo({ className = "h-7 w-7" }: { className?: string }) {
   return (
     <svg aria-hidden viewBox="0 0 32 32" className={className}>
-      <defs>
-        <linearGradient id="ch-logo" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#60a5fa" />
-          <stop offset="1" stopColor="#22d3ee" />
-        </linearGradient>
-      </defs>
-      <path d="M16 2.5 28 9.25v13.5L16 29.5 4 22.75V9.25z" fill="none" stroke="url(#ch-logo)" strokeWidth="2.5" strokeLinejoin="round" />
-      <circle cx="16" cy="16" r="4.5" fill="url(#ch-logo)" />
+      <path d="M16 3v26" fill="none" stroke="#22d3ee" strokeWidth="3.5" strokeLinecap="round" />
+      <path d="M3 23h7l12-12h7" fill="none" stroke="#3b82f6" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="16" cy="17" r="5" className="fill-bg" stroke="#eceef0" strokeWidth="2.5" />
     </svg>
   );
 }

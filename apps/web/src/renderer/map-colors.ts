@@ -9,7 +9,7 @@ export const EDGE_INFERRED = 0x475569;
 export const EDGE_ERROR = 0xef4444;
 export const EDGE_WARN = 0xf59e0b;
 export const ACCENT = 0x22d3ee;
-export const CARD_BG = 0x0e1729;
+export const CARD_BG = 0x232528;
 export { EXTERNAL_COLOR };
 
 /** `#rrggbb` of a 0xRRGGBB colour. */

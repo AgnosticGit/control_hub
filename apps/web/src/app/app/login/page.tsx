@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { Logo } from "@/components/ui/Icon";
+import { AuthFrame } from "@/components/auth/AuthFrame";
 import { api, ApiRequestError, unwrap } from "@/lib/api";
 import { useHydrated } from "@/lib/hydrated";
 import { formText, safeNext } from "@/lib/signup";
@@ -40,35 +40,34 @@ function LoginForm() {
 
   return (
     // method=post: a submit before hydration must never put the password into the URL.
-    <form method="post" onSubmit={submit} className="card w-full max-w-sm space-y-5 p-8">
-      <div className="flex flex-col items-center text-center">
-        <Logo className="h-11 w-11" />
-        <h1 className="mt-4 text-xl font-semibold">Sign in to ControlHub</h1>
-        <p className="mt-1 text-sm text-muted">
-          Locally, sign in with the owner account from <code className="font-mono text-xs">.controlhub/owner.env</code>.
+    <form method="post" onSubmit={submit} className="w-full max-w-sm space-y-5">
+      <div>
+        <h1 className="text-[1.75rem] leading-tight font-bold tracking-[-0.02em]">Sign in to ControlHub</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted">
+          Locally, sign in with the owner account from <code className="font-mono text-xs text-text">.controlhub/owner.env</code>.
         </p>
       </div>
       <label className="block text-sm">
-        <span className="label">Email</span>
+        <span className="font-medium">Email</span>
         <input name="email" type="email" autoComplete="username" required className="input mt-1.5 h-10 w-full" />
       </label>
       <label className="block text-sm">
-        <span className="label">Password</span>
+        <span className="font-medium">Password</span>
         <input name="password" type="password" autoComplete="current-password" required className="input mt-1.5 h-10 w-full" />
       </label>
       {error ? (
-        <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
+        <p role="alert" className="rounded-md border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
           {error}
         </p>
       ) : null}
       <button type="submit" disabled={busy || !hydrated} className="btn btn-primary h-10 w-full text-sm">
         {busy ? "Signing in…" : "Sign in"}
       </button>
-      <p className="text-center text-sm text-muted">
+      <p className="text-sm text-muted">
         New to ControlHub?{" "}
         <Link
           href={safeNext(params.get("next")) ? `/app/register?next=${encodeURIComponent(params.get("next") ?? "")}` : "/app/register"}
-          className="text-accent hover:underline"
+          className="font-semibold text-text underline decoration-border-strong hover:decoration-text"
         >
           Create an account
         </Link>
@@ -79,10 +78,10 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
+    <AuthFrame>
       <Suspense>
         <LoginForm />
       </Suspense>
-    </main>
+    </AuthFrame>
   );
 }

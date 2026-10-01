@@ -113,8 +113,8 @@ describe("actionColor", () => {
     expect(actionColor("verification_failed")).toBe("#ef4444");
     expect(actionColor("running")).toBe("#f59e0b");
     expect(actionColor("approved")).toBe("#f59e0b");
-    expect(actionColor("pending_approval")).toBe("#7d8aa5");
-    expect(actionColor("")).toBe("#7d8aa5");
+    expect(actionColor("pending_approval")).toBe("#9a9fa6");
+    expect(actionColor("")).toBe("#9a9fa6");
   });
 });
 
@@ -140,7 +140,7 @@ describe("draw", () => {
   it("shades alternate rows", () => {
     const { ctx, calls } = fakeCtx();
     draw(ctx, input({ rows: [row("a", "group", 10), row("b", "group", 15), row("c", "group", 20)] }));
-    const alt = calls.filter((c) => c.name === "fillRect" && c.fillStyle === "rgba(16, 26, 46, 0.45)");
+    const alt = calls.filter((c) => c.name === "fillRect" && c.fillStyle === "rgba(39, 41, 45, 0.5)");
     expect(alt.map((c) => c.args)).toEqual([[0, 10, WIDTH, 15]]);
   });
 

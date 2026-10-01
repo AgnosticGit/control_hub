@@ -1,7 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 const siteUrl = process.env.CONTROLHUB_SITE_URL ?? "http://localhost:3000";
+
+const ui = Hanken_Grotesk({ subsets: ["latin"], variable: "--font-ui", display: "swap" });
+const code = JetBrains_Mono({ subsets: ["latin"], variable: "--font-code", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -18,13 +22,13 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#060a13",
+  themeColor: "#17181a",
   colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${ui.variable} ${code.variable}`}>
       <body className="min-h-screen antialiased">{children}</body>
     </html>
   );

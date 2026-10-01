@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-01T19:40:00+04:00",
+  "title": "Design System: ControlHub",
+  "extensions": {
+    "colorMeta": {
+      "graphite-ground": { "role": "neutral", "displayName": "Graphite Ground", "canonical": "#17181a", "tonalRamp": ["#17181a", "#1c1d20", "#212326", "#27292d", "#2e3135", "#33363b", "#43474d", "#9a9fa6"] },
+      "graphite-raised": { "role": "neutral", "displayName": "Raised Graphite", "canonical": "#1c1d20", "tonalRamp": ["#17181a", "#1c1d20", "#212326", "#27292d", "#2e3135", "#33363b", "#43474d", "#9a9fa6"] },
+      "surface": { "role": "neutral", "displayName": "Surface", "canonical": "#212326", "tonalRamp": ["#17181a", "#1c1d20", "#212326", "#27292d", "#2e3135", "#33363b", "#43474d", "#9a9fa6"] },
+      "surface-2": { "role": "neutral", "displayName": "Surface 2", "canonical": "#27292d", "tonalRamp": ["#17181a", "#1c1d20", "#212326", "#27292d", "#2e3135", "#33363b", "#43474d", "#9a9fa6"] },
+      "surface-3": { "role": "neutral", "displayName": "Surface 3", "canonical": "#2e3135", "tonalRamp": ["#17181a", "#1c1d20", "#212326", "#27292d", "#2e3135", "#33363b", "#43474d", "#9a9fa6"] },
+      "hairline": { "role": "neutral", "displayName": "Hairline", "canonical": "#33363b", "tonalRamp": ["#17181a", "#1c1d20", "#212326", "#27292d", "#2e3135", "#33363b", "#43474d", "#9a9fa6"] },
+      "hairline-strong": { "role": "neutral", "displayName": "Hairline Strong", "canonical": "#43474d", "tonalRamp": ["#17181a", "#1c1d20", "#212326", "#27292d", "#2e3135", "#33363b", "#43474d", "#9a9fa6"] },
+      "muted": { "role": "neutral", "displayName": "Muted Steel", "canonical": "#9a9fa6", "tonalRamp": ["#27292d", "#33363b", "#43474d", "#5f636a", "#7c8188", "#9a9fa6", "#c3c7cc", "#eceef0"] },
+      "text": { "role": "primary", "displayName": "Signal White", "canonical": "#eceef0", "tonalRamp": ["#2e3135", "#43474d", "#5f636a", "#7c8188", "#9a9fa6", "#c3c7cc", "#eceef0", "#ffffff"] },
+      "sign": { "role": "primary", "displayName": "Signal White (sign fill)", "canonical": "#eceef0", "tonalRamp": ["#2e3135", "#43474d", "#5f636a", "#7c8188", "#9a9fa6", "#c3c7cc", "#eceef0", "#ffffff"] },
+      "sign-ink": { "role": "neutral", "displayName": "Sign Ink", "canonical": "#17181a", "tonalRamp": ["#17181a", "#1c1d20", "#212326", "#27292d", "#2e3135", "#33363b", "#43474d", "#9a9fa6"] },
+      "accent": { "role": "primary", "displayName": "Interchange Blue", "canonical": "#3b82f6", "tonalRamp": ["#1e3a8a", "#1e40af", "#1d4ed8", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#dbeafe"] },
+      "accent-2": { "role": "secondary", "displayName": "Live Cyan", "canonical": "#22d3ee", "tonalRamp": ["#164e63", "#155e75", "#0e7490", "#0891b2", "#06b6d4", "#22d3ee", "#67e8f9", "#cffafe"] },
+      "violet": { "role": "tertiary", "displayName": "Plan Violet", "canonical": "#a855f7", "tonalRamp": ["#581c87", "#6b21a8", "#7e22ce", "#9333ea", "#a855f7", "#c084fc", "#d8b4fe", "#f3e8ff"] },
+      "warn": { "role": "status", "displayName": "Degraded Amber", "canonical": "#f59e0b", "tonalRamp": ["#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fcd34d", "#fef3c7"] },
+      "error": { "role": "status", "displayName": "Failing Red", "canonical": "#ef4444", "tonalRamp": ["#7f1d1d", "#991b1b", "#b91c1c", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fee2e2"] },
+      "ok": { "role": "status", "displayName": "Ok Green", "canonical": "#22c55e", "tonalRamp": ["#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#86efac", "#dcfce7"] },
+      "line-telemetry": { "role": "tertiary", "displayName": "Telemetry Sky", "canonical": "#38bdf8", "tonalRamp": ["#0c4a6e", "#075985", "#0369a1", "#0284c7", "#0ea5e9", "#38bdf8", "#7dd3fc", "#e0f2fe"] },
+      "line-control": { "role": "tertiary", "displayName": "Control Pink", "canonical": "#f472b6", "tonalRamp": ["#831843", "#9d174d", "#be185d", "#db2777", "#ec4899", "#f472b6", "#f9a8d4", "#fce7f3"] },
+      "line-emerald": { "role": "tertiary", "displayName": "Emerald Line", "canonical": "#34d399", "tonalRamp": ["#064e3b", "#065f46", "#047857", "#059669", "#10b981", "#34d399", "#6ee7b7", "#d1fae5"] },
+      "line-teal": { "role": "tertiary", "displayName": "Teal Line", "canonical": "#2dd4bf", "tonalRamp": ["#134e4a", "#115e59", "#0f766e", "#0d9488", "#14b8a6", "#2dd4bf", "#5eead4", "#ccfbf1"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Landing hero headline only; heavy, tight, balanced." },
+      "headline": { "displayName": "Headline", "purpose": "Landing section heads, optionally led by a 32x6px line swatch." },
+      "title": { "displayName": "Title", "purpose": "Page titles in the picker and account area (auth forms at 1.75rem)." },
+      "body": { "displayName": "Body", "purpose": "Muted paragraphs capped near 28-32rem; UI body is 14px." },
+      "body-lead": { "displayName": "Lead", "purpose": "Hero lead paragraph." },
+      "label": { "displayName": "Label", "purpose": "Uppercase table heads and small form labels in the workspace; never as an eyebrow above a heading." },
+      "mono": { "displayName": "Mono", "purpose": "Timestamps, IDs, metrics and CLI commands with tabular numbers." }
+    },
+    "shadows": [
+      { "name": "card-ambient", "value": "0 1px 2px 0 rgb(0 0 0 / 0.35), 0 8px 20px -14px rgb(0 0 0 / 0.7)", "purpose": "Workspace cards only, separating them from the canvas." },
+      { "name": "thumb-drop", "value": "0 1px 3px rgb(0 0 0 / 0.6)", "purpose": "Slider thumbs on range and timeline rails." }
+    ],
+    "motion": [
+      { "name": "state-transition", "value": "color, background-color, border-color 150ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Tailwind transition-colors on buttons, nav items, inputs." },
+      { "name": "failing-ripple", "value": "r 10 -> 22, stroke-opacity 0.8 -> 0 over 1.6s, infinite", "purpose": "Expanding red stroke on a failing station while live; removed under reduced motion." },
+      { "name": "replay-speed", "value": "30x", "purpose": "Demo replay playback speed after scrubbing back." },
+      { "name": "reduced-motion", "value": "animation/transition-duration 0.01ms", "purpose": "Global prefers-reduced-motion override." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Signage Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one primary action per region: light sign fill, graphite ink.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Run it locally</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 44px; padding: 0 20px; border-radius: 8px; border: 1px solid var(--color-border, #33363b); background: var(--color-surface-2, #27292d); color: var(--color-text, #eceef0); font: 500 14px/1 var(--font-sans, 'Hanken Grotesk', system-ui, sans-serif); white-space: nowrap; cursor: pointer; transition: background-color 150ms, border-color 150ms; } .ds-btn-primary { border-color: var(--color-sign, #eceef0); background: var(--color-sign, #eceef0); color: var(--color-sign-ink, #17181a); font-weight: 600; } .ds-btn-primary:hover { border-color: #fff; background: #fff; } .ds-btn:focus-visible { outline: 2px solid var(--color-accent, #3b82f6); outline-offset: 2px; } .ds-btn:disabled { opacity: 0.4; pointer-events: none; }"
+    },
+    {
+      "name": "Graphite Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Default and secondary actions; compact 32px in product chrome.",
+      "html": "<button class=\"ds-btn-default\">How it works</button>",
+      "css": ".ds-btn-default { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--color-border, #33363b); background: var(--color-surface-2, #27292d); color: var(--color-text, #eceef0); font: 500 12px/1 var(--font-sans, 'Hanken Grotesk', system-ui, sans-serif); cursor: pointer; transition: background-color 150ms, border-color 150ms; } .ds-btn-default:hover { border-color: var(--color-border-strong, #43474d); background: var(--color-surface-3, #2e3135); } .ds-btn-default:focus-visible { outline: 2px solid var(--color-accent, #3b82f6); outline-offset: 2px; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Tinted status button for destructive actions (ok variant mirrors it in green).",
+      "html": "<button class=\"ds-btn-danger\">Revoke token</button>",
+      "css": ".ds-btn-danger { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid rgb(239 68 68 / 0.4); background: rgb(239 68 68 / 0.1); color: var(--color-error, #ef4444); font: 500 12px/1 var(--font-sans, 'Hanken Grotesk', system-ui, sans-serif); cursor: pointer; transition: background-color 150ms, border-color 150ms; } .ds-btn-danger:hover { border-color: rgb(239 68 68 / 0.7); background: rgb(239 68 68 / 0.15); } .ds-btn-danger:focus-visible { outline: 2px solid var(--color-accent, #3b82f6); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Hairline field on graphite ground with an accent focus ring.",
+      "html": "<label class=\"ds-field\"><span>Email</span><input class=\"ds-input\" type=\"email\" placeholder=\"you@example.com\" /></label>",
+      "css": ".ds-field { display: block; font: 500 14px/1.4 var(--font-sans, 'Hanken Grotesk', system-ui, sans-serif); color: var(--color-text, #eceef0); } .ds-input { display: block; width: 100%; margin-top: 6px; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--color-border, #33363b); background: rgb(23 24 26 / 0.7); color: var(--color-text, #eceef0); font: 400 14px var(--font-sans, 'Hanken Grotesk', system-ui, sans-serif); caret-color: var(--color-accent, #3b82f6); outline: none; transition: border-color 150ms, box-shadow 150ms; } .ds-input::placeholder { color: rgb(154 159 166 / 0.7); } .ds-input:hover { border-color: var(--color-border-strong, #43474d); } .ds-input:focus { border-color: rgb(59 130 246 / 0.7); box-shadow: 0 0 0 2px rgb(59 130 246 / 0.2); }"
+    },
+    {
+      "name": "Public Navigation",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "Sticky header: line-map logo, muted links, sign button at the end.",
+      "html": "<header class=\"ds-nav\"><a class=\"ds-brand\" href=\"#\"><svg viewBox=\"0 0 32 32\" width=\"28\" height=\"28\" aria-hidden=\"true\"><path d=\"M16 3v26\" fill=\"none\" stroke=\"#22d3ee\" stroke-width=\"3.5\" stroke-linecap=\"round\"/><path d=\"M3 23h7l12-12h7\" fill=\"none\" stroke=\"#3b82f6\" stroke-width=\"3.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><circle cx=\"16\" cy=\"17\" r=\"5\" fill=\"#17181a\" stroke=\"#eceef0\" stroke-width=\"2.5\"/></svg>ControlHub</a><nav><a class=\"ds-nav-link\" href=\"#\">Features</a><a class=\"ds-nav-link\" href=\"#\">Docs</a><a class=\"ds-nav-cta\" href=\"#\">Open app</a></nav></header>",
+      "css": ".ds-nav { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 12px 24px; border-bottom: 1px solid var(--color-border, #33363b); background: rgb(23 24 26 / 0.9); font-family: var(--font-sans, 'Hanken Grotesk', system-ui, sans-serif); } .ds-nav nav { display: flex; align-items: center; gap: 4px; font-size: 14px; } .ds-brand { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: var(--color-text, #eceef0); text-decoration: none; } .ds-nav-link { padding: 8px 12px; border-radius: 6px; color: var(--color-muted, #9a9fa6); text-decoration: none; transition: background-color 150ms, color 150ms; } .ds-nav-link:hover { background: var(--color-surface-2, #27292d); color: var(--color-text, #eceef0); } .ds-nav-link:focus-visible, .ds-nav-cta:focus-visible { outline: 2px solid var(--color-accent, #3b82f6); outline-offset: 2px; } .ds-nav-cta { margin-left: 8px; display: inline-flex; align-items: center; height: 36px; padding: 0 16px; border-radius: 8px; background: var(--color-sign, #eceef0); color: var(--color-sign-ink, #17181a); font-weight: 600; text-decoration: none; } .ds-nav-cta:hover { background: #fff; }"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Small uppercase tag for DEMO and status; colour follows the status it names.",
+      "html": "<span class=\"ds-badge\">Demo</span> <span class=\"ds-badge ds-badge-error\">Failing</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--color-border-strong, #43474d); color: var(--color-muted, #9a9fa6); font: 600 10px/1.4 var(--font-sans, 'Hanken Grotesk', system-ui, sans-serif); letter-spacing: 0.025em; text-transform: uppercase; } .ds-badge-error { border-color: rgb(239 68 68 / 0.4); color: var(--color-error, #ef4444); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Workspace container: surface, hairline, short ambient shadow, hairline header.",
+      "html": "<section class=\"ds-card\"><header class=\"ds-card-header\">Inspector</header><div class=\"ds-card-body\">orders · p95 <span class=\"ds-mono\">1 240 ms</span></div></section>",
+      "css": ".ds-card { border-radius: 8px; border: 1px solid var(--color-border, #33363b); background: var(--color-surface, #212326); box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.35), 0 8px 20px -14px rgb(0 0 0 / 0.7); color: var(--color-text, #eceef0); font-family: var(--font-sans, 'Hanken Grotesk', system-ui, sans-serif); } .ds-card-header { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--color-border, #33363b); font-size: 13px; font-weight: 600; } .ds-card-body { padding: 16px; font-size: 14px; color: var(--color-muted, #9a9fa6); } .ds-mono { font-family: var(--font-mono, 'JetBrains Mono', monospace); font-variant-numeric: tabular-nums; color: var(--color-text, #eceef0); }"
+    },
+    {
+      "name": "Environment Stop",
+      "kind": "custom",
+      "refersTo": "environment-stop",
+      "description": "Signature line-language atom: project line swatch plus a station-ring environment link.",
+      "html": "<div class=\"ds-project\"><span class=\"ds-swatch\"></span><strong>checkout</strong></div><a class=\"ds-stop\" href=\"#\"><span class=\"ds-ring\"></span>production<span class=\"ds-badge-demo\">DEMO</span><svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"ds-arrow\" aria-hidden=\"true\"><path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/></svg></a>",
+      "css": ".ds-project { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; color: var(--color-text, #eceef0); font: 600 16px var(--font-sans, 'Hanken Grotesk', system-ui, sans-serif); } .ds-swatch { width: 24px; height: 6px; border-radius: 9999px; background: #38bdf8; } .ds-stop { display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--color-border, #33363b); background: var(--color-surface, #212326); color: var(--color-text, #eceef0); font: 500 14px var(--font-sans, 'Hanken Grotesk', system-ui, sans-serif); text-decoration: none; transition: background-color 150ms, border-color 150ms; } .ds-stop:hover { border-color: var(--color-border-strong, #43474d); background: var(--color-surface-2, #27292d); } .ds-stop:focus-visible { outline: 2px solid var(--color-accent, #3b82f6); outline-offset: 2px; } .ds-ring { width: 12px; height: 12px; border-radius: 9999px; border: 2.5px solid #38bdf8; background: var(--color-bg, #17181a); box-sizing: border-box; } .ds-badge-demo { margin-left: 4px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--color-border-strong, #43474d); color: var(--color-muted, #9a9fa6); font-size: 10px; font-weight: 600; letter-spacing: 0.025em; } .ds-arrow { color: var(--color-muted, #9a9fa6); transition: transform 150ms; } .ds-stop:hover .ds-arrow { transform: translateX(2px); }"
+    },
+    {
+      "name": "Timetable Rail",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "Demo replay rail: health strip, deploy/action ticks, narrow sign thumb, mono time labels.",
+      "html": "<div class=\"ds-rail\"><div class=\"ds-strip\"><span style=\"width:55%;background:#2b3138\"></span><span style=\"width:15%;background:#f59e0b\"></span><span style=\"width:20%;background:#ef4444\"></span><span style=\"width:10%;background:#2b3138\"></span></div><span class=\"ds-tick\" style=\"left:52%;background:#eceef0\"></span><span class=\"ds-tick\" style=\"left:88%;background:#3b82f6\"></span><span class=\"ds-thumb\" tabindex=\"0\" style=\"left:40%\"></span><div class=\"ds-times\"><span>−15:00</span><span>−5:00</span><span>now</span></div></div>",
+      "css": ".ds-rail { position: relative; height: 24px; margin: 8px 0 24px; } .ds-strip { position: absolute; left: 0; right: 0; top: 50%; height: 6px; transform: translateY(-50%); display: flex; overflow: hidden; border-radius: 9999px; } .ds-tick { position: absolute; top: 50%; width: 2px; height: 16px; transform: translateY(-50%); } .ds-thumb { position: absolute; top: 2px; width: 8px; height: 20px; border-radius: 2px; border: 2px solid var(--color-bg, #17181a); background: var(--color-sign, #eceef0); box-shadow: 0 1px 3px rgb(0 0 0 / 0.6); box-sizing: border-box; cursor: grab; } .ds-thumb:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--color-accent, #3b82f6); } .ds-times { position: absolute; top: 100%; left: 0; right: 0; display: flex; justify-content: space-between; font: 400 10px var(--font-mono, 'JetBrains Mono', monospace); font-variant-numeric: tabular-nums; color: var(--color-muted, #9a9fa6); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Metro Diagram",
+    "overview": "ControlHub draws a distributed system the way a city draws its metro: services are stations on coloured lines, requests are trains running between them, and time is a timetable rail you can scrub. The whole product sits on a matte graphite ground with hairline rules, so the only things that carry colour are the lines themselves and the health of what they connect. Everything else (chrome, cards, navigation, forms) stays neutral and quiet.\n\nDensity is professional-SaaS, not dashboard-crowded: landing sections breathe on wide 80px bands, the account area uses a narrow reading column, and the workspace keeps compact 32px controls. Depth comes from stepping graphite tones up, not from glow, gradient washes or lifted tiles. Primary actions read like wayfinding signs: a light sign fill with dark ink, one per region.\n\nThe line language is used everywhere, not only on the map: project identity is a short line swatch plus a station ring, the auth side panel is a three-line interchange, the onboarding checklist is a line of stops, and the architecture section is a telemetry line with a control line branching at the API interchange.",
+    "keyCharacteristics": [
+      "Matte graphite ground, five tonal steps, hairline borders; no gradients or glow.",
+      "Hue only on service lines and status; chrome is neutral.",
+      "Signage-style primary buttons: light fill, graphite ink.",
+      "One grotesk (Hanken Grotesk) for UI and display, heavy and tight for headlines; JetBrains Mono for timestamps, IDs, metrics and commands.",
+      "Stations are graphite-filled rings; solid strokes mean observed, dotted or dashed mean inferred or external."
+    ],
+    "rules": [
+      { "name": "The Line-Colour Rule", "body": "Hue belongs to service lines and to status. Chrome (buttons, cards, navigation, headings) stays graphite and white. If a coloured element is neither a line, a status, nor an interaction cue, it is wrong.", "section": "colors" },
+      { "name": "The Interaction-Blue Rule", "body": "Interchange Blue marks where the user is acting (focus, selection, slider fill). It is never a decorative fill, a section background or a heading colour.", "section": "colors" },
+      { "name": "The One Grotesk Rule", "body": "Display and UI share one family; hierarchy comes from weight (800/700/600) and tracking, never from a second display face.", "section": "typography" },
+      { "name": "The Machine-Voice Rule", "body": "If the system produced the value (a time, a duration, an ID, a command), set it in mono with tabular numbers. Human labels next to it stay in the grotesk.", "section": "typography" },
+      { "name": "The Matte Rule", "body": "No gradients, no glow, no blur halos. A failing station may emit an expanding red ring while live (stroke only, 1.6s, off under reduced motion); that is a status signal, not decoration.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep chrome on the graphite scale and put hue only on lines and status (The Line-Colour Rule).",
+      "Do make the single primary action per region a Signal White sign with graphite ink; everything else is a graphite button or an underlined text link (hairline-strong underline, text-colour on hover).",
+      "Do draw relationships as lines and stops: round-capped strokes, graphite-filled rings, solid for observed, dotted for inferred, dashed rings for external systems.",
+      "Do set timestamps, IDs, metrics and commands in JetBrains Mono with tabular numbers.",
+      "Do separate sections and rows with 1px hairlines and tonal steps rather than shadows.",
+      "Do respect reduced motion: the live map stops advancing and the failing ripple is removed."
+    ],
+    "donts": [
+      "Don't use gradients, glows, neon halos or coloured shadows (The Matte Rule).",
+      "Don't use Interchange Blue as a fill, background or heading colour; it marks interaction only.",
+      "Don't introduce a second display typeface or set headlines in mono.",
+      "Don't put uppercase tracked labels or eyebrows above headings; the uppercase label cut is for table heads, form labels and badges only.",
+      "Don't colour a healthy landing-map station green; healthy is Signal White, colour arrives only with degradation.",
+      "Don't fabricate proof: the demo is labelled synthetic, and no customer logos, metrics or testimonials appear."
+    ]
+  }
+}

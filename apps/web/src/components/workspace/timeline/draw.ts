@@ -95,10 +95,10 @@ function rangeBand(ctx: CanvasRenderingContext2D, range: View | null, view: View
 export const RULER_H = 24;
 
 const C = {
-  grid: "rgba(38, 53, 90, 0.55)",
-  rowAlt: "rgba(16, 26, 46, 0.45)",
-  text: "#e6ecf5",
-  muted: "#7d8aa5",
+  grid: "rgba(67, 71, 77, 0.6)",
+  rowAlt: "rgba(39, 41, 45, 0.5)",
+  text: "#eceef0",
+  muted: "#9a9fa6",
   accent: "#3b82f6",
   accent2: "#22d3ee",
   violet: "#a855f7",
@@ -350,7 +350,7 @@ export function draw(ctx: CanvasRenderingContext2D, d: DrawInput) {
         ctx.fill();
         ctx.globalAlpha = 1;
         if (x2 - x1 > 60) {
-          ctx.fillStyle = "#06101f";
+          ctx.fillStyle = "#17181a";
           ctx.fillText(`${a.title} · ${a.target}`, Math.max(x1, 0) + 4, y + r.height / 2);
         }
       }
