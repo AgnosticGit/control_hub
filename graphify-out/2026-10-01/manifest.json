@@ -2280,9 +2280,9 @@
     "semantic_hash": ""
   },
   ".cursor/hooks/graphify-update.mjs": {
-    "mtime": 1790865085.218015,
-    "seen": 1790865098.2492878,
-    "ast_hash": "277459db2a19d0d214e4ce02116f3a01",
+    "mtime": 1790865162.0183964,
+    "seen": 1790865172.9441805,
+    "ast_hash": "ce177abf30416d40f4ac4d41b5fc6abf",
     "semantic_hash": ""
   }
 }

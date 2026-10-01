@@ -6,6 +6,12 @@
         "command": "node .cursor/hooks/graphify-update.mjs",
         "timeout": 10
       }
+    ],
+    "preToolUse": [
+      {
+        "command": "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit",
+        "timeout": 5
+      }
     ]
   }
 }
