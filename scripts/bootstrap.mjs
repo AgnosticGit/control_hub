@@ -7,9 +7,19 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { run, root, parseEnv, compose, loadEnvFile } from "./lib.mjs";
 import { ARCHIVE_BUCKET, s3Identities } from "./archive-storage.mjs";
+import { ensureSettings, parseBootstrapArgs } from "./settings.mjs";
+
+let apiArgs;
+try {
+  apiArgs = parseBootstrapArgs(process.argv.slice(2));
+} catch (e) {
+  console.error(`[bootstrap] ${e.message}`);
+  process.exit(2);
+}
 
 const dir = join(root, ".controlhub");
 mkdirSync(dir, { recursive: true });
+if (ensureSettings(dir)) console.error(`[bootstrap] wrote ${join(dir, "settings.env")} (retention defaults; edit as you like)`);
 const infraPath = join(dir, "infra.env");
 
 const secret = () => randomBytes(18).toString("base64url");
@@ -106,10 +116,11 @@ await compose([
   `echo 's3.bucket.list' | weed shell -master=localhost:9333 | grep -q '${ARCHIVE_BUCKET}' || echo 's3.bucket.create -name ${ARCHIVE_BUCKET}' | weed shell -master=localhost:9333`,
 ]);
 
-console.error("[bootstrap] migrations, service users, seed data…");
+console.error("[bootstrap] migrations, retention, service users, seed data…");
 // The only account, surviving resets: CONTROLHUB_OWNER_EMAIL / CONTROLHUB_OWNER_PASSWORD.
+// Retention comes from .controlhub/settings.env, which the binary loads itself.
 const owner = loadEnvFile(".controlhub/owner.env");
-await run("cargo", ["run", "-q", "-p", "controlhub-api", "--", "bootstrap", "--out-dir", dir], {
+await run("cargo", ["run", "-q", "-p", "controlhub-api", "--", "bootstrap", "--out-dir", dir, ...apiArgs], {
   env: { ...process.env, ...infra, ...owner },
 });
 console.error(`[bootstrap] owner account: ${owner.CONTROLHUB_OWNER_EMAIL} (password from .controlhub/owner.env)`);

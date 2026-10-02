@@ -18,6 +18,7 @@ use controlhub_runtime::{backoff, init_tracing, load_local_env, shutdown_signal}
 use controlhub_storage::archive::{ArchiveObjects, ObjectConfig};
 use controlhub_storage::ch::{ChConfig, ChStore};
 use controlhub_storage::pg::PgStore;
+use controlhub_storage::retention::{self, Table};
 use tokio::sync::watch;
 
 use crate::job::{Ctx, Metrics, Summary, archive_window, parse_scope};
@@ -63,6 +64,9 @@ struct Common {
     window_secs: u32,
     #[arg(long, env = "CONTROLHUB_ARCHIVE_ZSTD_LEVEL", default_value_t = 19, value_parser = clap::value_parser!(i32).range(1..=22))]
     zstd_level: i32,
+    /// ClickHouse log retention; must equal the `logs` table TTL (`just bootstrap` applies it).
+    #[arg(long, env = "CONTROLHUB_LOGS_RETENTION_DAYS", default_value_t = retention::DEFAULT_LOGS_DAYS, value_parser = clap::value_parser!(u32).range(i64::from(retention::MIN_DAYS)..=i64::from(retention::MAX_DAYS)))]
+    logs_retention_days: u32,
 }
 
 #[derive(Debug, Subcommand)]
@@ -83,9 +87,6 @@ struct RunArgs {
     /// A window is archived only after it has been closed this long.
     #[arg(long, env = "CONTROLHUB_ARCHIVE_MIN_AGE_SECS", default_value_t = 3600)]
     min_age_secs: u32,
-    /// ClickHouse log retention (the table TTL).
-    #[arg(long, env = "CONTROLHUB_HOT_RETENTION_DAYS", default_value_t = 14)]
-    hot_retention_days: u32,
     /// How long archived segments are kept.
     #[arg(long, env = "CONTROLHUB_ARCHIVE_RETENTION_DAYS", default_value_t = 365)]
     retention_days: u32,
@@ -137,6 +138,8 @@ async fn connect(c: &Common) -> anyhow::Result<Ctx> {
         password: c.clickhouse_password.clone(),
     });
     ch.ping().await?;
+    // Planning assumes this is when ClickHouse deletes logs; a wrong value loses windows.
+    ch.verify_retention(Table::Logs, c.logs_retention_days).await?;
     let objects = ArchiveObjects::s3(&ObjectConfig {
         endpoint: c.s3_endpoint.clone(),
         bucket: c.s3_bucket.clone(),
@@ -161,7 +164,7 @@ async fn gc(ctx: &Ctx, retention_edge: i64) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn tick(ctx: &Ctx, window: i64, a: &RunArgs) -> anyhow::Result<()> {
+async fn tick(ctx: &Ctx, window: i64, hot_retention_days: u32, a: &RunArgs) -> anyhow::Result<()> {
     let now = now_ns();
     let day = 86_400 * NS;
     gc(ctx, now - i64::from(a.retention_days) * day).await?;
@@ -175,7 +178,7 @@ async fn tick(ctx: &Ctx, window: i64, a: &RunArgs) -> anyhow::Result<()> {
         now,
         window,
         min_age: i64::from(a.min_age_secs) * NS,
-        hot_retention: i64::from(a.hot_retention_days) * day,
+        hot_retention: i64::from(hot_retention_days) * day,
         safety: window,
         earliest_data,
         last_done_end,
@@ -224,7 +227,7 @@ async fn tick(ctx: &Ctx, window: i64, a: &RunArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run(ctx: Ctx, window: i64, a: RunArgs) -> anyhow::Result<()> {
+async fn run(ctx: Ctx, window: i64, hot_retention_days: u32, a: RunArgs) -> anyhow::Result<()> {
     let (stop_tx, stop_rx) = watch::channel(false);
     let m = ctx.metrics.clone();
     let admin = axum::Router::new().route(
@@ -250,7 +253,7 @@ async fn run(ctx: Ctx, window: i64, a: RunArgs) -> anyhow::Result<()> {
         tokio::spawn(async move {
             let mut failures = 0u32;
             loop {
-                let pause = match tick(&ctx, window, &a).await {
+                let pause = match tick(&ctx, window, hot_retention_days, &a).await {
                     Ok(()) => {
                         failures = 0;
                         Duration::from_secs(a.interval_secs.max(1))
@@ -303,7 +306,7 @@ async fn main() -> anyhow::Result<()> {
     let window = i64::from(cli.common.window_secs) * NS;
     let ctx = connect(&cli.common).await?;
     match cli.cmd {
-        Cmd::Run(a) => run(ctx, window, a).await,
+        Cmd::Run(a) => run(ctx, window, cli.common.logs_retention_days, a).await,
         Cmd::Once(a) => {
             let summary = once(ctx, window, a).await?;
             println!("{}", serde_json::to_string(&summary)?);
@@ -347,9 +350,24 @@ mod tests {
         args.push("run");
         let cli = Cli::try_parse_from(args).unwrap();
         assert_eq!((cli.common.window_secs, cli.common.zstd_level), (3600, 19));
+        if std::env::var_os("CONTROLHUB_LOGS_RETENTION_DAYS").is_none() {
+            assert_eq!(cli.common.logs_retention_days, 14);
+        }
         let Cmd::Run(r) = cli.cmd else { panic!("run expected") };
         assert_eq!(r.admin_addr.to_string(), "127.0.0.1:9466");
-        assert_eq!((r.min_age_secs, r.hot_retention_days, r.retention_days), (3600, 14, 365));
+        assert_eq!((r.min_age_secs, r.retention_days), (3600, 365));
+    }
+
+    #[test]
+    fn log_retention_is_bounded() {
+        for bad in ["0", "1", "3651", "x"] {
+            let mut args = base();
+            args.extend(["--logs-retention-days", bad, "run"]);
+            assert!(Cli::try_parse_from(args).is_err(), "{bad}");
+        }
+        let mut args = base();
+        args.extend(["--logs-retention-days", "30", "once", "--from-ns", "0", "--to-ns", "1"]);
+        assert_eq!(Cli::try_parse_from(args).unwrap().common.logs_retention_days, 30);
     }
 
     #[test]

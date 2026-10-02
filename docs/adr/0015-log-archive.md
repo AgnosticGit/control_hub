@@ -6,7 +6,8 @@
   variables; integers are stored as numbers. `template_id` (first 8 bytes of SHA-256 of the
   template) is written to ClickHouse and returned by the API, so lines of one kind can be grouped.
   The split is lossless: `render(parse(body)) == body` for every input (property test).
-- **ClickHouse stays the hot store** (14-day TTL) and gets column codecs (Delta/T64 + ZSTD) on
+- **ClickHouse stays the hot store** (TTL from `CONTROLHUB_LOGS_RETENTION_DAYS`, 14 days by
+  default, ADR-0016) and gets column codecs (Delta/T64 + ZSTD) on
   non-key columns (`0002_log_templates_and_codecs.sql`).
 - **A separate process, `controlhub-archiver`**, copies closed one-hour windows (UTC) per
   service out of ClickHouse into S3-compatible object storage. It only reads ClickHouse; the
@@ -26,7 +27,7 @@
   scoped by tenant/project/environment/service and carry a content hash, so a re-archived window
   never overwrites an object a reader may be fetching.
 - **Reading through the API.** `GET /logs?source=auto|hot|archive` (default `auto`): ranges older
-  than the hot window (13 days by default, below the TTL) are read from the archive, newer ones
+  than the hot window (one day less than the log retention by default, always below it) are read from the archive, newer ones
   from ClickHouse; a range spanning both is served newest first from ClickHouse, then the archive.
   The response says which (`source: hot|archive|mixed`). The reader lists segments only for the
   caller's scope, verifies each object's SHA-256 against the catalog and decodes off the async

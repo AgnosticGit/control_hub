@@ -4,6 +4,7 @@
 use clickhouse::{Client, Row};
 use serde::{Deserialize, Serialize};
 
+use crate::retention::{self, Table};
 use crate::{Result, Scope, StorageError};
 
 #[derive(Debug, Clone)]
@@ -389,6 +390,46 @@ impl ChStore {
         for g in grants {
             self.client.query(&format!("GRANT {g} TO {user}")).execute().await?;
         }
+        Ok(())
+    }
+
+    // ------------------------------------------------------------ retention
+
+    /// The table's TTL in days; `None` if it is not a plain day TTL on the table's time column.
+    /// Read-only users see the tables they may select from, so every service can check this.
+    pub async fn ttl_days(&self, table: Table) -> Result<Option<u32>> {
+        let engines: Vec<String> = self
+            .client
+            .query("SELECT engine_full FROM system.tables WHERE database = currentDatabase() AND name = ?")
+            .bind(table.name())
+            .fetch_all()
+            .await?;
+        let engine = engines
+            .first()
+            .ok_or_else(|| StorageError::Other(format!("ClickHouse table `{}` not found", table.name())))?;
+        Ok(retention::parse_ttl_days(engine, table.time_column()))
+    }
+
+    /// Fails with an operator-facing message when `configured` differs from the table's TTL.
+    pub async fn verify_retention(&self, table: Table, configured: u32) -> Result<()> {
+        retention::check(table, configured, self.ttl_days(table).await?).map_err(StorageError::Other)
+    }
+
+    /// Rows a TTL of `days` would delete (bootstrap only, before shortening retention).
+    pub async fn rows_older_than(&self, table: Table, days: u32) -> Result<u64> {
+        let sql =
+            format!("SELECT count() FROM {} WHERE {} < now() - INTERVAL ? DAY", table.name(), table.time_column());
+        Ok(self.client.query(&sql).bind(days).fetch_one::<u64>().await?)
+    }
+
+    /// Sets the table's TTL (bootstrap only, needs the admin user).
+    pub async fn set_ttl_days(&self, table: Table, days: u32) -> Result<()> {
+        let sql = format!(
+            "ALTER TABLE {} MODIFY TTL toDateTime({}) + INTERVAL {days} DAY",
+            table.name(),
+            table.time_column()
+        );
+        self.client.query(&sql).execute().await?;
         Ok(())
     }
 

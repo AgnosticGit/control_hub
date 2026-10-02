@@ -852,9 +852,9 @@
     "semantic_hash": ""
   },
   "crates/controlhub-api/src/bootstrap.rs": {
-    "mtime": 1790896513.4171374,
-    "seen": 1790896802.7276678,
-    "ast_hash": "cb8db09e9ed8c62ce807f4c5b0a8994d",
+    "mtime": 1790902281.8127813,
+    "seen": 1790902436.7407525,
+    "ast_hash": "ced233e3c41051189da6ca9b008d7ee1",
     "semantic_hash": ""
   },
   "crates/controlhub-api/src/error.rs": {
@@ -864,9 +864,9 @@
     "semantic_hash": ""
   },
   "crates/controlhub-api/src/main.rs": {
-    "mtime": 1790896513.4232554,
-    "seen": 1790896802.7276678,
-    "ast_hash": "59690365cbc21e3d36caca4a5dde2ec9",
+    "mtime": 1790902751.8776648,
+    "seen": 1790903282.127595,
+    "ast_hash": "9f221744833f0cac8f892d30a010b6e9",
     "semantic_hash": ""
   },
   "crates/controlhub-api/src/openapi.rs": {
@@ -1260,9 +1260,9 @@
     "semantic_hash": ""
   },
   "crates/controlhub-runtime/src/lib.rs": {
-    "mtime": 1790697085.7251022,
-    "seen": 1790864569.1666539,
-    "ast_hash": "6d8545df32d6d57862c34666876d3ad0",
+    "mtime": 1790902318.0472393,
+    "seen": 1790902436.7478557,
+    "ast_hash": "e2565ee247be56a83dcd05b7973d0397",
     "semantic_hash": ""
   },
   "crates/controlhub-storage/Cargo.toml": {
@@ -1284,15 +1284,15 @@
     "semantic_hash": ""
   },
   "crates/controlhub-storage/src/ch.rs": {
-    "mtime": 1790899035.8552718,
-    "seen": 1790900795.3893468,
-    "ast_hash": "e1a9615ad35a854bc75df512636f9716",
+    "mtime": 1790902752.0992715,
+    "seen": 1790903282.135409,
+    "ast_hash": "05adfedd0fa2dae4e2ad98e51b4d9434",
     "semantic_hash": ""
   },
   "crates/controlhub-storage/src/lib.rs": {
-    "mtime": 1790896513.4196422,
-    "seen": 1790896802.7396867,
-    "ast_hash": "502b9139f0df4d01757e9bfaaaa70abb",
+    "mtime": 1790902246.1703155,
+    "seen": 1790902436.7478557,
+    "ast_hash": "ecfc622bf266ce2ed0303cdd625755f8",
     "semantic_hash": ""
   },
   "crates/controlhub-storage/src/pg.rs": {
@@ -1710,9 +1710,9 @@
     "semantic_hash": ""
   },
   "scripts/bootstrap.mjs": {
-    "mtime": 1790896513.4196422,
-    "seen": 1790896802.7478936,
-    "ast_hash": "f5dec9bf18212059d678d96173cba59a",
+    "mtime": 1790902462.1121137,
+    "seen": 1790902524.3902378,
+    "ast_hash": "4dbb1fa36f45de49510ad1746705198a",
     "semantic_hash": ""
   },
   "scripts/build-wasm.mjs": {
@@ -2070,9 +2070,9 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1790900774.85714,
-    "seen": 1790900795.4022815,
-    "ast_hash": "08fe815650fe6a988688e42db4fe81ab",
+    "mtime": 1790902733.8739495,
+    "seen": 1790903282.15654,
+    "ast_hash": "dc7b2598ad531c52f04b95928d8d3198",
     "semantic_hash": ""
   },
   "README.md": {
@@ -2130,9 +2130,9 @@
     "semantic_hash": ""
   },
   "docs/adr/0004-clickhouse-dedup.md": {
-    "mtime": 1790640594.739989,
-    "seen": 1790864569.1666539,
-    "ast_hash": "0981aa02bbcbb10e739583f1d950f2d0",
+    "mtime": 1790902704.4207685,
+    "seen": 1790903282.15654,
+    "ast_hash": "6681fa802f541ead6b614d2bd30c6d6e",
     "semantic_hash": ""
   },
   "docs/adr/0005-wasm-engine-artifact.md": {
@@ -2196,9 +2196,9 @@
     "semantic_hash": ""
   },
   "docs/adr/README.md": {
-    "mtime": 1790896513.4232554,
-    "seen": 1790896802.7777867,
-    "ast_hash": "cd4d5f342522ac51266b5bc71433e396",
+    "mtime": 1790902701.530267,
+    "seen": 1790903282.1575415,
+    "ast_hash": "87235c95b1e59572a3cffc901391d5a0",
     "semantic_hash": ""
   },
   "docs/architecture/data-flow.md": {
@@ -2220,9 +2220,9 @@
     "semantic_hash": ""
   },
   "docs/operations/local-dev.md": {
-    "mtime": 1790650164.9855366,
-    "seen": 1790864569.1666539,
-    "ast_hash": "fd1a8688fe58aecbd47d41838b337e98",
+    "mtime": 1790902705.8135676,
+    "seen": 1790903282.158751,
+    "ast_hash": "60fa3ba8d7abad194e8623a2a55e920c",
     "semantic_hash": ""
   },
   "docs/security/README.md": {
@@ -3162,9 +3162,9 @@
     "semantic_hash": ""
   },
   "crates/controlhub-archiver/src/main.rs": {
-    "mtime": 1790896513.4171374,
-    "seen": 1790896802.7306824,
-    "ast_hash": "c7782a0e398e50ddb02da49c45911e19",
+    "mtime": 1790902296.1257362,
+    "seen": 1790902436.7428563,
+    "ast_hash": "9ffe6c6aba18e0193edda489ed674a3c",
     "semantic_hash": ""
   },
   "crates/controlhub-archiver/src/plan.rs": {
@@ -3204,9 +3204,9 @@
     "semantic_hash": ""
   },
   "docs/adr/0015-log-archive.md": {
-    "mtime": 1790900769.2535405,
-    "seen": 1790900795.4035916,
-    "ast_hash": "da0231ada4544c976d3ce4d637c26df7",
+    "mtime": 1790902702.9200304,
+    "seen": 1790903282.1575415,
+    "ast_hash": "b3dd4cc8625610d6799feef6d0e232e3",
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/logs-query.test.ts": {
@@ -3231,6 +3231,36 @@
     "mtime": 1790899457.1624837,
     "seen": 1790900795.3939779,
     "ast_hash": "75d9c60c32d28266a60edc282ce3d065",
+    "semantic_hash": ""
+  },
+  "crates/controlhub-storage/src/retention.rs": {
+    "mtime": 1790902245.8796666,
+    "seen": 1790902436.7478557,
+    "ast_hash": "310c5006e16d73537fdcd7f5b71bd46e",
+    "semantic_hash": ""
+  },
+  "scripts/settings.mjs": {
+    "mtime": 1790902460.8244052,
+    "seen": 1790902524.3912315,
+    "ast_hash": "aefe07e88c2ce079be385246f7a4e9ff",
+    "semantic_hash": ""
+  },
+  "scripts/test/settings.test.mjs": {
+    "mtime": 1790902479.5516207,
+    "seen": 1790902524.3912315,
+    "ast_hash": "b6a86d3e4f823903e15ad7cb026a6717",
+    "semantic_hash": ""
+  },
+  "tests/integration/retention.test.mjs": {
+    "mtime": 1790902506.6820896,
+    "seen": 1790902524.394368,
+    "ast_hash": "77d742d344e670320ebb7df859a41247",
+    "semantic_hash": ""
+  },
+  "docs/adr/0016-retention-config.md": {
+    "mtime": 1790902701.0599668,
+    "seen": 1790903282.1575415,
+    "ast_hash": "b26c67ffd2aee7310fa42d762f35925e",
     "semantic_hash": ""
   }
 }

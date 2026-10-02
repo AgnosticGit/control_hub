@@ -11,10 +11,11 @@ default:
 doctor:
     node scripts/doctor.mjs
 
-# Install JS deps, generate local secrets, start infra, migrate and seed
-bootstrap:
+# Install JS deps, generate local secrets, start infra, migrate, apply retention and seed.
+# `just bootstrap --shrink-retention` confirms a retention decrease that deletes stored telemetry.
+bootstrap *ARGS:
     pnpm install --frozen-lockfile
-    node scripts/bootstrap.mjs
+    node scripts/bootstrap.mjs {{ARGS}}
 
 # Build and run ingest + processor + API + executor + web (Ctrl+C stops all).
 # `just dev ngrok` also exposes the web app at CONTROLHUB_PUBLIC_URL through ngrok.

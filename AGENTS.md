@@ -33,7 +33,8 @@ ControlHub is an observability, history-exploration and (later) controlled-manag
 
 ```
 just doctor          # tools, ports, bootstrap state
-just bootstrap       # install deps, generate local secrets, start infra, migrate, seed (needs .controlhub/owner.env)
+just bootstrap       # install deps, generate local secrets, start infra, migrate, apply retention, seed (needs .controlhub/owner.env)
+                     # retention days live in .controlhub/settings.env; --shrink-retention confirms a decrease that deletes data (ADR-0016)
 just dev             # ingest + processor + API + executor + archiver + web
 just stop            # stop leftovers of just dev / just demo (keeps containers)
 just reset           # DESTRUCTIVE: wipe data volumes, then bootstrap again (owner from .controlhub/owner.env)

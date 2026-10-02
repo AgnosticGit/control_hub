@@ -15,7 +15,7 @@ more than once.
   `<batch_id>-<resource>-<scope>-<record>`, which changed on every retry.) `event_id` is supplied
   by the client.
 - Queries that need exact counts use `FINAL`. Retention is enforced with TTL (14 days for
-  spans/logs, 30 days for events).
+  spans/logs, 30 days for events by default; configurable, see ADR-0016).
 
 ## Consequences
 - Duplicates are removed at merge time, and `FINAL` hides them before that at some cost. This is

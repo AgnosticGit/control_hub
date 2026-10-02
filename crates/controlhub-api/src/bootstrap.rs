@@ -10,6 +10,7 @@ use controlhub_domain::{EnvironmentId, ProjectId, Scope, TenantId};
 use controlhub_runtime::env_required;
 use controlhub_storage::ch::{ChConfig, ChStore};
 use controlhub_storage::pg::PgStore;
+use controlhub_storage::retention::{self, Decision, Table};
 use controlhub_storage::secrets::{generate_token, hash_password, hash_token, token_prefix};
 use serde_json::json;
 
@@ -110,7 +111,32 @@ pub(crate) async fn admin_pg() -> anyhow::Result<PgStore> {
     PgStore::connect(&pg_admin_url, 2).await.context("connect postgres as admin")
 }
 
-pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
+/// Sets each table's TTL to the configured retention. Lengthening applies at once; shortening
+/// that would delete rows needs `allow_shrink` (`just bootstrap --shrink-retention`).
+async fn apply_retention(ch: &ChStore, wanted: &[(Table, u32)], allow_shrink: bool) -> anyhow::Result<()> {
+    for &(table, days) in wanted {
+        let current = ch.ttl_days(table).await?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "ClickHouse table `{}` has a TTL ControlHub does not recognise; set it to \
+                 `TTL toDateTime({}) + INTERVAL N DAY` by hand, then run bootstrap again",
+                table.name(),
+                table.time_column()
+            )
+        })?;
+        let rows_lost = if days < current { ch.rows_older_than(table, days).await? } else { 0 };
+        match retention::decide(table, current, days, rows_lost, allow_shrink) {
+            Decision::Keep => {}
+            Decision::Apply => {
+                ch.set_ttl_days(table, days).await?;
+                tracing::info!(table = table.name(), from = current, to = days, rows_lost, "retention changed");
+            }
+            Decision::Refuse(msg) => anyhow::bail!(msg),
+        }
+    }
+    Ok(())
+}
+
+pub async fn run(out_dir: &Path, retention: &[(Table, u32)], allow_shrink: bool) -> anyhow::Result<()> {
     // Checked first, so a missing owner.env fails before anything is changed.
     let owner = configured_owner(
         std::env::var("CONTROLHUB_OWNER_EMAIL").ok().as_deref(),
@@ -190,6 +216,7 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
     });
     let applied = ch.migrate(CH_MIGRATIONS).await.context("clickhouse migrations")?;
     tracing::info!(?applied, "clickhouse migrations applied");
+    apply_retention(&ch, retention, allow_shrink).await?;
     ch.ensure_user("controlhub_api", &env_required("CH_CH_API_PASSWORD")?, &["SELECT ON controlhub.*"]).await?;
     ch.ensure_user(
         "controlhub_processor",

@@ -22,6 +22,10 @@ Postgres, ClickHouse or Kafka. See ADR-0006.
 
 ## Generated local state (`.controlhub/`, gitignored)
 
+- `settings.env`: your own settings, created once with defaults and never overwritten. Holds the
+  ClickHouse retention in days (`CONTROLHUB_LOGS_RETENTION_DAYS`, `CONTROLHUB_SPANS_RETENTION_DAYS`,
+  `CONTROLHUB_EVENTS_RETENTION_DAYS`). The services read it before `services.env`; real environment
+  variables win. See "Changing retention" below.
 - `infra.env`: infrastructure passwords. It is kept across bootstraps.
 - `services.env`: a least-privilege connection string for each service, including the executor.
   `CONTROLHUB_ENV=dev`.
@@ -43,6 +47,18 @@ just stop        # stop leftovers of `just dev`/`just demo` (e.g. after closing 
 just down        # stop containers, keep data
 just reset       # asks for confirmation, then deletes volumes (all local telemetry and metadata)
 ```
+
+## Changing retention
+
+1. Edit the days in `.controlhub/settings.env`.
+2. `just bootstrap` sets them as the ClickHouse table TTLs. If a shorter value would delete stored
+   rows, bootstrap stops and says how many. Confirm with `just bootstrap --shrink-retention`.
+3. Restart `just dev`.
+
+Until bootstrap has applied the change, the API and the archiver refuse to start with
+"`CONTROLHUB_…_RETENTION_DAYS` is N days but ClickHouse keeps … for M days; run `just bootstrap`".
+The API reads logs older than one day less than the log retention from the archive
+(`CONTROLHUB_ARCHIVE_HOT_WINDOW_HOURS` overrides this and must stay below the retention). See ADR-0016.
 
 ## Health and metrics
 

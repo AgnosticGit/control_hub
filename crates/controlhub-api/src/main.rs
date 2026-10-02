@@ -22,6 +22,7 @@ use clap::{Parser, Subcommand};
 use controlhub_runtime::{init_tracing, load_local_env, shutdown_signal};
 use controlhub_storage::ch::{ChConfig, ChStore};
 use controlhub_storage::pg::PgStore;
+use controlhub_storage::retention::{self, Table};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::timeout::TimeoutLayer;
@@ -38,10 +39,15 @@ struct Cli {
 enum Command {
     /// Run the HTTP API (default).
     Serve(Box<ServeArgs>),
-    /// Local development bootstrap (migrations, service users, seed data).
+    /// Local development bootstrap (migrations, retention TTLs, service users, seed data).
     Bootstrap {
         #[arg(long, default_value = ".controlhub")]
         out_dir: PathBuf,
+        #[command(flatten)]
+        retention: RetentionArgs,
+        /// Confirms a retention decrease that permanently deletes older telemetry.
+        #[arg(long)]
+        shrink_retention: bool,
     },
     /// Create (or with --remove delete) the accounts and scopes the integration/e2e tests use.
     TestFixtures {
@@ -52,6 +58,31 @@ enum Command {
     },
     /// Print the OpenAPI document.
     Openapi,
+}
+
+/// How many days ClickHouse keeps each signal; `bootstrap` applies these as table TTLs.
+#[derive(Debug, Clone, clap::Args)]
+struct RetentionArgs {
+    #[arg(long, env = "CONTROLHUB_LOGS_RETENTION_DAYS", default_value_t = retention::DEFAULT_LOGS_DAYS, value_parser = retention_days())]
+    logs_retention_days: u32,
+    #[arg(long, env = "CONTROLHUB_SPANS_RETENTION_DAYS", default_value_t = retention::DEFAULT_SPANS_DAYS, value_parser = retention_days())]
+    spans_retention_days: u32,
+    #[arg(long, env = "CONTROLHUB_EVENTS_RETENTION_DAYS", default_value_t = retention::DEFAULT_EVENTS_DAYS, value_parser = retention_days())]
+    events_retention_days: u32,
+}
+
+fn retention_days() -> clap::builder::RangedI64ValueParser<u32> {
+    clap::value_parser!(u32).range(i64::from(retention::MIN_DAYS)..=i64::from(retention::MAX_DAYS))
+}
+
+impl RetentionArgs {
+    fn tables(&self) -> [(Table, u32); 3] {
+        [
+            (Table::Logs, self.logs_retention_days),
+            (Table::Spans, self.spans_retention_days),
+            (Table::Events, self.events_retention_days),
+        ]
+    }
 }
 
 #[derive(Debug, Parser)]
@@ -94,13 +125,57 @@ struct ServeArgs {
     archive_s3_access_key: Option<String>,
     #[arg(long, env = "CONTROLHUB_API_S3_SECRET_KEY", requires = "archive_s3_endpoint")]
     archive_s3_secret_key: Option<String>,
-    /// Logs older than this are read from the archive by default. Keep it below the
-    /// ClickHouse retention (14 days).
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_HOT_WINDOW_HOURS", default_value_t = 13 * 24, value_parser = clap::value_parser!(u32).range(1..=24 * 365))]
-    archive_hot_window_hours: u32,
+    /// Logs older than this are read from the archive by default. Default: one day less than
+    /// the log retention; must stay below it.
+    #[arg(long, env = "CONTROLHUB_ARCHIVE_HOT_WINDOW_HOURS", value_parser = clap::value_parser!(u32).range(1..=24 * i64::from(retention::MAX_DAYS)))]
+    archive_hot_window_hours: Option<u32>,
+    #[command(flatten)]
+    retention: RetentionArgs,
+}
+
+/// Hours of logs read from ClickHouse by default: the configured value, or one day less than
+/// the log retention, so a query never asks ClickHouse for rows its TTL may already have deleted.
+fn hot_window_hours(args: &ServeArgs) -> anyhow::Result<u32> {
+    let retention_hours = args.retention.logs_retention_days * 24;
+    match args.archive_hot_window_hours {
+        Some(h) if h >= retention_hours => anyhow::bail!(
+            "CONTROLHUB_ARCHIVE_HOT_WINDOW_HOURS={h} must be below the log retention \
+             (CONTROLHUB_LOGS_RETENTION_DAYS={} = {retention_hours} h): ClickHouse no longer has older logs",
+            args.retention.logs_retention_days
+        ),
+        Some(h) => Ok(h),
+        None => Ok(retention_hours - 24),
+    }
+}
+
+/// Refuses to serve when the configured retention is not what ClickHouse does. Waits for
+/// ClickHouse to come up, but a mismatch fails at once.
+async fn verify_retention(ch: &ChStore, retention: &RetentionArgs) -> anyhow::Result<()> {
+    for (table, days) in retention.tables() {
+        let mut failures = 0u32;
+        let actual = loop {
+            match ch.ttl_days(table).await {
+                Ok(actual) => break actual,
+                Err(e) if failures < 20 => {
+                    failures += 1;
+                    tracing::warn!(error = %e, failures, "ClickHouse not ready for the retention check; retrying");
+                    tokio::time::sleep(controlhub_runtime::backoff(
+                        failures,
+                        Duration::from_millis(250),
+                        Duration::from_secs(5),
+                    ))
+                    .await;
+                }
+                Err(e) => return Err(anyhow::Error::new(e).context("read ClickHouse retention")),
+            }
+        };
+        retention::check(table, days, actual).map_err(anyhow::Error::msg)?;
+    }
+    Ok(())
 }
 
 fn archive_config(args: &ServeArgs) -> anyhow::Result<Option<state::ArchiveConfig>> {
+    let hot_window_hours = hot_window_hours(args)?;
     let Some(endpoint) = &args.archive_s3_endpoint else { return Ok(None) };
     let (Some(access_key), Some(secret_key)) = (&args.archive_s3_access_key, &args.archive_s3_secret_key) else {
         anyhow::bail!(
@@ -116,7 +191,7 @@ fn archive_config(args: &ServeArgs) -> anyhow::Result<Option<state::ArchiveConfi
     })?;
     Ok(Some(state::ArchiveConfig {
         reader: controlhub_storage::archive::ArchiveReader::new(objects),
-        hot_window_ns: i64::from(args.archive_hot_window_hours) * 3_600_000_000_000,
+        hot_window_ns: i64::from(hot_window_hours) * 3_600_000_000_000,
     }))
 }
 
@@ -222,6 +297,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         user: args.clickhouse_user,
         password: args.clickhouse_password,
     });
+    verify_retention(&ch, &args.retention).await?;
     if !config.secure_cookies {
         tracing::warn!("CONTROLHUB_ENV=dev: Secure cookie flag disabled for local http. Never use in production.");
     }
@@ -249,9 +325,9 @@ async fn main() -> anyhow::Result<()> {
             println!("{}", openapi::spec_json()?);
             Ok(())
         }
-        Some(Command::Bootstrap { out_dir }) => {
+        Some(Command::Bootstrap { out_dir, retention, shrink_retention }) => {
             init_tracing("controlhub-api");
-            bootstrap::run(&out_dir).await
+            bootstrap::run(&out_dir, &retention.tables(), shrink_retention).await
         }
         Some(Command::TestFixtures { out_dir, remove }) => {
             init_tracing("controlhub-api");
@@ -809,6 +885,64 @@ mod tests {
     }
 
     #[test]
+    fn retention_defaults_and_bounds() {
+        let unset =
+            ["CONTROLHUB_LOGS_RETENTION_DAYS", "CONTROLHUB_SPANS_RETENTION_DAYS", "CONTROLHUB_EVENTS_RETENTION_DAYS"]
+                .iter()
+                .all(|v| std::env::var_os(v).is_none());
+        if unset {
+            assert_eq!(
+                serve_args(&[]).retention.tables(),
+                [(super::Table::Logs, 14), (super::Table::Spans, 14), (super::Table::Events, 30)]
+            );
+        }
+        let mut argv =
+            vec!["controlhub-api", "--database-url", "x", "--clickhouse-user", "u", "--clickhouse-password", "p"];
+        for flag in ["--logs-retention-days", "--spans-retention-days", "--events-retention-days"] {
+            for bad in ["0", "1", "3651", "-5", "two", ""] {
+                argv.extend_from_slice(&[flag, bad]);
+                assert!(super::ServeArgs::try_parse_from(&argv).is_err(), "{flag} {bad:?}");
+                argv.truncate(7);
+            }
+            for ok in ["2", "3650"] {
+                argv.extend_from_slice(&[flag, ok]);
+                assert!(super::ServeArgs::try_parse_from(&argv).is_ok(), "{flag} {ok}");
+                argv.truncate(7);
+            }
+        }
+    }
+
+    #[test]
+    fn the_hot_window_follows_log_retention_and_stays_below_it() {
+        let hours = |extra: &[&str]| super::hot_window_hours(&serve_args(extra));
+        if std::env::var_os("CONTROLHUB_ARCHIVE_HOT_WINDOW_HOURS").is_none() {
+            assert_eq!(hours(&["--logs-retention-days", "14"]).unwrap(), 13 * 24, "one day less by default");
+            assert_eq!(hours(&["--logs-retention-days", "2"]).unwrap(), 24);
+            assert_eq!(hours(&["--logs-retention-days", "90"]).unwrap(), 89 * 24);
+        }
+        assert_eq!(hours(&["--logs-retention-days", "14", "--archive-hot-window-hours", "48"]).unwrap(), 48);
+        assert_eq!(hours(&["--logs-retention-days", "14", "--archive-hot-window-hours", "335"]).unwrap(), 335);
+        for too_long in ["336", "1000"] {
+            let e = hours(&["--logs-retention-days", "14", "--archive-hot-window-hours", too_long]).unwrap_err();
+            let msg = e.to_string();
+            assert!(msg.contains("CONTROLHUB_ARCHIVE_HOT_WINDOW_HOURS") && msg.contains("336 h"), "{msg}");
+        }
+        let args = serve_args(&[
+            "--logs-retention-days",
+            "7",
+            "--archive-hot-window-hours",
+            "200",
+            "--archive-s3-endpoint",
+            "http://127.0.0.1:1",
+            "--archive-s3-access-key",
+            "a",
+            "--archive-s3-secret-key",
+            "s",
+        ]);
+        assert!(super::archive_config(&args).is_err(), "the API refuses to start with such a window");
+    }
+
+    #[test]
     fn allowed_origins_are_split_and_trimmed() {
         let c = super::api_config(&serve_args(&["--allowed-origins", " https://a.example , https://b.example"]));
         assert_eq!(c.allowed_origins, ["https://a.example", "https://b.example"]);
@@ -824,7 +958,33 @@ mod tests {
         assert!(super::Cli::try_parse_from(["controlhub-api"]).unwrap().command.is_none());
         assert!(super::Cli::try_parse_from(["controlhub-api", "drop-database"]).is_err());
         match super::Cli::try_parse_from(["controlhub-api", "bootstrap"]).unwrap().command {
-            Some(super::Command::Bootstrap { out_dir }) => assert_eq!(out_dir, std::path::PathBuf::from(".controlhub")),
+            Some(super::Command::Bootstrap { out_dir, shrink_retention, .. }) => {
+                assert_eq!(out_dir, std::path::PathBuf::from(".controlhub"));
+                assert!(!shrink_retention, "deleting data is never the default");
+            }
+            other => panic!("{other:?}"),
+        }
+        match super::Cli::try_parse_from([
+            "controlhub-api",
+            "bootstrap",
+            "--shrink-retention",
+            "--logs-retention-days",
+            "7",
+            "--spans-retention-days",
+            "3",
+            "--events-retention-days",
+            "90",
+        ])
+        .unwrap()
+        .command
+        {
+            Some(super::Command::Bootstrap { retention, shrink_retention, .. }) => {
+                assert!(shrink_retention);
+                assert_eq!(
+                    retention.tables(),
+                    [(super::Table::Logs, 7), (super::Table::Spans, 3), (super::Table::Events, 90)]
+                );
+            }
             other => panic!("{other:?}"),
         }
         assert!(
