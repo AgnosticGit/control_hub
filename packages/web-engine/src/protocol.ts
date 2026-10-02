@@ -65,6 +65,8 @@ export interface LoadResult {
   completeness: unknown;
   fromNs?: string;
   toNs?: string;
+  /** Timeline only: where the log items came from (`hot`, `archive`, `mixed`). */
+  logsSource?: string;
 }
 
 export interface ResultMap {

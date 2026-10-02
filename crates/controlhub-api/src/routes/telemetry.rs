@@ -25,7 +25,10 @@ use crate::permissions::Permission;
 use crate::state::AppState;
 
 const NS_PER_MIN: i64 = 60_000_000_000;
-const MAX_RANGE_NS: i64 = 7 * 24 * 60 * NS_PER_MIN;
+const NS_PER_DAY: i64 = 24 * 60 * NS_PER_MIN;
+const MAX_RANGE_NS: i64 = 7 * NS_PER_DAY;
+/// Log reads that may use the archive. The archive's segment cap bounds the work per request.
+const MAX_ARCHIVE_RANGE_NS: i64 = 31 * NS_PER_DAY;
 const PROCESSOR: &str = "controlhub-processor";
 const TOPIC: &str = "controlhub.telemetry.v1";
 
@@ -62,14 +65,18 @@ pub(crate) fn parse_ns(v: &Option<String>, name: &str) -> ApiResult<Option<i64>>
 
 impl RangeParams {
     pub fn resolve(&self) -> ApiResult<Range> {
+        self.resolve_max(MAX_RANGE_NS)
+    }
+
+    fn resolve_max(&self, max_ns: i64) -> ApiResult<Range> {
         let to = parse_ns(&self.to, "to")?.unwrap_or_else(now_ns);
         let from = parse_ns(&self.from, "from")?.unwrap_or(to.saturating_sub(15 * NS_PER_MIN));
         if from >= to {
             return Err(ApiError::BadRequest("from must be before to".into()));
         }
         // Checked: extreme inputs must not wrap around into a "short" range.
-        if to.checked_sub(from).is_none_or(|d| d > MAX_RANGE_NS) {
-            return Err(ApiError::BadRequest("time range may not exceed 7 days".into()));
+        if to.checked_sub(from).is_none_or(|d| d > max_ns) {
+            return Err(ApiError::BadRequest(format!("time range may not exceed {} days", max_ns / NS_PER_DAY)));
         }
         Ok(Range { from, to })
     }
@@ -129,6 +136,20 @@ fn completeness_from(wms: &[WatermarkRow], dead: i64, truncated: bool) -> Comple
     }
 }
 
+/// Where the archive takes over from ClickHouse, when an archive is configured.
+fn archive_cutoff(state: &AppState) -> Option<i64> {
+    state.archive.as_ref().map(|a| now_ns().saturating_sub(a.hot_window_ns))
+}
+
+/// For ranges that start before the archive cutoff: only logs are archived.
+fn archive_note(cutoff: Option<i64>, from: i64) -> Option<String> {
+    cutoff.filter(|c| from < *c).map(|_| {
+        "Logs before the hot window come from the archive; traces and events are not archived, \
+         so the map and request tracks may be empty for that part of the range."
+            .to_owned()
+    })
+}
+
 fn nonempty(s: String) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
@@ -175,12 +196,14 @@ pub async fn services(
         state.ch.service_summaries(&scope, r.from, r.to),
         state.ch.log_services(&scope, r.from, r.to)
     )?;
+    let mut completeness = completeness(&state, &scope, false).await?;
+    completeness.notes.extend(archive_note(archive_cutoff(&state), r.from));
     Ok(Json(ServicesResponse {
         services: merge_services(spans, logs),
         from_ns: ns(r.from),
         to_ns: ns(r.to),
         is_demo,
-        completeness: completeness(&state, &scope, false).await?,
+        completeness,
     }))
 }
 
@@ -280,13 +303,9 @@ pub async fn topology(
         state.ch.external_client_edges(&scope, r.from, r.to),
     )?;
     let (nodes, edges) = build_topology(&services, &logs, calls, resources, clients, &external_clients_id(&scope));
-    Ok(Json(TopologyResponse {
-        nodes,
-        edges,
-        from_ns: ns(r.from),
-        to_ns: ns(r.to),
-        completeness: completeness(&state, &scope, false).await?,
-    }))
+    let mut completeness = completeness(&state, &scope, false).await?;
+    completeness.notes.extend(archive_note(archive_cutoff(&state), r.from));
+    Ok(Json(TopologyResponse { nodes, edges, from_ns: ns(r.from), to_ns: ns(r.to), completeness }))
 }
 
 /// One node per environment for everything that calls it without being instrumented
@@ -538,6 +557,9 @@ pub struct LogDto {
     pub severity_text: String,
     /// Untrusted text. Render as plain text only.
     pub body: String,
+    /// Lines of one kind (the body with its numbers and IDs taken out) share this ID.
+    /// Decimal string (u64 does not fit a JS number); `"0"` for rows stored before templates.
+    pub template_id: String,
     pub trace_id: Option<String>,
     pub span_id: Option<String>,
     pub attributes: BTreeMap<String, String>,
@@ -584,6 +606,7 @@ fn log_dto(l: LogRow) -> LogDto {
         severity_number: l.severity_number,
         severity_text: l.severity_text,
         body: l.body,
+        template_id: l.template_id.to_string(),
         trace_id: nonempty(l.trace_id),
         span_id: nonempty(l.span_id),
         attributes: l.attributes.into_iter().collect(),
@@ -703,8 +726,23 @@ pub struct LogParams {
     pub trace_id: Option<String>,
     /// Case-insensitive substring match on the log body.
     pub q: Option<String>,
+    /// Only lines of this kind: a `template_id` from a previous response (decimal string).
+    pub template_id: Option<String>,
     pub limit: Option<u32>,
     pub cursor: Option<String>,
+    /// `auto` (default): recent logs from ClickHouse, older ones from the archive.
+    /// `hot`: ClickHouse only. `archive`: the archive only (503 when it is not configured).
+    /// Ranges may span 31 days when the archive can be used, 7 days otherwise.
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum LogSource {
+    Hot,
+    Archive,
+    /// The range spans both: newer rows from ClickHouse, older ones from the archive.
+    Mixed,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -712,7 +750,78 @@ pub struct LogListResponse {
     /// Newest first.
     pub logs: Vec<LogDto>,
     pub next_cursor: Option<String>,
+    /// Where the rows were read from.
+    pub source: LogSource,
     pub completeness: Completeness,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourceRequest {
+    Auto,
+    Hot,
+    Archive,
+}
+
+fn source_request(v: Option<&str>) -> ApiResult<SourceRequest> {
+    match v {
+        None | Some("auto") => Ok(SourceRequest::Auto),
+        Some("hot") => Ok(SourceRequest::Hot),
+        Some("archive") => Ok(SourceRequest::Archive),
+        Some(_) => Err(ApiError::BadRequest("source must be auto, hot or archive".into())),
+    }
+}
+
+/// How to serve a log range. `cutoff` is where the archive takes over (`None`: no archive).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourcePlan {
+    Hot,
+    Archive,
+    /// ClickHouse for `[cutoff, to)`, then the archive for `[from, cutoff)`.
+    Split(i64),
+}
+
+fn source_plan(req: SourceRequest, from: i64, to: i64, cutoff: Option<i64>) -> ApiResult<SourcePlan> {
+    match (req, cutoff) {
+        (SourceRequest::Hot, _) | (SourceRequest::Auto, None) => Ok(SourcePlan::Hot),
+        (SourceRequest::Archive, None) => Err(ApiError::Unavailable("the log archive is not configured")),
+        (SourceRequest::Archive, Some(_)) => Ok(SourcePlan::Archive),
+        (SourceRequest::Auto, Some(c)) if to <= c => Ok(SourcePlan::Archive),
+        (SourceRequest::Auto, Some(c)) if from >= c => Ok(SourcePlan::Hot),
+        (SourceRequest::Auto, Some(c)) => Ok(SourcePlan::Split(c)),
+    }
+}
+
+/// Rows read for one log request.
+struct LogRead {
+    rows: Vec<LogRow>,
+    source: LogSource,
+    /// The archive stopped at its segment cap: continue before this time (see `ArchivePage`).
+    resume_before: Option<i64>,
+}
+
+async fn read_logs(state: &AppState, scope: &Scope, query: &LogQuery, plan: SourcePlan) -> ApiResult<LogRead> {
+    let archive = || state.archive.as_ref().ok_or(ApiError::Unavailable("the log archive is not configured"));
+    match plan {
+        SourcePlan::Hot => {
+            Ok(LogRead { rows: state.ch.logs(scope, query).await?, source: LogSource::Hot, resume_before: None })
+        }
+        SourcePlan::Archive => {
+            let page = archive()?.reader.logs(&state.pg, scope, query).await?;
+            Ok(LogRead { rows: page.rows, source: LogSource::Archive, resume_before: page.resume_before })
+        }
+        SourcePlan::Split(cutoff) => {
+            let mut rows = state.ch.logs(scope, &LogQuery { from_ns: cutoff, ..query.clone() }).await?;
+            let missing = (query.limit as usize).saturating_sub(rows.len());
+            if missing == 0 {
+                return Ok(LogRead { rows, source: LogSource::Hot, resume_before: None });
+            }
+            let older =
+                LogQuery { to_ns: cutoff, limit: u32::try_from(missing).unwrap_or(query.limit), ..query.clone() };
+            let page = archive()?.reader.logs(&state.pg, scope, &older).await?;
+            rows.extend(page.rows);
+            Ok(LogRead { rows, source: LogSource::Mixed, resume_before: page.resume_before })
+        }
+    }
 }
 
 #[utoipa::path(get, path = "/api/v1/projects/{project_id}/environments/{environment_id}/logs", tag = "telemetry",
@@ -724,17 +833,35 @@ pub async fn logs(
     Path((project_id, environment_id)): Path<(String, String)>,
     Query(q): Query<LogParams>,
 ) -> ApiResult<Json<LogListResponse>> {
+    let request = source_request(q.source.as_deref())?;
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
-    let (query, limit) = q.to_query()?;
-    let rows = state.ch.logs(&scope, &query).await?;
-    let (logs, next_cursor, has_more) = log_page(rows, limit);
-    Ok(Json(LogListResponse { logs, next_cursor, completeness: completeness(&state, &scope, has_more).await? }))
+    let cutoff = archive_cutoff(&state);
+    let (query, limit) = q.to_query(max_log_range(request, cutoff.is_some()))?;
+    let plan = source_plan(request, query.from_ns, query.to_ns, cutoff)?;
+    let read = read_logs(&state, &scope, &query, plan).await?;
+    let (logs, next_cursor, has_more) = log_page(read.rows, limit, read.resume_before);
+    Ok(Json(LogListResponse {
+        logs,
+        next_cursor,
+        source: read.source,
+        completeness: completeness(&state, &scope, has_more).await?,
+    }))
+}
+
+/// The longer range applies only when the request may read the archive.
+fn max_log_range(req: SourceRequest, archive: bool) -> i64 {
+    if archive && req != SourceRequest::Hot { MAX_ARCHIVE_RANGE_NS } else { MAX_RANGE_NS }
+}
+
+fn parse_template_id(v: Option<&str>) -> ApiResult<Option<u64>> {
+    v.map(|s| s.parse::<u64>().map_err(|_| ApiError::BadRequest("template_id must be a decimal u64".into())))
+        .transpose()
 }
 
 impl LogParams {
     /// Validated storage query (one extra row to detect more pages) and the page size.
-    fn to_query(&self) -> ApiResult<(LogQuery, u32)> {
-        let r = RangeParams { from: self.from.clone(), to: self.to.clone() }.resolve()?;
+    fn to_query(&self, max_range_ns: i64) -> ApiResult<(LogQuery, u32)> {
+        let r = RangeParams { from: self.from.clone(), to: self.to.clone() }.resolve_max(max_range_ns)?;
         let limit = limit(self.limit, 200, 1_000);
         if let Some(t) = &self.trace_id {
             TraceId::parse(t.clone()).map_err(|_| ApiError::BadRequest("invalid trace id".into()))?;
@@ -750,6 +877,7 @@ impl LogParams {
             min_severity: self.min_severity,
             trace_id: self.trace_id.clone(),
             text,
+            template_id: parse_template_id(self.template_id.as_deref())?,
             before: decode_cursor(&self.cursor)?,
             limit: limit + 1,
         };
@@ -757,15 +885,17 @@ impl LogParams {
     }
 }
 
-fn log_page(rows: Vec<LogRow>, limit: u32) -> (Vec<LogDto>, Option<String>, bool) {
-    let has_more = rows.len() > limit as usize;
+/// `resume_before`: the archive stopped at its segment cap with fewer rows than a page; the
+/// cursor then continues from there instead of from the last row.
+fn log_page(rows: Vec<LogRow>, limit: u32, resume_before: Option<i64>) -> (Vec<LogDto>, Option<String>, bool) {
+    let full = rows.len() > limit as usize;
     let logs: Vec<LogDto> = rows.into_iter().take(limit as usize).map(log_dto).collect();
-    let next_cursor = if has_more {
+    let next_cursor = if full {
         logs.last().and_then(|l| l.time_ns.parse::<i64>().ok().map(|t| encode_cursor(t, &l.id)))
     } else {
-        None
+        resume_before.map(|t| encode_cursor(t, ""))
     };
-    (logs, next_cursor, has_more)
+    (logs, next_cursor, full || resume_before.is_some())
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -824,6 +954,9 @@ pub struct TimelineResponse {
     pub spans_truncated: bool,
     pub logs_truncated: bool,
     pub events_truncated: bool,
+    /// Where the log items come from: the archive serves the part of the range before the hot
+    /// window. Spans and events are never archived.
+    pub logs_source: LogSource,
     pub completeness: Completeness,
 }
 
@@ -856,6 +989,51 @@ pub(crate) fn log_item(l: TimelineLogRow) -> TimelineItem {
         severity: l.severity_number,
         trace_id: nonempty(l.trace_id),
     })
+}
+
+fn timeline_log_row(l: LogRow) -> TimelineLogRow {
+    TimelineLogRow {
+        log_id: l.log_id,
+        service_id: l.service_id,
+        service_name: l.service_name,
+        time: l.time,
+        severity_number: l.severity_number,
+        trace_id: l.trace_id,
+        ingested_at: l.ingested_at,
+    }
+}
+
+/// Timeline log items: ClickHouse for `[cutoff, to)`, the archive for `[from, cutoff)`. At most
+/// `fetch` rows from each store; `truncated` when the archive stopped at its segment cap.
+async fn timeline_logs(
+    state: &AppState,
+    scope: &Scope,
+    r: Range,
+    cutoff: Option<i64>,
+    fetch: u32,
+) -> ApiResult<(Vec<TimelineLogRow>, LogSource, bool)> {
+    let plan = source_plan(SourceRequest::Auto, r.from, r.to, cutoff)?;
+    let (hot_from, archive_to) = match plan {
+        SourcePlan::Hot => {
+            return Ok((state.ch.timeline_logs(scope, r.from, r.to, fetch).await?, LogSource::Hot, false));
+        }
+        SourcePlan::Archive => (None, r.to),
+        SourcePlan::Split(c) => (Some(c), c),
+    };
+    let Some(archive) = state.archive.as_ref() else {
+        return Err(ApiError::Unavailable("the log archive is not configured"));
+    };
+    let older = LogQuery { from_ns: r.from, to_ns: archive_to, limit: fetch, ..LogQuery::default() };
+    let (mut rows, page) = match hot_from {
+        Some(c) => tokio::try_join!(
+            async { Ok::<_, ApiError>(state.ch.timeline_logs(scope, c, r.to, fetch).await?) },
+            async { Ok(archive.reader.logs(&state.pg, scope, &older).await?) },
+        )?,
+        None => (Vec::new(), archive.reader.logs(&state.pg, scope, &older).await?),
+    };
+    let source = if hot_from.is_some() { LogSource::Mixed } else { LogSource::Archive };
+    rows.extend(page.rows.into_iter().map(timeline_log_row));
+    Ok((rows, source, page.resume_before.is_some()))
 }
 
 pub(crate) fn event_item(e: EventRow) -> TimelineItem {
@@ -897,12 +1075,16 @@ pub async fn timeline(
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let r = RangeParams { from: q.from.clone(), to: q.to.clone() }.resolve()?;
     let limit = limit(q.limit, 20_000, 100_000);
-    let (spans, logs, events) = tokio::try_join!(
-        state.ch.timeline_spans(&scope, r.from, r.to, limit + 1),
-        state.ch.timeline_logs(&scope, r.from, r.to, limit + 1),
-        state.ch.events(&scope, r.from, r.to, None, limit + 1),
+    let cutoff = archive_cutoff(&state);
+    let (spans, (logs, logs_source, archive_capped), events) = tokio::try_join!(
+        async { Ok::<_, ApiError>(state.ch.timeline_spans(&scope, r.from, r.to, limit + 1).await?) },
+        timeline_logs(&state, &scope, r, cutoff, limit + 1),
+        async { Ok(state.ch.events(&scope, r.from, r.to, None, limit + 1).await?) },
     )?;
     let (items, st, lt, et) = timeline_items(spans, logs, events, limit, &external_clients_id(&scope));
+    let lt = lt || archive_capped;
+    let mut completeness = completeness(&state, &scope, st || lt || et).await?;
+    completeness.notes.extend(archive_note(cutoff, r.from));
     Ok(Json(TimelineResponse {
         items,
         from_ns: ns(r.from),
@@ -910,7 +1092,8 @@ pub async fn timeline(
         spans_truncated: st,
         logs_truncated: lt,
         events_truncated: et,
-        completeness: completeness(&state, &scope, st || lt || et).await?,
+        logs_source,
+        completeness,
     }))
 }
 
@@ -983,6 +1166,28 @@ mod tests {
         assert!(bad_request(range(Some(T0 - MAX_RANGE_NS - 1), Some(T0))).contains("7 days"));
         // A default `from` is 15 minutes before an explicit far-past `to`, which is fine.
         assert!(range(None, Some(1)).is_ok());
+    }
+
+    #[test]
+    fn log_reads_that_may_use_the_archive_get_31_days() {
+        assert_eq!(max_log_range(SourceRequest::Auto, true), MAX_ARCHIVE_RANGE_NS);
+        assert_eq!(max_log_range(SourceRequest::Archive, true), MAX_ARCHIVE_RANGE_NS);
+        assert_eq!(max_log_range(SourceRequest::Hot, true), MAX_RANGE_NS, "ClickHouse-only reads keep 7 days");
+        assert_eq!(max_log_range(SourceRequest::Auto, false), MAX_RANGE_NS, "no archive configured");
+
+        let p = |days: i64, extra: i64| LogParams {
+            from: Some((T0 - days * NS_PER_DAY - extra).to_string()),
+            to: Some(T0.to_string()),
+            ..log_params()
+        };
+        assert!(p(31, 0).to_query(MAX_ARCHIVE_RANGE_NS).is_ok(), "exactly 31 days");
+        assert_eq!(bad_request(p(31, 1).to_query(MAX_ARCHIVE_RANGE_NS)), "time range may not exceed 31 days");
+        assert_eq!(bad_request(p(8, 0).to_query(MAX_RANGE_NS)), "time range may not exceed 7 days");
+        assert_eq!(
+            bad_request(range(Some(T0 - 8 * NS_PER_DAY), Some(T0))),
+            "time range may not exceed 7 days",
+            "other endpoints keep 7 days"
+        );
     }
 
     #[test]
@@ -1104,37 +1309,52 @@ mod tests {
             min_severity: None,
             trace_id: None,
             q: None,
+            template_id: None,
             limit: None,
             cursor: None,
+            source: None,
+        }
+    }
+
+    impl LogParams {
+        fn query7(&self) -> ApiResult<(LogQuery, u32)> {
+            self.to_query(MAX_RANGE_NS)
         }
     }
 
     #[test]
     fn log_params_are_validated() {
-        let (q, l) = log_params().to_query().unwrap();
+        let (q, l) = log_params().query7().unwrap();
         assert_eq!((l, q.limit), (200, 201));
-        assert_eq!(LogParams { limit: Some(0), ..log_params() }.to_query().unwrap().1, 1);
-        assert_eq!(LogParams { limit: Some(5_000), ..log_params() }.to_query().unwrap().1, 1_000);
+        assert_eq!(LogParams { limit: Some(0), ..log_params() }.query7().unwrap().1, 1);
+        assert_eq!(LogParams { limit: Some(5_000), ..log_params() }.query7().unwrap().1, 1_000);
 
         let tid = "0123456789abcdef0123456789abcdef".to_owned();
-        let (q, _) = LogParams { trace_id: Some(tid.clone()), ..log_params() }.to_query().unwrap();
+        let (q, _) = LogParams { trace_id: Some(tid.clone()), ..log_params() }.query7().unwrap();
         assert_eq!(q.trace_id, Some(tid));
         for bad in ["", "xyz", "0123456789ABCDEF0123456789ABCDEF", "0123456789abcdef0123456789abcde", "' OR 1=1 --"] {
-            let m = bad_request(LogParams { trace_id: Some(bad.into()), ..log_params() }.to_query());
+            let m = bad_request(LogParams { trace_id: Some(bad.into()), ..log_params() }.query7());
             assert_eq!(m, "invalid trace id", "{bad:?}");
         }
 
-        assert_eq!(LogParams { q: Some("   ".into()), ..log_params() }.to_query().unwrap().0.text, None);
-        let (q, _) = LogParams { q: Some("%' OR 1=1 --".into()), ..log_params() }.to_query().unwrap();
+        assert_eq!(LogParams { q: Some("   ".into()), ..log_params() }.query7().unwrap().0.text, None);
+        let (q, _) = LogParams { q: Some("%' OR 1=1 --".into()), ..log_params() }.query7().unwrap();
         assert_eq!(q.text.as_deref(), Some("%' OR 1=1 --"), "search text is data, bound as a parameter");
-        assert!(LogParams { q: Some("x".repeat(256)), ..log_params() }.to_query().is_ok());
-        assert_eq!(bad_request(LogParams { q: Some("x".repeat(257)), ..log_params() }.to_query()), "q too long");
-        assert_eq!(
-            bad_request(LogParams { q: Some("é".repeat(129)), ..log_params() }.to_query()),
-            "q too long",
-            "bytes"
-        );
-        assert!(LogParams { cursor: Some("?".into()), ..log_params() }.to_query().is_err());
+        assert!(LogParams { q: Some("x".repeat(256)), ..log_params() }.query7().is_ok());
+        assert_eq!(bad_request(LogParams { q: Some("x".repeat(257)), ..log_params() }.query7()), "q too long");
+        assert_eq!(bad_request(LogParams { q: Some("é".repeat(129)), ..log_params() }.query7()), "q too long", "bytes");
+        assert!(LogParams { cursor: Some("?".into()), ..log_params() }.query7().is_err());
+    }
+
+    #[test]
+    fn template_ids_are_exact_u64_decimals() {
+        let q = |v: &str| LogParams { template_id: Some(v.into()), ..log_params() }.query7();
+        assert_eq!(q("18446744073709551615").unwrap().0.template_id, Some(u64::MAX), "beyond JS number precision");
+        assert_eq!(q("0").unwrap().0.template_id, Some(0));
+        assert_eq!(log_params().query7().unwrap().0.template_id, None);
+        for bad in ["", "-1", "18446744073709551616", "1e3", "0x10", " 1", "1 OR 1=1"] {
+            assert_eq!(bad_request(q(bad)), "template_id must be a decimal u64", "{bad:?}");
+        }
     }
 
     fn trace_row(id: &str, start: i64) -> TraceSummaryRow {
@@ -1180,6 +1400,7 @@ mod tests {
             severity_number: 17,
             severity_text: "ERROR".into(),
             body: "<script>alert(1)</script>".into(),
+            template_id: u64::MAX,
             trace_id: String::new(),
             span_id: "0123456789abcdef".into(),
             attributes: vec![("b".into(), "2".into()), ("a".into(), "1".into())],
@@ -1190,13 +1411,69 @@ mod tests {
     }
 
     #[test]
+    fn log_sources_are_validated_and_planned() {
+        assert_eq!(source_request(None).unwrap(), SourceRequest::Auto);
+        assert_eq!(source_request(Some("auto")).unwrap(), SourceRequest::Auto);
+        assert_eq!(source_request(Some("hot")).unwrap(), SourceRequest::Hot);
+        assert_eq!(source_request(Some("archive")).unwrap(), SourceRequest::Archive);
+        for bad in ["", "HOT", "cold", "archive "] {
+            assert_eq!(bad_request(source_request(Some(bad))), "source must be auto, hot or archive", "{bad:?}");
+        }
+
+        let c = Some(T0);
+        assert_eq!(
+            source_plan(SourceRequest::Auto, T0 - 10, T0 - 1, None).unwrap(),
+            SourcePlan::Hot,
+            "no archive: hot only"
+        );
+        assert!(matches!(source_plan(SourceRequest::Archive, 0, 1, None), Err(ApiError::Unavailable(_))));
+        assert_eq!(
+            source_plan(SourceRequest::Hot, T0 - 10, T0 - 1, c).unwrap(),
+            SourcePlan::Hot,
+            "explicit hot is obeyed"
+        );
+        assert_eq!(source_plan(SourceRequest::Archive, T0, T0 + 10, c).unwrap(), SourcePlan::Archive);
+        assert_eq!(
+            source_plan(SourceRequest::Auto, T0 - 10, T0, c).unwrap(),
+            SourcePlan::Archive,
+            "ends at the cutoff"
+        );
+        assert_eq!(source_plan(SourceRequest::Auto, T0, T0 + 10, c).unwrap(), SourcePlan::Hot, "starts at the cutoff");
+        assert_eq!(source_plan(SourceRequest::Auto, T0 - 10, T0 + 10, c).unwrap(), SourcePlan::Split(T0));
+    }
+
+    #[test]
+    fn log_params_accept_a_source() {
+        let p = LogParams { source: Some("archive".into()), ..log_params() };
+        assert!(p.query7().is_ok(), "source is checked separately from the range");
+        assert_eq!(source_request(p.source.as_deref()).unwrap(), SourceRequest::Archive);
+    }
+
+    #[test]
+    fn log_source_serializes_lowercase() {
+        assert_eq!(serde_json::to_value(LogSource::Mixed).unwrap(), "mixed");
+        assert_eq!(serde_json::to_value(LogSource::Hot).unwrap(), "hot");
+        assert_eq!(serde_json::to_value(LogSource::Archive).unwrap(), "archive");
+    }
+
+    #[test]
     fn log_pages_and_dtos() {
         let rows: Vec<_> = (0..3).map(|i| log_row(&format!("l{i}"), T0 - i)).collect();
-        let (page, cursor, more) = log_page(rows.clone(), 2);
+        let (page, cursor, more) = log_page(rows.clone(), 2, None);
         assert!(more && page.len() == 2);
         assert_eq!(decode_cursor(&cursor).unwrap(), Some((T0 - 1, "l1".into())));
-        let (_, cursor, more) = log_page(rows, 3);
+        let (page, cursor, more) = log_page(rows.clone(), 2, Some(T0 - 100));
+        assert!(more && page.len() == 2);
+        assert_eq!(decode_cursor(&cursor).unwrap(), Some((T0 - 1, "l1".into())), "a full page uses its last row");
+        let (_, cursor, more) = log_page(rows.clone(), 3, None);
         assert!(!more && cursor.is_none());
+
+        // The archive hit its segment cap before the page filled: continue below the resume point.
+        let (page, cursor, more) = log_page(rows.clone(), 10, Some(T0 - 100));
+        assert!(more && page.len() == 3);
+        assert_eq!(decode_cursor(&cursor).unwrap(), Some((T0 - 100, String::new())));
+        let (page, cursor, more) = log_page(vec![], 10, Some(T0 - 100));
+        assert!(more && page.is_empty() && cursor.is_some(), "an empty page can still have more in the archive");
 
         let d = log_dto(log_row("l", T0));
         assert_eq!(d.body, "<script>alert(1)</script>", "untrusted text is passed as data, never transformed");
@@ -1204,6 +1481,7 @@ mod tests {
         assert_eq!(d.span_id.as_deref(), Some("0123456789abcdef"));
         assert_eq!(d.observed_time_ns, (T0 + 1).to_string());
         assert_eq!(d.attributes.keys().collect::<Vec<_>>(), ["a", "b"], "attributes are sorted");
+        assert_eq!(d.template_id, "18446744073709551615", "u64 template IDs are exact decimal strings");
     }
 
     fn event_row(id: &str) -> EventRow {
@@ -1270,6 +1548,38 @@ mod tests {
             trace_id: "t".into(),
             ingested_at: T0,
         }
+    }
+
+    #[test]
+    fn archived_logs_become_timeline_items_and_old_ranges_carry_a_note() {
+        let mut row = log_row("l1", T0);
+        row.trace_id = "ab".repeat(16);
+        let TimelineItem::Log(l) = log_item(timeline_log_row(row)) else { panic!("log") };
+        assert_eq!((l.id.as_str(), l.time_ns, l.severity), ("l1", T0, 17));
+        assert_eq!(l.trace_id, Some("ab".repeat(16)));
+
+        assert_eq!(archive_note(None, 0), None, "no archive: nothing to explain");
+        assert_eq!(archive_note(Some(T0), T0), None, "range inside the hot window");
+        let note = archive_note(Some(T0), T0 - 1).unwrap();
+        assert!(note.contains("archive") && note.contains("not archived"), "{note}");
+    }
+
+    #[test]
+    fn timeline_logs_source_serializes_after_the_items() {
+        let r = TimelineResponse {
+            items: vec![],
+            from_ns: "1".into(),
+            to_ns: "2".into(),
+            spans_truncated: false,
+            logs_truncated: false,
+            events_truncated: false,
+            logs_source: LogSource::Mixed,
+            completeness: completeness_from(&[], 0, false),
+        };
+        let text = serde_json::to_string(&r).unwrap();
+        // The Worker reads the tail after `items` without parsing the item array.
+        assert!(text.starts_with(r#"{"items":[],"from_ns":"1""#), "{text}");
+        assert!(text.contains(r#""logs_source":"mixed""#), "{text}");
     }
 
     #[test]

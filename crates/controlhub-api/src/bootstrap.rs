@@ -17,8 +17,13 @@ use crate::permissions::{self, Builtin};
 use crate::routes::signup::{MAX_PASSWORD_BYTES, MIN_PASSWORD_CHARS, normalise_email};
 use crate::system_permissions::SystemBuiltin;
 
-const CH_MIGRATIONS: &[(&str, &str)] =
-    &[("0001_telemetry.sql", include_str!("../../../infra/migrations/clickhouse/0001_telemetry.sql"))];
+const CH_MIGRATIONS: &[(&str, &str)] = &[
+    ("0001_telemetry.sql", include_str!("../../../infra/migrations/clickhouse/0001_telemetry.sql")),
+    (
+        "0002_log_templates_and_codecs.sql",
+        include_str!("../../../infra/migrations/clickhouse/0002_log_templates_and_codecs.sql"),
+    ),
+];
 
 pub(crate) struct SeedScope {
     pub tenant: &'static str,
@@ -145,6 +150,18 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
             "SELECT, INSERT ON audit_log",
             "SELECT, INSERT, UPDATE ON ingest_tokens, api_tokens",
             "SELECT, INSERT, UPDATE ON action_plans",
+            // Reads archived logs (ADR-0015); only the archiver writes the catalog.
+            "SELECT ON archive_segments, archive_dictionaries",
+        ],
+    )
+    .await?;
+    // The archiver writes the archive catalog and reads projects to find deleted ones.
+    pg.ensure_service_role(
+        "controlhub_archiver",
+        &env_required("CH_PG_ARCHIVER_PASSWORD")?,
+        &[
+            "SELECT, INSERT, UPDATE, DELETE ON archive_segments, archive_dictionaries, archive_windows",
+            "SELECT ON projects",
         ],
     )
     .await?;
@@ -180,6 +197,9 @@ pub async fn run(out_dir: &Path) -> anyhow::Result<()> {
         &["INSERT, SELECT ON controlhub.*"],
     )
     .await?;
+    // Read-only: the archiver copies logs out; ClickHouse's TTL deletes them.
+    ch.ensure_user("controlhub_archiver", &env_required("CH_CH_ARCHIVER_PASSWORD")?, &["SELECT ON controlhub.logs"])
+        .await?;
     // Read-only: the executor verifies outcomes from telemetry.
     ch.ensure_user("controlhub_executor", &env_required("CH_CH_EXECUTOR_PASSWORD")?, &["SELECT ON controlhub.*"])
         .await?;

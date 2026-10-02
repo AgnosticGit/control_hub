@@ -8,6 +8,7 @@ import { NS_PER_MS, NS_PER_SEC, clampNs, nowNs, parseNs } from "@/lib/time";
 import type { AnimClock } from "@/renderer/hops";
 import { firstItemStart, playStart, replayStep } from "./timeline/range";
 import { hasFuture } from "./timeline/scale";
+import { asLogSource, type LogSource } from "./logs-query";
 
 export type Mode = "live" | "paused" | "replay" | "historical";
 /** Replay speeds; 0.001x shows one millisecond of recorded time per second. */
@@ -65,6 +66,8 @@ export interface LoadInfo {
   applyMs: number;
   truncated: boolean;
   completeness: Completeness | null;
+  /** Where the timeline's log items came from; unset for live batches (always the hot store). */
+  logsSource?: LogSource;
   at: number;
 }
 
@@ -145,6 +148,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
           applyMs: r.applyMs,
           truncated: r.truncated,
           completeness: asCompleteness(r.completeness),
+          logsSource: asLogSource(r.logsSource),
           at: Date.now(),
         },
       });

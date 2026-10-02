@@ -6,6 +6,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { run, root, parseEnv, compose, loadEnvFile } from "./lib.mjs";
+import { ARCHIVE_BUCKET, s3Identities } from "./archive-storage.mjs";
 
 const dir = join(root, ".controlhub");
 mkdirSync(dir, { recursive: true });
@@ -31,6 +32,15 @@ const defaults = {
   CH_CH_EXECUTOR_PASSWORD: secret(),
   CH_DEMO_PG_PORT: "15433",
   CH_DEMO_PG_PASSWORD: secret(),
+  CH_PG_ARCHIVER_PASSWORD: secret(),
+  CH_CH_ARCHIVER_PASSWORD: secret(),
+  CH_S3_PORT: "19000",
+  CH_S3_ADMIN_ACCESS_KEY: `admin${randomBytes(6).toString("hex")}`,
+  CH_S3_ADMIN_SECRET_KEY: secret(),
+  CH_S3_ARCHIVER_ACCESS_KEY: `archiver${randomBytes(6).toString("hex")}`,
+  CH_S3_ARCHIVER_SECRET_KEY: secret(),
+  CH_S3_API_ACCESS_KEY: `api${randomBytes(6).toString("hex")}`,
+  CH_S3_API_SECRET_KEY: secret(),
 };
 let changed = false;
 for (const [k, v] of Object.entries(defaults)) {
@@ -45,7 +55,14 @@ if (changed) {
   console.error(`[bootstrap] wrote ${infraPath}`);
 }
 
+// Least-privilege S3 identities for the local object storage (SeaweedFS).
+const s3ConfigPath = join(dir, "seaweedfs-s3.json");
+const s3Config = JSON.stringify(s3Identities(infra), null, 2);
+const s3ConfigChanged = !existsSync(s3ConfigPath) || readFileSync(s3ConfigPath, "utf8") !== s3Config;
+if (s3ConfigChanged) writeFileSync(s3ConfigPath, s3Config, { mode: 0o600 });
+
 const pg = (user, pw) => `postgres://${user}:${pw}@127.0.0.1:${infra.CH_PG_PORT}/controlhub`;
+const s3Endpoint = `http://127.0.0.1:${infra.CH_S3_PORT}`;
 const services = {
   CONTROLHUB_ENV: "dev",
   CONTROLHUB_KAFKA_BROKERS: `127.0.0.1:${infra.CH_KAFKA_PORT}`,
@@ -60,6 +77,15 @@ const services = {
   CONTROLHUB_EXECUTOR_DATABASE_URL: pg("controlhub_executor", infra.CH_PG_EXECUTOR_PASSWORD),
   CONTROLHUB_EXECUTOR_CLICKHOUSE_USER: "controlhub_executor",
   CONTROLHUB_EXECUTOR_CLICKHOUSE_PASSWORD: infra.CH_CH_EXECUTOR_PASSWORD,
+  CONTROLHUB_ARCHIVER_DATABASE_URL: pg("controlhub_archiver", infra.CH_PG_ARCHIVER_PASSWORD),
+  CONTROLHUB_ARCHIVER_CLICKHOUSE_USER: "controlhub_archiver",
+  CONTROLHUB_ARCHIVER_CLICKHOUSE_PASSWORD: infra.CH_CH_ARCHIVER_PASSWORD,
+  CONTROLHUB_ARCHIVE_S3_ENDPOINT: s3Endpoint,
+  CONTROLHUB_ARCHIVE_S3_BUCKET: ARCHIVE_BUCKET,
+  CONTROLHUB_ARCHIVER_S3_ACCESS_KEY: infra.CH_S3_ARCHIVER_ACCESS_KEY,
+  CONTROLHUB_ARCHIVER_S3_SECRET_KEY: infra.CH_S3_ARCHIVER_SECRET_KEY,
+  CONTROLHUB_API_S3_ACCESS_KEY: infra.CH_S3_API_ACCESS_KEY,
+  CONTROLHUB_API_S3_SECRET_KEY: infra.CH_S3_API_SECRET_KEY,
 };
 writeFileSync(
   join(dir, "services.env"),
@@ -67,8 +93,18 @@ writeFileSync(
   { mode: 0o600 },
 );
 
-console.error("[bootstrap] starting infrastructure (postgres, clickhouse, kafka)…");
+console.error("[bootstrap] starting infrastructure (postgres, clickhouse, kafka, seaweedfs)…");
 await compose(["up", "-d", "--wait", "--wait-timeout", "240"]);
+if (s3ConfigChanged) {
+  // The S3 gateway reads its identities only at start.
+  await compose(["restart", "seaweedfs"]);
+  await compose(["up", "-d", "--wait", "--wait-timeout", "120", "seaweedfs"]);
+}
+console.error(`[bootstrap] object storage bucket ${ARCHIVE_BUCKET}…`);
+await compose([
+  "exec", "-T", "seaweedfs", "sh", "-c",
+  `echo 's3.bucket.list' | weed shell -master=localhost:9333 | grep -q '${ARCHIVE_BUCKET}' || echo 's3.bucket.create -name ${ARCHIVE_BUCKET}' | weed shell -master=localhost:9333`,
+]);
 
 console.error("[bootstrap] migrations, service users, seed data…");
 // The only account, surviving resets: CONTROLHUB_OWNER_EMAIL / CONTROLHUB_OWNER_PASSWORD.

@@ -31,9 +31,15 @@
   another tenant's resources return 404, so the API does not reveal whether they exist.
   Integration tests check this in both directions.
 - Each service has its own least-privilege database user in PostgreSQL and in ClickHouse
-  (`controlhub_ingest`, `controlhub_processor`, `controlhub_api`, `controlhub_executor`). The
-  executor may only read and update `action_plans`, insert into `audit_log`, and read
-  environments and users. Its ClickHouse user is SELECT-only.
+  (`controlhub_ingest`, `controlhub_processor`, `controlhub_api`, `controlhub_executor`,
+  `controlhub_archiver`). The executor may only read and update `action_plans`, insert into
+  `audit_log`, and read environments and users. Its ClickHouse user is SELECT-only.
+- The archiver (ADR-0015) may only `SELECT` from ClickHouse `logs`, use the `archive_*` tables and
+  read `projects`. In object storage, each service has its own S3 identity limited to the
+  archive bucket. The API never writes or deletes objects; give it read-only credentials in
+  production (locally SeaweedFS 3.97 needs `Write` for reads, see ADR-0015). The API reads segments
+  only for the caller's scope and checks each object's SHA-256 against the catalog before
+  decoding it.
 
 ## Controlled actions (ADR-0012)
 

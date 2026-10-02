@@ -10,7 +10,7 @@ interface Creds {
   otlp_http_endpoint: string;
 }
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+export const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 function readJson<T>(name: string, hint: string): T {
   try {
     return JSON.parse(readFileSync(join(root, ".controlhub", name), "utf8")) as T;
@@ -109,8 +109,10 @@ export async function ingestLog(opts: {
   /** Explicit token and OTLP base URL, e.g. a token created in the UI and the site's /otlp proxy. */
   token?: string;
   endpoint?: string;
+  /** Record time (unix ns); now by default. */
+  timeNs?: bigint;
 }) {
-  const now = BigInt(Date.now()) * 1_000_000n;
+  const now = opts.timeNs ?? BigInt(Date.now()) * 1_000_000n;
   const record = Buffer.concat([
     fixed64(1, now),
     tag(2, 0),

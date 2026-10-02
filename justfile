@@ -47,7 +47,7 @@ codegen:
 
 # Release build of services, WASM engine and web app
 build: wasm
-    cargo build --release -p controlhub-ingest -p controlhub-processor -p controlhub-api -p controlhub-executor -p controlhub-cli
+    cargo build --release -p controlhub-ingest -p controlhub-processor -p controlhub-api -p controlhub-executor -p controlhub-archiver -p controlhub-cli
     pnpm --filter @controlhub/web build
 
 # Formatting, lints and type checks (no running services needed)
@@ -68,7 +68,7 @@ test:
 # Integration tests against the running stack (needs: just dev + just demo).
 # Test accounts exist only for the duration of the run.
 test-integration:
-    cargo build -q -p controlhub-cli
+    cargo build -q -p controlhub-cli -p controlhub-archiver
     node scripts/test-with-fixtures.mjs node --test "tests/integration/*.test.mjs"
 
 # Disruptive: stops Kafka, expects 503 from ingest, restarts it and checks recovery

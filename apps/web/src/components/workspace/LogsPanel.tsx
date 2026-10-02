@@ -1,12 +1,22 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRef, useState } from "react";
 import { api, scopedPath, unwrap, type Schemas } from "@/lib/api";
 import { formatClock, parseNs } from "@/lib/time";
 import type { PanelScope } from "./SignalsPanel";
 import { useDebounced } from "./useDebounced";
+import {
+  SOURCE_CHOICES,
+  combinedSource,
+  flattenPages,
+  hasTemplate,
+  logQuery,
+  sourceBadge,
+  type LogFilters,
+  type LogSourceChoice,
+} from "./logs-query";
 
 type Log = Schemas["LogDto"];
 
@@ -25,31 +35,48 @@ function severityClass(n: number) {
 export function LogsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (id: string) => void }) {
   const [minSeverity, setMinSeverity] = useState(0);
   const [text, setText] = useState("");
+  const [source, setSource] = useState<LogSourceChoice>("auto");
+  const [like, setLike] = useState<{ id: string; body: string } | null>(null);
   const q = useDebounced(text.trim(), 300);
 
-  const query = useQuery({
-    queryKey: ["logs", scope.projectId, scope.environmentId, scope.from.toString(), scope.to.toString(), scope.serviceId, minSeverity, q],
-    queryFn: async () =>
+  const filters: LogFilters = {
+    from: scope.from,
+    to: scope.to,
+    serviceId: scope.serviceId,
+    minSeverity,
+    q,
+    source,
+    templateId: like?.id ?? null,
+  };
+
+  const query = useInfiniteQuery({
+    queryKey: [
+      "logs",
+      scope.projectId,
+      scope.environmentId,
+      scope.from.toString(),
+      scope.to.toString(),
+      scope.serviceId,
+      minSeverity,
+      q,
+      source,
+      like?.id ?? null,
+    ],
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) =>
       unwrap(
         await api.GET("/api/v1/projects/{project_id}/environments/{environment_id}/logs", {
-          params: {
-            path: scopedPath(scope.projectId, scope.environmentId),
-            query: {
-              from: scope.from.toString(),
-              to: scope.to.toString(),
-              limit: 1000,
-              ...(scope.serviceId ? { service_id: scope.serviceId } : {}),
-              ...(minSeverity > 0 ? { min_severity: minSeverity } : {}),
-              ...(q ? { q } : {}),
-            },
-          },
+          params: { path: scopedPath(scope.projectId, scope.environmentId), query: logQuery(filters, pageParam) },
         }),
       ),
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
     placeholderData: keepPreviousData,
     refetchInterval: scope.live ? 3000 : false,
   });
 
-  const logs: Log[] = query.data?.logs ?? [];
+  const pages = query.data?.pages ?? [];
+  const logs: Log[] = flattenPages(pages);
+  const badge = sourceBadge(combinedSource(pages));
   const parentRef = useRef<HTMLDivElement | null>(null);
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual returns non-memoizable functions by design
   const virtualizer = useVirtualizer({
@@ -83,20 +110,50 @@ export function LogsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (id:
             </button>
           ))}
         </div>
+        <div role="group" aria-label="Log source" className="seg">
+          {SOURCE_CHOICES.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              title={s.title}
+              aria-pressed={source === s.value}
+              onClick={() => setSource(s.value)}
+              className="seg-item py-0.5"
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        {badge ? (
+          <span title={badge.title} className="rounded-md border border-violet/40 bg-violet/10 px-1.5 py-0.5 text-[11px] text-violet">
+            {badge.text}
+          </span>
+        ) : null}
         <span className="ml-auto text-muted">
           {query.isFetching ? "Loading… " : ""}
-          {logs.length} logs{query.data?.completeness.truncated ? " (truncated — narrow the filter)" : ""}
+          {logs.length} logs
         </span>
       </div>
+      {like ? (
+        <div className="flex items-center gap-2 border-b border-border px-3 py-1 text-xs">
+          <span className="shrink-0 text-muted">Lines like</span>
+          <span className="min-w-0 flex-1 truncate font-mono" title={like.body}>
+            {like.body}
+          </span>
+          <button type="button" className="btn btn-sm" onClick={() => setLike(null)}>
+            Show all lines
+          </button>
+        </div>
+      ) : null}
       {query.error ? (
         <p role="alert" className="p-3 text-xs text-error">
           Failed to load logs: {query.error.message}
         </p>
-      ) : logs.length === 0 && !query.isPending ? (
+      ) : logs.length === 0 && !query.isPending && !query.hasNextPage ? (
         <p className="p-3 text-xs text-muted">No logs in this window.</p>
       ) : (
         <div ref={parentRef} className="min-h-0 flex-1 overflow-auto font-mono text-xs" aria-label="Log records">
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+          <div role="list" style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((row) => {
               const l = logs[row.index];
               if (!l) return null;
@@ -104,6 +161,7 @@ export function LogsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (id:
               return (
                 <div
                   key={l.id}
+                  role="listitem"
                   className="absolute left-0 flex w-full items-center gap-2 whitespace-nowrap px-3 hover:bg-surface-2 @xl:gap-3"
                   style={{ top: row.start, height: row.size }}
                 >
@@ -113,6 +171,17 @@ export function LogsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (id:
                   <span className="min-w-0 flex-1 truncate" title={l.body}>
                     {l.body}
                   </span>
+                  {hasTemplate(l) && like?.id !== l.template_id ? (
+                    <button
+                      type="button"
+                      className="text-muted hover:text-accent hover:underline"
+                      title="Show only lines of this kind (same text with different numbers and IDs)"
+                      aria-label="Show lines like this"
+                      onClick={() => setLike({ id: l.template_id, body: l.body })}
+                    >
+                      like
+                    </button>
+                  ) : null}
                   {l.trace_id ? (
                     <button type="button" className="text-accent hover:underline" onClick={() => l.trace_id && onTrace(l.trace_id)}>
                       trace
@@ -124,6 +193,14 @@ export function LogsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (id:
           </div>
         </div>
       )}
+      {query.hasNextPage ? (
+        <div className="flex items-center gap-2 border-t border-border px-3 py-1.5 text-xs">
+          <span className="text-muted">More logs exist in this window.</span>
+          <button type="button" className="btn btn-sm ml-auto" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
+            {query.isFetchingNextPage ? "Loading…" : "Load older"}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -9,6 +9,7 @@ export interface TimelineTail {
   spans_truncated?: boolean;
   logs_truncated?: boolean;
   events_truncated?: boolean;
+  logs_source?: string;
   completeness?: unknown;
 }
 

@@ -1,0 +1,28 @@
+[package]
+name = "controlhub-archiver"
+description = "ControlHub archiver: ClickHouse logs -> compressed segments in S3-compatible storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+controlhub-domain.workspace = true
+controlhub-storage.workspace = true
+controlhub-runtime.workspace = true
+controlhub-archive.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

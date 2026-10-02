@@ -2875,6 +2875,15 @@
             }
           },
           {
+            "name": "template_id",
+            "in": "query",
+            "description": "Only lines of this kind: a `template_id` from a previous response (decimal string).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -2887,6 +2896,15 @@
           {
             "name": "cursor",
             "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "`auto` (default): recent logs from ClickHouse, older ones from the archive.\n`hot`: ClickHouse only. `archive`: the archive only (503 when it is not configured).\nRanges may span 31 days when the archive can be used, 7 days otherwise.",
             "required": false,
             "schema": {
               "type": "string"
@@ -5503,6 +5521,7 @@
           "severity_number",
           "severity_text",
           "body",
+          "template_id",
           "attributes"
         ],
         "properties": {
@@ -5544,6 +5563,10 @@
               "string",
               "null"
             ]
+          },
+          "template_id": {
+            "type": "string",
+            "description": "Lines of one kind (the body with its numbers and IDs taken out) share this ID.\nDecimal string (u64 does not fit a JS number); `\"0\"` for rows stored before templates."
           },
           "time_ns": {
             "type": "string"
@@ -5596,6 +5619,7 @@
         "type": "object",
         "required": [
           "logs",
+          "source",
           "completeness"
         ],
         "properties": {
@@ -5614,8 +5638,20 @@
               "string",
               "null"
             ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/LogSource",
+            "description": "Where the rows were read from."
           }
         }
+      },
+      "LogSource": {
+        "type": "string",
+        "enum": [
+          "hot",
+          "archive",
+          "mixed"
+        ]
       },
       "LoginRequest": {
         "type": "object",
@@ -6481,6 +6517,7 @@
           "spans_truncated",
           "logs_truncated",
           "events_truncated",
+          "logs_source",
           "completeness"
         ],
         "properties": {
@@ -6498,6 +6535,10 @@
             "items": {
               "$ref": "#/components/schemas/TimelineItem"
             }
+          },
+          "logs_source": {
+            "$ref": "#/components/schemas/LogSource",
+            "description": "Where the log items come from: the archive serves the part of the range before the hot\nwindow. Spans and events are never archived."
           },
           "logs_truncated": {
             "type": "boolean"

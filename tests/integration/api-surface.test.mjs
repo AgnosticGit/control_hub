@@ -264,8 +264,10 @@ test('time ranges are validated on every telemetry route (400)', async () => {
     ['overflow', 'to=99999999999999999999', /nanosecond/],
   ];
   for (const route of RANGE_ROUTES) {
+    // Log reads that may use the archive allow 31 days (ADR-0015); ClickHouse-only reads keep 7.
+    const logs = route === 'logs';
     for (const [name, qs, msg] of cases) {
-      const r = await admin.json(`${DEMO}/${route}?${qs}`);
+      const r = await admin.json(`${DEMO}/${route}?${qs}${logs && name === 'over 7 days' ? '&source=hot' : ''}`);
       assert.equal(r.status, 400, `${route} ${name}: ${r.status}`);
       assert.equal(r.body.code, 'bad_request');
       assert.match(r.body.message, msg, `${route} ${name}`);
@@ -273,6 +275,11 @@ test('time ranges are validated on every telemetry route (400)', async () => {
     const ok = await admin.json(`${DEMO}/${route}?from=${now - 7n * day}&to=${now}`);
     assert.equal(ok.status, 200, `${route} exactly 7 days is allowed`);
   }
+  const longLogs = await admin.json(`${DEMO}/logs?from=${now - 31n * day}&to=${now}`);
+  assert.equal(longLogs.status, 200, 'logs: 31 days may be read through the archive');
+  const tooLong = await admin.json(`${DEMO}/logs?from=${now - 31n * day - 1n}&to=${now}`);
+  assert.equal(tooLong.status, 400);
+  assert.match(tooLong.body.message, /31 days/);
 });
 
 test('filters are validated: trace IDs, cursors and search text length', async () => {

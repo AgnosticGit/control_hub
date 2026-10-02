@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { TimelineTracksView } from "./timeline/TimelineTracksView";
+import { timelineArchiveNote } from "./logs-query";
 import { formatSpan, type View } from "./timeline/scale";
 import type { WorkspaceMemory } from "./workspace-memory";
 import { SPEEDS, type EngineState, type Mode, type Speed, type WorkspaceActions } from "./useWorkspaceEngine";
@@ -125,6 +126,14 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
           {summary ? `${summary.total_active} active · ${summary.window_requests} req · ${summary.window_errors} err` : ""}
         </span>
         {state.load?.truncated ? <span className="text-[11px] text-warn">Loaded data is truncated: tracks may be incomplete.</span> : null}
+        {timelineArchiveNote(state.load?.logsSource) ? (
+          <span
+            className="rounded-md border border-violet/40 bg-violet/10 px-1.5 py-0.5 text-[11px] text-violet"
+            title="Logs older than the hot window come from the long-term archive. Traces and events are not archived, so requests and the map may be empty there."
+          >
+            {timelineArchiveNote(state.load?.logsSource)}
+          </span>
+        ) : null}
         <div className="ml-auto flex items-center gap-2">
           <span className="hidden text-[11px] text-muted 2xl:inline">Ruler: move in time · Drag tracks: replay range · Ctrl+wheel: zoom</span>
           {markA === null ? (
@@ -228,6 +237,10 @@ function RangePicker({ onPick }: { onPick: (from: bigint, to: bigint) => void })
       >
         Load range
       </button>
+      <p className="basis-full text-[11px] text-muted">
+        Up to 7 days at a time. Logs older than about two weeks come from the archive (kept for a year); traces and events
+        are not archived.
+      </p>
       {error ? (
         <span role="alert" className="text-error">
           {error}

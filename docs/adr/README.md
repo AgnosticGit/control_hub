@@ -16,3 +16,4 @@
 | [0012](0012-actions-and-executor.md) | Allowlisted actions, policy, four-eyes approval, separate executor, verification | Accepted |
 | [0013](0013-read-only-mcp.md) | Read-only MCP server over the REST API with an API token | Accepted |
 | [0014](0014-otlp-metrics-deferred.md) | OTLP metrics not ingested yet (explicit 501); RED metrics from spans | Accepted |
+| [0015](0015-log-archive.md) | Log archive: templates, columnar segments, per-service dictionaries, separate archiver | Accepted |

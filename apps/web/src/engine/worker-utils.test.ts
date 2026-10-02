@@ -15,6 +15,11 @@ describe("timelineTail", () => {
     });
   });
 
+  it("reads where the log items came from", () => {
+    const text = '{"items":[ BROKEN ],"from_ns":"1","to_ns":"2","logs_truncated":true,"logs_source":"mixed","completeness":{}}';
+    expect(timelineTail(text)).toMatchObject({ logs_source: "mixed", logs_truncated: true });
+  });
+
   it("uses the last marker when an item contains the same characters", () => {
     const text = '{"items":[{"type":"log","body":"],\\"from_ns\\":"}],"from_ns":"1","to_ns":"2"}';
     expect(timelineTail(text)).toMatchObject({ from_ns: "1", to_ns: "2" });

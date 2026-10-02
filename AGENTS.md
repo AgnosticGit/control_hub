@@ -12,6 +12,8 @@ ControlHub is an observability, history-exploration and (later) controlled-manag
 | `crates/controlhub-runtime` | tracing setup, shutdown, admin/metrics server |
 | `crates/controlhub-ingest` | OTLP HTTP/gRPC + events ingest → Kafka (ACK after broker ACK) |
 | `crates/controlhub-processor` | Kafka → ClickHouse, offsets in PostgreSQL |
+| `crates/controlhub-archive` | Log templates, `CHSEG` columnar segments, per-service zstd dictionaries, per-segment search index (pure, no I/O) |
+| `crates/controlhub-archiver` | Separate process: closed log windows ClickHouse → S3-compatible storage, catalog in PostgreSQL (ADR-0015) |
 | `crates/controlhub-api` | REST `/api/v1`, sessions, API tokens, actions API, WebSocket live, OpenAPI, `bootstrap` and `test-fixtures` subcommands |
 | `crates/controlhub-actions` | Action catalog, typed `Action`, validation, policy, state machine (pure, no I/O) |
 | `crates/controlhub-executor` | Separate process that runs approved plans (demo adapter) and verifies them; the only one allowed Docker |
@@ -23,7 +25,7 @@ ControlHub is an observability, history-exploration and (later) controlled-manag
 | `packages/api-client` | Generated OpenAPI types + typed fetch client |
 | `packages/sdk-node` | `@controlhub/sdk-node` (OpenTelemetry-based) |
 | `examples/demo-system` | 7 services (gateway, auth, catalog, orders, inventory, payments, notifications) + Postgres + provider stand-in + load generator + fault injection |
-| `infra/` | Docker Compose, SQL migrations |
+| `infra/` | Docker Compose (incl. SeaweedFS as local S3), SQL migrations |
 | `scripts/` | Cross-platform Node scripts behind the `justfile` |
 | `tests/integration`, `tests/e2e` | Node integration tests and Playwright tests against a running stack |
 
@@ -32,7 +34,7 @@ ControlHub is an observability, history-exploration and (later) controlled-manag
 ```
 just doctor          # tools, ports, bootstrap state
 just bootstrap       # install deps, generate local secrets, start infra, migrate, seed (needs .controlhub/owner.env)
-just dev             # ingest + processor + API + executor + web
+just dev             # ingest + processor + API + executor + archiver + web
 just stop            # stop leftovers of just dev / just demo (keeps containers)
 just reset           # DESTRUCTIVE: wipe data volumes, then bootstrap again (owner from .controlhub/owner.env)
 just demo            # demo system sending telemetry

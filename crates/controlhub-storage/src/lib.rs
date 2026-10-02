@@ -3,6 +3,7 @@
 
 pub mod actions;
 pub mod admin;
+pub mod archive;
 pub mod ch;
 pub mod pg;
 pub mod secrets;

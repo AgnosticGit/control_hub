@@ -24,7 +24,7 @@ if (!existsSync(join(root, ".controlhub", "services.env"))) {
   process.exit(2);
 }
 assertNotRunning("dev");
-const services = ["controlhub-ingest", "controlhub-processor", "controlhub-api", "controlhub-executor"];
+const services = ["controlhub-ingest", "controlhub-processor", "controlhub-api", "controlhub-executor", "controlhub-archiver"];
 
 if (opts.build) {
   await run("cargo", ["build", ...(opts.release ? ["--release"] : []), ...services.flatMap((s) => ["-p", s])]);
@@ -58,6 +58,8 @@ const procs = [
   { name: "api", cmd: bin("controlhub-api"), args: ["serve"], env: apiEnv },
   // The only process allowed to touch the observed system (and Docker).
   { name: "executor", cmd: bin("controlhub-executor"), args: [] },
+  // Copies closed log windows from ClickHouse into object storage (ADR-0015).
+  { name: "archiver", cmd: bin("controlhub-archiver"), args: ["run"] },
 ];
 if (opts.web) {
   // Started with node directly (no pnpm/cmd wrapper) so the recorded PID is `next` itself and

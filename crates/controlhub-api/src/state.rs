@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use controlhub_storage::archive::ArchiveReader;
 use controlhub_storage::ch::ChStore;
 use controlhub_storage::pg::PgStore;
 use tokio::sync::Semaphore;
@@ -24,10 +25,20 @@ pub struct SignupPolicy {
     pub per_hour: u32,
 }
 
+/// Log archive in object storage (ADR-0015). Without it the API serves ClickHouse only.
+#[derive(Debug, Clone)]
+pub struct ArchiveConfig {
+    pub reader: ArchiveReader,
+    /// `source=auto` reads logs older than `now - hot_window` from the archive. Shorter than the
+    /// ClickHouse retention, so a range is never read from a table that has already trimmed it.
+    pub hot_window_ns: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct AppState {
     pub pg: PgStore,
     pub ch: ChStore,
+    pub archive: Option<ArchiveConfig>,
     pub config: ApiConfig,
     pub login_throttle: LoginThrottle,
     pub signup_throttle: SignupThrottle,
@@ -51,6 +62,7 @@ pub fn test_state(secure_cookies: bool) -> AppState {
     AppState {
         pg,
         ch,
+        archive: None,
         config: ApiConfig {
             allowed_origins: vec!["http://localhost:3000".into(), "http://127.0.0.1:3000".into()],
             secure_cookies,

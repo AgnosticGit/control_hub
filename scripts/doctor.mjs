@@ -51,12 +51,13 @@ try {
 check("docker daemon running", daemon, daemon ? "ok" : "start Docker Desktop / dockerd");
 
 const infraEnv = join(root, ".controlhub", "infra.env");
-const ports = { pg: 15432, clickhouse: 18123, kafka: 19092, demoPg: 15433 };
+const ports = { pg: 15432, clickhouse: 18123, kafka: 19092, demoPg: 15433, s3: 19000 };
 if (existsSync(infraEnv)) {
   const env = Object.fromEntries(readFileSync(infraEnv, "utf8").split(/\r?\n/).filter((l) => l.includes("=")).map((l) => l.split("=", 2)));
   ports.pg = Number(env.CH_PG_PORT ?? ports.pg);
   ports.clickhouse = Number(env.CH_CLICKHOUSE_HTTP_PORT ?? ports.clickhouse);
   ports.kafka = Number(env.CH_KAFKA_PORT ?? ports.kafka);
+  ports.s3 = Number(env.CH_S3_PORT ?? ports.s3);
 }
 const servicePorts = { ingestHttp: 4318, ingestGrpc: 4317, api: 8080, web: 3000, gateway: 7001, orders: 7002, inventory: 7003, payments: 7004, notifications: 7005, catalog: 7006, auth: 7007, provider: 7010 };
 function portFree(port) {

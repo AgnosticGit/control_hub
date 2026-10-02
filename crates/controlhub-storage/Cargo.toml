@@ -9,6 +9,8 @@ publish.workspace = true
 
 [dependencies]
 controlhub-domain.workspace = true
+controlhub-archive.workspace = true
+object_store.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -83,6 +83,41 @@ struct ServeArgs {
     /// Sign-up attempts allowed per hour across all clients.
     #[arg(long, env = "CONTROLHUB_SIGNUP_PER_HOUR", default_value_t = 20)]
     signup_per_hour: u32,
+    /// S3-compatible endpoint of the log archive. Without it logs are served from ClickHouse only.
+    #[arg(long, env = "CONTROLHUB_ARCHIVE_S3_ENDPOINT")]
+    archive_s3_endpoint: Option<String>,
+    #[arg(long, env = "CONTROLHUB_ARCHIVE_S3_BUCKET", default_value = "controlhub-archive")]
+    archive_s3_bucket: String,
+    #[arg(long, env = "CONTROLHUB_ARCHIVE_S3_REGION", default_value = "us-east-1")]
+    archive_s3_region: String,
+    #[arg(long, env = "CONTROLHUB_API_S3_ACCESS_KEY", requires = "archive_s3_endpoint")]
+    archive_s3_access_key: Option<String>,
+    #[arg(long, env = "CONTROLHUB_API_S3_SECRET_KEY", requires = "archive_s3_endpoint")]
+    archive_s3_secret_key: Option<String>,
+    /// Logs older than this are read from the archive by default. Keep it below the
+    /// ClickHouse retention (14 days).
+    #[arg(long, env = "CONTROLHUB_ARCHIVE_HOT_WINDOW_HOURS", default_value_t = 13 * 24, value_parser = clap::value_parser!(u32).range(1..=24 * 365))]
+    archive_hot_window_hours: u32,
+}
+
+fn archive_config(args: &ServeArgs) -> anyhow::Result<Option<state::ArchiveConfig>> {
+    let Some(endpoint) = &args.archive_s3_endpoint else { return Ok(None) };
+    let (Some(access_key), Some(secret_key)) = (&args.archive_s3_access_key, &args.archive_s3_secret_key) else {
+        anyhow::bail!(
+            "CONTROLHUB_ARCHIVE_S3_ENDPOINT needs CONTROLHUB_API_S3_ACCESS_KEY and CONTROLHUB_API_S3_SECRET_KEY"
+        );
+    };
+    let objects = controlhub_storage::archive::ArchiveObjects::s3(&controlhub_storage::archive::ObjectConfig {
+        endpoint: endpoint.clone(),
+        bucket: args.archive_s3_bucket.clone(),
+        region: args.archive_s3_region.clone(),
+        access_key: access_key.clone(),
+        secret_key: secret_key.clone(),
+    })?;
+    Ok(Some(state::ArchiveConfig {
+        reader: controlhub_storage::archive::ArchiveReader::new(objects),
+        hot_window_ns: i64::from(args.archive_hot_window_hours) * 3_600_000_000_000,
+    }))
 }
 
 fn router(state: state::AppState) -> Router {
@@ -176,6 +211,10 @@ fn api_config(args: &ServeArgs) -> state::ApiConfig {
 
 async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let config = api_config(&args);
+    let archive = archive_config(&args)?;
+    if archive.is_none() {
+        tracing::info!("log archive not configured: logs are served from ClickHouse only");
+    }
     let pg = PgStore::connect(&args.database_url, 16).await?;
     let ch = ChStore::new(&ChConfig {
         url: args.clickhouse_url,
@@ -189,6 +228,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let state = state::AppState {
         pg,
         ch,
+        archive,
         config,
         login_throttle: auth::LoginThrottle::default(),
         signup_throttle: routes::signup::SignupThrottle::default(),

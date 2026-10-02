@@ -1233,6 +1233,11 @@ export interface components {
             severity_number: number;
             severity_text: string;
             span_id?: string | null;
+            /**
+             * @description Lines of one kind (the body with its numbers and IDs taken out) share this ID.
+             *     Decimal string (u64 does not fit a JS number); `"0"` for rows stored before templates.
+             */
+            template_id: string;
             time_ns: string;
             trace_id?: string | null;
         };
@@ -1253,7 +1258,11 @@ export interface components {
             /** @description Newest first. */
             logs: components["schemas"]["LogDto"][];
             next_cursor?: string | null;
+            /** @description Where the rows were read from. */
+            source: components["schemas"]["LogSource"];
         };
+        /** @enum {string} */
+        LogSource: "hot" | "archive" | "mixed";
         LoginRequest: {
             email: string;
             password: string;
@@ -1497,6 +1506,11 @@ export interface components {
             events_truncated: boolean;
             from_ns: string;
             items: components["schemas"]["TimelineItem"][];
+            /**
+             * @description Where the log items come from: the archive serves the part of the range before the hot
+             *     window. Spans and events are never archived.
+             */
+            logs_source: components["schemas"]["LogSource"];
             logs_truncated: boolean;
             /** @description Per-signal truncation: when true, the range holds more items than returned. */
             spans_truncated: boolean;
@@ -3625,8 +3639,16 @@ export interface operations {
                 trace_id?: string;
                 /** @description Case-insensitive substring match on the log body. */
                 q?: string;
+                /** @description Only lines of this kind: a `template_id` from a previous response (decimal string). */
+                template_id?: string;
                 limit?: number;
                 cursor?: string;
+                /**
+                 * @description `auto` (default): recent logs from ClickHouse, older ones from the archive.
+                 *     `hot`: ClickHouse only. `archive`: the archive only (503 when it is not configured).
+                 *     Ranges may span 31 days when the archive can be used, 7 days otherwise.
+                 */
+                source?: string;
             };
             header?: never;
             path: {

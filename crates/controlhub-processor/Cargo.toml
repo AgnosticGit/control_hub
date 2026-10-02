@@ -12,6 +12,7 @@ controlhub-domain.workspace = true
 controlhub-protocol.workspace = true
 controlhub-storage.workspace = true
 controlhub-runtime.workspace = true
+controlhub-archive.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true

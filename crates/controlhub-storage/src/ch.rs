@@ -70,6 +70,8 @@ pub struct LogRow {
     pub severity_number: u8,
     pub severity_text: String,
     pub body: String,
+    /// ID of the body's template (`controlhub_archive::template_id`); lines of one kind share it.
+    pub template_id: u64,
     pub trace_id: String,
     pub span_id: String,
     pub attributes: Vec<(String, String)>,
@@ -192,6 +194,22 @@ pub struct TimelineLogRow {
     pub ingested_at: i64,
 }
 
+/// Logs of one service in one archive window.
+#[derive(Debug, Clone, PartialEq, Eq, Row, Serialize, Deserialize)]
+pub struct LogGroupRow {
+    pub tenant_id: String,
+    pub project_id: String,
+    pub environment_id: String,
+    pub service_id: String,
+    pub rows: u64,
+}
+
+#[derive(Debug, Clone, Row, Serialize, Deserialize)]
+struct EarliestRow {
+    earliest: i64,
+    rows: u64,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct LogQuery {
     pub from_ns: i64,
@@ -200,6 +218,8 @@ pub struct LogQuery {
     pub min_severity: Option<u8>,
     pub trace_id: Option<String>,
     pub text: Option<String>,
+    /// Lines of one kind (see `controlhub_archive::template_id`).
+    pub template_id: Option<u64>,
     /// Exclusive cursor `(time_ns, log_id)`; results are newest-first.
     pub before: Option<(i64, String)>,
     pub limit: u32,
@@ -265,6 +285,9 @@ fn logs_sql(lq: &LogQuery) -> String {
     if lq.text.is_some() {
         sql.push_str(" AND positionCaseInsensitive(body, ?) > 0");
     }
+    if lq.template_id.is_some() {
+        sql.push_str(" AND template_id = ?");
+    }
     if lq.before.is_some() {
         sql.push_str(" AND (time, log_id) < (fromUnixTimestamp64Nano(?), ?)");
     }
@@ -282,6 +305,25 @@ fn events_sql(with_trace: bool) -> String {
     }
     sql.push_str(" ORDER BY event_time DESC, event_id DESC LIMIT ?");
     sql
+}
+
+/// Archive reads span all tenants (the archiver's job) unless narrowed to one scope.
+fn log_groups_sql(scoped: bool) -> String {
+    let scope = if scoped { format!(" AND {SCOPE_WHERE}") } else { String::new() };
+    format!(
+        "SELECT tenant_id, project_id, environment_id, service_id, count() AS rows FROM logs FINAL
+         WHERE time >= fromUnixTimestamp64Nano(?) AND time < fromUnixTimestamp64Nano(?){scope}
+         GROUP BY tenant_id, project_id, environment_id, service_id
+         ORDER BY tenant_id, project_id, environment_id, service_id"
+    )
+}
+
+fn count_logs_sql(scoped: bool) -> String {
+    let scope = if scoped { format!(" AND {SCOPE_WHERE}") } else { String::new() };
+    format!(
+        "SELECT count() FROM logs FINAL
+         WHERE time >= fromUnixTimestamp64Nano(?) AND time < fromUnixTimestamp64Nano(?){scope}"
+    )
 }
 
 fn bind_scope(q: clickhouse::query::Query, s: &Scope) -> clickhouse::query::Query {
@@ -503,6 +545,9 @@ impl ChStore {
         if let Some(v) = &lq.text {
             q = q.bind(v.as_str());
         }
+        if let Some(v) = lq.template_id {
+            q = q.bind(v);
+        }
         if let Some((t, id)) = &lq.before {
             q = q.bind(*t).bind(id.as_str());
         }
@@ -523,6 +568,45 @@ impl ChStore {
             q = q.bind(t);
         }
         Ok(q.bind(limit).fetch_all().await?)
+    }
+
+    // ------------------------------------------------------------ archive (controlhub-archiver)
+
+    /// Services with logs in `[from, to)`, per scope; all scopes unless `scope` is given.
+    pub async fn log_groups(&self, from: i64, to: i64, scope: Option<&Scope>) -> Result<Vec<LogGroupRow>> {
+        let q = self.client.query(&log_groups_sql(scope.is_some())).bind(from).bind(to);
+        let q = match scope {
+            Some(s) => bind_scope(q, s),
+            None => q,
+        };
+        Ok(q.fetch_all().await?)
+    }
+
+    /// Distinct log rows in `[from, to)`; all scopes unless `scope` is given.
+    pub async fn count_logs(&self, from: i64, to: i64, scope: Option<&Scope>) -> Result<u64> {
+        let q = self.client.query(&count_logs_sql(scope.is_some())).bind(from).bind(to);
+        let q = match scope {
+            Some(s) => bind_scope(q, s),
+            None => q,
+        };
+        Ok(q.fetch_one::<u64>().await?)
+    }
+
+    /// Time of the oldest stored log, or `None` when there are none.
+    pub async fn earliest_log_time(&self) -> Result<Option<i64>> {
+        let row: EarliestRow =
+            self.client.query("SELECT min(time) AS earliest, count() AS rows FROM logs").fetch_one().await?;
+        Ok((row.rows > 0).then_some(row.earliest))
+    }
+
+    /// Every distinct log row of one service in `[from, to)`, oldest first.
+    pub async fn logs_for_archive(&self, s: &Scope, service_id: &str, from: i64, to: i64) -> Result<Vec<LogRow>> {
+        let q = self.client.query(&format!(
+            "SELECT ?fields FROM logs FINAL
+             WHERE {SCOPE_WHERE} AND service_id = ? AND time >= fromUnixTimestamp64Nano(?) AND time < fromUnixTimestamp64Nano(?)
+             ORDER BY time, log_id"
+        ));
+        Ok(bind_scope(q, s).bind(service_id).bind(from).bind(to).fetch_all().await?)
     }
 
     /// Spans overlapping `[from, to)` (start < to AND end >= from).
@@ -666,13 +750,17 @@ mod tests {
     }
 
     #[test]
-    fn real_clickhouse_migration_splits_into_statements() {
-        let sql = include_str!("../../../infra/migrations/clickhouse/0001_telemetry.sql");
-        let stmts = split_statements(sql);
-        assert!(!stmts.is_empty());
-        for s in &stmts {
-            assert!(!s.ends_with(';') && !s.trim().is_empty(), "{s}");
-            assert!(!s.lines().any(|l| l.trim_start().starts_with("--")), "comments stripped: {s}");
+    fn real_clickhouse_migrations_split_into_statements() {
+        for sql in [
+            include_str!("../../../infra/migrations/clickhouse/0001_telemetry.sql"),
+            include_str!("../../../infra/migrations/clickhouse/0002_log_templates_and_codecs.sql"),
+        ] {
+            let stmts = split_statements(sql);
+            assert!(!stmts.is_empty());
+            for s in &stmts {
+                assert!(!s.ends_with(';') && !s.trim().is_empty(), "{s}");
+                assert!(!s.lines().any(|l| l.trim_start().starts_with("--")), "comments stripped: {s}");
+            }
         }
     }
 
@@ -687,7 +775,7 @@ mod tests {
 
     #[test]
     fn log_sql_placeholders_match_binds_for_every_filter_combination() {
-        for mask in 0u8..32 {
+        for mask in 0u8..64 {
             let lq = LogQuery {
                 from_ns: 1,
                 to_ns: 2,
@@ -696,6 +784,7 @@ mod tests {
                 trace_id: (mask & 4 != 0).then(|| "a".repeat(32)),
                 text: (mask & 8 != 0).then(|| "needle".into()),
                 before: (mask & 16 != 0).then(|| (5, "id".into())),
+                template_id: (mask & 32 != 0).then_some(u64::MAX),
                 limit: 10,
             };
             let sql = logs_sql(&lq);
@@ -706,6 +795,7 @@ mod tests {
                 + usize::from(lq.min_severity.is_some())
                 + usize::from(lq.trace_id.is_some())
                 + usize::from(lq.text.is_some())
+                + usize::from(lq.template_id.is_some())
                 + 2 * usize::from(lq.before.is_some())
                 + 1;
             assert_eq!(placeholders(&sql), expected, "mask {mask}: {sql}");
@@ -734,6 +824,17 @@ mod tests {
             assert_eq!(scoped_where_count(&sql), 1 + svc, "{sql}");
             assert_eq!(sql.contains("HAVING"), tq.only_errors || tq.before.is_some());
             assert_eq!(sql.contains("error_count > 0"), tq.only_errors);
+        }
+    }
+
+    #[test]
+    fn archive_sql_is_scoped_only_when_asked_and_binds_match() {
+        for scoped in [false, true] {
+            for sql in [log_groups_sql(scoped), count_logs_sql(scoped)] {
+                assert_eq!(placeholders(&sql), 2 + if scoped { 3 } else { 0 }, "{sql}");
+                assert_eq!(scoped_where_count(&sql), usize::from(scoped), "{sql}");
+                assert!(sql.contains("FINAL"), "archive reads see deduplicated rows: {sql}");
+            }
         }
     }
 

@@ -311,6 +311,7 @@ pub fn convert(env: &IngestEnvelope, ingested_at: i64) -> Result<Converted, Conv
                             observed_time: clamp_ns(lr.observed_time_unix_nano),
                             severity_number: u8::try_from(lr.severity_number).unwrap_or(0),
                             severity_text: lr.severity_text,
+                            template_id: controlhub_archive::template_id(&controlhub_archive::parse(&body).template),
                             body,
                             trace_id: hex::encode(&lr.trace_id),
                             span_id: hex::encode(&lr.span_id),
@@ -468,6 +469,14 @@ mod tests {
         assert_eq!(first.logs[0].log_id, retry.logs[0].log_id);
         assert_ne!(first.logs[0].log_id, other.logs[0].log_id);
         assert_eq!(first.logs[0].log_id.len(), 32);
+    }
+
+    #[test]
+    fn logs_of_one_kind_share_a_template_id() {
+        let id = |body: &str| convert(&log_envelope("b", body), 1).unwrap().logs[0].template_id;
+        assert_eq!(id("order 81723 created in 12 ms"), id("order 81724 created in 9 ms"));
+        assert_ne!(id("order 81723 created in 12 ms"), id("payment failed for order 81723"));
+        assert_ne!(id(""), 0, "even an empty body has a template");
     }
 
     #[test]

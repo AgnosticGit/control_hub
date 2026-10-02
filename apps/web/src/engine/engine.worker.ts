@@ -236,6 +236,7 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
         completeness: tail.completeness ?? null,
         fromNs: tail.from_ns,
         toNs: tail.to_ns,
+        logsSource: tail.logs_source,
       };
       return result;
     }

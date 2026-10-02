@@ -24,6 +24,8 @@ pub enum ApiError {
     Gone(&'static str),
     #[error("denied by policy: {0}")]
     PolicyDenied(String),
+    #[error("unavailable: {0}")]
+    Unavailable(&'static str),
     #[error("storage unavailable")]
     Storage(#[from] controlhub_storage::StorageError),
     #[error("internal error")]
@@ -48,6 +50,7 @@ impl IntoResponse for ApiError {
             ApiError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             ApiError::Gone(_) => (StatusCode::GONE, "gone"),
             ApiError::PolicyDenied(_) => (StatusCode::FORBIDDEN, "policy_denied"),
+            ApiError::Unavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
             ApiError::Storage(e) => {
                 tracing::error!(error = %e, "storage error");
                 (StatusCode::SERVICE_UNAVAILABLE, "storage_unavailable")
@@ -88,6 +91,7 @@ mod tests {
             (ApiError::Conflict("x"), StatusCode::CONFLICT, "conflict"),
             (ApiError::Gone("x"), StatusCode::GONE, "gone"),
             (ApiError::PolicyDenied("x".into()), StatusCode::FORBIDDEN, "policy_denied"),
+            (ApiError::Unavailable("x"), StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
             (
                 ApiError::Storage(controlhub_storage::StorageError::Other("x".into())),
                 StatusCode::SERVICE_UNAVAILABLE,

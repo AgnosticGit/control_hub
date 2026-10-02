@@ -28,6 +28,7 @@ controlhub-storage = { path = "crates/controlhub-storage" }
 controlhub-engine-core = { path = "crates/controlhub-engine-core" }
 controlhub-runtime = { path = "crates/controlhub-runtime" }
 controlhub-actions = { path = "crates/controlhub-actions" }
+controlhub-archive = { path = "crates/controlhub-archive" }
 
 # pure / shared
 serde = { version = "1", features = ["derive"] }
@@ -64,6 +65,8 @@ clickhouse = { version = "0.15", default-features = false, features = ["lz4"] }
 dotenvy = "0.15"
 rskafka = { version = "0.6", default-features = false, features = ["compression-lz4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+zstd = { version = "0.14", default-features = false }
+object_store = { version = "0.14", default-features = false, features = ["aws"] }
 
 # api docs
 utoipa = { version = "5", features = ["axum_extras", "uuid"] }
