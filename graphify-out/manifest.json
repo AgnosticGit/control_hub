@@ -18,9 +18,9 @@
     "semantic_hash": ""
   },
   "apps/web/next.config.ts": {
-    "mtime": 1790709477.5143957,
-    "seen": 1790864569.1666539,
-    "ast_hash": "43a8d2676de99127a13d8f8e8f8c32cb",
+    "mtime": 1791034039.7091966,
+    "seen": 1791036141.7009125,
+    "ast_hash": "f4fff20cf7db2be28c166ea9aa3f0a8a",
     "semantic_hash": ""
   },
   "apps/web/package.json": {
@@ -852,9 +852,9 @@
     "semantic_hash": ""
   },
   "crates/controlhub-api/src/bootstrap.rs": {
-    "mtime": 1790902281.8127813,
-    "seen": 1790902436.7407525,
-    "ast_hash": "ced233e3c41051189da6ca9b008d7ee1",
+    "mtime": 1791033945.5572486,
+    "seen": 1791036141.7256525,
+    "ast_hash": "d8bbe5997911085f8de5bac22f5de500",
     "semantic_hash": ""
   },
   "crates/controlhub-api/src/error.rs": {
@@ -864,9 +864,9 @@
     "semantic_hash": ""
   },
   "crates/controlhub-api/src/main.rs": {
-    "mtime": 1790902751.8776648,
-    "seen": 1790903282.127595,
-    "ast_hash": "9f221744833f0cac8f892d30a010b6e9",
+    "mtime": 1791033953.454108,
+    "seen": 1791036141.7256525,
+    "ast_hash": "d42d25d8abe9b9cb991d96ade54eefd2",
     "semantic_hash": ""
   },
   "crates/controlhub-api/src/openapi.rs": {
@@ -930,9 +930,9 @@
     "semantic_hash": ""
   },
   "crates/controlhub-api/src/routes/signup.rs": {
-    "mtime": 1790791999.138698,
-    "seen": 1790864569.1666539,
-    "ast_hash": "85f51ed223b8ee3dd0bbee21ce771fd1",
+    "mtime": 1791033924.1151242,
+    "seen": 1791036141.7266965,
+    "ast_hash": "98fd8dc3062654981f99cadecc596d8c",
     "semantic_hash": ""
   },
   "crates/controlhub-api/src/routes/telemetry.rs": {
@@ -1080,9 +1080,9 @@
     "semantic_hash": ""
   },
   "crates/controlhub-engine-core/src/layout.rs": {
-    "mtime": 1790653384.5267515,
-    "seen": 1790864569.1666539,
-    "ast_hash": "bfb65b89b67adfc5bb28124de7222be9",
+    "mtime": 1791039589.343765,
+    "seen": 1791039893.6951134,
+    "ast_hash": "b228a54100f1753a15bef3e7d010e863",
     "semantic_hash": ""
   },
   "crates/controlhub-engine-core/src/lib.rs": {
@@ -1296,9 +1296,9 @@
     "semantic_hash": ""
   },
   "crates/controlhub-storage/src/pg.rs": {
-    "mtime": 1790791999.138698,
-    "seen": 1790864569.1666539,
-    "ast_hash": "1cf0202dc2d34f9780869dc56a4bd177",
+    "mtime": 1791033923.8252623,
+    "seen": 1791036141.7318614,
+    "ast_hash": "e7600d773c99e8186027ecf35491da6a",
     "semantic_hash": ""
   },
   "crates/controlhub-storage/src/secrets.rs": {
@@ -2064,15 +2064,15 @@
     "semantic_hash": ""
   },
   ".github/workflows/ci.yml": {
-    "mtime": 1790634145.8843145,
-    "seen": 1790864569.1666539,
-    "ast_hash": "26a05a12dbd39ed6afa4ea0db2a8df84",
+    "mtime": 1791034869.955567,
+    "seen": 1791036141.752792,
+    "ast_hash": "703790120b76557d98a0ad3799710201",
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1790902733.8739495,
-    "seen": 1790903282.15654,
-    "ast_hash": "dc7b2598ad531c52f04b95928d8d3198",
+    "mtime": 1791034907.6041467,
+    "seen": 1791036141.752792,
+    "ast_hash": "e35e59c69cef4e7d140d102aeac89396",
     "semantic_hash": ""
   },
   "README.md": {
@@ -2082,9 +2082,9 @@
     "semantic_hash": ""
   },
   "TASKS.md": {
-    "mtime": 1790864318.2175665,
-    "seen": 1790864569.1666539,
-    "ast_hash": "7e853dc43c48b87698cbc3ec2c634dde",
+    "mtime": 1791034882.271731,
+    "seen": 1791036141.752792,
+    "ast_hash": "cc086729338424d9cd82ca936d501a18",
     "semantic_hash": ""
   },
   "apps/web/AGENTS.md": {
@@ -2196,9 +2196,9 @@
     "semantic_hash": ""
   },
   "docs/adr/README.md": {
-    "mtime": 1790902701.530267,
-    "seen": 1790903282.1575415,
-    "ast_hash": "87235c95b1e59572a3cffc901391d5a0",
+    "mtime": 1791034887.354167,
+    "seen": 1791036141.7538724,
+    "ast_hash": "781a12cbaa1ae4196573ddfb5185518c",
     "semantic_hash": ""
   },
   "docs/architecture/data-flow.md": {
@@ -3261,6 +3261,60 @@
     "mtime": 1790902701.0599668,
     "seen": 1790903282.1575415,
     "ast_hash": "b26c67ffd2aee7310fa42d762f35925e",
+    "semantic_hash": ""
+  },
+  "deploy/host-setup.sh": {
+    "mtime": 1791034133.5158544,
+    "seen": 1791036141.7318614,
+    "ast_hash": "de4cb35ca083c3f515fd97c18e5e2ae4",
+    "semantic_hash": ""
+  },
+  "scripts/deploy-config.mjs": {
+    "mtime": 1791034084.6144528,
+    "seen": 1791036141.7405555,
+    "ast_hash": "cd67466db832fb3e2d2ee3466d66d201",
+    "semantic_hash": ""
+  },
+  "scripts/test/deploy-config.test.mjs": {
+    "mtime": 1791034920.294577,
+    "seen": 1791036141.7415557,
+    "ast_hash": "65b73801cdf54821973d7c1878bfeafc",
+    "semantic_hash": ""
+  },
+  "tests/integration/migrate.test.mjs": {
+    "mtime": 1791034248.238127,
+    "seen": 1791036141.7445555,
+    "ast_hash": "7c96392bc26c535a96508c2c83d21dfb",
+    "semantic_hash": ""
+  },
+  ".github/workflows/deploy.yml": {
+    "mtime": 1791034847.4266737,
+    "seen": 1791036141.752792,
+    "ast_hash": "ad4f3cf6a6c55d4ae950e6b7ffbd8b67",
+    "semantic_hash": ""
+  },
+  "deploy/compose.app.yaml": {
+    "mtime": 1791034124.281763,
+    "seen": 1791036141.752792,
+    "ast_hash": "4f4367fd9216dec593d440c19263b0fa",
+    "semantic_hash": ""
+  },
+  "deploy/compose.storage.yaml": {
+    "mtime": 1791034114.8025782,
+    "seen": 1791036141.752792,
+    "ast_hash": "126bbe176de1f798c909be0efb05c12f",
+    "semantic_hash": ""
+  },
+  "docs/adr/0017-two-host-deploy.md": {
+    "mtime": 1791034887.0779352,
+    "seen": 1791036141.7538724,
+    "ast_hash": "d6af0a8a53de970746265690a95c245c",
+    "semantic_hash": ""
+  },
+  "docs/operations/deploy.md": {
+    "mtime": 1791034902.84997,
+    "seen": 1791036141.7548714,
+    "ast_hash": "ec722b6078e2dc77607c944f8824b1dc",
     "semantic_hash": ""
   }
 }
