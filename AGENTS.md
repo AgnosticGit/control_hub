@@ -60,6 +60,7 @@ See `.cursor/rules/controlhub-core.mdc` and `controlhub-testing.mdc` (always app
  vitest `*.test.ts`, `tests/integration/*.test.mjs`, Playwright `tests/e2e/specs/*.spec.ts`. A bug fix starts
  with a failing regression test. Never delete or weaken a test to get green.
 - Never overwrite user changes, never `git reset`/`clean`, never commit `.controlhub/`.
+- Never `git commit` or `git push` (branches or tags): only the user commits and pushes.
 - The only persistent account is the owner from `.controlhub/owner.env`. Never seed other accounts in
   bootstrap; tests get theirs from `test-fixtures` (via `just test-integration` / `just test-e2e`), which
   deletes them after the run. Run a single spec with `node scripts/test-with-fixtures.mjs <command>`.
