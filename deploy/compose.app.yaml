@@ -41,14 +41,23 @@ services:
       KAFKA_LOG_RETENTION_HOURS: "72"
       KAFKA_MESSAGE_MAX_BYTES: "8388608"
       KAFKA_HEAP_OPTS: "-Xmx768m -Xms256m"
+      # 1/8 OCPU: the in-process broker -> controller heartbeat misses the 2 s defaults and the
+      # broker never gets ready. Longer intervals and a single-core JVM (serial GC, C1 only).
+      KAFKA_BROKER_HEARTBEAT_INTERVAL_MS: "10000"
+      KAFKA_BROKER_SESSION_TIMEOUT_MS: "60000"
+      KAFKA_CONTROLLER_QUORUM_REQUEST_TIMEOUT_MS: "20000"
+      KAFKA_CONTROLLER_QUORUM_FETCH_TIMEOUT_MS: "40000"
+      KAFKA_CONTROLLER_SOCKET_TIMEOUT_MS: "60000"
+      KAFKA_JVM_PERFORMANCE_OPTS: "-server -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:ActiveProcessorCount=1 -XX:CICompilerCount=1 -Djava.awt.headless=true"
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:19092 > /dev/null 2>&1"]
+      # A port check: the CLI health probe starts a second JVM, which a 1/8 core cannot afford.
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/19092' 2>/dev/null"]
       interval: 15s
-      timeout: 15s
-      retries: 40
-      start_period: 60s
+      timeout: 10s
+      retries: 60
+      start_period: 180s
     stop_grace_period: 60s
 
   ingest:

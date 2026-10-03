@@ -78,7 +78,9 @@ Backups are not automated yet.
 
 ## Memory
 
-Nothing is tuned for 1 GB yet. Measured idle with defaults: app host ≈ 470 MB (Kafka ≈ 360 MB),
-storage host ≈ 560 MB (ClickHouse ≈ 430 MB). Under load both use the swap from `host-setup.sh`;
+Memory limits are not tuned for 1 GB yet. Measured idle: app host ≈ 400 MB (Kafka ≈ 290 MB),
+storage host ≈ 560 MB (ClickHouse ≈ 430 MB). On 1/8 OCPU Kafka runs a single-core JVM (serial
+GC) with KRaft heartbeats every 10 s instead of 2 s; with the defaults the broker misses its own
+heartbeats and never becomes ready. Under load both use the swap from `host-setup.sh`;
 expect slower queries rather than crashes. Reducing Kafka heap and ClickHouse caches is a separate
 step.
