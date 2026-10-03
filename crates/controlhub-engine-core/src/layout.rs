@@ -296,7 +296,19 @@ fn coordinates(order: &[Vec<usize>], items: &[Item], preds: &[Vec<usize>], succs
     // Centre the drawing vertically and snap to whole pixels.
     let (lo, hi) = y.iter().fold((f32::MAX, f32::MIN), |(lo, hi), &v| (lo.min(v), hi.max(v)));
     let mid = if lo <= hi { (lo + hi) / 2.0 } else { 0.0 };
-    y.iter().map(|v| (v - mid).round()).collect()
+    let mut y: Vec<f32> = y.iter().map(|v| (v - mid).round()).collect();
+    // Rounding two neighbours half a pixel apart in opposite directions loses a pixel of
+    // separation; push the lower one back down (separations are whole pixels).
+    for layer in order {
+        for k in 1..layer.len() {
+            let (a, b) = (layer[k - 1], layer[k]);
+            let min = y[a] + separation(&items[a], &items[b]);
+            if y[b] < min {
+                y[b] = min;
+            }
+        }
+    }
+    y
 }
 
 /// Positions closest (least squares) to `desired` such that `p[k] - p[k-1] >= seps[k-1]`.
@@ -430,6 +442,25 @@ mod tests {
                 let (pa, pb) = (l.position(a).unwrap(), l.position(b).unwrap());
                 if a != b && pa.0 == pb.0 {
                     assert!((pa.1 - pb.1).abs() >= ROW_SPACING - 0.5, "{a} and {b} overlap");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn corridors_keep_clear_of_cards_after_snapping_to_pixels() {
+        // Minimal case found by the property test below.
+        let names: Vec<String> = (0..9).map(|i| format!("n{i:02}")).collect();
+        let edges = [(0, 8), (7, 0), (4, 6), (1, 5), (3, 2), (2, 4), (6, 5), (5, 8), (1, 4)];
+        let mut l = Layout::default();
+        l.compute(&names, &edges);
+        for (ei, _) in edges.iter().enumerate() {
+            for &(wx, wy) in l.waypoints(ei) {
+                for n in &names {
+                    let (x, y) = l.position(n).unwrap();
+                    if x == wx {
+                        assert!((y - wy).abs() >= CARD_TO_CORRIDOR - 0.5, "edge {ei} corridor at {wy} hits {n} at {y}");
+                    }
                 }
             }
         }
