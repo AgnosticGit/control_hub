@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type { NextConfig } from "next";
 import { baselineCsp } from "./src/lib/csp";
 
@@ -22,6 +23,10 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // `next build` also emits a self-contained server for the container image (deploy/Dockerfile).
+  // Rewrites below are fixed at build time, so the image is built with the in-cluster addresses.
+  output: "standalone",
+  outputFileTracingRoot: resolve(process.cwd(), "../.."),
   transpilePackages: ["@controlhub/api-client", "@controlhub/web-engine"],
   allowedDevOrigins: publicHost ? [publicHost] : [],
   async rewrites() {

@@ -1,0 +1,159 @@
+# ControlHub production, host "app": Kafka, the Rust services, the web app and Caddy (TLS).
+# Lives in /opt/controlhub next to .env and Caddyfile (rendered by the deploy workflow).
+# Only Caddy is reachable from the internet (80/443); everything else stays on the Docker network.
+#   docker compose -f compose.app.yaml up -d --wait
+
+name: controlhub
+
+x-service: &service
+  restart: unless-stopped
+  stop_grace_period: 30s
+
+x-storage: &storage
+  CONTROLHUB_ENV: production
+  CONTROLHUB_LOG_FORMAT: json
+  CONTROLHUB_CLICKHOUSE_URL: http://${STORAGE_ADDR:?rendered by the deploy}:8123
+  CONTROLHUB_CLICKHOUSE_DATABASE: controlhub
+
+x-retention: &retention
+  CONTROLHUB_LOGS_RETENTION_DAYS: ${CONTROLHUB_LOGS_RETENTION_DAYS:-14}
+  CONTROLHUB_SPANS_RETENTION_DAYS: ${CONTROLHUB_SPANS_RETENTION_DAYS:-14}
+  CONTROLHUB_EVENTS_RETENTION_DAYS: ${CONTROLHUB_EVENTS_RETENTION_DAYS:-30}
+
+services:
+  kafka:
+    <<: *service
+    image: apache/kafka:4.1.0
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:19092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_LOG_RETENTION_HOURS: "72"
+      KAFKA_MESSAGE_MAX_BYTES: "8388608"
+      KAFKA_HEAP_OPTS: "-Xmx768m -Xms256m"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:19092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 15s
+      retries: 40
+      start_period: 60s
+    stop_grace_period: 60s
+
+  ingest:
+    <<: *service
+    image: ${IMAGE_PREFIX:?rendered by the deploy}/controlhub-ingest:${CONTROLHUB_VERSION:?rendered by the deploy}
+    environment:
+      CONTROLHUB_ENV: production
+      CONTROLHUB_LOG_FORMAT: json
+      CONTROLHUB_KAFKA_BROKERS: kafka:19092
+      CONTROLHUB_INGEST_HTTP_ADDR: 0.0.0.0:4318
+      CONTROLHUB_INGEST_GRPC_ADDR: 0.0.0.0:4317
+      CONTROLHUB_INGEST_DATABASE_URL: postgres://controlhub_ingest:${CH_PG_INGEST_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/controlhub
+    depends_on:
+      kafka: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4318/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  processor:
+    <<: *service
+    image: ${IMAGE_PREFIX}/controlhub-processor:${CONTROLHUB_VERSION}
+    environment:
+      <<: *storage
+      CONTROLHUB_KAFKA_BROKERS: kafka:19092
+      CONTROLHUB_PROCESSOR_DATABASE_URL: postgres://controlhub_processor:${CH_PG_PROCESSOR_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/controlhub
+      CONTROLHUB_PROCESSOR_CLICKHOUSE_USER: controlhub_processor
+      CONTROLHUB_PROCESSOR_CLICKHOUSE_PASSWORD: ${CH_CH_PROCESSOR_PASSWORD:?rendered by the deploy}
+    depends_on:
+      kafka: { condition: service_healthy }
+
+  api:
+    <<: *service
+    image: ${IMAGE_PREFIX}/controlhub-api:${CONTROLHUB_VERSION}
+    command: ["serve"]
+    environment:
+      <<: [*storage, *retention]
+      CONTROLHUB_API_ADDR: 0.0.0.0:8080
+      CONTROLHUB_API_DATABASE_URL: postgres://controlhub_api:${CH_PG_API_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/controlhub
+      CONTROLHUB_API_CLICKHOUSE_USER: controlhub_api
+      CONTROLHUB_API_CLICKHOUSE_PASSWORD: ${CH_CH_API_PASSWORD:?rendered by the deploy}
+      CONTROLHUB_ALLOWED_ORIGINS: https://${CONTROLHUB_DOMAIN:?rendered by the deploy}
+      CONTROLHUB_ARCHIVE_S3_ENDPOINT: http://${STORAGE_ADDR}:8333
+      CONTROLHUB_ARCHIVE_S3_BUCKET: ${ARCHIVE_BUCKET:-controlhub-archive}
+      CONTROLHUB_API_S3_ACCESS_KEY: ${CH_S3_API_ACCESS_KEY:?rendered by the deploy}
+      CONTROLHUB_API_S3_SECRET_KEY: ${CH_S3_API_SECRET_KEY:?rendered by the deploy}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/v1/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+
+  executor:
+    <<: *service
+    image: ${IMAGE_PREFIX}/controlhub-executor:${CONTROLHUB_VERSION}
+    environment:
+      <<: *storage
+      CONTROLHUB_EXECUTOR_DATABASE_URL: postgres://controlhub_executor:${CH_PG_EXECUTOR_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/controlhub
+      CONTROLHUB_EXECUTOR_CLICKHOUSE_USER: controlhub_executor
+      CONTROLHUB_EXECUTOR_CLICKHOUSE_PASSWORD: ${CH_CH_EXECUTOR_PASSWORD:?rendered by the deploy}
+
+  archiver:
+    <<: *service
+    image: ${IMAGE_PREFIX}/controlhub-archiver:${CONTROLHUB_VERSION}
+    command: ["run"]
+    environment:
+      <<: [*storage, *retention]
+      CONTROLHUB_ARCHIVER_DATABASE_URL: postgres://controlhub_archiver:${CH_PG_ARCHIVER_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/controlhub
+      CONTROLHUB_ARCHIVER_CLICKHOUSE_USER: controlhub_archiver
+      CONTROLHUB_ARCHIVER_CLICKHOUSE_PASSWORD: ${CH_CH_ARCHIVER_PASSWORD:?rendered by the deploy}
+      CONTROLHUB_ARCHIVE_S3_ENDPOINT: http://${STORAGE_ADDR}:8333
+      CONTROLHUB_ARCHIVE_S3_BUCKET: ${ARCHIVE_BUCKET:-controlhub-archive}
+      CONTROLHUB_ARCHIVER_S3_ACCESS_KEY: ${CH_S3_ARCHIVER_ACCESS_KEY:?rendered by the deploy}
+      CONTROLHUB_ARCHIVER_S3_SECRET_KEY: ${CH_S3_ARCHIVER_SECRET_KEY:?rendered by the deploy}
+
+  web:
+    <<: *service
+    image: ${IMAGE_PREFIX}/controlhub-web:${CONTROLHUB_VERSION}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  caddy:
+    <<: *service
+    image: caddy:2.10.2-alpine
+    environment:
+      CONTROLHUB_DOMAIN: ${CONTROLHUB_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?rendered by the deploy}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [api, ingest, web]
+
+volumes:
+  kafka-data:
+  caddy-data:
+  caddy-config:

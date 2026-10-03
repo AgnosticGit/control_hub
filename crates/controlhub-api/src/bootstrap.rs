@@ -9,13 +9,15 @@ use anyhow::Context;
 use controlhub_domain::{EnvironmentId, ProjectId, Scope, TenantId};
 use controlhub_runtime::env_required;
 use controlhub_storage::ch::{ChConfig, ChStore};
-use controlhub_storage::pg::PgStore;
+use controlhub_storage::pg::{NewAccount, PgStore};
 use controlhub_storage::retention::{self, Decision, Table};
 use controlhub_storage::secrets::{generate_token, hash_password, hash_token, token_prefix};
 use serde_json::json;
 
 use crate::permissions::{self, Builtin};
-use crate::routes::signup::{MAX_PASSWORD_BYTES, MIN_PASSWORD_CHARS, normalise_email};
+use crate::routes::signup::{
+    DEFAULT_ENVIRONMENT, DEFAULT_PROJECT, MAX_PASSWORD_BYTES, MIN_PASSWORD_CHARS, normalise_email,
+};
 use crate::system_permissions::SystemBuiltin;
 
 const CH_MIGRATIONS: &[(&str, &str)] = &[
@@ -100,15 +102,27 @@ fn configured_owner(email: Option<&str>, password: Option<&str>) -> anyhow::Resu
     }
 }
 
-/// Admin connection to PostgreSQL (bootstrap and test fixtures only).
+/// Admin connection to PostgreSQL (bootstrap, migrate and test fixtures only).
 pub(crate) async fn admin_pg() -> anyhow::Result<PgStore> {
+    let pg_host = std::env::var("CH_PG_HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let pg_port = std::env::var("CH_PG_PORT").unwrap_or_else(|_| "15432".into());
     let pg_admin_url = format!(
-        "postgres://{}:{}@127.0.0.1:{pg_port}/controlhub",
+        "postgres://{}:{}@{pg_host}:{pg_port}/controlhub",
         env_required("CH_PG_ADMIN_USER")?,
         env_required("CH_PG_ADMIN_PASSWORD")?
     );
     PgStore::connect(&pg_admin_url, 2).await.context("connect postgres as admin")
+}
+
+fn admin_ch() -> anyhow::Result<ChStore> {
+    let host = std::env::var("CH_CLICKHOUSE_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+    let port = std::env::var("CH_CLICKHOUSE_HTTP_PORT").unwrap_or_else(|_| "18123".into());
+    Ok(ChStore::new(&ChConfig {
+        url: format!("http://{host}:{port}"),
+        database: "controlhub".into(),
+        user: env_required("CH_CH_ADMIN_USER")?,
+        password: env_required("CH_CH_ADMIN_PASSWORD")?,
+    }))
 }
 
 /// Sets each table's TTL to the configured retention. Lengthening applies at once; shortening
@@ -136,12 +150,16 @@ async fn apply_retention(ch: &ChStore, wanted: &[(Table, u32)], allow_shrink: bo
     Ok(())
 }
 
-pub async fn run(out_dir: &Path, retention: &[(Table, u32)], allow_shrink: bool) -> anyhow::Result<()> {
-    // Checked first, so a missing owner.env fails before anything is changed.
-    let owner = configured_owner(
+fn owner_from_env() -> anyhow::Result<Owner> {
+    configured_owner(
         std::env::var("CONTROLHUB_OWNER_EMAIL").ok().as_deref(),
         std::env::var("CONTROLHUB_OWNER_PASSWORD").ok().as_deref(),
-    )?;
+    )
+}
+
+/// Schema, built-in roles, least-privilege service credentials and retention: everything a
+/// deployment needs before the services start. Idempotent.
+async fn prepare_storage(retention: &[(Table, u32)], allow_shrink: bool) -> anyhow::Result<(PgStore, ChStore)> {
     let pg = admin_pg().await?;
     pg.migrate().await.context("postgres migrations")?;
     tracing::info!("postgres migrations applied");
@@ -207,13 +225,7 @@ pub async fn run(out_dir: &Path, retention: &[(Table, u32)], allow_shrink: bool)
     )
     .await?;
 
-    let ch_port = std::env::var("CH_CLICKHOUSE_HTTP_PORT").unwrap_or_else(|_| "18123".into());
-    let ch = ChStore::new(&ChConfig {
-        url: format!("http://127.0.0.1:{ch_port}"),
-        database: "controlhub".into(),
-        user: env_required("CH_CH_ADMIN_USER")?,
-        password: env_required("CH_CH_ADMIN_PASSWORD")?,
-    });
+    let ch = admin_ch()?;
     let applied = ch.migrate(CH_MIGRATIONS).await.context("clickhouse migrations")?;
     tracing::info!(?applied, "clickhouse migrations applied");
     apply_retention(&ch, retention, allow_shrink).await?;
@@ -230,6 +242,56 @@ pub async fn run(out_dir: &Path, retention: &[(Table, u32)], allow_shrink: bool)
     // Read-only: the executor verifies outcomes from telemetry.
     ch.ensure_user("controlhub_executor", &env_required("CH_CH_EXECUTOR_PASSWORD")?, &["SELECT ON controlhub.*"])
         .await?;
+    Ok((pg, ch))
+}
+
+/// A production owner must meet the sign-up password minimum (local dev only warns).
+fn production_owner(owner: Owner) -> anyhow::Result<Owner> {
+    anyhow::ensure!(
+        owner.password.chars().count() >= MIN_PASSWORD_CHARS,
+        "CONTROLHUB_OWNER_PASSWORD must have at least {MIN_PASSWORD_CHARS} characters"
+    );
+    Ok(owner)
+}
+
+/// Production deploys: [`prepare_storage`] plus the owner account. Unlike [`run`] it seeds no
+/// demo, rotates no tokens, writes no files and never resets an existing owner's password, so
+/// it is safe to run on every deploy.
+pub async fn migrate(retention: &[(Table, u32)], allow_shrink: bool) -> anyhow::Result<()> {
+    let owner = production_owner(owner_from_env()?)?;
+    let (pg, _) = prepare_storage(retention, allow_shrink).await?;
+    let user_id = match pg.user_id_by_email(&owner.email).await? {
+        Some(id) => {
+            tracing::info!(email = %owner.email, "owner account exists; password left unchanged");
+            id
+        }
+        None => {
+            let pw = owner.password.clone();
+            let hash = tokio::task::spawn_blocking(move || hash_password(&pw)).await??;
+            let name = owner.email.split('@').next().unwrap_or_default().to_owned();
+            let created = pg
+                .create_account(&NewAccount {
+                    email: &owner.email,
+                    display_name: &name,
+                    password_hash: &hash,
+                    project_name: DEFAULT_PROJECT,
+                    environment_name: DEFAULT_ENVIRONMENT,
+                })
+                .await?
+                .context("the owner account appeared concurrently; run migrate again")?;
+            tracing::info!(email = %owner.email, project = %created.scope.project_id, "owner account created");
+            created.user_id
+        }
+    };
+    pg.upsert_system_builtin(user_id, SystemBuiltin::SuperAdmin.key()).await?;
+    tracing::info!("migrations applied; owner is ControlHub Super Admin");
+    Ok(())
+}
+
+pub async fn run(out_dir: &Path, retention: &[(Table, u32)], allow_shrink: bool) -> anyhow::Result<()> {
+    // Checked first, so a missing owner.env fails before anything is changed.
+    let owner = owner_from_env()?;
+    let (pg, _) = prepare_storage(retention, allow_shrink).await?;
 
     let demo = DEMO_SCOPE.scope()?;
     pg.upsert_scope(&demo, DEMO_SCOPE.tenant_name, DEMO_SCOPE.project_name, DEMO_SCOPE.env_name, DEMO_SCOPE.is_demo)
@@ -323,6 +385,15 @@ mod tests {
         assert!(msg(configured_owner(Some("not-an-email"), Some("secret")).unwrap_err()).contains("valid email"));
         let long = "x".repeat(MAX_PASSWORD_BYTES + 1);
         assert!(msg(configured_owner(Some("me@example.com"), Some(&long)).unwrap_err()).contains("longer"));
+    }
+
+    #[test]
+    fn a_production_owner_needs_the_sign_up_password_minimum() {
+        let short = "x".repeat(MIN_PASSWORD_CHARS - 1);
+        let err = production_owner(configured_owner(Some("me@example.com"), Some(&short)).unwrap()).unwrap_err();
+        assert!(err.to_string().contains("CONTROLHUB_OWNER_PASSWORD") && !err.to_string().contains(&short));
+        let ok = "y".repeat(MIN_PASSWORD_CHARS);
+        assert!(production_owner(configured_owner(Some("me@example.com"), Some(&ok)).unwrap()).is_ok());
     }
 
     #[test]

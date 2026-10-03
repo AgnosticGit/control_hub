@@ -1,0 +1,91 @@
+# ControlHub production, host "storage": PostgreSQL, ClickHouse and the S3-compatible archive.
+# Lives in /opt/controlhub next to .env, owner.env and seaweedfs-s3.json, which the deploy
+# workflow renders (scripts/deploy-config.mjs). Ports bind to the private address only: the
+# "app" host reaches them over the private network, the internet never does.
+#   docker compose -f compose.storage.yaml up -d --wait
+#   docker compose -f compose.storage.yaml run --rm migrate migrate   (on every deploy)
+
+name: controlhub
+
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: controlhub
+      POSTGRES_USER: ${CH_PG_ADMIN_USER:?rendered by the deploy}
+      POSTGRES_PASSWORD: ${CH_PG_ADMIN_PASSWORD:?rendered by the deploy}
+    ports:
+      - "${STORAGE_BIND_IP:?rendered by the deploy}:5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d controlhub"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    stop_grace_period: 30s
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: controlhub
+      CLICKHOUSE_USER: ${CH_CH_ADMIN_USER:?rendered by the deploy}
+      CLICKHOUSE_PASSWORD: ${CH_CH_ADMIN_PASSWORD:?rendered by the deploy}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "${STORAGE_BIND_IP}:8123:8123"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8123/ping | grep -q Ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
+    stop_grace_period: 60s
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.97
+    restart: unless-stopped
+    command: ["server", "-dir=/data", "-ip.bind=0.0.0.0", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json"]
+    ports:
+      - "${STORAGE_BIND_IP}:8333:8333"
+    volumes:
+      - seaweedfs-data:/data
+      - ./seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8333/healthz > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    stop_grace_period: 30s
+
+  # One-off: schema migrations, retention TTLs, service users, the owner account.
+  migrate:
+    image: ${IMAGE_PREFIX:?rendered by the deploy}/controlhub-api:${CONTROLHUB_VERSION:?rendered by the deploy}
+    profiles: ["tools"]
+    command: ["migrate"]
+    env_file: [.env, owner.env]
+    environment:
+      CH_PG_HOST: postgres
+      CH_PG_PORT: "5432"
+      CH_CLICKHOUSE_HOST: clickhouse
+      CH_CLICKHOUSE_HTTP_PORT: "8123"
+      CONTROLHUB_LOG_FORMAT: json
+    depends_on:
+      postgres: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+
+volumes:
+  pg-data:
+  clickhouse-data:
+  clickhouse-logs:
+  seaweedfs-data:

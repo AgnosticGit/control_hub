@@ -26,6 +26,7 @@ ControlHub is an observability, history-exploration and (later) controlled-manag
 | `packages/sdk-node` | `@controlhub/sdk-node` (OpenTelemetry-based) |
 | `examples/demo-system` | 7 services (gateway, auth, catalog, orders, inventory, payments, notifications) + Postgres + provider stand-in + load generator + fault injection |
 | `infra/` | Docker Compose (incl. SeaweedFS as local S3), SQL migrations |
+| `deploy/` | Production: Dockerfile + bake (GHCR images), Compose for the `storage` and `app` hosts, Caddyfile, host setup; driven by `.github/workflows/deploy.yml` (`docs/operations/deploy.md`, ADR-0017) |
 | `scripts/` | Cross-platform Node scripts behind the `justfile` |
 | `tests/integration`, `tests/e2e` | Node integration tests and Playwright tests against a running stack |
 

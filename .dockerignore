@@ -1,0 +1,19 @@
+# Build context for deploy/Dockerfile: sources only, never local state or secrets.
+.git
+.controlhub
+.env
+.env.*
+!.env.example
+**/node_modules
+**/.next
+target
+graphify-out
+coverage
+playwright-report
+test-results
+tests/load/results
+packages/web-engine/pkg
+apps/web/public/wasm
+apps/web/src/generated/wasm-manifest.ts
+*.pem
+*.key

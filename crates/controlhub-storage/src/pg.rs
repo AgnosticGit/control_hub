@@ -767,6 +767,11 @@ impl PgStore {
 
     // ------------------------------------------------------------ users & sessions
 
+    /// The user with this (normalised) email, including disabled ones.
+    pub async fn user_id_by_email(&self, email: &str) -> Result<Option<Uuid>> {
+        Ok(sqlx::query_scalar("SELECT id FROM users WHERE email = $1").bind(email).fetch_optional(&self.pool).await?)
+    }
+
     pub async fn find_user_by_email(&self, email: &str) -> Result<Option<UserRow>> {
         Ok(sqlx::query_as::<_, UserRow>(
             "SELECT id, email, display_name, password_hash FROM users WHERE email = $1 AND disabled_at IS NULL",

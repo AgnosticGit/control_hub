@@ -49,6 +49,15 @@ enum Command {
         #[arg(long)]
         shrink_retention: bool,
     },
+    /// Production deploys: migrations, retention TTLs, service users and the owner account.
+    /// No demo data, no token rotation, no files; safe to run on every deploy.
+    Migrate {
+        #[command(flatten)]
+        retention: RetentionArgs,
+        /// Confirms a retention decrease that permanently deletes older telemetry.
+        #[arg(long)]
+        shrink_retention: bool,
+    },
     /// Create (or with --remove delete) the accounts and scopes the integration/e2e tests use.
     TestFixtures {
         #[arg(long, default_value = ".controlhub")]
@@ -328,6 +337,10 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Bootstrap { out_dir, retention, shrink_retention }) => {
             init_tracing("controlhub-api");
             bootstrap::run(&out_dir, &retention.tables(), shrink_retention).await
+        }
+        Some(Command::Migrate { retention, shrink_retention }) => {
+            init_tracing("controlhub-api");
+            bootstrap::migrate(&retention.tables(), shrink_retention).await
         }
         Some(Command::TestFixtures { out_dir, remove }) => {
             init_tracing("controlhub-api");
@@ -957,6 +970,17 @@ mod tests {
         ));
         assert!(super::Cli::try_parse_from(["controlhub-api"]).unwrap().command.is_none());
         assert!(super::Cli::try_parse_from(["controlhub-api", "drop-database"]).is_err());
+        match super::Cli::try_parse_from(["controlhub-api", "migrate", "--logs-retention-days", "7"]).unwrap().command {
+            Some(super::Command::Migrate { retention, shrink_retention }) => {
+                assert!(!shrink_retention, "deleting data is never the default");
+                assert_eq!(retention.tables()[0], (super::Table::Logs, 7));
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(
+            super::Cli::try_parse_from(["controlhub-api", "migrate", "--out-dir", "x"]).is_err(),
+            "migrate writes no files"
+        );
         match super::Cli::try_parse_from(["controlhub-api", "bootstrap"]).unwrap().command {
             Some(super::Command::Bootstrap { out_dir, shrink_retention, .. }) => {
                 assert_eq!(out_dir, std::path::PathBuf::from(".controlhub"));

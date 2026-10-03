@@ -1,0 +1,22 @@
+# Public entry point of the "app" host: HTTPS with automatic certificates.
+#   /api/v1/*  -> API (incl. the live WebSocket)
+#   /otlp/*    -> ingest (OTLP/HTTP and events; tokens are checked by ingest)
+#   the rest   -> web app
+{
+	email {$ACME_EMAIL}
+}
+
+{$CONTROLHUB_DOMAIN} {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000"
+
+	handle /api/v1/* {
+		reverse_proxy api:8080
+	}
+	handle_path /otlp/* {
+		reverse_proxy ingest:4318
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}

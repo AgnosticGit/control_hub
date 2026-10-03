@@ -23,8 +23,8 @@ use crate::state::AppState;
 pub const MIN_PASSWORD_CHARS: usize = 12;
 pub const MAX_PASSWORD_BYTES: usize = 1024;
 const MAX_NAME_CHARS: usize = 100;
-const DEFAULT_PROJECT: &str = "My project";
-const DEFAULT_ENVIRONMENT: &str = "production";
+pub(crate) const DEFAULT_PROJECT: &str = "My project";
+pub(crate) const DEFAULT_ENVIRONMENT: &str = "production";
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RegisterRequest {

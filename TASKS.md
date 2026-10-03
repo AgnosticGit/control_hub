@@ -95,8 +95,10 @@ Ordered by priority within each stage. `[x]` = done and verified.
 - [x] Read-only MCP server (`controlhub mcp`, stdio; ADR-0013)
 - [x] Strict nonce CSP for `/app/*`, baseline CSP elsewhere
 - [ ] Archiving (ClickHouse TTL to object storage), retention settings per tenant
-- [ ] Production hardening: TLS (rustls), secrets from a secret manager, container images,
-      resource limits, deployment docs
+- [x] Container images (GHCR, built in CI), two-host Compose deploy via GitHub Actions, TLS at
+      Caddy, secrets derived from one GitHub secret, `controlhub-api migrate`, deploy docs (ADR-0017)
+- [ ] Production hardening: rustls inside the private network, secrets from a secret manager,
+      resource limits tuned for 1 GB hosts, backups of PostgreSQL / ClickHouse
 
 ## Cross-cutting
 - [ ] Surface drops from the SDK's OTel batch processors as counters

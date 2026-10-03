@@ -1,0 +1,171 @@
+name: Deploy
+
+# A tag `v*` on main builds the images, pushes them to GHCR and deploys them to the two hosts
+# (docs/operations/deploy.md). "Run workflow" deploys the selected ref; the first run needs
+# `setup_hosts` to install Docker and swap on fresh servers.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      setup_hosts:
+        description: "Prepare fresh hosts first (Docker, swap, /opt/controlhub)"
+        type: boolean
+        default: false
+      shrink_retention:
+        description: "Confirm a retention decrease that deletes stored telemetry"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  images:
+    name: Build and push images
+    needs: ci
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      image_prefix: ${{ steps.meta.outputs.image_prefix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        env:
+          CONTROLHUB_DOMAIN: ${{ vars.CONTROLHUB_DOMAIN }}
+        run: |
+          if [[ -z "$CONTROLHUB_DOMAIN" ]]; then
+            echo "::error::Set the repository variable CONTROLHUB_DOMAIN (docs/operations/deploy.md)"; exit 1
+          fi
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then v="$GITHUB_REF_NAME"; else v="sha-${GITHUB_SHA::12}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "image_prefix=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/bake-action@v6
+        env:
+          REGISTRY: ${{ steps.meta.outputs.image_prefix }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          SITE_URL: https://${{ vars.CONTROLHUB_DOMAIN }}
+        with:
+          source: .
+          files: deploy/docker-bake.hcl
+          push: true
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
+
+  deploy:
+    name: Deploy to the hosts
+    needs: images
+    runs-on: ubuntu-24.04
+    environment: production
+    env:
+      CONTROLHUB_VERSION: ${{ needs.images.outputs.version }}
+      IMAGE_PREFIX: ${{ needs.images.outputs.image_prefix }}
+      CONTROLHUB_DOMAIN: ${{ vars.CONTROLHUB_DOMAIN }}
+      SHRINK: ${{ inputs.shrink_retention && '--shrink-retention' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Render host configuration
+        env:
+          CONTROLHUB_SECRET_SEED: ${{ secrets.CONTROLHUB_SECRET_SEED }}
+          CONTROLHUB_OWNER_EMAIL: ${{ secrets.CONTROLHUB_OWNER_EMAIL }}
+          CONTROLHUB_OWNER_PASSWORD: ${{ secrets.CONTROLHUB_OWNER_PASSWORD }}
+          STORAGE_PRIVATE_IP: ${{ vars.STORAGE_PRIVATE_IP }}
+          ACME_EMAIL: ${{ vars.ACME_EMAIL }}
+          CONTROLHUB_LOGS_RETENTION_DAYS: ${{ vars.CONTROLHUB_LOGS_RETENTION_DAYS }}
+          CONTROLHUB_SPANS_RETENTION_DAYS: ${{ vars.CONTROLHUB_SPANS_RETENTION_DAYS }}
+          CONTROLHUB_EVENTS_RETENTION_DAYS: ${{ vars.CONTROLHUB_EVENTS_RETENTION_DAYS }}
+        run: |
+          echo "OUT=$RUNNER_TEMP/deploy" >> "$GITHUB_ENV"
+          node scripts/deploy-config.mjs "$RUNNER_TEMP/deploy"
+
+      - name: SSH access
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'ubuntu' }}
+          STORAGE_HOST: ${{ vars.STORAGE_HOST }}
+          APP_HOST: ${{ vars.APP_HOST }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+          for h in storage:"$STORAGE_HOST" app:"$APP_HOST"; do
+            printf 'Host %s\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/id_deploy\n  StrictHostKeyChecking yes\n  ServerAliveInterval 30\n\n' \
+              "${h%%:*}" "${h#*:}" "$DEPLOY_USER" >> ~/.ssh/config
+          done
+          ssh storage true && ssh app true
+
+      - name: Prepare hosts
+        if: inputs.setup_hosts
+        run: |
+          for h in storage app; do
+            scp deploy/host-setup.sh "$h":/tmp/controlhub-host-setup.sh
+            ssh "$h" 'bash /tmp/controlhub-host-setup.sh && rm /tmp/controlhub-host-setup.sh'
+          done
+
+      - name: Registry login on the hosts
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for h in storage app; do
+            printf '%s' "$TOKEN" | ssh "$h" "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+          done
+
+      - name: Storage host (databases, object storage, migrations)
+        run: |
+          scp deploy/compose.storage.yaml "$OUT/storage/.env" "$OUT/storage/owner.env" "$OUT/storage/seaweedfs-s3.json" storage:/opt/controlhub/
+          # shellcheck disable=SC2029 # SHRINK is the runner's input, expanded before ssh on purpose
+          ssh storage "SHRINK='$SHRINK' bash -s" <<'EOF'
+          set -euo pipefail
+          cd /opt/controlhub
+          chmod 600 .env owner.env seaweedfs-s3.json
+          dc() { docker compose -f compose.storage.yaml "$@"; }
+          dc pull --quiet
+          dc up -d --wait --wait-timeout 900 --remove-orphans
+          dc exec -T seaweedfs sh -c "echo s3.bucket.list | weed shell -master=localhost:9333 | grep -q controlhub-archive || echo 's3.bucket.create -name controlhub-archive' | weed shell -master=localhost:9333"
+          dc run --rm --pull always migrate migrate $SHRINK
+          EOF
+
+      - name: App host (Kafka, services, web, Caddy)
+        run: |
+          scp deploy/compose.app.yaml deploy/Caddyfile "$OUT/app/.env" app:/opt/controlhub/
+          ssh app 'bash -s' <<'EOF'
+          set -euo pipefail
+          cd /opt/controlhub
+          chmod 600 .env
+          docker compose -f compose.app.yaml pull --quiet
+          docker compose -f compose.app.yaml up -d --wait --wait-timeout 900 --remove-orphans
+          EOF
+
+      - name: Registry logout and image cleanup
+        if: always()
+        run: |
+          for h in storage app; do
+            ssh "$h" 'docker logout ghcr.io >/dev/null; docker image prune -af --filter until=168h >/dev/null' || true
+          done
+
+      - name: Smoke test through the public address
+        run: |
+          curl -fsS --retry 30 --retry-delay 10 --retry-all-errors "https://$CONTROLHUB_DOMAIN/api/v1/ready"
+          curl -fsS -o /dev/null --retry 10 --retry-delay 5 --retry-all-errors "https://$CONTROLHUB_DOMAIN/"
+          echo "ControlHub $CONTROLHUB_VERSION is live at https://$CONTROLHUB_DOMAIN/app"
