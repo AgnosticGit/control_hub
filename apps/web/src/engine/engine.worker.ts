@@ -4,17 +4,18 @@
 // on either thread. Seeks and viewport changes are coalesced: only the latest
 // state is computed, and each frame carries the generation it reflects.
 
-import init, { WebEngine, engineAbiVersion } from "@controlhub/web-engine/pkg";
+import init, { WebEngine, engineAbiVersion } from "@karbird/web-engine/pkg";
 import {
   ENGINE_ABI_VERSION,
   type Filters,
   type Frame,
   type FrameSummary,
+  type InfrastructureSnapshot,
   type LiveEvent,
   type LoadResult,
   type WorkerRequest,
   type WorkerResponse,
-} from "@controlhub/web-engine";
+} from "@karbird/web-engine";
 import { WASM_BYTES, WASM_URL } from "@/generated/wasm-manifest";
 import { MAX_RESPONSE_BYTES, countItems, liveRetryDelayMs, newerSeek, parseLiveHead, timelineTail } from "./worker-utils";
 
@@ -240,6 +241,13 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       };
       return result;
     }
+    case "loadInfrastructure": {
+      const e = requireEngine();
+      const { text } = await fetchText(msg.url);
+      e.setInfrastructure(text);
+      schedule();
+      return JSON.parse(text) as InfrastructureSnapshot;
+    }
     case "evictBefore":
       requireEngine().evictBefore(BigInt(msg.beforeNs));
       schedule();
@@ -266,6 +274,8 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       return requireEngine().compare(BigInt(msg.aNs), BigInt(msg.bNs));
     case "nextEvent":
       return requireEngine().nextEventTime(BigInt(msg.afterNs))?.toString() ?? null;
+    case "prevEvent":
+      return requireEngine().prevEventTime(BigInt(msg.beforeNs))?.toString() ?? null;
     case "pick":
       return requireEngine().pick(msg.x, msg.y) ?? null;
     case "timelineTracks":

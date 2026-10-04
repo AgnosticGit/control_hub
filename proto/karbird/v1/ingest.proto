@@ -1,12 +1,12 @@
-// Internal ingestion envelope written to the event broker by controlhub-ingest
-// and consumed by controlhub-processor.
+// Internal ingestion envelope written to the event broker by karbird-ingest
+// and consumed by karbird-processor.
 //
 // OTLP payloads are carried as the *official* OTLP protobuf messages
-// (ExportTraceServiceRequest / ExportLogsServiceRequest), already redacted,
+// (ExportTraceServiceRequest / ExportLogsServiceRequest / ExportMetricsServiceRequest), already redacted,
 // so there is no Protobuf -> JSON -> Protobuf conversion in the pipeline.
 syntax = "proto3";
 
-package controlhub.v1;
+package karbird.v1;
 
 // Tenant scope resolved from the ingestion credential — never from payload.
 message IngestScope {
@@ -32,6 +32,9 @@ message IngestEnvelope {
   oneof payload {
     bytes otlp_traces = 10;   // opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest
     bytes otlp_logs = 11;     // opentelemetry.proto.collector.logs.v1.ExportLogsServiceRequest
+    // opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest; gauges and sums only,
+    // already limited per environment by ingest (ADR-0018).
+    bytes otlp_metrics = 12;
     CustomEventBatch custom_events = 13;
   }
 }

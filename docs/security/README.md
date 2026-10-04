@@ -2,12 +2,12 @@
 
 ## Authentication
 
-- **Browser sessions** use the `controlhub_session` cookie: random, HttpOnly, `SameSite=Strict`,
-  and `Secure` unless `CONTROLHUB_ENV=dev`. Only its SHA-256 hash is stored, in `sessions`.
+- **Browser sessions** use the `karbird_session` cookie: random, HttpOnly, `SameSite=Strict`,
+  and `Secure` unless `KARBIRD_ENV=dev`. Only its SHA-256 hash is stored, in `sessions`.
   Sessions expire and are revoked on logout.
-- **CSRF** protection is a double submit: the `controlhub_csrf` cookie must match the
+- **CSRF** protection is a double submit: the `karbird_csrf` cookie must match the
   `x-csrf-token` header on every cookie-authenticated mutation. The server stores only the hash.
-- **Origin allowlist** (`CONTROLHUB_ALLOWED_ORIGINS`): a mutation or login whose `Origin` header
+- **Origin allowlist** (`KARBIRD_ALLOWED_ORIGINS`): a mutation or login whose `Origin` header
   is not on the list gets 403.
 - **Passwords** are hashed with Argon2id (the `argon2` crate). Login returns the same 401 for a
   wrong password and for an unknown user, and it is rate-limited (429).
@@ -31,8 +31,8 @@
   another tenant's resources return 404, so the API does not reveal whether they exist.
   Integration tests check this in both directions.
 - Each service has its own least-privilege database user in PostgreSQL and in ClickHouse
-  (`controlhub_ingest`, `controlhub_processor`, `controlhub_api`, `controlhub_executor`,
-  `controlhub_archiver`). The executor may only read and update `action_plans`, insert into
+  (`karbird_ingest`, `karbird_processor`, `karbird_api`, `karbird_executor`,
+  `karbird_archiver`). The executor may only read and update `action_plans`, insert into
   `audit_log`, and read environments and users. Its ClickHouse user is SELECT-only.
 - The archiver (ADR-0015) may only `SELECT` from ClickHouse `logs`, use the `archive_*` tables and
   read `projects`. In object storage, each service has its own S3 identity limited to the
@@ -51,7 +51,7 @@
   propose, admins approve or reject (rejecting requires a comment). API tokens can do neither.
 - Every state change commits together with its audit row. If the audit write fails, the change
   fails.
-- Only `controlhub-executor` touches the observed system. Its demo adapter calls a loopback-only
+- Only `karbird-executor` touches the observed system. Its demo adapter calls a loopback-only
   endpoint and runs `docker` with fixed arguments (no shell) after checking the container's
   compose labels. Web, API and ingest never get the Docker socket. A plan whose executor dies is
   marked failed and never retried automatically.
@@ -60,7 +60,7 @@
 
 - The SDK does not collect bodies, full SQL (`enhancedDatabaseReporting: false`), or the
   Authorization and Cookie headers.
-- ingest applies redaction regardless of what the SDK did (`controlhub-domain/src/redaction.rs`):
+- ingest applies redaction regardless of what the SDK did (`karbird-domain/src/redaction.rs`):
   - Keys containing authorization, cookie, password, secret, token, api_key, credential or session
     are replaced with `[REDACTED]`.
   - Body and statement attributes (`db.statement`, `db.query.text`, `http.*.body`) are dropped.
@@ -71,12 +71,12 @@
 
 ## Secrets and environments
 
-- `just bootstrap` generates every credential randomly into `.controlhub/`, which is gitignored and
+- `just bootstrap` generates every credential randomly into `.karbird/`, which is gitignored and
   written with mode 0600 where the OS supports it. There is no shared default admin.
 - The web app has no `NEXT_PUBLIC_*` configuration. The API URL is server-side only.
-- Dev mode (`CONTROLHUB_ENV=dev`) must be set explicitly, and the API logs a warning at startup.
+- Dev mode (`KARBIRD_ENV=dev`) must be set explicitly, and the API logs a warning at startup.
   The default is production behaviour.
-- Demo fault injection works only when `CONTROLHUB_DEMO_FAULTS=1`, and only from loopback.
+- Demo fault injection works only when `KARBIRD_DEMO_FAULTS=1`, and only from loopback.
 
 ## Headers
 

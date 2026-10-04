@@ -2,12 +2,10 @@
 
 use std::collections::BTreeMap;
 
-use controlhub_domain::model::{event_types, limits};
-use controlhub_domain::redaction::{
-    AttributeDecision, REDACTED, classify_key, mask_bearer, sanitize_attribute, truncate,
-};
-use controlhub_domain::time::{nanos_string, opt_nanos_string};
-use controlhub_protocol::v1::{CustomEvent, CustomEventBatch};
+use karbird_domain::model::{event_types, limits};
+use karbird_domain::redaction::{AttributeDecision, REDACTED, classify_key, mask_bearer, sanitize_attribute, truncate};
+use karbird_domain::time::{nanos_string, opt_nanos_string};
+use karbird_protocol::v1::{CustomEvent, CustomEventBatch};
 use serde::{Deserialize, Serialize};
 
 const MAX_PAYLOAD_JSON: usize = 8 * 1024;

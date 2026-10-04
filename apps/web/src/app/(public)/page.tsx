@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { MapDemo } from "@/components/landing/MapDemo";
-import { otelEnv } from "@/components/integration/snippets";
+import { sdkEnv, sdkInstall, sdkStart } from "@/components/integration/snippets";
 
 const outcomes = [
   {
@@ -20,7 +20,7 @@ const outcomes = [
 const connect = [
   { name: "Create an account", note: "You get a project and an environment straight away." },
   { name: "Create an ingestion token", note: "On the Integration page, scoped to one environment." },
-  { name: "Set your exporter variables", note: "The map fills in as the first spans arrive." },
+  { name: "Start your service with the karbird SDK", note: "The map fills in as the first requests arrive." },
 ];
 
 const trust = [
@@ -30,7 +30,13 @@ const trust = [
   { title: "No guessing on the map", body: "Each dependency says whether it was observed or inferred, and why. Gaps in data are shown as gaps." },
 ];
 
-const envExample = otelEnv({ endpoint: "https://<your-endpoint>/otlp", token: null, serviceName: "checkout" });
+const sdkExample = [
+  sdkInstall(),
+  "",
+  sdkEnv({ endpoint: "https://<your-endpoint>/otlp", token: null, serviceName: "checkout" }),
+  "",
+  sdkStart(),
+].join("\n");
 
 export default function HomePage() {
   return (
@@ -42,8 +48,8 @@ export default function HomePage() {
           </h1>
           <div>
             <p className="max-w-xl text-[17px] leading-relaxed text-muted">
-              ControlHub is a hosted workspace for your distributed system. Send your OpenTelemetry data to our API and get a live
-              service map, a timeline you can rewind, and a safe way to act on what you see.
+              karbird is a hosted workspace for your distributed system. Connect your services with the karbird SDK and get a
+              live service map, a timeline you can rewind, and a safe way to act on what you see.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <Link href="/app/register" className="btn btn-primary h-11 px-5 text-sm">
@@ -71,7 +77,7 @@ export default function HomePage() {
             </h2>
             <p className="mt-4 max-w-md leading-relaxed text-muted">
               Incidents are lost in the first minutes: finding the service, finding when it started, finding the request that shows
-              why. ControlHub puts all three on one screen.
+              why. karbird puts all three on one screen.
             </p>
           </div>
           <ol className="divide-y divide-border border-y border-border">
@@ -94,11 +100,11 @@ export default function HomePage() {
         <div className="mx-auto grid max-w-7xl items-start gap-12 px-6 py-20 lg:grid-cols-2">
           <div>
             <h2 id="connect" className="text-3xl font-bold tracking-[-0.02em] text-balance">
-              Connect over the API. No agent, no migration.
+              One package, one start command. No agent, no code changes.
             </h2>
             <p className="mt-4 max-w-lg leading-relaxed text-muted">
-              Already on OpenTelemetry? Point your exporter at ControlHub. Traces and logs over standard OTLP, events through
-              the REST API, directly from your services or through your existing Collector.
+              Install the karbird SDK for Node.js and load it when your service starts. HTTP requests, PostgreSQL queries,
+              logs and events arrive linked to each other.
             </p>
             <ol className="mt-8 space-y-5">
               {connect.map((s, i) => (
@@ -119,8 +125,8 @@ export default function HomePage() {
           </div>
           <pre className="overflow-x-auto rounded-lg border border-border bg-bg p-5 font-mono text-[13px] leading-relaxed text-text">
             <code>
-              <span className="text-muted"># any OpenTelemetry SDK or Collector{"\n"}</span>
-              {envExample}
+              <span className="text-muted"># karbird SDK for Node.js{"\n"}</span>
+              {sdkExample}
             </code>
           </pre>
         </div>
@@ -150,15 +156,15 @@ export default function HomePage() {
               Give your AI assistant the real picture, read-only.
             </h2>
             <p className="mt-4 max-w-lg leading-relaxed text-muted">
-              The <code className="font-mono text-[0.9em] text-text">controlhub</code> CLI and MCP server hand your coding assistant the
+              The <code className="font-mono text-[0.9em] text-text">karbird</code> CLI and MCP server hand your coding assistant the
               topology, errors and recent history of one environment, with a read-only token. It can look; it cannot change anything.
             </p>
             <pre className="mt-6 overflow-x-auto rounded-lg border border-border bg-bg-2 p-5 font-mono text-[13px] leading-relaxed text-muted">
               <code>
-                <span className="text-text">$ controlhub context --minutes 30</span>
+                <span className="text-text">$ karbird context --minutes 30</span>
                 {"\n\n"}
                 {"# MCP (stdio), read-only token\n"}
-                <span className="text-text">$ controlhub mcp</span>
+                <span className="text-text">$ karbird mcp</span>
               </code>
             </pre>
             <Link href="/integrations" className="mt-6 inline-block text-sm font-semibold underline decoration-border-strong hover:decoration-text">

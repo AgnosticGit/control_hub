@@ -1,4 +1,4 @@
-import type { EntityKindDto } from "@controlhub/web-engine";
+import type { EntityKindDto } from "@karbird/web-engine";
 import { describe, expect, it } from "vitest";
 import { EXTERNAL_COLOR, dashedRect, externalExplanation, externalLabel, isExternalKind, nodeSubLabel } from "./external";
 import { RESOURCE_COLOR, colorAt } from "./service-colors";

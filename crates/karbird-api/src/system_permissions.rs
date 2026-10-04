@@ -1,4 +1,4 @@
-//! ControlHub administrator permissions and built-in system roles. The grant rules are the
+//! karbird administrator permissions and built-in system roles. The grant rules are the
 //! project ones (`crate::permissions`), with the Super Admin in place of the project Owner.
 
 use std::collections::BTreeSet;
@@ -45,7 +45,7 @@ impl PermissionKind for SystemPermission {
         stronger_target: "you cannot change an administrator who has permissions you do not have",
         owner_grants_owner: "only a Super Admin can grant the Super Admin role",
         grant_exceeds_actor: "you can only grant permissions you have yourself",
-        last_owner: "ControlHub needs at least one Super Admin",
+        last_owner: "karbird needs at least one Super Admin",
         owner_invites_owner: "only a Super Admin can grant the Super Admin role",
         invite_exceeds_actor: "you can only grant permissions you have yourself",
         needs_roles_manage: "requires the system.roles.manage permission",
@@ -237,7 +237,7 @@ mod tests {
             assert!(rest[..rest.find(')').unwrap()].contains(&format!("'{}'", b.key())), "{} key", b.name());
             assert_eq!(normalise(b.permissions()), b.permissions(), "closed under implication");
         }
-        assert_eq!(SystemBuiltin::SuperAdmin.key(), controlhub_storage::admin::SUPER_ADMIN);
+        assert_eq!(SystemBuiltin::SuperAdmin.key(), karbird_storage::admin::SUPER_ADMIN);
     }
 
     #[test]
@@ -255,10 +255,7 @@ mod tests {
         );
         let root = actor(&SystemPermission::ALL, true);
         assert_eq!(check_member_change(&root, &sa, &Grant::Remove, 2), Ok(()));
-        assert_eq!(
-            check_member_change(&root, &sa, &Grant::Remove, 1),
-            Err("ControlHub needs at least one Super Admin")
-        );
+        assert_eq!(check_member_change(&root, &sa, &Grant::Remove, 1), Err("karbird needs at least one Super Admin"));
         let me = Target { user_id: root.user_id, is_owner: true, permissions: SystemBuiltin::SuperAdmin.permissions() };
         assert_eq!(
             check_member_change(&root, &me, &Grant::Remove, 5),

@@ -1,12 +1,12 @@
 {
-  "name": "@controlhub/web-engine",
+  "name": "@karbird/web-engine",
   "version": "0.1.0",
   "private": true,
-  "description": "Browser entry for the Rust ControlHub engine (WASM) and its generated types",
+  "description": "Browser entry for the Rust karbird engine (WASM) and its generated types",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./pkg": "./pkg/controlhub_engine.js"
+    "./pkg": "./pkg/karbird_engine.js"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

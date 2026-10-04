@@ -57,8 +57,8 @@ describe("apiSentence", () => {
   });
 
   it("falls back for empty messages and non-API errors", () => {
-    expect(apiSentence(err("conflict: "))).toBe("Cannot reach the ControlHub API.");
-    expect(apiSentence(new Error("boom"))).toBe("Cannot reach the ControlHub API.");
+    expect(apiSentence(err("conflict: "))).toBe("Cannot reach the karbird API.");
+    expect(apiSentence(new Error("boom"))).toBe("Cannot reach the karbird API.");
     expect(apiSentence(null, "Could not save.")).toBe("Could not save.");
   });
 });

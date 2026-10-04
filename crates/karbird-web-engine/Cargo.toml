@@ -1,6 +1,6 @@
 [package]
-name = "controlhub-web-engine"
-description = "wasm-bindgen facade over controlhub-engine-core (runs inside a Web Worker)"
+name = "karbird-web-engine"
+description = "wasm-bindgen facade over karbird-engine-core (runs inside a Web Worker)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,7 +11,7 @@ publish.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-controlhub-engine-core.workspace = true
+karbird-engine-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 wasm-bindgen.workspace = true

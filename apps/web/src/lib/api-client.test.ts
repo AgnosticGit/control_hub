@@ -1,8 +1,8 @@
-// Tests for `@controlhub/api-client` (the package has no test runner of its own).
-import { ApiRequestError, createApiClient, unwrap, unwrapEmpty } from "@controlhub/api-client";
+// Tests for `@karbird/api-client` (the package has no test runner of its own).
+import { ApiRequestError, createApiClient, unwrap, unwrapEmpty } from "@karbird/api-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const BASE = "https://controlhub.test";
+const BASE = "https://karbird.test";
 
 let seen: Request[];
 let reply: () => Response;
@@ -17,7 +17,7 @@ beforeEach(() => {
       return reply();
     }),
   );
-  vi.stubGlobal("document", { cookie: "theme=dark; controlhub_csrf=tok%3D123; other=x" });
+  vi.stubGlobal("document", { cookie: "theme=dark; karbird_csrf=tok%3D123; other=x" });
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -55,7 +55,7 @@ describe("createApiClient", () => {
   });
 
   it("sends no CSRF header when the cookie is missing", async () => {
-    vi.stubGlobal("document", { cookie: "controlhub_csrf_other=x" });
+    vi.stubGlobal("document", { cookie: "karbird_csrf_other=x" });
     const api = createApiClient(BASE);
     await api.POST("/api/v1/session/logout");
     expect(last().headers.has("x-csrf-token")).toBe(false);

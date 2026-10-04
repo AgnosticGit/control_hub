@@ -16,7 +16,7 @@ async function hopsInFrame(page: Page): Promise<[number, number]> {
 
 test.describe("service colours and request focus on demo data", () => {
   test.beforeEach(async ({ page }) => {
-    await login(page, "admin@controlhub.local", WORKSPACE);
+    await login(page, "admin@karbird.local", WORKSPACE);
     await expect(page.getByText("Starting engine…")).toBeHidden();
   });
 

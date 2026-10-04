@@ -7,15 +7,13 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use controlhub_domain::{EntityId, Scope, TraceId};
-use controlhub_engine_core::{
-    EntityKindDto, EventItem, LogItem, ProvenanceDto, RelationKindDto, SpanItem, TimelineItem,
-};
-use controlhub_storage::ch::{
+use karbird_domain::{EntityId, Scope, TraceId};
+use karbird_engine_core::{EntityKindDto, EventItem, LogItem, ProvenanceDto, RelationKindDto, SpanItem, TimelineItem};
+use karbird_storage::ch::{
     CallEdgeRow, EventRow, ExternalClientEdgeRow, LogQuery, LogRow, LogServiceRow, ResourceEdgeRow, ServiceSummaryRow,
     SpanRow, TimelineLogRow, TimelineSpanRow, TraceQuery, TraceSummaryRow,
 };
-use controlhub_storage::pg::WatermarkRow;
+use karbird_storage::pg::WatermarkRow;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -29,8 +27,8 @@ const NS_PER_DAY: i64 = 24 * 60 * NS_PER_MIN;
 const MAX_RANGE_NS: i64 = 7 * NS_PER_DAY;
 /// Log reads that may use the archive. The archive's segment cap bounds the work per request.
 const MAX_ARCHIVE_RANGE_NS: i64 = 31 * NS_PER_DAY;
-const PROCESSOR: &str = "controlhub-processor";
-const TOPIC: &str = "controlhub.telemetry.v1";
+const PROCESSOR: &str = "karbird-processor";
+const TOPIC: &str = "karbird.telemetry.v1";
 
 pub(crate) fn now_ns() -> i64 {
     chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
@@ -96,7 +94,7 @@ pub struct Completeness {
     pub unresolved_processing_errors: i64,
     /// The response hit a row limit; more data exists in the range.
     pub truncated: bool,
-    /// Sampling configured in SDKs is not reported to ControlHub yet.
+    /// Sampling configured in SDKs is not reported to karbird yet.
     pub sampling: String,
     pub notes: Vec<String>,
 }
@@ -613,7 +611,7 @@ fn log_dto(l: LogRow) -> LogDto {
     }
 }
 
-fn event_dto(e: controlhub_storage::ch::EventRow) -> EventDto {
+fn event_dto(e: karbird_storage::ch::EventRow) -> EventDto {
     EventDto {
         id: e.event_id,
         event_type: e.event_type,
@@ -1120,7 +1118,8 @@ pub async fn coverage(
     Ok(Json(CoverageResponse {
         services: svc.services,
         unsupported: vec![
-            "OTLP metrics ingestion (not implemented yet)".into(),
+            "OTLP metrics: only gauges and sums (machine and container metrics); histograms and summaries are rejected"
+                .into(),
             "OTLP/HTTP JSON encoding (protobuf only)".into(),
             "SDK sampling configuration is not reported; sampled-out requests are invisible".into(),
             "Uninstrumented services/resources appear only as inferred dependencies, if at all".into(),
@@ -1778,9 +1777,9 @@ mod tests {
     #[test]
     fn external_clients_id_is_stable_per_environment_and_scoped() {
         let scope = |e: &str| Scope {
-            tenant_id: controlhub_domain::TenantId::parse("t-1").unwrap(),
-            project_id: controlhub_domain::ProjectId::parse("p-1").unwrap(),
-            environment_id: controlhub_domain::EnvironmentId::parse(e).unwrap(),
+            tenant_id: karbird_domain::TenantId::parse("t-1").unwrap(),
+            project_id: karbird_domain::ProjectId::parse("p-1").unwrap(),
+            environment_id: karbird_domain::EnvironmentId::parse(e).unwrap(),
         };
         assert_eq!(external_clients_id(&scope("e-1")), external_clients_id(&scope("e-1")));
         assert_ne!(external_clients_id(&scope("e-1")), external_clients_id(&scope("e-2")));

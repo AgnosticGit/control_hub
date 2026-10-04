@@ -1,6 +1,6 @@
 [package]
-name = "controlhub-api"
-description = "ControlHub query/control REST API, sessions and local bootstrap"
+name = "karbird-api"
+description = "karbird query/control REST API, sessions and local bootstrap"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,11 +8,11 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-controlhub-domain.workspace = true
-controlhub-storage.workspace = true
-controlhub-runtime.workspace = true
-controlhub-actions.workspace = true
-controlhub-engine-core = { workspace = true, features = ["openapi"] }
+karbird-domain.workspace = true
+karbird-storage.workspace = true
+karbird-runtime.workspace = true
+karbird-actions.workspace = true
+karbird-engine-core = { workspace = true, features = ["openapi"] }
 anyhow.workspace = true
 axum.workspace = true
 base64.workspace = true

@@ -18,7 +18,7 @@ test("injected errors in orders show up as a failing component and error traces"
   test.setTimeout(120_000);
   await setFault(150, 0.6);
   try {
-    await login(page, "admin@controlhub.local", "/app/demo/local-demo");
+    await login(page, "admin@karbird.local", "/app/demo/local-demo");
     await page.getByRole("checkbox", { name: "Table view" }).check();
     const ordersRow = page.getByRole("row").filter({ has: page.getByRole("button", { name: "orders", exact: true }) });
     await expect(ordersRow).toContainText(/Degraded|Failing/, { timeout: 60_000 });

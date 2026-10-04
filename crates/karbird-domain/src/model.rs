@@ -47,13 +47,13 @@ pub enum RelationKind {
 pub enum Provenance {
     /// Directly seen in telemetry (e.g. parent/child spans across services).
     Observed,
-    /// Declared by configuration (e.g. `controlhub.yaml`).
+    /// Declared by configuration (e.g. `karbird.yaml`).
     Declared,
     /// Derived from indirect evidence; always accompanied by reasons.
     Inferred,
 }
 
-/// Health as far as ControlHub can tell. `Unknown` is a first-class value:
+/// Health as far as karbird can tell. `Unknown` is a first-class value:
 /// absence of data is never displayed as healthy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]

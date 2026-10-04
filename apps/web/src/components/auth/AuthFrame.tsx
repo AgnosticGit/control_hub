@@ -34,11 +34,11 @@ export function AuthFrame({ children }: { children: ReactNode }) {
       <div className="flex flex-col px-6 py-8 sm:px-12">
         <Link href="/" className="flex items-center gap-2.5 self-start text-[17px] font-bold tracking-[-0.01em]">
           <Logo />
-          ControlHub
+          karbird
         </Link>
         <div className="flex flex-1 items-center justify-center py-12">{children}</div>
       </div>
-      <aside className="hidden flex-col justify-center gap-10 border-l border-border bg-bg-2 px-12 lg:flex" aria-label="About ControlHub">
+      <aside className="hidden flex-col justify-center gap-10 border-l border-border bg-bg-2 px-12 lg:flex" aria-label="About karbird">
         <Diagram />
         <ul className="max-w-sm space-y-4">
           {FACTS.map((f) => (

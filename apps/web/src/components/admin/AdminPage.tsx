@@ -70,7 +70,7 @@ export function AdminPage() {
       <header className="flex h-14 items-center gap-3 border-b border-border bg-bg-2/60 px-5">
         <Link href="/app" className="flex items-center gap-2.5 text-[17px] font-semibold tracking-tight">
           <Logo />
-          ControlHub
+          karbird
         </Link>
         <span className="badge border-accent/50 bg-accent/10 text-accent">Admin</span>
         <span className="ml-auto text-xs text-muted">
@@ -86,9 +86,9 @@ export function AdminPage() {
       </header>
       <main className="mx-auto max-w-6xl space-y-5 p-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">ControlHub administration</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">karbird administration</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted">
-            Every project, account and administrator of this ControlHub. Administrator roles work like project roles: you can only
+            Every project, account and administrator of this karbird. Administrator roles work like project roles: you can only
             grant what you have yourself, only a Super Admin changes a Super Admin, and one Super Admin always remains. Every change is
             recorded in the audit log.
           </p>
@@ -909,7 +909,7 @@ function AuditTab({ system }: { system: SystemAccess }) {
     queryKey: ["admin", "audit", project],
     queryFn: async () => unwrap(await api.GET("/api/v1/admin/audit", { params: { query: { project_id: project || undefined } } })),
   });
-  const projectName = (id: string | null | undefined) => (id ? (projects.data?.find((p) => p.id === id)?.name ?? id) : "ControlHub");
+  const projectName = (id: string | null | undefined) => (id ? (projects.data?.find((p) => p.id === id)?.name ?? id) : "karbird");
 
   return (
     <div className="space-y-3">
@@ -917,7 +917,7 @@ function AuditTab({ system }: { system: SystemAccess }) {
         <label className="flex max-w-sm flex-col gap-1.5 text-sm">
           <span className="label">Project</span>
           <select value={project} onChange={(e) => setProject(e.target.value)} className="select h-9 text-sm">
-            <option value="">All projects and ControlHub</option>
+            <option value="">All projects and karbird</option>
             {projects.data.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}

@@ -1,7 +1,7 @@
 // How systems outside the project (third-party APIs it calls, uninstrumented callers such as a
 // browser frontend) look on the map and in the inspector. Pure, no Pixi, unit-tested.
 
-import type { EntityKindDto } from "@controlhub/web-engine";
+import type { EntityKindDto } from "@karbird/web-engine";
 import { build, dashes } from "./edge-path";
 
 /** Light and neutral: no service uses it, and it never reads as a health status. */

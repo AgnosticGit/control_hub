@@ -5,12 +5,12 @@ The timeline and topology engine must be deterministic and fast, and must not bl
 thread. The same code should also run natively for tests and benchmarks.
 
 ## Decision
-- `controlhub-engine-core` is pure Rust with no I/O. `controlhub-web-engine` wraps it with
+- `karbird-engine-core` is pure Rust with no I/O. `karbird-web-engine` wraps it with
   wasm-bindgen (`--target web`).
 - It runs inside a dedicated Web Worker. Frames are flat typed arrays that are *transferred*
   (not copied) to the UI thread.
 - `scripts/build-wasm.mjs` builds with the `wasm-release` profile and copies the module to
-  `apps/web/public/wasm/controlhub_engine.<sha256-16>.wasm`. It also writes
+  `apps/web/public/wasm/karbird_engine.<sha256-16>.wasm`. It also writes
   `src/generated/wasm-manifest.ts` (URL, SHA-256, size), and `/wasm/*` is served as immutable.
 - `ENGINE_ABI_VERSION` is compiled into both Rust and TS, and the Worker refuses to start if they
   differ.

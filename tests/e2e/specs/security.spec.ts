@@ -23,7 +23,7 @@ test.describe("security headers", () => {
   // (e.g. set the header from proxy.ts, which runs after Next's defaults) and a check against
   // a production build.
   test("private pages are sent with Cache-Control: no-store", async ({ page }) => {
-    await login(page, "admin@controlhub.local", "/app");
+    await login(page, "admin@karbird.local", "/app");
     for (const path of ["/app", "/app/login", "/app/demo/local-demo", "/app/demo/local-demo/actions"]) {
       const res = await page.request.get(path);
       const cc = res.headers()["cache-control"] ?? "";
@@ -35,7 +35,7 @@ test.describe("security headers", () => {
   });
 
   test("API responses stay no-store through the web proxy", async ({ page }) => {
-    await login(page, "admin@controlhub.local", "/app");
+    await login(page, "admin@karbird.local", "/app");
     for (const path of ["/api/v1/session", "/api/v1/projects/demo/environments/local-demo/services"]) {
       const res = await page.request.get(path);
       expect(res.status(), path).toBe(200);
@@ -45,7 +45,7 @@ test.describe("security headers", () => {
   });
 
   test("private pages are noindex and get a fresh CSP nonce per request", async ({ page }) => {
-    await login(page, "admin@controlhub.local", "/app");
+    await login(page, "admin@karbird.local", "/app");
     const nonces: string[] = [];
     for (const path of ["/app/demo/local-demo", "/app/demo/local-demo", "/app/demo/local-demo/actions", "/app/login"]) {
       const res = await page.request.get(path);
@@ -102,7 +102,7 @@ test.describe("untrusted telemetry", () => {
       dialog = true;
       void d.dismiss();
     });
-    await login(page, "isolation@controlhub.local", "/app/isolation/isolation-test");
+    await login(page, "isolation@karbird.local", "/app/isolation/isolation-test");
     const panel = page.getByRole("region", { name: "Signals" });
     await panel.getByLabel("Search log text").fill(`payload-${id}`);
     const records = panel.getByLabel("Log records");

@@ -70,8 +70,8 @@ test('sign-up creates an owner of a fresh, non-demo project and signs in', async
 test('sign-up sets the same hardened cookies as login', async () => {
   const r = await register({ email: email(), password: PASSWORD });
   assert.equal(r.status, 201);
-  const session = r.cookies.find((c) => c.startsWith('controlhub_session='));
-  const csrf = r.cookies.find((c) => c.startsWith('controlhub_csrf='));
+  const session = r.cookies.find((c) => c.startsWith('karbird_session='));
+  const csrf = r.cookies.find((c) => c.startsWith('karbird_csrf='));
   assert.ok(session && csrf, JSON.stringify(r.cookies));
   assert.match(session, /HttpOnly/);
   assert.match(session, /SameSite=Strict/);
@@ -123,7 +123,7 @@ test('a new tenant cannot see the demo or other tenants, and they cannot see it'
     assert.equal((await session.json(`${other}/tokens`)).status, 404, other);
   }
   const admin = new Session();
-  await admin.login('admin@controlhub.local');
+  await admin.login('admin@karbird.local');
   assert.equal((await admin.json(`${scope}/services`)).status, 404, 'demo owner cannot read the new tenant');
   assert.equal((await admin.mutate(`${scope}/tokens`, { kind: 'ingest', name: 'intrude' })).status, 404);
   const projects = await admin.json('/api/v1/projects');
@@ -165,7 +165,7 @@ test('the new owner needs CSRF to create tokens, and telemetry sent via /otlp re
     assert.ok(r.body.services.some((s) => s.name === service), JSON.stringify(r.body.services.map((s) => s.name)));
   });
   const admin = new Session();
-  await admin.login('admin@controlhub.local');
+  await admin.login('admin@karbird.local');
   const demo = await admin.json(`${DEMO}/services`);
   assert.ok(!demo.body.services.some((s) => s.name === service), 'not visible in the demo tenant');
 });
@@ -178,5 +178,5 @@ test('the web proxy forwards only OTLP paths to ingest', async () => {
     headers: { authorization: 'Bearer chi_wrong', 'content-type': 'application/x-protobuf' },
     body: Buffer.alloc(0),
   });
-  assert.equal(metrics.status, 501, 'reaches ingest, which refuses metrics explicitly');
+  assert.equal(metrics.status, 401, 'reaches ingest, which checks the token first');
 });

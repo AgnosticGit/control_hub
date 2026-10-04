@@ -1,5 +1,8 @@
 # ADR-0014: OTLP metrics are not ingested (yet); service metrics come from spans
 
+**Status: superseded by [ADR-0018](0018-infrastructure-metrics.md)** (machine and container
+metrics are ingested; RED metrics still come from spans).
+
 ## Decision
 - `POST /v1/metrics` (HTTP) and the gRPC metrics service stay explicitly **unimplemented**: HTTP
   answers 501, gRPC `UNIMPLEMENTED`. Nothing is accepted and silently dropped.

@@ -9,7 +9,7 @@ test("operator proposes, a different admin approves, the executor runs and verif
 
   const opCtx = await browser.newContext();
   const op = await opCtx.newPage();
-  await login(op, "operator@controlhub.local", WORKSPACE);
+  await login(op, "operator@karbird.local", WORKSPACE);
   await op.getByRole("link", { name: "Actions" }).click();
   await expect(op.getByRole("heading", { name: /Actions/ })).toBeVisible();
   const form = op.getByRole("form", { name: "Propose action" });
@@ -21,12 +21,12 @@ test("operator proposes, a different admin approves, the executor runs and verif
   const detail = op.getByRole("region", { name: "Plan detail" });
   await expect(detail.getByRole("heading", { level: 2 })).toContainText("proposed");
   await expect(detail).toContainText("✓ demo environment");
-  const opRow = op.getByRole("table", { name: "Action plans" }).getByRole("row").filter({ hasText: "operator@controlhub.local" }).first();
+  const opRow = op.getByRole("table", { name: "Action plans" }).getByRole("row").filter({ hasText: "operator@karbird.local" }).first();
   await expect(opRow.getByRole("button", { name: "Approve" })).toHaveCount(0);
 
   const adminCtx = await browser.newContext();
   const admin = await adminCtx.newPage();
-  await login(admin, "admin@controlhub.local", `${WORKSPACE}/actions`);
+  await login(admin, "admin@karbird.local", `${WORKSPACE}/actions`);
   const row = admin.getByRole("table", { name: "Action plans" }).getByRole("row").filter({ hasText: "proposed" }).filter({ hasText: "gateway" });
   await expect(row).toHaveCount(1);
   admin.once("dialog", (d) => void d.accept());
@@ -47,7 +47,7 @@ test("admin rejects an operator's plan with a required comment; the operator see
   const reason = `e2e reject ${Date.now()}`;
   const opCtx = await browser.newContext();
   const op = await opCtx.newPage();
-  await login(op, "operator@controlhub.local", `${WORKSPACE}/actions`);
+  await login(op, "operator@karbird.local", `${WORKSPACE}/actions`);
   const form = op.getByRole("form", { name: "Propose action" });
   await form.getByLabel("Action").selectOption("demo.faults.clear");
   await form.getByLabel("Target").selectOption("orders");
@@ -62,7 +62,7 @@ test("admin rejects an operator's plan with a required comment; the operator see
 
   const adminCtx = await browser.newContext();
   const admin = await adminCtx.newPage();
-  await login(admin, "admin@controlhub.local", `${WORKSPACE}/actions`);
+  await login(admin, "admin@karbird.local", `${WORKSPACE}/actions`);
   const row = admin.getByRole("table", { name: "Action plans" }).getByRole("row").filter({ hasText: "proposed" }).filter({ hasText: "orders" });
   await expect(row).toHaveCount(1);
 
@@ -90,7 +90,7 @@ test("admin rejects an operator's plan with a required comment; the operator see
 });
 
 test("viewer sees plans but cannot propose", async ({ page }) => {
-  await login(page, "viewer@controlhub.local", `${WORKSPACE}/actions`);
+  await login(page, "viewer@karbird.local", `${WORKSPACE}/actions`);
   await expect(page.getByText("Your role in this project does not include proposing actions.")).toBeVisible();
   await expect(page.getByRole("table", { name: "Action plans" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);

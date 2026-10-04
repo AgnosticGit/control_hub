@@ -16,7 +16,7 @@ export function isPublicAppPath(pathname: string): boolean {
 //    authentication and authorization happen in the Rust API on every call.
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (!isPublicAppPath(pathname) && !request.cookies.has("controlhub_session")) {
+  if (!isPublicAppPath(pathname) && !request.cookies.has("karbird_session")) {
     const url = request.nextUrl.clone();
     url.pathname = "/app/login";
     url.search = `?next=${encodeURIComponent(pathname)}`;

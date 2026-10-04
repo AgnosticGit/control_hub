@@ -4,7 +4,7 @@ import type { components, paths } from "./generated/schema";
 export type { components, paths };
 export type Schemas = components["schemas"];
 
-const CSRF_COOKIE = "controlhub_csrf";
+const CSRF_COOKIE = "karbird_csrf";
 const CSRF_HEADER = "x-csrf-token";
 
 function readCookie(name: string): string | null {
@@ -27,7 +27,7 @@ const csrf: Middleware = {
 };
 
 /**
- * Browser client for the ControlHub REST API. Uses same-origin requests with
+ * Browser client for the karbird REST API. Uses same-origin requests with
  * the HttpOnly session cookie; the CSRF double-submit header is added to
  * every mutation automatically.
  */

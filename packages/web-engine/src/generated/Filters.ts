@@ -10,4 +10,9 @@ trace_only: boolean,
  * Service node IDs switched off by the user: dimmed on the map, left out of the timeline
  * aggregates. Dependencies whose every caller is muted are dimmed too.
  */
-muted_services: Array<string>, };
+muted_services: Array<string>, 
+/**
+ * Infrastructure layer: service cards are grouped into machine frames (see
+ * [`InfrastructureSnapshot`]); without a snapshot the layered layout stays.
+ */
+infrastructure: boolean, };

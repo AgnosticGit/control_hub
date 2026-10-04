@@ -24,7 +24,7 @@ Date: 2026-09-29. Status: approved by the user in chat ("Делай").
 
 ## Design
 
-### Engine (`controlhub-engine-core`)
+### Engine (`karbird-engine-core`)
 
 - `Filters.muted_services: Vec<String>` (node IDs, `serde(default)`).
 - A node is dimmed when it is a muted service, or a resource/dependency whose every caller is

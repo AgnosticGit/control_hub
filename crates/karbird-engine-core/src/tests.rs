@@ -1087,3 +1087,107 @@ fn tracks_for_an_empty_window_are_empty() {
     assert_eq!(t.requests, vec![0; 4]);
     assert!(t.clips.is_empty());
 }
+
+// ---------------------------------------------------------------- infrastructure layer
+
+fn infra_json() -> String {
+    serde_json::json!({
+        "at_ns": (BASE + 5 * SEC).to_string(),
+        "window_ns": (120 * SEC).to_string(),
+        "hosts": [
+            {"id": "vps-app", "name": "vps-app", "has_metrics": true, "cpu_utilization": 0.92,
+             "memory_used_bytes": 912_261_120.0, "memory_total_bytes": 1_073_741_824.0, "containers": []},
+            {"id": "vps-worker", "name": "vps-worker", "has_metrics": true, "cpu_utilization": 0.2, "containers": []}
+        ],
+        "instances": [
+            {"service_id": "svc_gateway", "service_name": "gateway", "instance_id": "g1", "host_id": "vps-app", "match_reason": "container_id", "requests": 3},
+            {"service_id": "svc_orders", "service_name": "orders", "instance_id": "o1", "host_id": "vps-worker", "match_reason": "host_name", "requests": 3},
+            {"service_id": "svc_orders", "service_name": "orders", "instance_id": "o2", "host_id": "vps-app", "match_reason": "host_name", "requests": 3},
+            {"service_id": "svc_orders", "service_name": "orders", "instance_id": "o3", "host_id": "vps-worker", "match_reason": "host_name", "requests": 3}
+        ],
+        "hints": [],
+        "notes": []
+    })
+    .to_string()
+}
+
+fn infra_on(e: &mut Engine, on: bool) {
+    e.set_filters(Filters { infrastructure: on, ..Filters::default() });
+}
+
+#[test]
+fn infrastructure_layer_moves_cards_into_machine_frames_and_back() {
+    let mut e = engine_with(demo_items());
+    e.seek(BASE + 5 * SEC, 1);
+    let layered = e.topology();
+    assert!(layered.infra.is_none());
+    e.set_infrastructure_json(&infra_json()).unwrap();
+    assert_eq!(e.topology().revision, layered.revision, "a snapshot alone does not change the map");
+
+    infra_on(&mut e, true);
+    let topo = e.topology();
+    assert!(topo.revision > layered.revision, "the renderer must redraw");
+    let view = topo.infra.as_ref().unwrap();
+    let frame = |id: &str| view.frames.iter().find(|f| f.host_id == id).unwrap();
+    assert_eq!(frame("vps-app").label, "vps-app · CPU 92% · RAM 870/1024 MB");
+    let gateway = topo.nodes.iter().find(|n| n.id == "svc_gateway").unwrap();
+    let app = frame("vps-app");
+    assert!(gateway.x > app.x && gateway.x < app.x + app.width && gateway.y > app.y && gateway.y < app.y + app.height);
+    assert_eq!(view.badges, vec![InfraBadge { node: 1, count: 3, hosts: 2 }]);
+    assert_eq!(view.chips.len(), 3);
+    assert!(topo.edges.iter().all(|edge| edge.points.is_empty()), "no layered corridors inside frames");
+
+    // Frames drive the frame geometry too, not only the topology view.
+    let vs = e.visible_state();
+    let i = vs.node_indices.iter().position(|&n| n == 0).unwrap();
+    assert_eq!((vs.node_data[i * NODE_STRIDE], vs.node_data[i * NODE_STRIDE + 1]), (gateway.x, gateway.y));
+    assert_eq!(e.pick(gateway.x, gateway.y).as_deref(), Some("svc_gateway"));
+    let chip = &view.chips[0];
+    assert_eq!(e.pick(chip.x + 60.0, chip.y).as_deref(), Some("svc_orders"), "chips pick their service");
+
+    infra_on(&mut e, false);
+    let back = e.topology();
+    assert!(back.infra.is_none());
+    let g = back.nodes.iter().find(|n| n.id == "svc_gateway").unwrap();
+    let g0 = layered.nodes.iter().find(|n| n.id == "svc_gateway").unwrap();
+    assert_eq!((g.x, g.y), (g0.x, g0.y), "switching off restores the layered layout");
+}
+
+#[test]
+fn infrastructure_layer_without_a_snapshot_keeps_the_layered_layout() {
+    let mut e = engine_with(demo_items());
+    let before = e.topology();
+    infra_on(&mut e, true);
+    let topo = e.topology();
+    assert!(topo.infra.is_none());
+    assert_eq!(
+        topo.nodes.iter().map(|n| (n.x, n.y)).collect::<Vec<_>>(),
+        before.nodes.iter().map(|n| (n.x, n.y)).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn identical_snapshots_do_not_bump_the_revision_and_bad_json_is_rejected() {
+    let mut e = engine_with(demo_items());
+    infra_on(&mut e, true);
+    e.set_infrastructure_json(&infra_json()).unwrap();
+    let r = e.topology().revision;
+    e.set_infrastructure_json(&infra_json()).unwrap();
+    assert_eq!(e.topology().revision, r);
+    assert!(matches!(e.set_infrastructure_json("{\"hosts\": 5}"), Err(EngineError::InvalidInput(_))));
+    assert_eq!(e.topology().revision, r, "a rejected snapshot changes nothing");
+}
+
+#[test]
+fn nodes_discovered_later_are_placed_after_relayout() {
+    let mut e = engine_with(demo_items());
+    infra_on(&mut e, true);
+    e.set_infrastructure_json(&infra_json()).unwrap();
+    e.apply_batch(Batch { items: vec![TimelineItem::Span(span("t9", "x1", None, "payments", 2, 0, SEC, false))] })
+        .unwrap();
+    let topo = e.topology();
+    let view = topo.infra.as_ref().unwrap();
+    let right = view.frames.iter().map(|f| f.x + f.width).fold(0.0f32, f32::max);
+    let payments = topo.nodes.iter().find(|n| n.id == "svc_payments").unwrap();
+    assert!(payments.x > right, "a service on no known machine sits right of the frames");
+}

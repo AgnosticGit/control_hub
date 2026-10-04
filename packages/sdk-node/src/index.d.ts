@@ -1,26 +1,31 @@
-export interface ControlHubOptions {
-  /** Defaults to CONTROLHUB_SERVICE_NAME / OTEL_SERVICE_NAME. */
+export interface KarbirdOptions {
+  /** Defaults to KARBIRD_SERVICE_NAME / OTEL_SERVICE_NAME. */
   serviceName?: string;
   serviceNamespace?: string;
   serviceVersion?: string;
+  /** Defaults to KARBIRD_SERVICE_INSTANCE_ID, then `<host.name>-<pid>`. */
   serviceInstanceId?: string;
   /** Deployment environment label (e.g. `local-demo`). */
   environment?: string;
-  /** Base OTLP/HTTP endpoint, defaults to CONTROLHUB_OTLP_ENDPOINT or http://127.0.0.1:4318. */
+  /** Base OTLP/HTTP endpoint, defaults to KARBIRD_OTLP_ENDPOINT or http://127.0.0.1:4318. */
   endpoint?: string;
-  /** Scoped ingestion token, defaults to CONTROLHUB_INGEST_TOKEN. */
+  /** Scoped ingestion token, defaults to KARBIRD_INGEST_TOKEN. */
   token?: string;
   /** Emit request.started / request.completed events (default true). */
   requestEvents?: boolean;
   /** Incoming request paths that are not traced. */
   ignorePaths?: string[];
+  /** `host.name`; defaults to KARBIRD_HOST_NAME, then the OS hostname. Must match the Karbird agent's host name. */
+  hostName?: string;
+  /** `container.id`; defaults to KARBIRD_CONTAINER_ID, then /proc/self/cgroup or mountinfo. */
+  containerId?: string;
   /** Allow starting when another OpenTelemetry provider is already registered. */
   allowExistingOpenTelemetry?: boolean;
 }
 
 export type Attributes = Record<string, string | number | boolean>;
 
-export interface ControlHubLogger {
+export interface KarbirdLogger {
   debug(message: string, attributes?: Attributes): void;
   info(message: string, attributes?: Attributes): void;
   warn(message: string, attributes?: Attributes): void;
@@ -43,8 +48,8 @@ export interface EventsStats {
   pending: number;
 }
 
-export interface ControlHubHandle {
-  logger: ControlHubLogger;
+export interface KarbirdHandle {
+  logger: KarbirdLogger;
   events: { emit(eventType: string, fields?: EventFields): void };
   diagnostics(): {
     serviceName: string;
@@ -55,5 +60,5 @@ export interface ControlHubHandle {
   shutdown(): Promise<void>;
 }
 
-export function getControlHub(): ControlHubHandle | null;
-export function startControlHub(options?: ControlHubOptions): ControlHubHandle;
+export function getKarbird(): KarbirdHandle | null;
+export function startKarbird(options?: KarbirdOptions): KarbirdHandle;

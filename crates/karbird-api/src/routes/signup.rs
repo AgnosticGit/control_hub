@@ -9,8 +9,8 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use controlhub_storage::pg::NewAccount;
-use controlhub_storage::secrets::hash_password;
+use karbird_storage::pg::NewAccount;
+use karbird_storage::secrets::hash_password;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 use utoipa::ToSchema;
@@ -173,7 +173,7 @@ pub async fn register(
         .ok_or(ApiError::Conflict("an account with this email already exists"))?;
     let _ = state
         .pg
-        .audit(controlhub_storage::pg::NewAuditEntry {
+        .audit(karbird_storage::pg::NewAuditEntry {
             tenant_id: Some(created.scope.tenant_id.as_str()),
             project_id: Some(created.scope.project_id.as_str()),
             actor_id: &created.user_id.to_string(),

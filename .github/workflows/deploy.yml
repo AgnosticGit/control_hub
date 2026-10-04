@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       setup_hosts:
-        description: "Prepare fresh hosts first (Docker, swap, /opt/controlhub)"
+        description: "Prepare fresh hosts first (Docker, swap, /opt/karbird)"
         type: boolean
         default: false
       shrink_retention:
@@ -40,10 +40,10 @@ jobs:
       - uses: actions/checkout@v4
       - id: meta
         env:
-          CONTROLHUB_DOMAIN: ${{ vars.CONTROLHUB_DOMAIN }}
+          KARBIRD_DOMAIN: ${{ vars.KARBIRD_DOMAIN }}
         run: |
-          if [[ -z "$CONTROLHUB_DOMAIN" ]]; then
-            echo "::error::Set the repository variable CONTROLHUB_DOMAIN (docs/operations/deploy.md)"; exit 1
+          if [[ -z "$KARBIRD_DOMAIN" ]]; then
+            echo "::error::Set the repository variable KARBIRD_DOMAIN (docs/operations/deploy.md)"; exit 1
           fi
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then v="$GITHUB_REF_NAME"; else v="sha-${GITHUB_SHA::12}"; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
@@ -58,7 +58,7 @@ jobs:
         env:
           REGISTRY: ${{ steps.meta.outputs.image_prefix }}
           VERSION: ${{ steps.meta.outputs.version }}
-          SITE_URL: https://${{ vars.CONTROLHUB_DOMAIN }}
+          SITE_URL: https://${{ vars.KARBIRD_DOMAIN }}
         with:
           source: .
           files: deploy/docker-bake.hcl
@@ -73,9 +73,9 @@ jobs:
     runs-on: ubuntu-24.04
     environment: production
     env:
-      CONTROLHUB_VERSION: ${{ needs.images.outputs.version }}
+      KARBIRD_VERSION: ${{ needs.images.outputs.version }}
       IMAGE_PREFIX: ${{ needs.images.outputs.image_prefix }}
-      CONTROLHUB_DOMAIN: ${{ vars.CONTROLHUB_DOMAIN }}
+      KARBIRD_DOMAIN: ${{ vars.KARBIRD_DOMAIN }}
       SHRINK: ${{ inputs.shrink_retention && '--shrink-retention' || '' }}
     steps:
       - uses: actions/checkout@v4
@@ -85,14 +85,17 @@ jobs:
 
       - name: Render host configuration
         env:
-          CONTROLHUB_SECRET_SEED: ${{ secrets.CONTROLHUB_SECRET_SEED }}
-          CONTROLHUB_OWNER_EMAIL: ${{ secrets.CONTROLHUB_OWNER_EMAIL }}
-          CONTROLHUB_OWNER_PASSWORD: ${{ secrets.CONTROLHUB_OWNER_PASSWORD }}
+          KARBIRD_SECRET_SEED: ${{ secrets.KARBIRD_SECRET_SEED }}
+          KARBIRD_OWNER_EMAIL: ${{ secrets.KARBIRD_OWNER_EMAIL }}
+          KARBIRD_OWNER_PASSWORD: ${{ secrets.KARBIRD_OWNER_PASSWORD }}
           STORAGE_PRIVATE_IP: ${{ vars.STORAGE_PRIVATE_IP }}
           ACME_EMAIL: ${{ vars.ACME_EMAIL }}
-          CONTROLHUB_LOGS_RETENTION_DAYS: ${{ vars.CONTROLHUB_LOGS_RETENTION_DAYS }}
-          CONTROLHUB_SPANS_RETENTION_DAYS: ${{ vars.CONTROLHUB_SPANS_RETENTION_DAYS }}
-          CONTROLHUB_EVENTS_RETENTION_DAYS: ${{ vars.CONTROLHUB_EVENTS_RETENTION_DAYS }}
+          KARBIRD_LOGS_RETENTION_DAYS: ${{ vars.KARBIRD_LOGS_RETENTION_DAYS }}
+          KARBIRD_SPANS_RETENTION_DAYS: ${{ vars.KARBIRD_SPANS_RETENTION_DAYS }}
+          KARBIRD_EVENTS_RETENTION_DAYS: ${{ vars.KARBIRD_EVENTS_RETENTION_DAYS }}
+          KARBIRD_METRICS_RETENTION_DAYS: ${{ vars.KARBIRD_METRICS_RETENTION_DAYS }}
+          KARBIRD_SIGNUP: ${{ vars.KARBIRD_SIGNUP }}
+          KARBIRD_SIGNUP_PER_HOUR: ${{ vars.KARBIRD_SIGNUP_PER_HOUR }}
         run: |
           echo "OUT=$RUNNER_TEMP/deploy" >> "$GITHUB_ENV"
           node scripts/deploy-config.mjs "$RUNNER_TEMP/deploy"
@@ -119,8 +122,8 @@ jobs:
         if: inputs.setup_hosts
         run: |
           for h in storage app; do
-            scp deploy/host-setup.sh "$h":/tmp/controlhub-host-setup.sh
-            ssh "$h" 'bash /tmp/controlhub-host-setup.sh && rm /tmp/controlhub-host-setup.sh'
+            scp deploy/host-setup.sh "$h":/tmp/karbird-host-setup.sh
+            ssh "$h" 'bash /tmp/karbird-host-setup.sh && rm /tmp/karbird-host-setup.sh'
           done
 
       - name: Registry login on the hosts
@@ -133,31 +136,31 @@ jobs:
 
       - name: Storage host (databases, object storage, migrations)
         run: |
-          scp deploy/compose.storage.yaml "$OUT/storage/.env" "$OUT/storage/owner.env" "$OUT/storage/seaweedfs-s3.json" storage:/opt/controlhub/
+          scp deploy/compose.storage.yaml "$OUT/storage/.env" "$OUT/storage/owner.env" "$OUT/storage/seaweedfs-s3.json" storage:/opt/karbird/
           # shellcheck disable=SC2029 # SHRINK is the runner's input, expanded before ssh on purpose
           ssh storage "SHRINK='$SHRINK' bash -s" <<'EOF'
           set -euo pipefail
-          cd /opt/controlhub
+          cd /opt/karbird
           chmod 600 .env owner.env seaweedfs-s3.json
           dc() { docker compose -f compose.storage.yaml "$@"; }
           dc pull --quiet
           dc up -d --wait --wait-timeout 900 --remove-orphans
           # The script arrives on stdin: every docker command that reads stdin gets </dev/null,
           # otherwise it swallows the rest of the script and bash exits 0 without running it.
-          dc exec -T seaweedfs sh -c "echo s3.bucket.list | weed shell -master=localhost:9333 | grep -q controlhub-archive || echo 's3.bucket.create -name controlhub-archive' | weed shell -master=localhost:9333" </dev/null
+          dc exec -T seaweedfs sh -c "echo s3.bucket.list | weed shell -master=localhost:9333 | grep -q karbird-archive || echo 's3.bucket.create -name karbird-archive' | weed shell -master=localhost:9333" </dev/null
           dc run --rm --pull always migrate migrate $SHRINK </dev/null
           admin=$(grep '^CH_PG_ADMIN_USER=' .env | cut -d= -f2-)
-          dc exec -T postgres psql -U "$admin" -d controlhub -tAc "SELECT to_regclass('public.users') IS NOT NULL" </dev/null | grep -qx t \
+          dc exec -T postgres psql -U "$admin" -d karbird -tAc "SELECT to_regclass('public.users') IS NOT NULL" </dev/null | grep -qx t \
             || { echo "::error::migrate did not create the schema"; exit 1; }
           echo "storage ready, schema migrated"
           EOF
 
       - name: App host (Kafka, services, web, Caddy)
         run: |
-          scp deploy/compose.app.yaml deploy/Caddyfile "$OUT/app/.env" app:/opt/controlhub/
+          scp deploy/compose.app.yaml deploy/Caddyfile "$OUT/app/.env" app:/opt/karbird/
           ssh app 'bash -s' <<'EOF'
           set -euo pipefail
-          cd /opt/controlhub
+          cd /opt/karbird
           chmod 600 .env
           docker compose -f compose.app.yaml pull --quiet </dev/null
           docker compose -f compose.app.yaml up -d --wait --wait-timeout 900 --remove-orphans </dev/null
@@ -172,6 +175,6 @@ jobs:
 
       - name: Smoke test through the public address
         run: |
-          curl -fsS --retry 30 --retry-delay 10 --retry-all-errors "https://$CONTROLHUB_DOMAIN/api/v1/ready"
-          curl -fsS -o /dev/null --retry 10 --retry-delay 5 --retry-all-errors "https://$CONTROLHUB_DOMAIN/"
-          echo "ControlHub $CONTROLHUB_VERSION is live at https://$CONTROLHUB_DOMAIN/app"
+          curl -fsS --retry 30 --retry-delay 10 --retry-all-errors "https://$KARBIRD_DOMAIN/api/v1/ready"
+          curl -fsS -o /dev/null --retry 10 --retry-delay 5 --retry-all-errors "https://$KARBIRD_DOMAIN/"
+          echo "karbird $KARBIRD_VERSION is live at https://$KARBIRD_DOMAIN/app"

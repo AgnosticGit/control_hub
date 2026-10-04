@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 100" role="img" aria-label="karbird">
+  <path d="M20 33C12 46 12 66 21 81C25 88 30 94 35 97C36 90 40 84 44 76C51 62 52 45 45 33Z" fill="#eceef0"/>
+  <path d="M42.5 41C46 55 43.5 71 35.5 88" fill="none" stroke="#22d3ee" stroke-width="2.4" stroke-linecap="round"/>
+  <g transform="rotate(-9 32 21)">
+    <circle cx="32" cy="21" r="17" fill="#9ea4ab" stroke="#17181a" stroke-width="2.6"/>
+    <path d="M32 10.5C28 8.5 19 9.5 19 20.5C19 29 25.5 34.5 32 37.5C38.5 34.5 45 29 45 20.5C45 9.5 36 8.5 32 10.5Z" fill="#eceef0"/>
+    <circle cx="26.2" cy="21.5" r="2.4" fill="#17181a"/>
+    <circle cx="37.8" cy="21.5" r="2.4" fill="#17181a"/>
+    <path d="M32 25.5C33.3 27.2 33.1 29.4 32 30.7C30.9 29.4 30.7 27.2 32 25.5Z" fill="#9a9fa6"/>
+  </g>
+</svg>

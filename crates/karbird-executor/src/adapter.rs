@@ -9,11 +9,11 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, anyhow, bail};
 use clap::Args;
-use controlhub_actions::{Action, DemoService};
+use karbird_actions::{Action, DemoService};
 use serde_json::{Value, json};
 use tokio::process::Command;
 
-const COMPOSE_PROJECT: &str = "controlhub";
+const COMPOSE_PROJECT: &str = "karbird";
 const COMPOSE_SERVICE: &str = "demo-postgres";
 
 #[derive(Debug, Clone, Args)]
@@ -23,9 +23,9 @@ pub struct DemoConfig {
     #[arg(long, env = "DEMO_ORDERS_URL", default_value = "http://127.0.0.1:7002")]
     pub orders_url: String,
     /// Container of the demo database; must carry the compose labels of `demo-postgres`.
-    #[arg(long, env = "CONTROLHUB_DEMO_DB_CONTAINER", default_value = "controlhub-demo-postgres-1")]
+    #[arg(long, env = "KARBIRD_DEMO_DB_CONTAINER", default_value = "karbird-demo-postgres-1")]
     pub db_container: String,
-    #[arg(long, env = "CONTROLHUB_DOCKER_BIN", default_value = "docker")]
+    #[arg(long, env = "KARBIRD_DOCKER_BIN", default_value = "docker")]
     pub docker_bin: String,
 }
 
@@ -151,7 +151,7 @@ mod tests {
         DemoConfig {
             gateway_url: "http://127.0.0.1:7001".into(),
             orders_url: "http://127.0.0.1:7002".into(),
-            db_container: "controlhub-demo-postgres-1".into(),
+            db_container: "karbird-demo-postgres-1".into(),
             docker_bin: "docker".into(),
         }
     }
@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     fn container_names_can_never_become_flags() {
-        for ok in ["controlhub-demo-postgres-1", "a", "db_1.x", "0db"] {
+        for ok in ["karbird-demo-postgres-1", "a", "db_1.x", "0db"] {
             assert!(Demo::new(DemoConfig { db_container: ok.into(), ..cfg() }).is_ok(), "{ok}");
         }
         for bad in ["", "-x", ".hidden", "_x", "a b", "a/b", "a\nb", "a=b", "ä"] {
@@ -301,14 +301,14 @@ mod tests {
 
     #[tokio::test]
     async fn restart_fails_cleanly_without_docker() {
-        let demo = Demo::new(DemoConfig { docker_bin: "controlhub-test-no-such-docker".into(), ..cfg() }).unwrap();
+        let demo = Demo::new(DemoConfig { docker_bin: "karbird-test-no-such-docker".into(), ..cfg() }).unwrap();
         let e = demo.run(&Action::DemoRestartDatabase).await.unwrap_err();
-        assert!(format!("{e:#}").contains("cannot run controlhub-test-no-such-docker"), "{e:#}");
+        assert!(format!("{e:#}").contains("cannot run karbird-test-no-such-docker"), "{e:#}");
     }
 
     #[tokio::test]
     async fn restart_refuses_a_container_with_foreign_compose_labels() {
-        let dir = std::env::temp_dir().join(format!("controlhub-fake-docker-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("karbird-fake-docker-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         #[cfg(windows)]
         let bin = {
@@ -328,6 +328,6 @@ mod tests {
         let e = demo.run(&Action::DemoRestartDatabase).await.unwrap_err();
         let msg = format!("{e:#}");
         let _ = std::fs::remove_dir_all(&dir);
-        assert!(msg.contains("is not controlhub/demo-postgres") && msg.contains("otherproject/postgres"), "{msg}");
+        assert!(msg.contains("is not karbird/demo-postgres") && msg.contains("otherproject/postgres"), "{msg}");
     }
 }

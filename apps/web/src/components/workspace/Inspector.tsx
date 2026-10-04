@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { NodeDiff, NodeMetrics, TopologyView } from "@controlhub/web-engine";
+import type { InfrastructureSnapshot, NodeDiff, NodeMetrics, TopologyView } from "@karbird/web-engine";
 import type { EngineState, WorkspaceActions } from "./useWorkspaceEngine";
 import { Icon } from "@/components/ui/Icon";
 import { formatClock } from "@/lib/time";
 import { externalExplanation, externalLabel } from "@/renderer/external";
+import { HostCard, RunsOn, SignalLinks, type OpenSignals } from "./InfraInspector";
 
 const STATUS_CLASS: Record<string, string> = {
   healthy: "text-accent",
@@ -21,9 +22,25 @@ interface Props {
   onSelect: (id: string | null) => void;
   compare: { a: bigint; b: bigint; diffs: NodeDiff[] } | null;
   onCloseCompare: () => void;
+  /** Machines and instances while the infrastructure layer is on. */
+  infra: InfrastructureSnapshot | null;
+  selectedHost: string | null;
+  onSelectHost: (hostId: string | null) => void;
+  onSignals: OpenSignals;
 }
 
-export function Inspector({ state, actions, selectedId, onSelect, compare, onCloseCompare }: Props) {
+export function Inspector({
+  state,
+  actions,
+  selectedId,
+  onSelect,
+  compare,
+  onCloseCompare,
+  infra,
+  selectedHost,
+  onSelectHost,
+  onSignals,
+}: Props) {
   const [metrics, setMetrics] = useState<NodeMetrics | null>(null);
   const topology = state.topology;
   const node = topology?.nodes.find((n) => n.id === selectedId) ?? null;
@@ -41,6 +58,20 @@ export function Inspector({ state, actions, selectedId, onSelect, compare, onClo
   }, [actions, selectedId, summaryKey]);
 
   if (compare) return <CompareView compare={compare} onClose={onCloseCompare} onSelect={onSelect} />;
+
+  const host = selectedHost ? infra?.hosts.find((h) => h.id === selectedHost) : undefined;
+  if (host && infra) {
+    return (
+      <HostCard
+        host={host}
+        snapshot={infra}
+        cursor={state.cursor}
+        onClose={() => onSelectHost(null)}
+        onSelect={onSelect}
+        onSignals={onSignals}
+      />
+    );
+  }
 
   if (!node) {
     return (
@@ -102,6 +133,12 @@ export function Inspector({ state, actions, selectedId, onSelect, compare, onClo
             </dl>
             <p className="text-[11px] text-muted">At {formatClock(state.cursor)}; 30 s window.</p>
           </section>
+        ) : null}
+
+        <SignalLinks serviceId={node.kind === "service" ? node.id : null} onSignals={onSignals} label={node.name} />
+
+        {infra && node.kind === "service" ? (
+          <RunsOn serviceId={node.id} snapshot={infra} onSelect={onSelect} onSelectHost={(id) => onSelectHost(id)} />
         ) : null}
 
         <section aria-label="Relations">

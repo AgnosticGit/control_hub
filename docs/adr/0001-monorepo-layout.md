@@ -1,7 +1,7 @@
 # ADR-0001: Monorepo layout
 
 ## Context
-ControlHub has Rust services, a Rust engine that ships as both a native build and WASM, a Next.js
+karbird has Rust services, a Rust engine that ships as both a native build and WASM, a Next.js
 app, TS packages and a Node SDK. Contracts between them (engine types and OpenAPI) are generated
 from Rust.
 

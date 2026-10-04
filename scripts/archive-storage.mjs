@@ -1,6 +1,6 @@
 // Local S3-compatible storage (SeaweedFS) for the log archive (ADR-0015).
 
-export const ARCHIVE_BUCKET = "controlhub-archive";
+export const ARCHIVE_BUCKET = "karbird-archive";
 
 /**
  * SeaweedFS S3 identities, each limited to the archive bucket: an admin for maintenance, the
@@ -9,7 +9,7 @@ export const ARCHIVE_BUCKET = "controlhub-archive";
  * deletes objects, and production gives it a read-only policy (`s3:GetObject`, `s3:ListBucket`).
  */
 export function s3Identities(infra, bucket = ARCHIVE_BUCKET) {
-  const account = { id: "controlhub", displayName: "ControlHub" };
+  const account = { id: "karbird", displayName: "karbird" };
   const id = (name, prefix, actions) => ({
     name,
     credentials: [{ accessKey: infra[`CH_S3_${prefix}_ACCESS_KEY`], secretKey: infra[`CH_S3_${prefix}_SECRET_KEY`] }],
@@ -20,7 +20,7 @@ export function s3Identities(infra, bucket = ARCHIVE_BUCKET) {
     if (!infra[`CH_S3_${p}_ACCESS_KEY`] || !infra[`CH_S3_${p}_SECRET_KEY`]) throw new Error(`missing CH_S3_${p} credentials`);
   }
   return {
-    accounts: [{ ...account, emailAddress: "archive@controlhub.invalid" }],
+    accounts: [{ ...account, emailAddress: "archive@karbird.invalid" }],
     identities: [
       id("admin", "ADMIN", ["Admin", "Read", "Write", "List", "Tagging"]),
       id("archiver", "ARCHIVER", [`Read:${bucket}`, `Write:${bucket}`, `List:${bucket}`]),

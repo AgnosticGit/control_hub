@@ -75,7 +75,7 @@ async function topology() {
 }
 
 test('setup: isolation user session and one trace with an external caller and callee', async () => {
-  await iso.login('isolation@controlhub.local');
+  await iso.login('isolation@karbird.local');
   await sendTrace();
 });
 
@@ -136,7 +136,7 @@ test('timeline marks only the root server span as coming from the external clien
 test('external nodes are tenant-scoped and need a session', async () => {
   await sendTrace();
   const admin = new Session();
-  await admin.login('admin@controlhub.local');
+  await admin.login('admin@karbird.local');
   const demo = await admin.json(`${DEMO}/topology`);
   assert.equal(demo.status, 200);
   assert.ok(!demo.body.nodes.some((n) => n.name === extHost || n.name === front), 'isolation data must not leak into demo');

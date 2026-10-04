@@ -1,7 +1,7 @@
-//! How long ClickHouse keeps logs, spans and events (the table TTLs).
+//! How long ClickHouse keeps logs, spans, events and metrics (the table TTLs).
 //!
-//! The days are configured once, in `CONTROLHUB_{LOGS,SPANS,EVENTS}_RETENTION_DAYS`.
-//! `controlhub-api bootstrap` applies them to the tables; every service that depends on them
+//! The days are configured once, in `KARBIRD_{LOGS,SPANS,EVENTS,METRICS}_RETENTION_DAYS`.
+//! `karbird-api bootstrap` applies them to the tables; every service that depends on them
 //! compares them with the real TTL at startup and refuses to run when they differ, so the
 //! configuration and ClickHouse can never silently drift apart.
 
@@ -10,6 +10,7 @@ pub const MAX_DAYS: u32 = 3650;
 pub const DEFAULT_LOGS_DAYS: u32 = 14;
 pub const DEFAULT_SPANS_DAYS: u32 = 14;
 pub const DEFAULT_EVENTS_DAYS: u32 = 30;
+pub const DEFAULT_METRICS_DAYS: u32 = 14;
 
 /// The ClickHouse tables with a retention TTL. Table and column names come only from here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,16 +18,18 @@ pub enum Table {
     Logs,
     Spans,
     Events,
+    Metrics,
 }
 
 impl Table {
-    pub const ALL: [Table; 3] = [Table::Logs, Table::Spans, Table::Events];
+    pub const ALL: [Table; 4] = [Table::Logs, Table::Spans, Table::Events, Table::Metrics];
 
     pub fn name(self) -> &'static str {
         match self {
             Table::Logs => "logs",
             Table::Spans => "spans",
             Table::Events => "events",
+            Table::Metrics => "metrics",
         }
     }
 
@@ -36,14 +39,16 @@ impl Table {
             Table::Logs => "time",
             Table::Spans => "start_time",
             Table::Events => "event_time",
+            Table::Metrics => "time",
         }
     }
 
     pub fn env_var(self) -> &'static str {
         match self {
-            Table::Logs => "CONTROLHUB_LOGS_RETENTION_DAYS",
-            Table::Spans => "CONTROLHUB_SPANS_RETENTION_DAYS",
-            Table::Events => "CONTROLHUB_EVENTS_RETENTION_DAYS",
+            Table::Logs => "KARBIRD_LOGS_RETENTION_DAYS",
+            Table::Spans => "KARBIRD_SPANS_RETENTION_DAYS",
+            Table::Events => "KARBIRD_EVENTS_RETENTION_DAYS",
+            Table::Metrics => "KARBIRD_METRICS_RETENTION_DAYS",
         }
     }
 }
@@ -78,7 +83,7 @@ pub fn check(table: Table, configured: u32, actual: Option<u32>) -> Result<(), S
             table.name(),
         )),
         None => Err(format!(
-            "ClickHouse table `{}` has a TTL ControlHub does not recognise (expected `TTL toDateTime({}) + INTERVAL N DAY`); \
+            "ClickHouse table `{}` has a TTL karbird does not recognise (expected `TTL toDateTime({}) + INTERVAL N DAY`); \
              run `just bootstrap` to set it from {}",
             table.name(),
             table.time_column(),
@@ -151,7 +156,7 @@ mod tests {
     fn a_mismatch_names_the_variable_both_values_and_the_fix() {
         assert_eq!(check(Table::Logs, 14, Some(14)), Ok(()));
         let e = check(Table::Spans, 7, Some(14)).unwrap_err();
-        for part in ["CONTROLHUB_SPANS_RETENTION_DAYS is 7 days", "keeps spans for 14 days", "just bootstrap"] {
+        for part in ["KARBIRD_SPANS_RETENTION_DAYS is 7 days", "keeps spans for 14 days", "just bootstrap"] {
             assert!(e.contains(part), "{part}: {e}");
         }
         let e = check(Table::Events, 30, None).unwrap_err();
@@ -165,7 +170,7 @@ mod tests {
         assert_eq!(decide(Table::Logs, 14, 7, 0, false), Decision::Apply, "nothing older: nothing lost");
         assert_eq!(decide(Table::Logs, 14, 7, 5, true), Decision::Apply, "confirmed");
         let Decision::Refuse(msg) = decide(Table::Events, 30, 7, 5, false) else { panic!("must refuse") };
-        for part in ["CONTROLHUB_EVENTS_RETENTION_DAYS = 7", "from 30 days", "5 rows", "--shrink-retention"] {
+        for part in ["KARBIRD_EVENTS_RETENTION_DAYS = 7", "from 30 days", "5 rows", "--shrink-retention"] {
             assert!(msg.contains(part), "{part}: {msg}");
         }
     }
@@ -173,9 +178,9 @@ mod tests {
     #[test]
     fn names_come_from_a_fixed_list() {
         let cols: Vec<_> = Table::ALL.iter().map(|t| (t.name(), t.time_column())).collect();
-        assert_eq!(cols, [("logs", "time"), ("spans", "start_time"), ("events", "event_time")]);
+        assert_eq!(cols, [("logs", "time"), ("spans", "start_time"), ("events", "event_time"), ("metrics", "time")]);
         for t in Table::ALL {
-            assert!(t.env_var().starts_with("CONTROLHUB_") && t.env_var().ends_with("_RETENTION_DAYS"));
+            assert!(t.env_var().starts_with("KARBIRD_") && t.env_var().ends_with("_RETENTION_DAYS"));
         }
     }
 }

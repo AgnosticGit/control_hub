@@ -10,10 +10,10 @@ importers:
 
   apps/web:
     dependencies:
-      '@controlhub/api-client':
+      '@karbird/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
-      '@controlhub/web-engine':
+      '@karbird/web-engine':
         specifier: workspace:*
         version: link:../../packages/web-engine
       '@tanstack/react-query':
@@ -65,7 +65,7 @@ importers:
 
   examples/demo-system:
     dependencies:
-      '@controlhub/sdk-node':
+      '@karbird/sdk-node':
         specifier: workspace:*
         version: link:../../packages/sdk-node
       pg:

@@ -6,9 +6,9 @@ const http = require('node:http');
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 function logger() {
-  // The SDK is started by `--import @controlhub/sdk-node/register`; without it
+  // The SDK is started by `--import @karbird/sdk-node/register`; without it
   // the demo still runs and logs to stdout only.
-  const handle = globalThis[Symbol.for('controlhub.sdk-node')];
+  const handle = globalThis[Symbol.for('karbird.sdk-node')];
   const fallback = (level) => (msg, attrs) => console.log(JSON.stringify({ level, msg, ...attrs }));
   return {
     info: handle ? handle.logger.info : fallback('info'),
@@ -49,15 +49,17 @@ function readJson(req, limit = 64 * 1024) {
 }
 
 /**
- * Demo-only fault injection state. Enabled only when CONTROLHUB_DEMO_FAULTS=1
+ * Demo-only fault injection state. Enabled only when KARBIRD_DEMO_FAULTS=1
  * and only reachable from loopback.
  */
 function createFaults() {
-  const enabled = process.env.CONTROLHUB_DEMO_FAULTS === '1';
+  const enabled = process.env.KARBIRD_DEMO_FAULTS === '1';
   const state = { latencyMs: 0, errorRate: 0 };
+  const hog = createCpuHog();
   return {
     enabled,
     state,
+    hog,
     async apply() {
       if (!enabled) return false;
       if (state.latencyMs > 0) await new Promise((r) => setTimeout(r, state.latencyMs));
@@ -65,6 +67,8 @@ function createFaults() {
     },
     /** Returns true when the request was handled. */
     async handle(req, res) {
+      if (req.url === '/__demo/resources') return handleResources(req, res, hog);
+      if (req.url === '/__demo/cpu-hog') return handleCpuHog(req, res, enabled, hog);
       if (!req.url || !req.url.startsWith('/__demo/faults')) return false;
       if (!enabled || !LOOPBACK.has(req.socket.remoteAddress ?? '')) {
         sendJson(res, 404, { error: 'not found' });
@@ -97,6 +101,78 @@ function createFaults() {
       return true;
     },
   };
+}
+
+/**
+ * Demo-only CPU hog on the main thread: busy for `share` of every 100 ms, so the process uses
+ * that share of one core and its own requests queue behind it (a noisy neighbour).
+ */
+function createCpuHog() {
+  let share = 0;
+  let timer = null;
+  return {
+    get share() {
+      return share;
+    },
+    set(next) {
+      share = next;
+      if (timer) clearInterval(timer);
+      timer = null;
+      if (share > 0) {
+        timer = setInterval(() => work(share * 100), 100);
+        timer.unref();
+      }
+    },
+  };
+}
+
+function isLoopback(req) {
+  return LOOPBACK.has(req.socket.remoteAddress ?? '');
+}
+
+/** CPU time and memory of this process, read by the demo infra agent (loopback only). */
+function handleResources(req, res, hog) {
+  if (!isLoopback(req)) {
+    sendJson(res, 404, { error: 'not found' });
+    return true;
+  }
+  if (req.method !== 'GET') {
+    sendJson(res, 405, { error: 'method not allowed' });
+    return true;
+  }
+  const cpu = process.cpuUsage();
+  sendJson(res, 200, { pid: process.pid, cpuMicros: cpu.user + cpu.system, rssBytes: process.memoryUsage.rss(), cpuHog: hog.share });
+  return true;
+}
+
+async function handleCpuHog(req, res, enabled, hog) {
+  if (!enabled || !isLoopback(req)) {
+    sendJson(res, 404, { error: 'not found' });
+    return true;
+  }
+  if (req.method === 'GET') {
+    sendJson(res, 200, { share: hog.share });
+    return true;
+  }
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'method not allowed' });
+    return true;
+  }
+  let body;
+  try {
+    body = await readJson(req);
+  } catch (e) {
+    sendJson(res, 400, { error: String(e.message) });
+    return true;
+  }
+  const share = Number(body.share ?? 0);
+  if (!Number.isFinite(share) || share < 0 || share > 0.99) {
+    sendJson(res, 400, { error: 'share must be 0..0.99' });
+    return true;
+  }
+  hog.set(share);
+  sendJson(res, 200, { share });
+  return true;
 }
 
 function getJson(url, timeoutMs = 5000) {

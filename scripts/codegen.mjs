@@ -12,7 +12,7 @@ import { root, run } from "./lib.mjs";
 const tsDir = join(root, "packages", "web-engine", "src", "generated");
 rmSync(tsDir, { recursive: true, force: true });
 mkdirSync(tsDir, { recursive: true });
-await run("cargo", ["test", "-q", "-p", "controlhub-engine-core", "--features", "ts", "--lib", "export_bindings"], {
+await run("cargo", ["test", "-q", "-p", "karbird-engine-core", "--features", "ts", "--lib", "export_bindings"], {
   env: { ...process.env, TS_RS_EXPORT_DIR: tsDir },
 });
 const names = readdirSync(tsDir)
@@ -26,7 +26,7 @@ writeFileSync(
 
 const schemaDir = join(root, "schemas", "generated");
 mkdirSync(schemaDir, { recursive: true });
-const spec = execFileSync("cargo", ["run", "-q", "-p", "controlhub-api", "--", "openapi"], {
+const spec = execFileSync("cargo", ["run", "-q", "-p", "karbird-api", "--", "openapi"], {
   cwd: root,
   encoding: "utf8",
   maxBuffer: 64 * 1024 * 1024,
@@ -36,5 +36,5 @@ writeFileSync(specPath, JSON.stringify(JSON.parse(spec), null, 2) + "\n");
 
 const clientDir = join(root, "packages", "api-client", "src", "generated");
 mkdirSync(clientDir, { recursive: true });
-await run("pnpm", ["--filter", "@controlhub/api-client", "exec", "openapi-typescript", specPath, "-o", join(clientDir, "schema.ts")]);
+await run("pnpm", ["--filter", "@karbird/api-client", "exec", "openapi-typescript", specPath, "-o", join(clientDir, "schema.ts")]);
 console.error("[codegen] done");

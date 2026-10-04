@@ -4,10 +4,10 @@
 
 use axum::Json;
 use axum::extract::{Path, State};
-use controlhub_actions::{self as actions, Action, PolicyDecision, PolicyInput};
-use controlhub_domain::Scope;
-use controlhub_storage::actions::{ActionPlanRow, NewActionPlan, Transition};
-use controlhub_storage::pg::NewAuditEntry;
+use karbird_actions::{self as actions, Action, PolicyDecision, PolicyInput};
+use karbird_domain::Scope;
+use karbird_storage::actions::{ActionPlanRow, NewActionPlan, Transition};
+use karbird_storage::pg::NewAuditEntry;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
@@ -51,7 +51,7 @@ pub struct ActionCatalogResponse {
     pub actions: Vec<ActionSpecDto>,
 }
 
-/// Schema of the stored policy decision (serialized `controlhub_actions::PolicyDecision`).
+/// Schema of the stored policy decision (serialized `karbird_actions::PolicyDecision`).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PolicyDto {
     pub allowed: bool,
@@ -477,7 +477,7 @@ pub async fn cancel(
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
-    use controlhub_domain::{EnvironmentId, ProjectId, TenantId};
+    use karbird_domain::{EnvironmentId, ProjectId, TenantId};
 
     fn row(action_type: &str, target: &str, params: Value) -> ActionPlanRow {
         let t = OffsetDateTime::from_unix_timestamp(1_790_000_000).unwrap();

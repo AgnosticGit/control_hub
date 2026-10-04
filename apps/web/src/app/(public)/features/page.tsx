@@ -18,10 +18,14 @@ export default function FeaturesPage() {
         <li>Timeline: live, paused and historical modes, seek, step between events, playback speeds.</li>
         <li>State reconstruction in a Rust engine compiled to WebAssembly, running in a Web Worker.</li>
         <li>Tenant/project/environment isolation, cookie sessions with CSRF protection.</li>
+        <li>
+          Infrastructure layer: machine and container metrics from the Karbird agent (OTLP gauges and sums), services grouped
+          into the machines they run on, and a deterministic noisy-neighbour hint.
+        </li>
       </ul>
       <h2>Not yet available</h2>
       <ul>
-        <li>OTLP metrics ingestion (requests are rejected with an explicit error, not dropped silently).</li>
+        <li>Application metrics: OTLP histograms and summaries are rejected with an explicit error, not dropped silently.</li>
         <li>Realtime WebSocket updates (the app polls in live mode).</li>
         <li>Actions (restart/stop of demo services), CLI and MCP integration.</li>
       </ul>

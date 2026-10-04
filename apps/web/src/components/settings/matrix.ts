@@ -1,8 +1,8 @@
-// Permission-matrix logic for the Members & roles page and the ControlHub admin panel. The API
+// Permission-matrix logic for the Members & roles page and the karbird admin panel. The API
 // enforces every rule; these mirror them so the UI can disable what would be refused and explain why.
 import { PERMISSIONS, type PermissionId } from "@/lib/permissions";
 
-/** One permission system: project permissions, or ControlHub administrator permissions. */
+/** One permission system: project permissions, or karbird administrator permissions. */
 export type PermissionModel = {
   /** Ids in the API catalog's order. */
   ids: readonly string[];
@@ -10,7 +10,7 @@ export type PermissionModel = {
   implies: Readonly<Record<string, string>>;
   membersManage: string;
   rolesManage: string;
-  /** Built-in key of the top role (project Owner, ControlHub Super Admin). */
+  /** Built-in key of the top role (project Owner, karbird Super Admin). */
   ownerRole: string;
   text: {
     own: string;

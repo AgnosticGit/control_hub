@@ -1079,7 +1079,7 @@ proptest! {
         muted in prop::collection::vec(prop::sample::select(vec!["svc_a", "svc_b", "res_db", "x"]), 0..3),
         viewport in prop::option::of((-2000.0f32..2000.0, -2000.0f32..2000.0, 0.0f32..3000.0, 0.0f32..3000.0, 0.1f32..3.0)),
         max_hops in 0u32..5,
-        trace_only in any::<bool>(),
+        (trace_only, infrastructure) in (any::<bool>(), any::<bool>()),
     ) {
         let mut e = Engine::new(EngineConfig { max_hops, ..EngineConfig::default() });
         e.load_topology(db_node());
@@ -1092,6 +1092,7 @@ proptest! {
             selected_trace_id: trace.map(Into::into),
             trace_only,
             muted_services: muted.into_iter().map(Into::into).collect(),
+            infrastructure,
         };
         e.set_filters(filters.clone());
         if let Some((x, y, w, h, scale)) = viewport {

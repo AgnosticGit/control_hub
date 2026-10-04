@@ -1,6 +1,6 @@
 "use client";
 
-import { createApiClient, unwrap, unwrapEmpty, ApiRequestError, type Schemas } from "@controlhub/api-client";
+import { createApiClient, unwrap, unwrapEmpty, ApiRequestError, type Schemas } from "@karbird/api-client";
 
 export const api = createApiClient();
 export { unwrap, unwrapEmpty, ApiRequestError };
@@ -24,7 +24,7 @@ export function isUnauthenticated(e: unknown) {
 }
 
 /** An API error message as a sentence for people: "conflict: you are…" → "You are….". */
-export function apiSentence(e: unknown, fallback = "Cannot reach the ControlHub API."): string {
+export function apiSentence(e: unknown, fallback = "Cannot reach the karbird API."): string {
   if (!(e instanceof ApiRequestError)) return fallback;
   const text = e.message.replace(/^[a-z][a-z ]*: /, "").trim();
   if (!text) return fallback;

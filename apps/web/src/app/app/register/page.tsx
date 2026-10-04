@@ -10,7 +10,7 @@ import { useHydrated } from "@/lib/hydrated";
 import { afterSignupPath, formText, MIN_PASSWORD_CHARS, safeNext, signupProblem } from "@/lib/signup";
 
 function errorText(err: unknown): string {
-  if (!(err instanceof ApiRequestError)) return "Cannot reach the ControlHub API.";
+  if (!(err instanceof ApiRequestError)) return "Cannot reach the karbird API.";
   switch (err.status) {
     case 409:
       return "An account with this email already exists. Sign in instead.";
@@ -21,7 +21,7 @@ function errorText(err: unknown): string {
     case 400:
       return err.message.replace(/^invalid request: /, "").replace(/^./, (c) => c.toUpperCase()) + ".";
     default:
-      return "Cannot reach the ControlHub API.";
+      return "Cannot reach the karbird API.";
   }
 }
 
@@ -71,7 +71,7 @@ function RegisterForm() {
       {/* method=post: a submit before hydration must never put the password into the URL. */}
       <form method="post" onSubmit={submit} className="w-full max-w-sm space-y-5" noValidate>
         <div>
-          <h1 className="text-[1.75rem] leading-tight font-bold tracking-[-0.02em]">Create your ControlHub account</h1>
+          <h1 className="text-[1.75rem] leading-tight font-bold tracking-[-0.02em]">Create your karbird account</h1>
           <p className="mt-2 text-sm leading-relaxed text-muted">You get your own project and a guide to connect your services.</p>
         </div>
         <label className="block text-sm">

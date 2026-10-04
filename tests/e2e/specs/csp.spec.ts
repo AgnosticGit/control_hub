@@ -40,7 +40,7 @@ test("public pages send a CSP and run without violations", async ({ page }) => {
 
 test("the workspace runs under a strict nonce CSP: map, WASM worker and WebSocket work", async ({ page }) => {
   const violations = collectViolations(page);
-  await login(page, "admin@controlhub.local", "/app");
+  await login(page, "admin@karbird.local", "/app");
   // Full document load (login navigates client-side).
   const res = await page.goto("/app/demo/local-demo");
   const headers = (await res?.allHeaders()) ?? {};

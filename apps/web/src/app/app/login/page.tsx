@@ -32,7 +32,7 @@ function LoginForm() {
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 429) setError("Too many attempts. Try again later.");
       else if (err instanceof ApiRequestError && err.status === 401) setError("Invalid email or password.");
-      else setError("Cannot reach the ControlHub API.");
+      else setError("Cannot reach the karbird API.");
     } finally {
       setBusy(false);
     }
@@ -42,9 +42,9 @@ function LoginForm() {
     // method=post: a submit before hydration must never put the password into the URL.
     <form method="post" onSubmit={submit} className="w-full max-w-sm space-y-5">
       <div>
-        <h1 className="text-[1.75rem] leading-tight font-bold tracking-[-0.02em]">Sign in to ControlHub</h1>
+        <h1 className="text-[1.75rem] leading-tight font-bold tracking-[-0.02em]">Sign in to karbird</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          Locally, sign in with the owner account from <code className="font-mono text-xs text-text">.controlhub/owner.env</code>.
+          Locally, sign in with the owner account from <code className="font-mono text-xs text-text">.karbird/owner.env</code>.
         </p>
       </div>
       <label className="block text-sm">
@@ -64,7 +64,7 @@ function LoginForm() {
         {busy ? "Signing in…" : "Sign in"}
       </button>
       <p className="text-sm text-muted">
-        New to ControlHub?{" "}
+        New to karbird?{" "}
         <Link
           href={safeNext(params.get("next")) ? `/app/register?next=${encodeURIComponent(params.get("next") ?? "")}` : "/app/register"}
           className="font-semibold text-text underline decoration-border-strong hover:decoration-text"

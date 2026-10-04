@@ -4,14 +4,14 @@ import { expect, test } from "@playwright/test";
 import { ingestLog, login, randomHex, root } from "./helpers";
 
 // The log archive as a user sees it (ADR-0015): an hour older than the API's hot window (13 days),
-// archived by `controlhub-archiver once`, opened through Range… on the timeline. Writes only into
+// archived by `karbird-archiver once`, opened through Range… on the timeline. Writes only into
 // the isolation tenant's `isolation-test` environment.
 
 const WORKSPACE = "/app/isolation/isolation-test";
 const LOGS_API = "/api/v1/projects/isolation/environments/isolation-test/logs";
 const HOUR = 3_600_000_000_000n;
 const DAY = 24n * HOUR;
-const bin = join(root, "target", "debug", process.platform === "win32" ? "controlhub-archiver.exe" : "controlhub-archiver");
+const bin = join(root, "target", "debug", process.platform === "win32" ? "karbird-archiver.exe" : "karbird-archiver");
 
 function localInput(ns: bigint) {
   const d = new Date(Number(ns / 1_000_000n));
@@ -19,8 +19,8 @@ function localInput(ns: bigint) {
 }
 
 test.beforeAll(() => {
-  const build = spawnSync("cargo", ["build", "-q", "-p", "controlhub-archiver"], { cwd: root, stdio: "inherit" });
-  expect(build.status, "cargo build -p controlhub-archiver").toBe(0);
+  const build = spawnSync("cargo", ["build", "-q", "-p", "karbird-archiver"], { cwd: root, stdio: "inherit" });
+  expect(build.status, "cargo build -p karbird-archiver").toBe(0);
 });
 
 test("logs older than the hot window open from the archive, labelled, filterable and switchable", async ({ page }) => {
@@ -35,7 +35,7 @@ test("logs older than the hot window open from the archive, labelled, filterable
     await ingestLog({ service, body, severity: 9, timeNs: at + BigInt(i) * 1_000_000_000n });
   }
 
-  await login(page, "isolation@controlhub.local", WORKSPACE);
+  await login(page, "isolation@karbird.local", WORKSPACE);
   await expect
     .poll(
       async () => {

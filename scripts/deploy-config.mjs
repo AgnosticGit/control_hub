@@ -2,7 +2,7 @@
 // Renders the files the two production hosts need (docs/operations/deploy.md):
 //   <out>/storage/.env, owner.env, seaweedfs-s3.json   -> VPS "storage" (PostgreSQL, ClickHouse, SeaweedFS)
 //   <out>/app/.env                                     -> VPS "app" (Kafka, services, web, Caddy)
-// Every service password and S3 key is derived from CONTROLHUB_SECRET_SEED (HMAC-SHA256 per
+// Every service password and S3 key is derived from KARBIRD_SECRET_SEED (HMAC-SHA256 per
 // purpose), so GitHub holds one secret instead of fifteen and every deploy renders the same values.
 // Usage: node scripts/deploy-config.mjs <out-dir>   (inputs from the environment, see INPUTS)
 import { createHmac } from "node:crypto";
@@ -13,51 +13,67 @@ import { ARCHIVE_BUCKET, s3Identities } from "./archive-storage.mjs";
 
 export const INPUTS = {
   required: [
-    "CONTROLHUB_SECRET_SEED",
-    "CONTROLHUB_DOMAIN",
+    "KARBIRD_SECRET_SEED",
+    "KARBIRD_DOMAIN",
     "STORAGE_PRIVATE_IP",
-    "CONTROLHUB_OWNER_EMAIL",
-    "CONTROLHUB_OWNER_PASSWORD",
+    "KARBIRD_OWNER_EMAIL",
+    "KARBIRD_OWNER_PASSWORD",
     "IMAGE_PREFIX",
-    "CONTROLHUB_VERSION",
+    "KARBIRD_VERSION",
   ],
-  optional: ["ACME_EMAIL", "CONTROLHUB_LOGS_RETENTION_DAYS", "CONTROLHUB_SPANS_RETENTION_DAYS", "CONTROLHUB_EVENTS_RETENTION_DAYS"],
+  optional: [
+    "ACME_EMAIL",
+    "KARBIRD_LOGS_RETENTION_DAYS",
+    "KARBIRD_SPANS_RETENTION_DAYS",
+    "KARBIRD_EVENTS_RETENTION_DAYS",
+    "KARBIRD_METRICS_RETENTION_DAYS",
+    "KARBIRD_SIGNUP",
+    "KARBIRD_SIGNUP_PER_HOUR",
+  ],
 };
 
+// The public site invites visitors to create an account, so a deployment accepts sign-ups unless told otherwise.
+const SIGNUP_DEFAULTS = { KARBIRD_SIGNUP: "open", KARBIRD_SIGNUP_PER_HOUR: "20" };
+
 const RETENTION_DEFAULTS = {
-  CONTROLHUB_LOGS_RETENTION_DAYS: "14",
-  CONTROLHUB_SPANS_RETENTION_DAYS: "14",
-  CONTROLHUB_EVENTS_RETENTION_DAYS: "30",
+  KARBIRD_LOGS_RETENTION_DAYS: "14",
+  KARBIRD_SPANS_RETENTION_DAYS: "14",
+  KARBIRD_EVENTS_RETENTION_DAYS: "30",
+  KARBIRD_METRICS_RETENTION_DAYS: "14",
 };
 
 /** A stable secret for one purpose; base64url, so it is safe in URLs, SQL and env files. */
 export function derive(seed, purpose, length = 32) {
-  return createHmac("sha256", seed).update(`controlhub/v1/${purpose}`).digest("base64url").slice(0, length);
+  return createHmac("sha256", seed).update(`karbird/v1/${purpose}`).digest("base64url").slice(0, length);
 }
 
-const hexKey = (seed, purpose) => createHmac("sha256", seed).update(`controlhub/v1/${purpose}`).digest("hex").slice(0, 20);
+const hexKey = (seed, purpose) => createHmac("sha256", seed).update(`karbird/v1/${purpose}`).digest("hex").slice(0, 20);
 
 function validate(env) {
   const missing = INPUTS.required.filter((k) => !env[k]?.trim());
   if (missing.length) throw new Error(`missing: ${missing.join(", ")}`);
-  if (env.CONTROLHUB_SECRET_SEED.length < 32) throw new Error("CONTROLHUB_SECRET_SEED must be at least 32 characters");
-  if (!/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(env.CONTROLHUB_DOMAIN)) {
-    throw new Error("CONTROLHUB_DOMAIN must be a host name such as controlhub.example.com (no scheme, no path)");
+  if (env.KARBIRD_SECRET_SEED.length < 32) throw new Error("KARBIRD_SECRET_SEED must be at least 32 characters");
+  if (!/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(env.KARBIRD_DOMAIN)) {
+    throw new Error("KARBIRD_DOMAIN must be a host name such as karbird.example.com (no scheme, no path)");
   }
   if (!/^(\d{1,3})(\.\d{1,3}){3}$/.test(env.STORAGE_PRIVATE_IP) || env.STORAGE_PRIVATE_IP.split(".").some((o) => Number(o) > 255)) {
     throw new Error("STORAGE_PRIVATE_IP must be an IPv4 address (the storage VPS's private address)");
   }
-  if (/['\r\n]/.test(env.CONTROLHUB_OWNER_PASSWORD)) {
-    throw new Error("CONTROLHUB_OWNER_PASSWORD must not contain single quotes or line breaks");
+  if (/['\r\n]/.test(env.KARBIRD_OWNER_PASSWORD)) {
+    throw new Error("KARBIRD_OWNER_PASSWORD must not contain single quotes or line breaks");
   }
-  if ([...env.CONTROLHUB_OWNER_PASSWORD].length < 12) {
-    throw new Error("CONTROLHUB_OWNER_PASSWORD must have at least 12 characters");
+  if ([...env.KARBIRD_OWNER_PASSWORD].length < 12) {
+    throw new Error("KARBIRD_OWNER_PASSWORD must have at least 12 characters");
   }
   if (!/^[a-z0-9._/-]+$/.test(env.IMAGE_PREFIX)) throw new Error("IMAGE_PREFIX must be a lowercase registry path");
-  if (!/^[A-Za-z0-9._-]{1,128}$/.test(env.CONTROLHUB_VERSION)) throw new Error("CONTROLHUB_VERSION is not a valid image tag");
+  if (!/^[A-Za-z0-9._-]{1,128}$/.test(env.KARBIRD_VERSION)) throw new Error("KARBIRD_VERSION is not a valid image tag");
   for (const k of Object.keys(RETENTION_DEFAULTS)) {
     if (env[k] !== undefined && env[k] !== "" && !/^\d{1,4}$/.test(env[k])) throw new Error(`${k} must be a whole number of days`);
   }
+  const signup = env.KARBIRD_SIGNUP?.trim();
+  if (signup && signup !== "open" && signup !== "closed") throw new Error("KARBIRD_SIGNUP must be open or closed");
+  const perHour = env.KARBIRD_SIGNUP_PER_HOUR?.trim();
+  if (perHour && !/^[1-9]\d{0,4}$/.test(perHour)) throw new Error("KARBIRD_SIGNUP_PER_HOUR must be a whole number from 1");
 }
 
 const envFile = (header, vars) =>
@@ -68,7 +84,7 @@ const envFile = (header, vars) =>
 /** The files for both hosts as { "storage/.env": text, ... }. Pure: no I/O. */
 export function render(env) {
   validate(env);
-  const seed = env.CONTROLHUB_SECRET_SEED;
+  const seed = env.KARBIRD_SECRET_SEED;
   const pw = (purpose) => derive(seed, purpose);
   const s3 = {
     CH_S3_ADMIN_ACCESS_KEY: `admin${hexKey(seed, "s3-admin-key")}`,
@@ -81,16 +97,16 @@ export function render(env) {
   const retention = Object.fromEntries(
     Object.entries(RETENTION_DEFAULTS).map(([k, d]) => [k, env[k]?.trim() || d]),
   );
-  const common = { IMAGE_PREFIX: env.IMAGE_PREFIX, CONTROLHUB_VERSION: env.CONTROLHUB_VERSION, ...retention };
+  const common = { IMAGE_PREFIX: env.IMAGE_PREFIX, KARBIRD_VERSION: env.KARBIRD_VERSION, ...retention };
   const db = {
-    CH_PG_ADMIN_USER: "controlhub_admin",
+    CH_PG_ADMIN_USER: "karbird_admin",
     CH_PG_ADMIN_PASSWORD: pw("pg-admin"),
     CH_PG_API_PASSWORD: pw("pg-api"),
     CH_PG_INGEST_PASSWORD: pw("pg-ingest"),
     CH_PG_PROCESSOR_PASSWORD: pw("pg-processor"),
     CH_PG_EXECUTOR_PASSWORD: pw("pg-executor"),
     CH_PG_ARCHIVER_PASSWORD: pw("pg-archiver"),
-    CH_CH_ADMIN_USER: "controlhub_admin",
+    CH_CH_ADMIN_USER: "karbird_admin",
     CH_CH_ADMIN_PASSWORD: pw("ch-admin"),
     CH_CH_API_PASSWORD: pw("ch-api"),
     CH_CH_PROCESSOR_PASSWORD: pw("ch-processor"),
@@ -99,19 +115,20 @@ export function render(env) {
   };
   const serviceDb = Object.fromEntries(Object.entries(db).filter(([k]) => !k.includes("ADMIN")));
   return {
-    "storage/.env": envFile("ControlHub storage host (PostgreSQL, ClickHouse, object storage).", {
+    "storage/.env": envFile("karbird storage host (PostgreSQL, ClickHouse, object storage).", {
       ...common,
       STORAGE_BIND_IP: env.STORAGE_PRIVATE_IP,
       ...db,
       ...s3,
     }),
     // Single quotes: the password is taken literally (no `$` interpolation by Compose).
-    "storage/owner.env": `# The owner account created by \`controlhub-api migrate\` (never reset afterwards).\nCONTROLHUB_OWNER_EMAIL=${env.CONTROLHUB_OWNER_EMAIL.trim()}\nCONTROLHUB_OWNER_PASSWORD='${env.CONTROLHUB_OWNER_PASSWORD}'\n`,
+    "storage/owner.env": `# The owner account created by \`karbird-api migrate\` (never reset afterwards).\nKARBIRD_OWNER_EMAIL=${env.KARBIRD_OWNER_EMAIL.trim()}\nKARBIRD_OWNER_PASSWORD='${env.KARBIRD_OWNER_PASSWORD}'\n`,
     "storage/seaweedfs-s3.json": `${JSON.stringify(s3Identities(s3), null, 2)}\n`,
-    "app/.env": envFile("ControlHub app host (Kafka, services, web, Caddy).", {
+    "app/.env": envFile("karbird app host (Kafka, services, web, Caddy).", {
       ...common,
-      CONTROLHUB_DOMAIN: env.CONTROLHUB_DOMAIN,
-      ACME_EMAIL: env.ACME_EMAIL?.trim() || env.CONTROLHUB_OWNER_EMAIL.trim(),
+      KARBIRD_DOMAIN: env.KARBIRD_DOMAIN,
+      ...Object.fromEntries(Object.entries(SIGNUP_DEFAULTS).map(([k, d]) => [k, env[k]?.trim() || d])),
+      ACME_EMAIL: env.ACME_EMAIL?.trim() || env.KARBIRD_OWNER_EMAIL.trim(),
       STORAGE_ADDR: env.STORAGE_PRIVATE_IP,
       ARCHIVE_BUCKET,
       ...serviceDb,

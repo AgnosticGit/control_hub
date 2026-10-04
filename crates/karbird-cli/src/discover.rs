@@ -7,8 +7,8 @@ use anyhow::{Context as _, bail};
 use serde::Serialize;
 use serde_json::Value;
 
-pub const SDK_PACKAGE: &str = "@controlhub/sdk-node";
-pub const SDK_REGISTER: &str = "@controlhub/sdk-node/register";
+pub const SDK_PACKAGE: &str = "@karbird/sdk-node";
+pub const SDK_REGISTER: &str = "@karbird/sdk-node/register";
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -34,8 +34,8 @@ pub struct Discovery {
     pub datastores: Vec<String>,
     /// Other telemetry agents that may conflict with the SDK.
     pub existing_telemetry: Vec<String>,
-    pub controlhub_sdk_installed: bool,
-    pub controlhub_register_in_start: bool,
+    pub karbird_sdk_installed: bool,
+    pub karbird_register_in_start: bool,
     pub env_files: Vec<String>,
     pub env_ignored_by_git: Option<bool>,
     pub containers: Vec<String>,
@@ -152,8 +152,8 @@ pub fn discover(root: &Path) -> anyhow::Result<Discovery> {
         frameworks: vec![],
         datastores: vec![],
         existing_telemetry: vec![],
-        controlhub_sdk_installed: false,
-        controlhub_register_in_start: false,
+        karbird_sdk_installed: false,
+        karbird_register_in_start: false,
         env_files,
         env_ignored_by_git,
         containers,
@@ -181,7 +181,7 @@ pub fn discover(root: &Path) -> anyhow::Result<Discovery> {
         .as_deref()
         .and_then(node_entry)
         .or_else(|| pkg.get("main").and_then(Value::as_str).map(str::to_owned));
-    d.controlhub_register_in_start = d.start_script.as_deref().is_some_and(|s| s.contains(SDK_REGISTER));
+    d.karbird_register_in_start = d.start_script.as_deref().is_some_and(|s| s.contains(SDK_REGISTER));
 
     let mut deps = serde_json::Map::new();
     for key in ["dependencies", "devDependencies"] {
@@ -203,7 +203,7 @@ pub fn discover(root: &Path) -> anyhow::Result<Discovery> {
             "elastic-apm-node",
         ],
     );
-    d.controlhub_sdk_installed = deps.contains_key(SDK_PACKAGE);
+    d.karbird_sdk_installed = deps.contains_key(SDK_PACKAGE);
 
     if !d.existing_telemetry.is_empty() {
         d.warnings.push(format!(
@@ -219,7 +219,7 @@ pub fn discover(root: &Path) -> anyhow::Result<Discovery> {
         ));
     }
     if d.frameworks.iter().any(|f| f == "next" || f == "@nestjs/core") {
-        d.warnings.push("framework CLIs (next/nest) need NODE_OPTIONS=--import @controlhub/sdk-node/register".into());
+        d.warnings.push("framework CLIs (next/nest) need NODE_OPTIONS=--import @karbird/sdk-node/register".into());
     }
     Ok(d)
 }

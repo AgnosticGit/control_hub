@@ -1,6 +1,6 @@
 [package]
-name = "controlhub-archive"
-description = "ControlHub archive format: log templates, columnar segments, per-service zstd dictionaries (pure, no I/O)"
+name = "karbird-archive"
+description = "karbird archive format: log templates, columnar segments, per-service zstd dictionaries (pure, no I/O)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

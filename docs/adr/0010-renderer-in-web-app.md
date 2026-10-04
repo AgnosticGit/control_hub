@@ -2,7 +2,7 @@
 
 ## Decision
 The PixiJS renderer (`apps/web/src/renderer/pixi-map.ts`) stays in the web app instead of a
-separate `packages/renderer`. It depends only on `@controlhub/web-engine` constants (strides and
+separate `packages/renderer`. It depends only on `@karbird/web-engine` constants (strides and
 flags) and on pixi.js, and it is loaded with a dynamic `import()` from the map component.
 
 ## Reason

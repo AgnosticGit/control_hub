@@ -1,6 +1,6 @@
 'use strict';
 // Demo "payments" service: charges through an external payment provider (the provider is
-// not instrumented, so ControlHub infers it from the client spans). DEMO ONLY.
+// not instrumented, so karbird infers it from the client spans). DEMO ONLY.
 
 const { sendJson, callJson, work, serve } = require('./common.cjs');
 

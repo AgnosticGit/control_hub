@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::Result;
 use crate::pg::{NewAuditEntry, PgStore};
-use controlhub_domain::Scope;
+use karbird_domain::Scope;
 
 const PLAN_COLUMNS: &str =
     "p.id, p.tenant_id, p.project_id, p.environment_id, p.action_type, p.target, p.params, p.reason,

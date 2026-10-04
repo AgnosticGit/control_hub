@@ -1,13 +1,13 @@
-# ControlHub
+# karbird
 
-ControlHub is a platform for observability, history exploration and (later) controlled
+karbird is a platform for observability, history exploration and (later) controlled
 management of distributed systems. It takes in standard OpenTelemetry data, keeps its history
 in ClickHouse, and shows the system as a live map with a time machine. The map runs on a Rust
 engine compiled to WebAssembly and is rendered with WebGL.
 
 > **Status:** not production-ready. On a local demo stand the following work end to end and are
 > tested: telemetry flow, map and time machine, WebSocket live updates, token management, the
-> `controlhub` CLI, controlled actions (demo adapter only) and a read-only MCP server. OTLP metrics,
+> `karbird` CLI, controlled actions (demo adapter only) and a read-only MCP server. OTLP metrics,
 > archiving, production deployment and real (non-demo) action adapters do not exist.
 
 ```
@@ -21,7 +21,7 @@ SDK / OTel Collector ──OTLP──▶ ingest (Rust) ──▶ Kafka ──▶
 
 Actions: web → API (plan, policy, four-eyes approval) → PostgreSQL ← executor (separate process,
          demo adapter, verification from ClickHouse, audit)
-CLI:     controlhub discover / plan / apply / verify / context / mcp (read-only API token)
+CLI:     karbird discover / plan / apply / verify / context / mcp (read-only API token)
 ```
 
 ## Requirements
@@ -35,15 +35,15 @@ Run `just doctor` to check what is missing. The scripts never install system pac
 
 ## Quick start (local demo)
 
-First create `.controlhub/owner.env` (gitignored) with your own account:
+First create `.karbird/owner.env` (gitignored) with your own account:
 
 ```
-CONTROLHUB_OWNER_EMAIL=you@example.com
-CONTROLHUB_OWNER_PASSWORD=a long password
+KARBIRD_OWNER_EMAIL=you@example.com
+KARBIRD_OWNER_PASSWORD=a long password
 ```
 
 ```
-just bootstrap      # pnpm install, generate secrets into .controlhub/, start PG/ClickHouse/Kafka, migrate, seed
+just bootstrap      # pnpm install, generate secrets into .karbird/, start PG/ClickHouse/Kafka, migrate, seed
 just wasm           # build the WASM engine into apps/web/public/wasm
 just dev            # ingest :4318/:4317, processor, API :8080, web :3000
 just demo           # in a second terminal: gateway :7001, orders :7002, demo Postgres, load generator
@@ -52,7 +52,7 @@ just demo           # in a second terminal: gateway :7001, orders :7002, demo Po
 Open http://127.0.0.1:3000/app and sign in with that owner account (owner of the demo project). It is
 the only account a bootstrap creates; there is no default admin password. Test accounts are created
 by `just test-integration` / `just test-e2e` for the duration of the run and deleted afterwards
-(`controlhub-api test-fixtures [--remove]`, emails in `@controlhub.local` / `@example.test`).
+(`karbird-api test-fixtures [--remove]`, emails in `@karbird.local` / `@example.test`).
 
 To inject a fault, which only works on the demo stand and only from localhost:
 
@@ -80,7 +80,7 @@ just check              # rustfmt, clippy -D warnings, wasm32 check, TS typechec
 just test               # Rust unit + property tests, SDK tests
 just test-integration   # needs `just dev` + `just demo`
 just test-broker-outage # disruptive: stops Kafka, expects 503, checks recovery
-just test-e2e           # Playwright; needs `just dev` + `just demo` (or `pnpm --filter @controlhub/web start`)
+just test-e2e           # Playwright; needs `just dev` + `just demo` (or `pnpm --filter @karbird/web start`)
 just bench              # engine benchmark on synthetic data
 ```
 

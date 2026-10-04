@@ -1,4 +1,4 @@
-//! ControlHub administration (`/api/v1/admin/*`): every project, account and administrator of
+//! karbird administration (`/api/v1/admin/*`): every project, account and administrator of
 //! the installation. Browser sessions only. Administrator grants follow the project rules (no
 //! escalation, only a Super Admin touches a Super Admin, one always remains); every change and
 //! every refused change is audited.
@@ -6,8 +6,8 @@
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use controlhub_storage::admin::{AdminAuditRow, AdminProjectRow, AdminUserRow};
-use controlhub_storage::pg::{EnvironmentRow, MemberChange, MemberRow, NewAuditEntry, RoleChange, RoleRow};
+use karbird_storage::admin::{AdminAuditRow, AdminProjectRow, AdminUserRow};
+use karbird_storage::pg::{EnvironmentRow, MemberChange, MemberRow, NewAuditEntry, RoleChange, RoleRow};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use time::format_description::well_known::Rfc3339;
@@ -35,7 +35,7 @@ const NEW_PROJECT_ENVIRONMENT: &str = "production";
 
 // ------------------------------------------------------------------ access
 
-/// The signed-in user's ControlHub administrator access.
+/// The signed-in user's karbird administrator access.
 #[derive(Debug, Clone)]
 pub struct SystemAccess {
     pub actor: Actor<SystemPermission>,
@@ -225,7 +225,7 @@ fn project_dto(p: AdminProjectRow, envs: &[EnvironmentRow]) -> AdminProjectDto {
 }
 
 async fn load_project(state: &AppState, project_id: &str) -> ApiResult<AdminProjectRow> {
-    if controlhub_domain::ProjectId::parse(project_id).is_err() {
+    if karbird_domain::ProjectId::parse(project_id).is_err() {
         return Err(ApiError::NotFound);
     }
     state.pg.admin_project(project_id).await?.ok_or(ApiError::NotFound)
@@ -506,7 +506,7 @@ pub async fn list_users(State(state): State<AppState>, user: CurrentUser) -> Api
 fn system_target(m: &MemberRow) -> Target<SystemPermission> {
     Target {
         user_id: m.user_id,
-        is_owner: m.role_key.as_deref() == Some(controlhub_storage::admin::SUPER_ADMIN),
+        is_owner: m.role_key.as_deref() == Some(karbird_storage::admin::SUPER_ADMIN),
         permissions: from_stored_of(&m.permissions),
     }
 }
@@ -538,7 +538,7 @@ async fn set_disabled(
     let target = account_target(&state, &access, &user_id, action).await?;
     match state.pg.set_user_disabled(target.id, disabled).await? {
         MemberChange::Done | MemberChange::NotFound => {}
-        MemberChange::LastOwner => return Err(ApiError::Conflict("ControlHub needs at least one active Super Admin")),
+        MemberChange::LastOwner => return Err(ApiError::Conflict("karbird needs at least one active Super Admin")),
     }
     audit(
         &state,
@@ -617,7 +617,7 @@ fn system_role_dto(r: RoleRow) -> RoleDto {
 }
 
 fn system_member_dto(m: MemberRow) -> MemberDto {
-    let is_owner = m.role_key.as_deref() == Some(controlhub_storage::admin::SUPER_ADMIN);
+    let is_owner = m.role_key.as_deref() == Some(karbird_storage::admin::SUPER_ADMIN);
     MemberDto {
         role: role_kind(m.role_key.as_deref(), m.role_id),
         user_id: m.user_id.to_string(),
@@ -640,7 +640,7 @@ fn system_grant_json(m: &MemberRow) -> Value {
 fn role_grant(r: &RoleRow) -> Grant<SystemPermission> {
     Grant::Role {
         permissions: from_stored_of(&r.permissions),
-        owner: r.builtin.as_deref() == Some(controlhub_storage::admin::SUPER_ADMIN),
+        owner: r.builtin.as_deref() == Some(karbird_storage::admin::SUPER_ADMIN),
     }
 }
 
@@ -680,7 +680,7 @@ pub async fn add_member(
     match state.pg.add_system_member(member_id, role.id).await? {
         MemberChange::Done => {}
         MemberChange::NotFound => return Err(ApiError::Conflict("this account is already an administrator")),
-        MemberChange::LastOwner => return Err(ApiError::Conflict("ControlHub needs at least one Super Admin")),
+        MemberChange::LastOwner => return Err(ApiError::Conflict("karbird needs at least one Super Admin")),
     }
     let added = state.pg.system_member(member_id).await?.ok_or(ApiError::NotFound)?;
     let after = system_grant_json(&added);
@@ -724,7 +724,7 @@ pub async fn update_member(
         }
         (None, _) => MemberChange::NotFound,
     };
-    member_change_result(change, "ControlHub needs at least one Super Admin")?;
+    member_change_result(change, "karbird needs at least one Super Admin")?;
     let updated = state.pg.system_member(member_id).await?.ok_or(ApiError::NotFound)?;
     let (before, after) = (system_grant_json(&target), system_grant_json(&updated));
     audit(&state, &access, SYSTEM_SCOPE, "admin.admin.update", &user_id, None, Some(before), Some(after), "succeeded")
@@ -748,7 +748,7 @@ pub async fn remove_member(
     if let Err(why) = check_member_change(&access.actor, &system_target(&target), &Grant::Remove, supers) {
         return Err(deny(&state, &access, SYSTEM_SCOPE, "admin.admin.remove", &user_id, why).await);
     }
-    member_change_result(state.pg.remove_system_member(member_id).await?, "ControlHub needs at least one Super Admin")?;
+    member_change_result(state.pg.remove_system_member(member_id).await?, "karbird needs at least one Super Admin")?;
     let before = system_grant_json(&target);
     audit(&state, &access, SYSTEM_SCOPE, "admin.admin.remove", &user_id, None, Some(before), None, "succeeded").await?;
     Ok(StatusCode::NO_CONTENT)
@@ -935,7 +935,7 @@ pub async fn audit_log(
 ) -> ApiResult<Json<Vec<AdminAuditEntryDto>>> {
     authorize_system(&state, &user, Some(SystemPermission::AuditView)).await?;
     let project = q.project_id.as_deref().filter(|p| !p.is_empty());
-    if project.is_some_and(|p| controlhub_domain::ProjectId::parse(p).is_err()) {
+    if project.is_some_and(|p| karbird_domain::ProjectId::parse(p).is_err()) {
         return Err(ApiError::BadRequest("project_id".into()));
     }
     let rows = state.pg.admin_audit(project, q.limit.unwrap_or(200)).await?;

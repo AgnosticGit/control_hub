@@ -13,9 +13,9 @@ interface Creds {
 export const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 function readJson<T>(name: string, hint: string): T {
   try {
-    return JSON.parse(readFileSync(join(root, ".controlhub", name), "utf8")) as T;
+    return JSON.parse(readFileSync(join(root, ".karbird", name), "utf8")) as T;
   } catch {
-    throw new Error(`missing .controlhub/${name}: ${hint}`);
+    throw new Error(`missing .karbird/${name}: ${hint}`);
   }
 }
 const local = readJson<Omit<Creds, "users">>("local-credentials.json", "run `just bootstrap`");
@@ -23,11 +23,11 @@ const local = readJson<Omit<Creds, "users">>("local-credentials.json", "run `jus
 const fixtures = readJson<Pick<Creds, "users" | "ingest_tokens">>("test-credentials.json", "run the suite via `just test-e2e`");
 const creds: Creds = { ...local, users: fixtures.users, ingest_tokens: { ...local.ingest_tokens, ...fixtures.ingest_tokens } };
 
-/** The developer's own account from the gitignored `.controlhub/owner.env`, or null. */
+/** The developer's own account from the gitignored `.karbird/owner.env`, or null. */
 export function ownerAccount(): { email: string; password: string } | null {
   let text: string;
   try {
-    text = readFileSync(join(root, ".controlhub", "owner.env"), "utf8");
+    text = readFileSync(join(root, ".karbird", "owner.env"), "utf8");
   } catch {
     return null;
   }
@@ -37,8 +37,8 @@ export function ownerAccount(): { email: string; password: string } | null {
     const i = t.indexOf("=");
     if (t && !t.startsWith("#") && i > 0) env.set(t.slice(0, i), t.slice(i + 1));
   }
-  const email = env.get("CONTROLHUB_OWNER_EMAIL")?.trim().toLowerCase();
-  const password = env.get("CONTROLHUB_OWNER_PASSWORD");
+  const email = env.get("KARBIRD_OWNER_EMAIL")?.trim().toLowerCase();
+  const password = env.get("KARBIRD_OWNER_PASSWORD");
   return email && password ? { email, password } : null;
 }
 
@@ -147,8 +147,67 @@ export interface SpanInput {
 
 const keyValue = (field: number, k: string, v: string) => len(field, Buffer.concat([str(1, k), len(2, str(1, v))]));
 
+export interface MetricPoint {
+  attributes?: Record<string, string>;
+  value: number;
+  timeNs: bigint;
+  /** Start of a cumulative sum. */
+  startNs?: bigint;
+}
+
+export interface MetricInput {
+  name: string;
+  unit?: string;
+  kind: "gauge" | "sum";
+  monotonic?: boolean;
+  points: MetricPoint[];
+}
+
+function double(field: number, x: number): Buffer {
+  const b = Buffer.alloc(8);
+  b.writeDoubleLE(x);
+  return Buffer.concat([tag(field, 1), b]);
+}
+
+/** Sends agent-style metrics (gauges and sums, one resource each) through the real ingest endpoint. */
+export async function ingestMetrics(resources: Array<{ attributes: Record<string, string>; metrics: MetricInput[] }>, env = "isolation-test") {
+  const point = (p: MetricPoint) =>
+    Buffer.concat([
+      ...Object.entries(p.attributes ?? {}).map(([k, v]) => keyValue(7, k, v)),
+      ...(p.startNs ? [fixed64(2, p.startNs)] : []),
+      fixed64(3, p.timeNs),
+      double(4, p.value),
+    ]);
+  const metric = (m: MetricInput) => {
+    const points = m.points.map((p) => len(1, point(p)));
+    const data =
+      m.kind === "sum"
+        ? len(7, Buffer.concat([...points, tag(2, 0), varint(2), tag(3, 0), varint(m.monotonic ? 1 : 0)]))
+        : len(5, Buffer.concat(points));
+    return len(2, Buffer.concat([str(1, m.name), ...(m.unit ? [str(3, m.unit)] : []), data]));
+  };
+  const body = Buffer.concat(
+    resources.map((r) =>
+      len(
+        1,
+        Buffer.concat([
+          len(1, Buffer.concat(Object.entries(r.attributes).map(([k, v]) => keyValue(1, k, v)))),
+          len(2, Buffer.concat(r.metrics.map(metric))),
+        ]),
+      ),
+    ),
+  );
+  const res = await fetch(`${creds.otlp_http_endpoint}/v1/metrics`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${creds.ingest_tokens[env]}`, "content-type": "application/x-protobuf" },
+    body,
+  });
+  if (res.status !== 200) throw new Error(`metric ingest failed: ${res.status}`);
+  if ((await res.arrayBuffer()).byteLength !== 0) throw new Error("metric ingest refused some points (partial_success)");
+}
+
 /** Sends spans of one service through the real ingest endpoint (`isolation-test` by default). */
-export async function ingestSpans(service: string, spans: SpanInput[], env = "isolation-test") {
+export async function ingestSpans(service: string, spans: SpanInput[], env = "isolation-test", resourceAttributes: Record<string, string> = {}) {
   const encoded = spans.map((s) =>
     len(
       2,
@@ -165,7 +224,10 @@ export async function ingestSpans(service: string, spans: SpanInput[], env = "is
       ]),
     ),
   );
-  const resource = len(1, keyValue(1, "service.name", service));
+  const resource = len(
+    1,
+    Buffer.concat([keyValue(1, "service.name", service), ...Object.entries(resourceAttributes).map(([k, v]) => keyValue(1, k, v))]),
+  );
   const body = len(1, Buffer.concat([resource, len(2, Buffer.concat(encoded))]));
   const res = await fetch(`${creds.otlp_http_endpoint}/v1/traces`, {
     method: "POST",

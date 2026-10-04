@@ -1,4 +1,4 @@
--- ControlHub operational metadata. Telemetry lives in ClickHouse.
+-- karbird operational metadata. Telemetry lives in ClickHouse.
 
 CREATE TABLE tenants (
     id          TEXT PRIMARY KEY,

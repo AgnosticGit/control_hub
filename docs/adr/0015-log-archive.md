@@ -2,17 +2,17 @@
 
 ## Decision
 - **Templates at ingest time.** The processor splits every log body into a template and its
-  variables (`controlhub-archive::template`): words that contain a digit, or long hex words, are
+  variables (`karbird-archive::template`): words that contain a digit, or long hex words, are
   variables; integers are stored as numbers. `template_id` (first 8 bytes of SHA-256 of the
   template) is written to ClickHouse and returned by the API, so lines of one kind can be grouped.
   The split is lossless: `render(parse(body)) == body` for every input (property test).
-- **ClickHouse stays the hot store** (TTL from `CONTROLHUB_LOGS_RETENTION_DAYS`, 14 days by
+- **ClickHouse stays the hot store** (TTL from `KARBIRD_LOGS_RETENTION_DAYS`, 14 days by
   default, ADR-0016) and gets column codecs (Delta/T64 + ZSTD) on
   non-key columns (`0002_log_templates_and_codecs.sql`).
-- **A separate process, `controlhub-archiver`**, copies closed one-hour windows (UTC) per
+- **A separate process, `karbird-archiver`**, copies closed one-hour windows (UTC) per
   service out of ClickHouse into S3-compatible object storage. It only reads ClickHouse; the
   table TTL deletes. It is not in the ingest path, so the ACK semantics are unchanged.
-- **Segment format `CHSEG`** (`controlhub-archive::segment`): rows are sorted by template, time
+- **Segment format `CHSEG`** (`karbird-archive::segment`): rows are sorted by template, time
   and ID; every field is its own column (delta/zigzag varints for times, an interned string table,
   attribute and resource sets referenced by index, hex IDs as raw bytes, template variables typed),
   each column compressed with zstd (level 19).
@@ -40,7 +40,7 @@
   environment would be the exception: that window is read only in part).
 - **Search index in the catalog** (migration 0008), filled by the archiver per segment: the
   sorted template IDs, the highest severity and a bloom filter over trace IDs (10 bits per trace,
-  7 probes, 64 bits to 128 KiB; layout in `controlhub-archive/src/index.rs`). PostgreSQL applies
+  7 probes, 64 bits to 128 KiB; layout in `karbird-archive/src/index.rs`). PostgreSQL applies
   them while listing segments (`get_bit` for the bloom probes), so segments that cannot match the
   `template_id`, `min_severity` or `trace_id` filter are never fetched and do not count against
   the 400-segment cap. Segments without an index (archived earlier) are always opened. Text
@@ -60,7 +60,7 @@
   encoded, decoded back and compared with the source rows, stored, read back with a matching
   SHA-256 and catalogued. A crash means the window is archived again. Windows that left
   ClickHouse before they could be archived (archiver down longer than the TTL) are recorded as
-  `lost` and counted (`controlhub_archiver_windows_total{result="lost"}`), never skipped quietly.
+  `lost` and counted (`karbird_archiver_windows_total{result="lost"}`), never skipped quietly.
 - **Late data.** Each window is counted again 24 hours after it closed; when ClickHouse has more
   rows than were archived, the window is archived again (the archive never shrinks).
 - **Isolation.** The archiver's ClickHouse user can only `SELECT` from `logs`; its PostgreSQL role

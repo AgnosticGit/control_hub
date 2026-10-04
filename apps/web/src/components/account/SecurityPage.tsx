@@ -11,7 +11,7 @@ import { passwordChangeProblem } from "./password";
 function errorText(e: unknown): string {
   if (e instanceof ApiRequestError && e.status === 429) return "Too many attempts. Try again later.";
   if (e instanceof ApiRequestError && e.status === 400) return `${e.message.replace(/^invalid request: /, "").replace(/^./, (c) => c.toUpperCase())}.`;
-  return "Cannot reach the ControlHub API.";
+  return "Cannot reach the karbird API.";
 }
 
 function PasswordForm() {

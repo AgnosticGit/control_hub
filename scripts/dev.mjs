@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Build and run ControlHub backend services (+ optionally the web app)
+// Build and run karbird backend services (+ optionally the web app)
 // against the local infrastructure started by `just bootstrap`.
-// `just dev ngrok` also exposes the web app at CONTROLHUB_PUBLIC_URL through ngrok.
+// `just dev ngrok` also exposes the web app at KARBIRD_PUBLIC_URL through ngrok.
 //
-// Binaries are copied to .controlhub/bin before starting: on Windows a running
+// Binaries are copied to .karbird/bin before starting: on Windows a running
 // .exe cannot be replaced, and running from target/ would block `cargo build`.
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -19,19 +19,19 @@ try {
   console.error(`[dev] ${e.message}`);
   process.exit(2);
 }
-if (!existsSync(join(root, ".controlhub", "services.env"))) {
-  console.error("missing .controlhub/services.env — run `just bootstrap` first");
+if (!existsSync(join(root, ".karbird", "services.env"))) {
+  console.error("missing .karbird/services.env — run `just bootstrap` first");
   process.exit(2);
 }
 assertNotRunning("dev");
-const services = ["controlhub-ingest", "controlhub-processor", "controlhub-api", "controlhub-executor", "controlhub-archiver"];
+const services = ["karbird-ingest", "karbird-processor", "karbird-api", "karbird-executor", "karbird-archiver"];
 
 if (opts.build) {
   await run("cargo", ["build", ...(opts.release ? ["--release"] : []), ...services.flatMap((s) => ["-p", s])]);
 }
 
 const exe = (name) => (process.platform === "win32" ? `${name}.exe` : name);
-const binDir = join(root, ".controlhub", "bin");
+const binDir = join(root, ".karbird", "bin");
 mkdirSync(binDir, { recursive: true });
 for (const s of services) {
   try {
@@ -47,19 +47,19 @@ const bin = (name) => join(binDir, exe(name));
 const pub = opts.publicUrl;
 const apiEnv = {
   // With ngrok the browser's Origin is the public URL, so the API must accept it too.
-  CONTROLHUB_ALLOWED_ORIGINS: allowedOrigins(pub),
+  KARBIRD_ALLOWED_ORIGINS: allowedOrigins(pub),
   // Dev stand only: self-service sign-up is open here and closed by default elsewhere.
-  CONTROLHUB_SIGNUP: process.env.CONTROLHUB_SIGNUP ?? "open",
-  CONTROLHUB_SIGNUP_PER_HOUR: process.env.CONTROLHUB_SIGNUP_PER_HOUR ?? "60",
+  KARBIRD_SIGNUP: process.env.KARBIRD_SIGNUP ?? "open",
+  KARBIRD_SIGNUP_PER_HOUR: process.env.KARBIRD_SIGNUP_PER_HOUR ?? "60",
 };
 const procs = [
-  { name: "ingest", cmd: bin("controlhub-ingest"), args: [] },
-  { name: "processor", cmd: bin("controlhub-processor"), args: [] },
-  { name: "api", cmd: bin("controlhub-api"), args: ["serve"], env: apiEnv },
+  { name: "ingest", cmd: bin("karbird-ingest"), args: [] },
+  { name: "processor", cmd: bin("karbird-processor"), args: [] },
+  { name: "api", cmd: bin("karbird-api"), args: ["serve"], env: apiEnv },
   // The only process allowed to touch the observed system (and Docker).
-  { name: "executor", cmd: bin("controlhub-executor"), args: [] },
+  { name: "executor", cmd: bin("karbird-executor"), args: [] },
   // Copies closed log windows from ClickHouse into object storage (ADR-0015).
-  { name: "archiver", cmd: bin("controlhub-archiver"), args: ["run"] },
+  { name: "archiver", cmd: bin("karbird-archiver"), args: ["run"] },
 ];
 if (opts.web) {
   // Started with node directly (no pnpm/cmd wrapper) so the recorded PID is `next` itself and
@@ -71,7 +71,7 @@ if (opts.web) {
     cmd: process.execPath,
     args: [next, "dev", "--port", "3000", "--hostname", "127.0.0.1"],
     cwd: web,
-    env: { CONTROLHUB_DEV_PUBLIC_URL: pub ?? "" },
+    env: { KARBIRD_DEV_PUBLIC_URL: pub ?? "" },
   });
 }
 if (pub) {

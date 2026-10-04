@@ -1,33 +1,42 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { SDK_MIN_NODE, SDK_PACKAGE, sdkCode, sdkEnv, sdkInstall, sdkStart } from "@/components/integration/snippets";
 import { Prose } from "../prose";
 
 export const metadata: Metadata = {
   title: "Integrations",
-  description: "Connect Node.js services and any OpenTelemetry-compatible SDK or Collector to ControlHub.",
+  description: "Connect Node.js services to karbird with the karbird SDK.",
 };
+
+const example = { endpoint: "https://<your-endpoint>/otlp", token: null, serviceName: "orders" };
+const link = "font-semibold underline decoration-border-strong hover:decoration-text";
 
 export default function IntegrationsPage() {
   return (
-    <Prose title="Integrations" lead="ControlHub speaks standard OTLP. Anything that exports OTLP can send data.">
-      <h2>Node.js HTTP services</h2>
+    <Prose title="Integrations" lead="Services connect to karbird with one package: the karbird SDK.">
+      <h2>Node.js services</h2>
       <p>
-        The <code>@controlhub/sdk-node</code> package wraps the official OpenTelemetry SDK: HTTP and PostgreSQL
-        instrumentation, trace-correlated logs and request events. Load it before your application code:
+        <code>{SDK_PACKAGE}</code> runs on Node.js {SDK_MIN_NODE} or newer. It traces incoming and outgoing HTTP requests and
+        PostgreSQL queries, and sends logs and request events linked to those traces. Install it:
       </p>
-      <pre>{`CONTROLHUB_SERVICE_NAME=orders \\
-CONTROLHUB_INGEST_TOKEN=<scoped token> \\
-node --import @controlhub/sdk-node/register server.js`}</pre>
-      <p>Headers, request/response bodies and full SQL text are not recorded.</p>
-      <h2>OpenTelemetry SDKs and Collector</h2>
+      <pre>{sdkInstall()}</pre>
+      <p>Configure it with the endpoint and the ingestion token from your Integration page, and load it before your application code:</p>
+      <pre>{`${sdkEnv(example)}\n\n${sdkStart()}`}</pre>
+      <p>Headers, request and response bodies and full SQL text are never recorded.</p>
+
+      <h2>Logs and events from your code</h2>
+      <p>The running SDK instance gives you a logger and an events client. Both are linked to the request being handled:</p>
+      <pre>{sdkCode()}</pre>
+      <p>Events such as deployments and configuration changes appear on the timeline next to the traces.</p>
+
+      <h2>Coding assistants</h2>
       <p>
-        Point an OTLP exporter at <code>/v1/traces</code> and <code>/v1/logs</code> (HTTP, protobuf) or the gRPC
-        endpoint, with header <code>Authorization: Bearer &lt;token&gt;</code>. OTLP/JSON is not supported yet and is
-        rejected with HTTP 415.
-      </p>
-      <h2>Custom events</h2>
-      <p>
-        <code>POST /api/v1/events/batch</code> accepts deployment, configuration and request lifecycle events with
-        nanosecond timestamps encoded as decimal strings.
+        The <code>karbird</code> CLI and its read-only MCP server give your coding assistant the topology, errors and recent history
+        of one environment. See{" "}
+        <Link href="/getting-started" className={link}>
+          Getting started
+        </Link>{" "}
+        for connecting your first service.
       </p>
     </Prose>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Filters, Frame, FrameSummary, InitResult, LoadResult, TopologyView } from "@controlhub/web-engine";
+import type { Filters, Frame, FrameSummary, InitResult, LoadResult, TopologyView } from "@karbird/web-engine";
 import { EngineClient } from "@/engine/client";
 import { scopedUrl } from "@/lib/api";
 import { NS_PER_MS, NS_PER_SEC, clampNs, nowNs, parseNs } from "@/lib/time";
@@ -407,14 +407,19 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       if (s.mode === "live" || s.mode === "replay") patch({ mode: "paused" });
       seek(t);
     },
+    // From the cursor itself: the last frame may still describe an earlier seek (e.g. Home, then Next).
     stepPrev: async () => {
-      const f = await clientRef.current?.settledFrame();
-      const p = parseNs(f?.summary.prev_event_ns);
+      const t = await clientRef.current
+        ?.call({ kind: "prevEvent", beforeNs: stateRef.current.cursor.toString() })
+        .catch(() => null);
+      const p = parseNs(t);
       if (p !== null) a.seek(p);
     },
     stepNext: async () => {
-      const f = await clientRef.current?.settledFrame();
-      const n = parseNs(f?.summary.next_event_ns);
+      const t = await clientRef.current
+        ?.call({ kind: "nextEvent", afterNs: stateRef.current.cursor.toString() })
+        .catch(() => null);
+      const n = parseNs(t);
       if (n !== null) a.seek(n);
     },
     jump: (deltaMs: number) => a.seek(stateRef.current.cursor + BigInt(deltaMs) * NS_PER_MS),
@@ -434,6 +439,12 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       await loadRange(from, to, { reset: true, topology: true });
       clientRef.current?.seek(to);
     },
+    /** Machines and instances at `at`; the engine lays out the infrastructure layer from them. */
+    loadInfrastructure: async (at: bigint) =>
+      (await clientRef.current?.call({
+        kind: "loadInfrastructure",
+        url: scopedUrl(projectId, environmentId, "infrastructure", { at: at.toString() }),
+      })) ?? null,
     setFilters: (f: Filters) => clientRef.current?.setFilters(f),
     setViewport: (x: number, y: number, w: number, h: number, scale: number) =>
       clientRef.current?.setViewport(x, y, w, h, scale),
@@ -461,7 +472,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     },
     };
     return a;
-  }, [seek, loadRange, patch]);
+  }, [seek, loadRange, patch, projectId, environmentId]);
 
   return { state, actions };
 }

@@ -5,9 +5,9 @@
 
 use axum::Json;
 use axum::extract::{Path, State};
-use controlhub_domain::Scope;
-use controlhub_storage::pg::{NewAuditEntry, TokenKind, TokenRow};
-use controlhub_storage::secrets::{generate_token, hash_token, token_prefix};
+use karbird_domain::Scope;
+use karbird_storage::pg::{NewAuditEntry, TokenKind, TokenRow};
+use karbird_storage::secrets::{generate_token, hash_token, token_prefix};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;

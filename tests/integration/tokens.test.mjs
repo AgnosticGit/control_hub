@@ -9,9 +9,9 @@ let admin;
 let viewer;
 before(async () => {
   admin = new Session();
-  await admin.login('admin@controlhub.local');
+  await admin.login('admin@karbird.local');
   viewer = new Session();
-  await viewer.login('viewer@controlhub.local');
+  await viewer.login('viewer@karbird.local');
 });
 
 const name = (p) => `${p}-${randomUUID().slice(0, 8)}`;
@@ -129,7 +129,7 @@ test('ingestion token rotation keeps the old token for the grace period only', a
 
 test('tokens of another tenant are invisible', async () => {
   const iso = new Session();
-  await iso.login('isolation@controlhub.local');
+  await iso.login('isolation@karbird.local');
   const created = await admin.mutate(`${DEMO}/tokens`, { kind: 'api', name: name('iso') });
   assert.equal((await iso.json(`${DEMO}/tokens`)).status, 404);
   assert.equal((await iso.mutate(`${ISO}/tokens/${created.body.token.id}/revoke`, {})).status, 404);

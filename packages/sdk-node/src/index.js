@@ -1,13 +1,14 @@
-// ControlHub integration for Node.js services.
+// karbird integration for Node.js services.
 //
 // Thin, explicit wrapper over the official OpenTelemetry SDK:
 // - traces and logs are exported with standard OTLP/HTTP protobuf;
 // - HTTP server/client and `pg` are auto-instrumented;
 // - request/response headers and bodies are never recorded;
 // - process command-line arguments are not attached to the resource
-//   (automatic resource detection is disabled on purpose);
+//   (automatic resource detection is disabled on purpose); only host.name,
+//   container.id and process.pid are added (see `resource.js`);
 // - optional `request.started` / `request.completed` events are sent to
-//   the ControlHub custom events endpoint;
+//   the karbird custom events endpoint;
 // - span start times are refined below 1 ms (see `precise-start.js`).
 
 import { hostname } from 'node:os';
@@ -22,8 +23,9 @@ import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
 import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
 import { EventsClient } from './events.js';
 import { PreciseStartSpanProcessor } from './precise-start.js';
+import { infraAttributes } from './resource.js';
 
-const GLOBAL_KEY = Symbol.for('controlhub.sdk-node');
+const GLOBAL_KEY = Symbol.for('karbird.sdk-node');
 const OTEL_API_KEY = Symbol.for('opentelemetry.js.api.1');
 
 const SEVERITY = {
@@ -34,19 +36,19 @@ const SEVERITY = {
 };
 
 /** Returns the running instance (e.g. started by `register`), or null. */
-export function getControlHub() {
+export function getKarbird() {
   return globalThis[GLOBAL_KEY] ?? null;
 }
 
 /**
- * @param {import('./index.js').ControlHubOptions} options
- * @returns {import('./index.js').ControlHubHandle}
+ * @param {import('./index.js').KarbirdOptions} options
+ * @returns {import('./index.js').KarbirdHandle}
  */
-export function startControlHub(options = {}) {
+export function startKarbird(options = {}) {
   const existing = globalThis[GLOBAL_KEY];
   if (existing) {
-    process.emitWarning('ControlHub SDK is already started; reusing the existing instance', {
-      code: 'CONTROLHUB_DOUBLE_INIT',
+    process.emitWarning('karbird SDK is already started; reusing the existing instance', {
+      code: 'KARBIRD_DOUBLE_INIT',
     });
     return existing;
   }
@@ -58,27 +60,30 @@ export function startControlHub(options = {}) {
   }
 
   const env = process.env;
-  const serviceName = options.serviceName ?? env.CONTROLHUB_SERVICE_NAME ?? env.OTEL_SERVICE_NAME;
+  const serviceName = options.serviceName ?? env.KARBIRD_SERVICE_NAME ?? env.OTEL_SERVICE_NAME;
   if (!serviceName) {
-    throw new Error('serviceName (or CONTROLHUB_SERVICE_NAME) is required');
+    throw new Error('serviceName (or KARBIRD_SERVICE_NAME) is required');
   }
-  const endpoint = trimSlash(options.endpoint ?? env.CONTROLHUB_OTLP_ENDPOINT ?? 'http://127.0.0.1:4318');
-  const token = options.token ?? env.CONTROLHUB_INGEST_TOKEN;
+  const endpoint = trimSlash(options.endpoint ?? env.KARBIRD_OTLP_ENDPOINT ?? 'http://127.0.0.1:4318');
+  const token = options.token ?? env.KARBIRD_INGEST_TOKEN;
   if (!token) {
-    throw new Error('ingest token (CONTROLHUB_INGEST_TOKEN) is required');
+    throw new Error('ingest token (KARBIRD_INGEST_TOKEN) is required');
   }
-  const serviceNamespace = options.serviceNamespace ?? env.CONTROLHUB_SERVICE_NAMESPACE ?? '';
-  const instanceId = options.serviceInstanceId ?? `${hostname()}-${process.pid}`;
+  const serviceNamespace = options.serviceNamespace ?? env.KARBIRD_SERVICE_NAMESPACE ?? '';
+  const infra = infraAttributes({ hostName: options.hostName, containerId: options.containerId });
+  const instanceId =
+    options.serviceInstanceId ?? env.KARBIRD_SERVICE_INSTANCE_ID ?? `${infra['host.name'] ?? hostname()}-${process.pid}`;
   const headers = { authorization: `Bearer ${token}` };
 
   const attributes = {
+    ...infra,
     'service.name': serviceName,
     'service.instance.id': instanceId,
   };
   if (serviceNamespace) attributes['service.namespace'] = serviceNamespace;
-  const version = options.serviceVersion ?? env.CONTROLHUB_SERVICE_VERSION;
+  const version = options.serviceVersion ?? env.KARBIRD_SERVICE_VERSION;
   if (version) attributes['service.version'] = version;
-  const environment = options.environment ?? env.CONTROLHUB_ENVIRONMENT;
+  const environment = options.environment ?? env.KARBIRD_ENVIRONMENT;
   if (environment) attributes['deployment.environment.name'] = environment;
 
   const ignorePaths = new Set(options.ignorePaths ?? ['/health', '/healthz', '/ready']);
@@ -127,8 +132,8 @@ export function startControlHub(options = {}) {
         exporter: new OTLPLogExporter({ url: `${endpoint}/v1/logs`, headers }),
       }),
     ],
-    // ControlHub does not ingest OTLP metrics yet; without an explicit empty
-    // list NodeSDK would start a default OTLP metrics exporter from env.
+    // Machine and container metrics come from the Karbird agent, not from the SDK;
+    // without an explicit empty list NodeSDK would start a default OTLP metrics exporter from env.
     metricReaders: [],
     instrumentations: [
       httpInstrumentation,

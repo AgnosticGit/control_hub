@@ -98,7 +98,7 @@ fn package_json_step(
         description.push(format!("add dependency {SDK_PACKAGE}@{}", args.sdk_spec));
     }
 
-    if !d.controlhub_register_in_start {
+    if !d.karbird_register_in_start {
         let start = d.start_script.clone();
         let new_start = match (&start, &d.entry) {
             (Some(s), Some(_)) if discover::node_entry(s).is_some() => {
@@ -139,11 +139,11 @@ fn env_example_step(root: &Path, service: &str, environment: &str) -> anyhow::Re
     let has_key =
         |k: &str| text.lines().any(|l| l.trim_start().strip_prefix(k).is_some_and(|r| r.trim_start().starts_with('=')));
     let wanted = [
-        ("CONTROLHUB_SERVICE_NAME", service.to_owned()),
-        ("CONTROLHUB_ENVIRONMENT", environment.to_owned()),
-        ("CONTROLHUB_OTLP_ENDPOINT", "http://127.0.0.1:4318".to_owned()),
+        ("KARBIRD_SERVICE_NAME", service.to_owned()),
+        ("KARBIRD_ENVIRONMENT", environment.to_owned()),
+        ("KARBIRD_OTLP_ENDPOINT", "http://127.0.0.1:4318".to_owned()),
         // Never a real value: tokens belong in an untracked .env or a secret store.
-        ("CONTROLHUB_INGEST_TOKEN", String::new()),
+        ("KARBIRD_INGEST_TOKEN", String::new()),
     ];
     let missing: Vec<&(&str, String)> = wanted.iter().filter(|(k, _)| !has_key(k)).collect();
     if missing.is_empty() {
@@ -153,7 +153,7 @@ fn env_example_step(root: &Path, service: &str, environment: &str) -> anyhow::Re
     if !after.is_empty() && !after.ends_with('\n') {
         after.push('\n');
     }
-    after.push_str("# ControlHub (the ingestion token is a secret: keep it in an untracked .env)\n");
+    after.push_str("# karbird (the ingestion token is a secret: keep it in an untracked .env)\n");
     for (k, v) in &missing {
         after.push_str(&format!("{k}={v}\n"));
     }
@@ -189,7 +189,7 @@ pub fn build(root: &Path, args: &PlanArgs) -> anyhow::Result<Plan> {
     let d = discover::discover(root)?;
     let mut plan = Plan {
         format: PLAN_FORMAT,
-        generated_by: format!("controlhub-cli {}", env!("CARGO_PKG_VERSION")),
+        generated_by: format!("karbird-cli {}", env!("CARGO_PKG_VERSION")),
         service_name: None,
         environment: args.environment.clone(),
         steps: vec![],
@@ -199,7 +199,7 @@ pub fn build(root: &Path, args: &PlanArgs) -> anyhow::Result<Plan> {
     };
     if d.ecosystem != Ecosystem::Node {
         plan.manual_steps.push(
-            "Configure your OpenTelemetry SDK to export OTLP/HTTP (protobuf) to CONTROLHUB_OTLP_ENDPOINT \
+            "Configure your OpenTelemetry SDK to export OTLP/HTTP (protobuf) to KARBIRD_OTLP_ENDPOINT \
              (/v1/traces, /v1/logs) or OTLP/gRPC to port 4317, with header `authorization: Bearer <ingestion token>`."
                 .into(),
         );
@@ -219,16 +219,16 @@ pub fn build(root: &Path, args: &PlanArgs) -> anyhow::Result<Plan> {
     plan.steps.extend(gitignore_step(root, &d)?);
     manual.push(
         "Create an ingestion token for the target environment (web UI → Tokens) and put it in an untracked .env \
-         or your secret store as CONTROLHUB_INGEST_TOKEN. Node does not load .env automatically: \
+         or your secret store as KARBIRD_INGEST_TOKEN. Node does not load .env automatically: \
          use `node --env-file=.env` (Node ≥ 20.6) or your process manager."
             .into(),
     );
     plan.manual_steps = manual;
     let pm = d.package_manager.as_deref().unwrap_or("npm");
-    plan.next_commands = vec![format!("{pm} install"), "controlhub verify".into()];
+    plan.next_commands = vec![format!("{pm} install"), "karbird verify".into()];
     if args.sdk_spec.starts_with('^') || args.sdk_spec.starts_with('~') {
         plan.notes.push(format!(
-            "{SDK_PACKAGE} is not published to a registry yet; install it with --sdk-spec file:<controlhub checkout>/packages/sdk-node"
+            "{SDK_PACKAGE} is not published to a registry yet; install it with --sdk-spec file:<karbird checkout>/packages/sdk-node"
         ));
     }
     plan.notes.push(
@@ -280,7 +280,7 @@ fn diff(file: &str, before: &str, after: &str) -> String {
 
 fn write_atomic(path: &Path, content: &str) -> anyhow::Result<()> {
     let name = path.file_name().and_then(|n| n.to_str()).ok_or_else(|| anyhow!("bad file name"))?;
-    let tmp = path.with_file_name(format!(".{name}.controlhub-tmp"));
+    let tmp = path.with_file_name(format!(".{name}.karbird-tmp"));
     std::fs::write(&tmp, content)?;
     std::fs::rename(&tmp, path).inspect_err(|_| {
         let _ = std::fs::remove_file(&tmp);
@@ -308,7 +308,7 @@ pub fn apply(root: &Path, plan: &Plan, yes: bool) -> anyhow::Result<Outcome> {
     }
     if !drift.is_empty() {
         return Ok(Outcome {
-            json: json!({ "applied": false, "error": "files changed since the plan was made; run `controlhub plan` again", "changed_files": drift }),
+            json: json!({ "applied": false, "error": "files changed since the plan was made; run `karbird plan` again", "changed_files": drift }),
             code: 2,
         });
     }
@@ -362,7 +362,7 @@ mod tests {
         )
         .unwrap();
         std::fs::write(dir.path().join(".gitignore"), "node_modules").unwrap();
-        std::fs::write(dir.path().join(".env"), "CONTROLHUB_INGEST_TOKEN=chi_secret").unwrap();
+        std::fs::write(dir.path().join(".env"), "KARBIRD_INGEST_TOKEN=chi_secret").unwrap();
         dir
     }
 
@@ -385,10 +385,10 @@ mod tests {
 
         assert_eq!(apply(dir.path(), &plan, true).unwrap().code, 0);
         let pkg = std::fs::read_to_string(dir.path().join("package.json")).unwrap();
-        assert!(pkg.contains("\"start\": \"node --import @controlhub/sdk-node/register src/server.js\""));
+        assert!(pkg.contains("\"start\": \"node --import @karbird/sdk-node/register src/server.js\""));
         assert!(pkg.starts_with("{\n    \"name\""), "keeps 4-space indentation and key order");
         let env = std::fs::read_to_string(dir.path().join(".env.example")).unwrap();
-        assert!(env.contains("CONTROLHUB_SERVICE_NAME=shop-api\n") && env.contains("CONTROLHUB_INGEST_TOKEN=\n"));
+        assert!(env.contains("KARBIRD_SERVICE_NAME=shop-api\n") && env.contains("KARBIRD_INGEST_TOKEN=\n"));
         assert!(!env.contains("chi_secret"));
         assert_eq!(std::fs::read_to_string(dir.path().join(".gitignore")).unwrap(), "node_modules\n.env\n");
 

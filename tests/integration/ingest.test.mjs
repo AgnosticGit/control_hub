@@ -33,7 +33,7 @@ const marker = (p) => `${p}-${randomUUID().slice(0, 8)}`;
 let iso;
 before(async () => {
   iso = new Session();
-  await iso.login('isolation@controlhub.local');
+  await iso.login('isolation@karbird.local');
 });
 
 async function traceDetail(traceId) {
@@ -173,7 +173,7 @@ test('logs without any timestamp or with malformed IDs are rejected and counted'
   assert.equal(partial[1][0], 2n, 'rejected_log_records');
   const after = await ingestMetrics();
   assert.ok(
-    after['controlhub_ingest_items_total{signal="logs",result="rejected"}'] >= before['controlhub_ingest_items_total{signal="logs",result="rejected"}'] + 2,
+    after['karbird_ingest_items_total{signal="logs",result="rejected"}'] >= before['karbird_ingest_items_total{signal="logs",result="rejected"}'] + 2,
     'every rejected record increments a counter',
   );
 });
@@ -205,18 +205,21 @@ test('OTLP/HTTP content types: protobuf only (JSON and others are 415, never sil
   assert.equal(withParams.status, 200, 'media type parameters are ignored');
 });
 
-test('malformed protobuf is 400 and counted; metrics export is an explicit 501', async () => {
-  const before = await ingestMetrics();
-  const r = await otlpHttp('traces', Buffer.from([0x0a, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x01]));
-  assert.equal(r.status, 400);
-  const after = await ingestMetrics();
-  assert.ok(after['controlhub_ingest_requests_total{result="rejected_invalid"}'] > before['controlhub_ingest_requests_total{result="rejected_invalid"}']);
-  const m = await fetch(`${OTLP}/v1/metrics`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/x-protobuf' },
-    body: new Uint8Array(),
-  });
-  assert.equal(m.status, 501);
+test('malformed protobuf is 400 and counted on every signal; an empty metrics export is accepted', async () => {
+  const malformed = Buffer.from([0x0a, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x01]);
+  for (const signal of ['traces', 'metrics']) {
+    const before = await ingestMetrics();
+    const r = await otlpHttp(signal, malformed);
+    assert.equal(r.status, 400, signal);
+    const after = await ingestMetrics();
+    assert.ok(
+      after['karbird_ingest_requests_total{result="rejected_invalid"}'] > before['karbird_ingest_requests_total{result="rejected_invalid"}'],
+      signal,
+    );
+  }
+  const empty = await otlpHttp('metrics', Buffer.alloc(0));
+  assert.equal(empty.status, 200);
+  assert.equal(empty.body.length, 0, 'no partial_success when nothing was refused');
 });
 
 test('OTLP/HTTP bodies over 4 MiB are refused with 413', async () => {
@@ -372,7 +375,7 @@ test('event attributes are redacted and the scope comes from the token', async (
   assert.equal(ev.attributes.note, 'Bearer [REDACTED]');
   assert.equal(ev.attributes.count, '3', 'non-string values are stringified');
   const admin = new Session();
-  await admin.login('admin@controlhub.local');
+  await admin.login('admin@karbird.local');
   const demo = await admin.json(`/api/v1/projects/demo/environments/local-demo/events?trace_id=${traceId}`);
   assert.equal(demo.status, 200);
   assert.equal(demo.body.events.length, 0, 'payload tenant attributes do not move the event');
@@ -383,10 +386,10 @@ test('ingest self-metrics are exposed in Prometheus text format and move with tr
   assert.equal(res.status, 200);
   const text = await res.text();
   for (const name of [
-    'controlhub_ingest_requests_total{result="accepted"}',
-    'controlhub_ingest_items_total{signal="spans",result="accepted"}',
-    'controlhub_ingest_attributes_redacted_total',
-    'controlhub_ingest_publish_failures_total',
+    'karbird_ingest_requests_total{result="accepted"}',
+    'karbird_ingest_items_total{signal="spans",result="accepted"}',
+    'karbird_ingest_attributes_redacted_total',
+    'karbird_ingest_publish_failures_total',
   ]) {
     assert.ok(text.includes(name), `missing metric ${name}`);
   }
@@ -394,6 +397,6 @@ test('ingest self-metrics are exposed in Prometheus text format and move with tr
   const r = await otlpHttp('traces', encodeTraces(marker('it-metrics'), [span({ attributes: { password: 'x', token: 'y' } })]));
   assert.equal(r.status, 200);
   const after = await ingestMetrics();
-  assert.ok(after['controlhub_ingest_items_total{signal="spans",result="accepted"}'] > before['controlhub_ingest_items_total{signal="spans",result="accepted"}']);
-  assert.ok(after.controlhub_ingest_attributes_redacted_total >= before.controlhub_ingest_attributes_redacted_total + 2);
+  assert.ok(after['karbird_ingest_items_total{signal="spans",result="accepted"}'] > before['karbird_ingest_items_total{signal="spans",result="accepted"}']);
+  assert.ok(after.karbird_ingest_attributes_redacted_total >= before.karbird_ingest_attributes_redacted_total + 2);
 });

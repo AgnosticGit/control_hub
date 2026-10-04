@@ -1,4 +1,4 @@
--- ControlHub administrators: installation-wide role templates and grants, with the same model
+-- karbird administrators: installation-wide role templates and grants, with the same model
 -- as project memberships (a grant holds a role template or an individual permission set).
 
 CREATE TABLE system_roles (
@@ -10,7 +10,7 @@ CREATE TABLE system_roles (
 );
 CREATE UNIQUE INDEX system_roles_name_idx ON system_roles (lower(name));
 
--- Kept in sync with `SystemBuiltin::permissions` in controlhub-api.
+-- Kept in sync with `SystemBuiltin::permissions` in karbird-api.
 INSERT INTO system_roles (name, permissions, builtin) VALUES
     ('Super Admin', ARRAY['system.projects.view','system.projects.manage','system.users.view','system.users.manage',
                           'system.team.view','system.team.manage','system.roles.manage','system.audit.view'], 'super_admin'),
@@ -30,7 +30,7 @@ CREATE TABLE system_memberships (
 -- Deletes a project and every PostgreSQL row that belongs to it; its telemetry in ClickHouse
 -- expires with the table TTL. Runs with the owner's rights so the API role needs no DELETE on
 -- these tables: it may only call this function (granted in bootstrap).
-CREATE FUNCTION controlhub_delete_project(p TEXT) RETURNS boolean
+CREATE FUNCTION karbird_delete_project(p TEXT) RETURNS boolean
     LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
     t TEXT;
@@ -52,4 +52,4 @@ BEGIN
     END IF;
     RETURN true;
 END $$;
-REVOKE ALL ON FUNCTION controlhub_delete_project(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION karbird_delete_project(TEXT) FROM PUBLIC;

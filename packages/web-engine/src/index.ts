@@ -2,7 +2,7 @@ export type * from "./generated";
 export * from "./protocol";
 
 /** Must equal `engineAbiVersion()` exported by the WASM build. */
-export const ENGINE_ABI_VERSION = 3;
+export const ENGINE_ABI_VERSION = 4;
 
 /** Per-node stride in `nodeData`: x, y, radius, status, active, window_requests, flags. */
 export const NODE_STRIDE = 7;

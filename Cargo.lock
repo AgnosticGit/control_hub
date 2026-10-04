@@ -537,246 +537,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
-name = "controlhub-actions"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "controlhub-api"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "argon2",
- "axum",
- "base64 0.22.1",
- "chrono",
- "clap",
- "controlhub-actions",
- "controlhub-domain",
- "controlhub-engine-core",
- "controlhub-runtime",
- "controlhub-storage",
- "futures",
- "proptest",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "time",
- "tokio",
- "tower",
- "tower-http 0.7.1",
- "tracing",
- "utoipa",
- "uuid",
-]
-
-[[package]]
-name = "controlhub-archive"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "serde",
- "sha2",
- "thiserror 2.0.21",
- "zstd",
-]
-
-[[package]]
-name = "controlhub-archiver"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "chrono",
- "clap",
- "controlhub-archive",
- "controlhub-domain",
- "controlhub-runtime",
- "controlhub-storage",
- "proptest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "controlhub-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "hex",
- "serde",
- "serde_json",
- "sha2",
- "similar",
- "tempfile",
- "time",
- "ureq",
- "uuid",
-]
-
-[[package]]
-name = "controlhub-domain"
-version = "0.1.0"
-dependencies = [
- "hex",
- "proptest",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "controlhub-engine-core"
-version = "0.1.0"
-dependencies = [
- "controlhub-domain",
- "proptest",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "ts-rs",
- "utoipa",
-]
-
-[[package]]
-name = "controlhub-executor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "controlhub-actions",
- "controlhub-domain",
- "controlhub-runtime",
- "controlhub-storage",
- "serde_json",
- "time",
- "tokio",
- "tracing",
- "ureq",
- "uuid",
-]
-
-[[package]]
-name = "controlhub-ingest"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "bytes",
- "chrono",
- "clap",
- "controlhub-domain",
- "controlhub-protocol",
- "controlhub-runtime",
- "controlhub-storage",
- "flate2",
- "opentelemetry-proto",
- "proptest",
- "prost",
- "rskafka",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "tonic",
- "tower",
- "tower-http 0.7.1",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "controlhub-processor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "chrono",
- "clap",
- "controlhub-archive",
- "controlhub-domain",
- "controlhub-protocol",
- "controlhub-runtime",
- "controlhub-storage",
- "hex",
- "proptest",
- "prost",
- "rskafka",
- "serde_json",
- "sha2",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "controlhub-protocol"
-version = "0.1.0"
-dependencies = [
- "opentelemetry-proto",
- "prost",
- "prost-build",
- "protox",
-]
-
-[[package]]
-name = "controlhub-runtime"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dotenvy",
- "rand 0.9.5",
- "rskafka",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "controlhub-storage"
-version = "0.1.0"
-dependencies = [
- "argon2",
- "base64 0.22.1",
- "clickhouse",
- "controlhub-archive",
- "controlhub-domain",
- "hex",
- "object_store",
- "rand 0.9.5",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "subtle",
- "thiserror 2.0.21",
- "time",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "controlhub-web-engine"
-version = "0.1.0"
-dependencies = [
- "controlhub-engine-core",
- "js-sys",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "cookie"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1752,6 +1512,246 @@ checksum = "7883d941dae510fb2d978fc3fe018c71c9e2892fd38854de3e8b92c2e5ad9cc5"
 dependencies = [
  "cfg-if",
  "futures-util",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "karbird-actions"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "karbird-api"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "clap",
+ "futures",
+ "karbird-actions",
+ "karbird-domain",
+ "karbird-engine-core",
+ "karbird-runtime",
+ "karbird-storage",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tower",
+ "tower-http 0.7.1",
+ "tracing",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "karbird-archive"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "sha2",
+ "thiserror 2.0.21",
+ "zstd",
+]
+
+[[package]]
+name = "karbird-archiver"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "clap",
+ "karbird-archive",
+ "karbird-domain",
+ "karbird-runtime",
+ "karbird-storage",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "karbird-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "similar",
+ "tempfile",
+ "time",
+ "ureq",
+ "uuid",
+]
+
+[[package]]
+name = "karbird-domain"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "karbird-engine-core"
+version = "0.1.0"
+dependencies = [
+ "karbird-domain",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "ts-rs",
+ "utoipa",
+]
+
+[[package]]
+name = "karbird-executor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "karbird-actions",
+ "karbird-domain",
+ "karbird-runtime",
+ "karbird-storage",
+ "serde_json",
+ "time",
+ "tokio",
+ "tracing",
+ "ureq",
+ "uuid",
+]
+
+[[package]]
+name = "karbird-ingest"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bytes",
+ "chrono",
+ "clap",
+ "flate2",
+ "karbird-domain",
+ "karbird-protocol",
+ "karbird-runtime",
+ "karbird-storage",
+ "opentelemetry-proto",
+ "proptest",
+ "prost",
+ "rskafka",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tonic",
+ "tower",
+ "tower-http 0.7.1",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "karbird-processor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "clap",
+ "hex",
+ "karbird-archive",
+ "karbird-domain",
+ "karbird-protocol",
+ "karbird-runtime",
+ "karbird-storage",
+ "proptest",
+ "prost",
+ "rskafka",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "karbird-protocol"
+version = "0.1.0"
+dependencies = [
+ "opentelemetry-proto",
+ "prost",
+ "prost-build",
+ "protox",
+]
+
+[[package]]
+name = "karbird-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dotenvy",
+ "rand 0.9.5",
+ "rskafka",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "karbird-storage"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "base64 0.22.1",
+ "clickhouse",
+ "hex",
+ "karbird-archive",
+ "karbird-domain",
+ "object_store",
+ "rand 0.9.5",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "subtle",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "karbird-web-engine"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "karbird-engine-core",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
  "wasm-bindgen",
 ]
 

@@ -1,8 +1,8 @@
-// Tests for `@controlhub/web-engine` constants (the package has no test runner of its own).
+// Tests for `@karbird/web-engine` constants (the package has no test runner of its own).
 // The render-buffer layout is shared with Rust; a drift here corrupts every frame silently.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import * as engine from "@controlhub/web-engine";
+import * as engine from "@karbird/web-engine";
 import { describe, expect, it } from "vitest";
 
 const repo = (rel: string) => readFileSync(fileURLToPath(new URL(`../../../../${rel}`, import.meta.url)), "utf8");
@@ -63,9 +63,9 @@ describe("strides and status", () => {
 });
 
 describe("matches the Rust engine", () => {
-  const core = repo("crates/controlhub-engine-core/src/lib.rs");
-  const hops = repo("crates/controlhub-engine-core/src/hops.rs");
-  const wasm = repo("crates/controlhub-web-engine/src/lib.rs");
+  const core = repo("crates/karbird-engine-core/src/lib.rs");
+  const hops = repo("crates/karbird-engine-core/src/hops.rs");
+  const wasm = repo("crates/karbird-web-engine/src/lib.rs");
 
   it("node/edge strides and flags", () => {
     expect(rustConst(core, "NODE_STRIDE")).toBe(engine.NODE_STRIDE);

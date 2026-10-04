@@ -32,10 +32,10 @@ fn run_with(
                 "{:?} project{}{}",
                 d.ecosystem,
                 d.package_name.map(|n| format!(" `{n}`")).unwrap_or_default(),
-                if d.controlhub_register_in_start {
+                if d.karbird_register_in_start {
                     ", SDK preloaded in start script"
                 } else {
-                    ", not integrated yet (controlhub plan)"
+                    ", not integrated yet (karbird plan)"
                 }
             ),
         )),
@@ -218,8 +218,8 @@ mod tests {
     fn missing_tokens_are_reported_but_optional() {
         let o = run_with(project().path(), &conn(&stack(200, 400)), Ok(None), Ok(None)).unwrap();
         assert_eq!(o.code, 0);
-        assert!(check(&o, "api token")["detail"].as_str().unwrap().contains("CONTROLHUB_API_TOKEN not set"));
-        assert!(check(&o, "ingest token")["detail"].as_str().unwrap().contains("CONTROLHUB_INGEST_TOKEN not set"));
+        assert!(check(&o, "api token")["detail"].as_str().unwrap().contains("KARBIRD_API_TOKEN not set"));
+        assert!(check(&o, "ingest token")["detail"].as_str().unwrap().contains("KARBIRD_INGEST_TOKEN not set"));
     }
 
     #[test]
@@ -227,7 +227,7 @@ mod tests {
         let o = run_with(
             project().path(),
             &conn(&stack(200, 400)),
-            Err(anyhow::anyhow!("CONTROLHUB_API_TOKEN must be a `cha_…` token")),
+            Err(anyhow::anyhow!("KARBIRD_API_TOKEN must be a `cha_…` token")),
             Ok(None),
         )
         .unwrap();

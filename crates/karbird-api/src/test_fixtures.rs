@@ -1,11 +1,11 @@
 //! Accounts and scopes that only the integration and e2e suites use. Created right before a
 //! test run and removed after it (`scripts/test-with-fixtures.mjs`), so the local database
 //! keeps no accounts besides the owner. Passwords and tokens are generated per run and written
-//! to the gitignored `.controlhub/test-credentials.json`.
+//! to the gitignored `.karbird/test-credentials.json`.
 
 use std::path::Path;
 
-use controlhub_storage::secrets::{generate_password, hash_password};
+use karbird_storage::secrets::{generate_password, hash_password};
 use serde_json::json;
 
 use crate::bootstrap::{SeedScope, TEST_EMAIL_DOMAINS, admin_pg, rotate_ingest_token};
@@ -44,21 +44,21 @@ const SCOPES: [SeedScope; 2] = [
 /// (email, display name, project, built-in role). `member-a`/`member-b` are only for the role
 /// and member tests, which change their permissions; the others keep theirs for the whole run.
 const USERS: [(&str, &str, &str, Builtin); 6] = [
-    ("admin@controlhub.local", "Test admin", "demo", Builtin::Owner),
-    ("viewer@controlhub.local", "Test viewer", "demo", Builtin::Viewer),
-    ("operator@controlhub.local", "Test operator", "demo", Builtin::Operator),
-    ("isolation@controlhub.local", "Isolation tenant user", "isolation", Builtin::Owner),
-    ("member-a@controlhub.local", "Member A", "demo", Builtin::Viewer),
-    ("member-b@controlhub.local", "Member B", "demo", Builtin::Viewer),
+    ("admin@karbird.local", "Test admin", "demo", Builtin::Owner),
+    ("viewer@karbird.local", "Test viewer", "demo", Builtin::Viewer),
+    ("operator@karbird.local", "Test operator", "demo", Builtin::Operator),
+    ("isolation@karbird.local", "Isolation tenant user", "isolation", Builtin::Owner),
+    ("member-a@karbird.local", "Member A", "demo", Builtin::Viewer),
+    ("member-b@karbird.local", "Member B", "demo", Builtin::Viewer),
 ];
 
-/// (email, display name, ControlHub role) for the admin panel tests; no project memberships.
+/// (email, display name, karbird role) for the admin panel tests; no project memberships.
 /// `sysmember` starts as a plain account that the tests promote, disable and enable.
 const SYSTEM_USERS: [(&str, &str, Option<SystemBuiltin>); 4] = [
-    ("superadmin@controlhub.local", "Test super admin", Some(SystemBuiltin::SuperAdmin)),
-    ("sysadmin@controlhub.local", "Test administrator", Some(SystemBuiltin::Admin)),
-    ("auditor@controlhub.local", "Test auditor", Some(SystemBuiltin::Auditor)),
-    ("sysmember@controlhub.local", "System member", None),
+    ("superadmin@karbird.local", "Test super admin", Some(SystemBuiltin::SuperAdmin)),
+    ("sysadmin@karbird.local", "Test administrator", Some(SystemBuiltin::Admin)),
+    ("auditor@karbird.local", "Test auditor", Some(SystemBuiltin::Auditor)),
+    ("sysmember@karbird.local", "System member", None),
 ];
 
 pub async fn create(out_dir: &Path) -> anyhow::Result<()> {

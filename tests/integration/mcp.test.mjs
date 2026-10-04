@@ -1,4 +1,4 @@
-// Read-only MCP server (`controlhub mcp`) over stdio against the running API.
+// Read-only MCP server (`karbird mcp`) over stdio against the running API.
 // Needs `just dev` and `just demo` running; builds the CLI if needed.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,12 +8,12 @@ import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { API, DEMO, ISO, Session, root, eventually } from './lib.mjs';
 
-const bin = join(root, 'target', 'debug', process.platform === 'win32' ? 'controlhub.exe' : 'controlhub');
+const bin = join(root, 'target', 'debug', process.platform === 'win32' ? 'karbird.exe' : 'karbird');
 
 class McpClient {
   constructor(token) {
     this.proc = spawn(bin, ['mcp', '--api-url', API], {
-      env: { ...process.env, CONTROLHUB_API_TOKEN: token },
+      env: { ...process.env, KARBIRD_API_TOKEN: token },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.nextId = 1;
@@ -57,10 +57,10 @@ let tokenId;
 let mcp;
 
 before(async () => {
-  const build = spawnSync('cargo', ['build', '-q', '-p', 'controlhub-cli'], { cwd: root, stdio: 'inherit' });
-  assert.equal(build.status, 0, 'cargo build controlhub-cli');
+  const build = spawnSync('cargo', ['build', '-q', '-p', 'karbird-cli'], { cwd: root, stdio: 'inherit' });
+  assert.equal(build.status, 0, 'cargo build karbird-cli');
   admin = new Session();
-  await admin.login('admin@controlhub.local');
+  await admin.login('admin@karbird.local');
   const created = await admin.mutate(`${DEMO}/tokens`, { kind: 'api', name: `mcp-${randomUUID().slice(0, 8)}`, expires_in_days: 1 });
   assert.equal(created.status, 200);
   token = created.body.secret;
@@ -138,7 +138,7 @@ test('invalid arguments and unknown tools are refused', async () => {
 
 test('another tenant cannot be reached and revocation takes effect', async () => {
   const iso = new Session();
-  await iso.login('isolation@controlhub.local');
+  await iso.login('isolation@karbird.local');
   const isoTok = await iso.mutate(`${ISO}/tokens`, { kind: 'api', name: `mcp-iso-${randomUUID().slice(0, 8)}`, expires_in_days: 1 });
   assert.equal(isoTok.status, 200);
   const other = new McpClient(isoTok.body.secret);

@@ -1,10 +1,10 @@
 # ADR-0013: Read-only MCP server as a CLI subcommand over the REST API
 
 ## Decision
-- The MCP server is `controlhub mcp`, a stdio server in the existing Rust CLI. It is not a
+- The MCP server is `karbird mcp`, a stdio server in the existing Rust CLI. It is not a
   separate network service, and the API itself does not speak MCP.
 - It authenticates to the REST API with a read-only, environment-bound API token from
-  `CONTROLHUB_API_TOKEN` (ADR-0011). All authorization stays in the API, so the MCP process adds no
+  `KARBIRD_API_TOKEN` (ADR-0011). All authorization stays in the API, so the MCP process adds no
   privileges and cannot widen scope. Tool arguments cannot name a project or environment.
 - Only query tools exist, all annotated `readOnlyHint: true`. Proposing, approving or running
   actions is not exposed. Even if it were, the API rejects mutations authenticated with a bearer

@@ -21,7 +21,7 @@ test("a visitor signs up, connects a service during onboarding and lands in thei
   await page.goto("/app/login");
   await page.getByRole("link", { name: "Create an account" }).click();
   await expect(page).toHaveURL(/\/app\/register$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Create your ControlHub account" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Create your karbird account" })).toBeVisible();
   await fillSignup(page, email);
   await page.getByLabel("Project name (optional)").fill(project);
   await page.getByRole("button", { name: "Create account" }).click();
@@ -33,13 +33,16 @@ test("a visitor signs up, connects a service during onboarding and lands in thei
   await expect(steps.getByRole("listitem").nth(0)).toHaveAttribute("aria-current", "step");
   await expect(page.getByRole("button", { name: "Continue" })).toHaveCount(0);
   const cookies = await page.context().cookies();
-  expect(cookies.find((c) => c.name === "controlhub_session")?.httpOnly).toBe(true);
+  expect(cookies.find((c) => c.name === "karbird_session")?.httpOnly).toBe(true);
   expect(urls.filter((u) => u.includes(encodeURIComponent(PASSWORD)) || u.includes("password"))).toEqual([]);
 
   const endpoint = `${origin}/otlp`;
   await expect(page.getByLabel("OTLP endpoint")).toHaveText(endpoint);
-  const env = page.getByLabel("OpenTelemetry environment variables", { exact: true });
-  await expect(env).toContainText("<your-ingestion-token>");
+  await expect(page.getByLabel("Install command", { exact: true })).toHaveText("npm install @karbird/sdk-node");
+  await expect(page.getByLabel("Start command", { exact: true })).toHaveText("node --import @karbird/sdk-node/register server.js");
+  await expect(page.getByLabel(/OpenTelemetry|Collector/)).toHaveCount(0);
+  const env = page.getByLabel("SDK environment variables", { exact: true });
+  await expect(env).toContainText("KARBIRD_INGEST_TOKEN=<your-ingestion-token>");
   await expect(page.getByRole("status", { name: "Telemetry status" })).toContainText("Waiting for the first telemetry");
 
   const service = `e2e-signup-${randomHex(3)}`;
@@ -48,10 +51,10 @@ test("a visitor signs up, connects a service during onboarding and lands in thei
   const secret = page.getByLabel("New ingestion token");
   await expect(secret).toHaveText(/^chi_[A-Za-z0-9_-]+$/);
   const token = (await secret.textContent()) ?? "";
-  await expect(env).toContainText(`OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer%20${token}`);
-  await expect(env).toContainText(`OTEL_EXPORTER_OTLP_ENDPOINT=${endpoint}`);
-  await expect(env).toContainText(`OTEL_SERVICE_NAME=${service}`);
-  await expect(page.getByLabel("Collector configuration", { exact: true })).toContainText(token);
+  await expect(env).toContainText(`KARBIRD_INGEST_TOKEN=${token}`);
+  await expect(env).toContainText(`KARBIRD_OTLP_ENDPOINT=${endpoint}`);
+  await expect(env).toContainText(`KARBIRD_SERVICE_NAME=${service}`);
+  await expect(page.getByLabel("Connection check", { exact: true })).toContainText(token);
 
   // Send telemetry exactly as the guide says: through the site's /otlp address with the new token.
   await ingestLog({ service, body: "hello from a new customer", token, endpoint });
@@ -117,13 +120,13 @@ test("sign-up explains problems and never creates a session for them", async ({ 
   await expect(page.locator("form").getByRole("alert")).toHaveText("Password must be at least 12 characters.");
 
   // An address that already has an account (a seeded demo user).
-  await fillSignup(page, "Viewer@ControlHub.local");
+  await fillSignup(page, "Viewer@karbird.local");
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.locator("form").getByRole("alert")).toHaveText("An account with this email already exists. Sign in instead.");
   await expect(page).toHaveURL(/\/app\/register$/);
   const cookies = await page.context().cookies();
-  expect(cookies.find((c) => c.name === "controlhub_session")).toBeUndefined();
+  expect(cookies.find((c) => c.name === "karbird_session")).toBeUndefined();
 
   // The seeded account is untouched.
-  await login(page, "viewer@controlhub.local", "/app/demo/local-demo");
+  await login(page, "viewer@karbird.local", "/app/demo/local-demo");
 });

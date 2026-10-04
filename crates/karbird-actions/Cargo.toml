@@ -1,5 +1,5 @@
 [package]
-name = "controlhub-actions"
+name = "karbird-actions"
 description = "Action catalog, parameter validation, policy and state machine (pure, no I/O)"
 version.workspace = true
 edition.workspace = true

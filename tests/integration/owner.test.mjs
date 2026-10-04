@@ -1,4 +1,4 @@
-// The developer's own account (.controlhub/owner.env) is the only persistent account: it must
+// The developer's own account (.karbird/owner.env) is the only persistent account: it must
 // be able to sign in, directly and through the web app, from both local origins.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { API, WEB, Session, creds, ownerAccount, root } from './lib.mjs';
 
 const owner = ownerAccount();
-const skip = owner ? false : 'no .controlhub/owner.env on this machine (bootstrap requires it)';
+const skip = owner ? false : 'no .karbird/owner.env on this machine (bootstrap requires it)';
 
 async function login(base, origin, password = owner.password) {
   const res = await fetch(`${base}/api/v1/session/login`, {
@@ -24,7 +24,7 @@ test('the owner signs in and owns the demo project', { skip }, async () => {
   assert.equal(r.body.user.email, owner.email);
   const demo = r.body.projects.find((p) => p.id === 'demo');
   assert.equal(demo?.role, 'owner', `projects: ${JSON.stringify(r.body.projects.map((p) => [p.id, p.role]))}`);
-  assert.ok(r.cookies.some((c) => c.startsWith('controlhub_session=') && /HttpOnly/i.test(c)));
+  assert.ok(r.cookies.some((c) => c.startsWith('karbird_session=') && /HttpOnly/i.test(c)));
 
   const s = new Session();
   const signedIn = await s.json('/api/v1/session/login', {
@@ -56,14 +56,14 @@ test('the owner signs in through the web app at 127.0.0.1:3000 and localhost:300
 test('a wrong owner password is 401 without a session, and the right one still works', { skip }, async () => {
   const bad = await login(API, 'http://127.0.0.1:3000', `${owner.password}-wrong`);
   assert.equal(bad.status, 401);
-  assert.ok(!bad.cookies.some((c) => c.startsWith('controlhub_session=')));
+  assert.ok(!bad.cookies.some((c) => c.startsWith('karbird_session=')));
   assert.ok(!JSON.stringify(bad.body).includes(owner.password), 'the error never echoes the password');
   // A success resets the failure counter, so this test never locks the owner out.
   assert.equal((await login(API, 'http://127.0.0.1:3000')).status, 200);
 });
 
 test('local credentials hold no user accounts and never the owner password', { skip }, () => {
-  const text = readFileSync(join(root, '.controlhub', 'local-credentials.json'), 'utf8');
+  const text = readFileSync(join(root, '.karbird', 'local-credentials.json'), 'utf8');
   const local = JSON.parse(text);
   assert.equal(local.users, undefined, 'test accounts must not be part of the persistent credentials');
   assert.equal(local.owner?.email, owner.email);
@@ -74,6 +74,6 @@ test('local credentials hold no user accounts and never the owner password', { s
 test('test accounts come from the per-run fixture, never from the owner domain', () => {
   const emails = creds.users.map((u) => u.email);
   assert.ok(emails.length > 0);
-  for (const e of emails) assert.match(e, /@(controlhub\.local|example\.test)$/);
+  for (const e of emails) assert.match(e, /@(karbird\.local|example\.test)$/);
   if (owner) assert.ok(!emails.includes(owner.email));
 });

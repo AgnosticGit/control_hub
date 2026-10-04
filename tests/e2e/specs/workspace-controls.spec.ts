@@ -17,7 +17,7 @@ async function column(table: Locator, index: number): Promise<string[]> {
 
 test.describe("workspace controls on demo data", () => {
   test.beforeEach(async ({ page }) => {
-    await login(page, "admin@controlhub.local", WORKSPACE);
+    await login(page, "admin@karbird.local", WORKSPACE);
     await expect(page.getByText("Starting engine…")).toBeHidden();
   });
 

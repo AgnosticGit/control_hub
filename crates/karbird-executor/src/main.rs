@@ -1,6 +1,6 @@
-//! controlhub-executor: runs approved action plans.
+//! karbird-executor: runs approved action plans.
 //!
-//! This is the only ControlHub process that changes the observed system, and the only one
+//! This is the only karbird process that changes the observed system, and the only one
 //! allowed to use Docker (web, API and ingestion never get the Docker socket). It:
 //! 1. claims an approved plan (PostgreSQL `FOR UPDATE SKIP LOCKED`, with a lease),
 //! 2. re-validates the action and re-evaluates the policy,
@@ -15,12 +15,12 @@ mod adapter;
 use std::time::Duration;
 
 use clap::Parser;
-use controlhub_actions::{self as actions, Action, PolicyInput};
-use controlhub_domain::{EnvironmentId, ProjectId, Scope, TenantId};
-use controlhub_runtime::{init_tracing, load_local_env, shutdown_signal};
-use controlhub_storage::actions::ActionPlanRow;
-use controlhub_storage::ch::{ChConfig, ChStore};
-use controlhub_storage::pg::PgStore;
+use karbird_actions::{self as actions, Action, PolicyInput};
+use karbird_domain::{EnvironmentId, ProjectId, Scope, TenantId};
+use karbird_runtime::{init_tracing, load_local_env, shutdown_signal};
+use karbird_storage::actions::ActionPlanRow;
+use karbird_storage::ch::{ChConfig, ChStore};
+use karbird_storage::pg::PgStore;
 use serde_json::{Value, json};
 
 const LEASE_SECS: i64 = 60;
@@ -28,19 +28,19 @@ const LEASE_SECS: i64 = 60;
 const INGEST_SETTLE: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Parser)]
-#[command(name = "controlhub-executor")]
+#[command(name = "karbird-executor")]
 struct Args {
-    #[arg(long, env = "CONTROLHUB_EXECUTOR_DATABASE_URL")]
+    #[arg(long, env = "KARBIRD_EXECUTOR_DATABASE_URL")]
     database_url: String,
-    #[arg(long, env = "CONTROLHUB_CLICKHOUSE_URL", default_value = "http://127.0.0.1:18123")]
+    #[arg(long, env = "KARBIRD_CLICKHOUSE_URL", default_value = "http://127.0.0.1:18123")]
     clickhouse_url: String,
-    #[arg(long, env = "CONTROLHUB_CLICKHOUSE_DATABASE", default_value = "controlhub")]
+    #[arg(long, env = "KARBIRD_CLICKHOUSE_DATABASE", default_value = "karbird")]
     clickhouse_database: String,
-    #[arg(long, env = "CONTROLHUB_EXECUTOR_CLICKHOUSE_USER")]
+    #[arg(long, env = "KARBIRD_EXECUTOR_CLICKHOUSE_USER")]
     clickhouse_user: String,
-    #[arg(long, env = "CONTROLHUB_EXECUTOR_CLICKHOUSE_PASSWORD")]
+    #[arg(long, env = "KARBIRD_EXECUTOR_CLICKHOUSE_PASSWORD")]
     clickhouse_password: String,
-    #[arg(long, env = "CONTROLHUB_EXECUTOR_POLL_MS", default_value_t = 1000)]
+    #[arg(long, env = "KARBIRD_EXECUTOR_POLL_MS", default_value_t = 1000)]
     poll_ms: u64,
     #[command(flatten)]
     adapter: adapter::DemoConfig,
@@ -191,7 +191,7 @@ impl Executor {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     load_local_env();
-    init_tracing("controlhub-executor");
+    init_tracing("karbird-executor");
     let args = Args::parse();
     let host = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_else(|_| "local".into());
     let executor = Executor {
@@ -205,7 +205,7 @@ async fn main() -> anyhow::Result<()> {
         }),
         demo: adapter::Demo::new(args.adapter)?,
     };
-    tracing::info!(id = %executor.id, "controlhub-executor running");
+    tracing::info!(id = %executor.id, "karbird-executor running");
     let poll = Duration::from_millis(args.poll_ms.max(200));
     let shutdown = shutdown_signal();
     tokio::pin!(shutdown);
@@ -225,7 +225,7 @@ async fn main() -> anyhow::Result<()> {
             _ = tokio::time::sleep(poll) => {}
         }
     }
-    tracing::info!("controlhub-executor stopped");
+    tracing::info!("karbird-executor stopped");
     Ok(())
 }
 
@@ -268,18 +268,18 @@ mod tests {
         Executor {
             id: "executor-test".into(),
             // Closed local ports: any storage access fails instead of touching a real system.
-            pg: PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/controlhub", 1).unwrap(),
+            pg: PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/karbird", 1).unwrap(),
             ch: ChStore::new(&ChConfig {
                 url: "http://127.0.0.1:1".into(),
-                database: "controlhub".into(),
+                database: "karbird".into(),
                 user: "u".into(),
                 password: "p".into(),
             }),
             demo: adapter::Demo::new(adapter::DemoConfig {
                 gateway_url: "http://127.0.0.1:1".into(),
                 orders_url: "http://127.0.0.1:1".into(),
-                db_container: "controlhub-demo-postgres-1".into(),
-                docker_bin: "controlhub-test-no-such-docker".into(),
+                db_container: "karbird-demo-postgres-1".into(),
+                docker_bin: "karbird-test-no-such-docker".into(),
             })
             .unwrap(),
         }
@@ -350,8 +350,8 @@ mod tests {
 
     #[test]
     fn args_require_database_url_and_validate_numbers() {
-        let base = ["controlhub-executor", "--clickhouse-user", "u", "--clickhouse-password", "p"];
-        if std::env::var_os("CONTROLHUB_EXECUTOR_DATABASE_URL").is_none() {
+        let base = ["karbird-executor", "--clickhouse-user", "u", "--clickhouse-password", "p"];
+        if std::env::var_os("KARBIRD_EXECUTOR_DATABASE_URL").is_none() {
             assert!(Args::try_parse_from(base).is_err(), "database URL is required");
         }
         let mut argv = base.to_vec();

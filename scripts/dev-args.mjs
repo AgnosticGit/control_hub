@@ -16,7 +16,7 @@ export function parseDevArgs(argv, env = process.env) {
   if (argv.includes("ngrok")) {
     if (!opts.web) throw new Error("ngrok exposes the web app; it cannot be combined with --no-web");
     opts.publicUrl = publicUrl(env);
-    if (!opts.publicUrl) throw new Error("CONTROLHUB_PUBLIC_URL=off: `just dev ngrok` needs a public URL");
+    if (!opts.publicUrl) throw new Error("KARBIRD_PUBLIC_URL=off: `just dev ngrok` needs a public URL");
   }
   return opts;
 }

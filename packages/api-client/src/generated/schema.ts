@@ -580,6 +580,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/infrastructure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["infrastructure"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/environments/{environment_id}/live": {
         parameters: {
             query?: never;
@@ -1078,7 +1094,7 @@ export interface components {
         Completeness: {
             notes: string[];
             processing_caught_up: boolean;
-            /** @description Sampling configured in SDKs is not reported to ControlHub yet. */
+            /** @description Sampling configured in SDKs is not reported to karbird yet. */
             sampling: string;
             /** @description The response hit a row limit; more data exists in the range. */
             truncated: boolean;
@@ -1092,6 +1108,57 @@ export interface components {
              *     `null` when the processor has not reported progress yet.
              */
             watermark_ns?: string | null;
+        };
+        ContainerDto: {
+            /**
+             * Format: double
+             * @description CPU cores in use (1.0 = one full core).
+             * @default null
+             */
+            cpu_cores: number | null;
+            /**
+             * Format: double
+             * @description Share of the machine's CPU, 0..1.
+             * @default null
+             */
+            cpu_share: number | null;
+            /** @default  */
+            id: string;
+            /**
+             * Format: double
+             * @default null
+             */
+            memory_limit_bytes: number | null;
+            /**
+             * Format: double
+             * @description Share of the machine's memory, 0..1.
+             * @default null
+             */
+            memory_share: number | null;
+            /**
+             * Format: double
+             * @default null
+             */
+            memory_used_bytes: number | null;
+            /** @default  */
+            name: string;
+            /**
+             * Format: double
+             * @default null
+             */
+            network_rx_bytes_per_sec: number | null;
+            /**
+             * Format: double
+             * @default null
+             */
+            network_tx_bytes_per_sec: number | null;
+            /**
+             * @description Service whose instance runs in this container, when matched.
+             * @default null
+             */
+            service_id: string | null;
+            /** @default null */
+            service_name: string | null;
         };
         CoverageResponse: {
             completeness: components["schemas"]["Completeness"];
@@ -1188,6 +1255,122 @@ export interface components {
         HealthResponse: {
             status: string;
         };
+        HostDto: {
+            /** @default [] */
+            containers: components["schemas"]["ContainerDto"][];
+            /**
+             * Format: double
+             * @default null
+             */
+            cpu_cores: number | null;
+            /**
+             * Format: double
+             * @description Busy CPU share of the whole machine, 0..1.
+             * @default null
+             */
+            cpu_utilization: number | null;
+            /**
+             * Format: double
+             * @default null
+             */
+            disk_total_bytes: number | null;
+            /**
+             * Format: double
+             * @default null
+             */
+            disk_used_bytes: number | null;
+            /**
+             * @description False for a machine known only from span `host.name` (no Karbird agent on it).
+             * @default false
+             */
+            has_metrics: boolean;
+            /** @default  */
+            id: string;
+            /** @default null */
+            last_seen_ns: string | null;
+            /**
+             * Format: double
+             * @default null
+             */
+            memory_total_bytes: number | null;
+            /**
+             * Format: double
+             * @default null
+             */
+            memory_used_bytes: number | null;
+            /** @default  */
+            name: string;
+            /**
+             * Format: double
+             * @default null
+             */
+            network_rx_bytes_per_sec: number | null;
+            /**
+             * Format: double
+             * @default null
+             */
+            network_tx_bytes_per_sec: number | null;
+        };
+        /**
+         * @description Machines, containers and service instances at one moment, as returned by
+         *     `GET /api/v1/projects/{project}/environments/{env}/infrastructure`.
+         */
+        InfrastructureSnapshot: {
+            /** @default 0 */
+            at_ns: string;
+            /** @default [] */
+            hints: components["schemas"]["NoisyNeighborHint"][];
+            /** @default [] */
+            hosts: components["schemas"]["HostDto"][];
+            /** @default [] */
+            instances: components["schemas"]["InstanceDto"][];
+            /**
+             * @description What could not be determined (no agent metrics, unmatched instances, truncation).
+             * @default []
+             */
+            notes: string[];
+            /**
+             * @description Machine metrics are read from `[at - window, at]`.
+             * @default 0
+             */
+            window_ns: string;
+        };
+        InstanceDto: {
+            /**
+             * Format: double
+             * @description p95 in the 30 minutes before that.
+             * @default null
+             */
+            baseline_p95_ms: number | null;
+            /** @default null */
+            container_id: string | null;
+            /** @default null */
+            host_id: string | null;
+            /** @default  */
+            instance_id: string;
+            /** @default unknown */
+            match_reason: components["schemas"]["InstanceMatch"];
+            /**
+             * Format: double
+             * @description p95 of request spans in the last 5 minutes before `at`.
+             * @default null
+             */
+            p95_ms: number | null;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            requests: number;
+            /** @default  */
+            service_id: string;
+            /** @default  */
+            service_name: string;
+        };
+        /**
+         * @description How an instance was placed on a machine.
+         * @enum {string}
+         */
+        InstanceMatch: "container_id" | "container_hostname" | "host_name" | "unverified" | "unknown";
         InviteDto: {
             created_at: string;
             created_by: string;
@@ -1289,6 +1472,53 @@ export interface components {
             permissions?: string[] | null;
             role_id?: string | null;
         };
+        /**
+         * @description Deterministic rule (no LLM): an instance got slower while a neighbour on the same machine
+         *     used most of its CPU.
+         */
+        NoisyNeighborHint: {
+            /**
+             * Format: double
+             * @default 0
+             */
+            baseline_p95_ms: number;
+            /**
+             * Format: double
+             * @default null
+             */
+            host_cpu_utilization: number | null;
+            /** @default  */
+            host_id: string;
+            /** @default  */
+            host_name: string;
+            /** @default  */
+            instance_id: string;
+            /** @default  */
+            neighbor_container_id: string;
+            /**
+             * Format: double
+             * @default 0
+             */
+            neighbor_cpu_share: number;
+            /** @default  */
+            neighbor_name: string;
+            /** @default null */
+            neighbor_service_id: string | null;
+            /**
+             * Format: double
+             * @default 0
+             */
+            p95_ms: number;
+            /**
+             * @description Human-readable explanation of which thresholds fired.
+             * @default
+             */
+            reason: string;
+            /** @default  */
+            service_id: string;
+            /** @default  */
+            service_name: string;
+        };
         ParamSpecDto: {
             description: string;
             integer: boolean;
@@ -1314,7 +1544,7 @@ export interface components {
             name: string;
             passed: boolean;
         };
-        /** @description Schema of the stored policy decision (serialized `controlhub_actions::PolicyDecision`). */
+        /** @description Schema of the stored policy decision (serialized `karbird_actions::PolicyDecision`). */
         PolicyDto: {
             allowed: boolean;
             checks: components["schemas"]["PolicyCheckDto"][];
@@ -3568,6 +3798,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventListResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    infrastructure: {
+        parameters: {
+            query?: {
+                /** @description Moment to show, unix epoch nanoseconds as a decimal string. Default: now. */
+                at?: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InfrastructureSnapshot"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             404: {

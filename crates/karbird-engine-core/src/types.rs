@@ -2,8 +2,8 @@
 //! responses (snake_case JSON, nanosecond timestamps as decimal strings) so
 //! the Worker can hand raw response text straight to the engine.
 
-use controlhub_domain::time::{nanos_string, opt_nanos_string};
-use controlhub_domain::{EntityKind, HealthStatus, Provenance, RelationKind};
+use karbird_domain::time::{nanos_string, opt_nanos_string};
+use karbird_domain::{EntityKind, HealthStatus, Provenance, RelationKind};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "ts")]
@@ -193,6 +193,9 @@ pub struct Filters {
     /// Service node IDs switched off by the user: dimmed on the map, left out of the timeline
     /// aggregates. Dependencies whose every caller is muted are dimmed too.
     pub muted_services: Vec<String>,
+    /// Infrastructure layer: service cards are grouped into machine frames (see
+    /// [`InfrastructureSnapshot`]); without a snapshot the layered layout stays.
+    pub infrastructure: bool,
 }
 
 impl Filters {
@@ -346,6 +349,206 @@ pub struct TopologyView {
     pub revision: u64,
     pub nodes: Vec<TopologyViewNode>,
     pub edges: Vec<TopologyViewEdge>,
+    /// Machine frames, instance chips and noisy-neighbour links; only with the infrastructure
+    /// layer on and a snapshot loaded.
+    #[serde(default)]
+    pub infra: Option<InfraView>,
+}
+
+// ---------------------------------------------------------------- infrastructure (ADR-0018)
+
+/// Machines, containers and service instances at one moment, as returned by
+/// `GET /api/v1/projects/{project}/environments/{env}/infrastructure`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default)]
+pub struct InfrastructureSnapshot {
+    #[serde(with = "nanos_string")]
+    #[cfg_attr(feature = "ts", ts(type = "string"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub at_ns: i64,
+    /// Machine metrics are read from `[at - window, at]`.
+    #[serde(with = "nanos_string")]
+    #[cfg_attr(feature = "ts", ts(type = "string"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub window_ns: i64,
+    pub hosts: Vec<HostDto>,
+    pub instances: Vec<InstanceDto>,
+    pub hints: Vec<NoisyNeighborHint>,
+    /// What could not be determined (no agent metrics, unmatched instances, truncation).
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default)]
+pub struct HostDto {
+    pub id: String,
+    pub name: String,
+    /// False for a machine known only from span `host.name` (no Karbird agent on it).
+    pub has_metrics: bool,
+    /// Busy CPU share of the whole machine, 0..1.
+    pub cpu_utilization: Option<f64>,
+    pub cpu_cores: Option<f64>,
+    pub memory_used_bytes: Option<f64>,
+    pub memory_total_bytes: Option<f64>,
+    pub disk_used_bytes: Option<f64>,
+    pub disk_total_bytes: Option<f64>,
+    pub network_rx_bytes_per_sec: Option<f64>,
+    pub network_tx_bytes_per_sec: Option<f64>,
+    pub containers: Vec<ContainerDto>,
+    #[serde(with = "opt_nanos_string")]
+    #[cfg_attr(feature = "ts", ts(type = "string | null"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    pub last_seen_ns: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default)]
+pub struct ContainerDto {
+    pub id: String,
+    pub name: String,
+    /// Service whose instance runs in this container, when matched.
+    pub service_id: Option<String>,
+    pub service_name: Option<String>,
+    /// CPU cores in use (1.0 = one full core).
+    pub cpu_cores: Option<f64>,
+    /// Share of the machine's CPU, 0..1.
+    pub cpu_share: Option<f64>,
+    pub memory_used_bytes: Option<f64>,
+    pub memory_limit_bytes: Option<f64>,
+    /// Share of the machine's memory, 0..1.
+    pub memory_share: Option<f64>,
+    pub network_rx_bytes_per_sec: Option<f64>,
+    pub network_tx_bytes_per_sec: Option<f64>,
+}
+
+/// How an instance was placed on a machine.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum InstanceMatch {
+    /// Span `container.id` equals a container the agent reports.
+    ContainerId,
+    /// Span `host.name` is the container's hostname (Docker sets it to the short container ID).
+    ContainerHostname,
+    /// Span `host.name`/`host.id` equals a machine the agent reports.
+    HostName,
+    /// Only the span's own `host.name`; no agent confirms it.
+    Unverified,
+    #[default]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default)]
+pub struct InstanceDto {
+    pub service_id: String,
+    pub service_name: String,
+    pub instance_id: String,
+    pub host_id: Option<String>,
+    pub container_id: Option<String>,
+    pub match_reason: InstanceMatch,
+    /// p95 of request spans in the last 5 minutes before `at`.
+    pub p95_ms: Option<f64>,
+    /// p95 in the 30 minutes before that.
+    pub baseline_p95_ms: Option<f64>,
+    pub requests: u32,
+}
+
+/// Deterministic rule (no LLM): an instance got slower while a neighbour on the same machine
+/// used most of its CPU.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default)]
+pub struct NoisyNeighborHint {
+    pub service_id: String,
+    pub service_name: String,
+    pub instance_id: String,
+    pub neighbor_service_id: Option<String>,
+    pub neighbor_name: String,
+    pub neighbor_container_id: String,
+    pub host_id: String,
+    pub host_name: String,
+    pub p95_ms: f64,
+    pub baseline_p95_ms: f64,
+    pub neighbor_cpu_share: f64,
+    pub host_cpu_utilization: Option<f64>,
+    /// Human-readable explanation of which thresholds fired.
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct InfraView {
+    pub frames: Vec<InfraFrame>,
+    pub chips: Vec<InfraChip>,
+    pub badges: Vec<InfraBadge>,
+    pub links: Vec<InfraLink>,
+}
+
+/// A machine drawn around the service cards running on it (world coordinates, top-left corner).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct InfraFrame {
+    pub host_id: String,
+    /// e.g. `vps-app · CPU 92% · RAM 870/1024 MB`.
+    pub label: String,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    /// CPU at or above 90 %, or a noisy-neighbour hint on this machine.
+    pub hot: bool,
+    pub has_metrics: bool,
+}
+
+/// One instance of a multi-instance service, drawn inside its machine's frame (centre point).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct InfraChip {
+    pub node: u32,
+    pub service_id: String,
+    pub instance_id: String,
+    /// e.g. `catalog #2`.
+    pub label: String,
+    pub host_id: String,
+    pub x: f32,
+    pub y: f32,
+}
+
+/// `×N` on a service card with several instances.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct InfraBadge {
+    pub node: u32,
+    pub count: u32,
+    pub hosts: u32,
+}
+
+/// Noisy-neighbour link from the slowed service to the neighbour eating the CPU.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct InfraLink {
+    pub from: [f32; 2],
+    pub to: [f32; 2],
+    pub victim_node: u32,
+    pub neighbor_node: Option<u32>,
+    pub host_id: String,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

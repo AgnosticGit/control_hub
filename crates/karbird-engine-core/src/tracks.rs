@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use controlhub_domain::EntityKind;
+use karbird_domain::EntityKind;
 
 use crate::Engine;
 use crate::skew::SkewCache;

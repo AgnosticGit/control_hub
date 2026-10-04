@@ -1,5 +1,5 @@
-// Plain Node HTTP service used as an integration fixture. It knows nothing about ControlHub;
-// instrumentation comes only from the start script that `controlhub apply` rewrites.
+// Plain Node HTTP service used as an integration fixture. It knows nothing about karbird;
+// instrumentation comes only from the start script that `karbird apply` rewrites.
 const http = require('node:http');
 
 const port = Number(process.env.PORT ?? 0);

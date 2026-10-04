@@ -10,13 +10,13 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { DEMO, OTLP, Session, eventually, root } from './lib.mjs';
 
-const enabled = process.argv.includes('--run') || process.env.CONTROLHUB_TEST_BROKER_OUTAGE === '1';
+const enabled = process.argv.includes('--run') || process.env.KARBIRD_TEST_BROKER_OUTAGE === '1';
 const METRICS = 'http://127.0.0.1:9464/metrics';
 
 function compose(...args) {
   const r = spawnSync(
     'docker',
-    ['compose', '--env-file', join(root, '.controlhub', 'infra.env'), '-f', join(root, 'infra', 'compose', 'compose.yaml'), ...args],
+    ['compose', '--env-file', join(root, '.karbird', 'infra.env'), '-f', join(root, 'infra', 'compose', 'compose.yaml'), ...args],
     { cwd: root, stdio: 'inherit' },
   );
   assert.equal(r.status, 0, `docker compose ${args.join(' ')}`);
@@ -24,13 +24,13 @@ function compose(...args) {
 
 async function failedBroker() {
   const text = await (await fetch(METRICS)).text();
-  const m = text.match(/controlhub_ingest_requests_total\{result="failed_broker"\} (\d+)/);
+  const m = text.match(/karbird_ingest_requests_total\{result="failed_broker"\} (\d+)/);
   return Number(m?.[1] ?? 0);
 }
 
 test('ingestion refuses (503) during a broker outage and recovers afterwards', { skip: !enabled && 'disruptive; run with `just test-broker-outage`', timeout: 300_000 }, async () => {
   const admin = new Session();
-  await admin.login('admin@controlhub.local');
+  await admin.login('admin@karbird.local');
   const tok = await admin.mutate(`${DEMO}/tokens`, { kind: 'ingest', name: `outage-${randomUUID().slice(0, 8)}` });
   assert.equal(tok.status, 200);
   const send = async (id) => {

@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use controlhub_protocol::v1::IngestEnvelope;
+use karbird_protocol::v1::IngestEnvelope;
 use prost::Message;
 
 use crate::auth::Authenticator;
@@ -13,9 +13,12 @@ use crate::broker::PublisherConfig;
 use crate::broker::fake::{FakeBroker, publisher};
 use crate::metrics::Metrics;
 use crate::pipeline::AppState;
+use crate::series::SeriesLimiter;
 
-/// Token allowed to send traces, logs and events for tenant `t1`.
+/// Token allowed to send every signal for tenant `t1`.
 pub(crate) const TOKEN: &str = "chi_test_all_signals";
+/// Series budget per environment in the harness.
+pub(crate) const TEST_MAX_SERIES: usize = 3;
 /// Token allowed to send traces only.
 pub(crate) const TRACES_ONLY: &str = "chi_test_traces_only";
 
@@ -50,12 +53,17 @@ pub(crate) fn harness() -> Harness {
     let store = Arc::new(Mutex::new(FakeStore::default()));
     {
         let mut s = store.lock().unwrap();
-        s.insert(TOKEN, credential("t1", &["traces", "logs", "events"]));
+        s.insert(TOKEN, credential("t1", &["traces", "logs", "metrics", "events"]));
         s.insert(TRACES_ONLY, credential("t1", &["traces"]));
     }
     let cfg = PublisherConfig { ack_timeout: Duration::from_millis(300), ..PublisherConfig::default() };
     let (publisher, broker) = publisher(2, cfg, metrics.clone());
-    let state =
-        AppState { auth: Authenticator::fake(store.clone()), publisher, metrics, source_id: "ingest-test".into() };
+    let state = AppState {
+        auth: Authenticator::fake(store.clone()),
+        publisher,
+        metrics,
+        series: Arc::new(SeriesLimiter::new(TEST_MAX_SERIES)),
+        source_id: "ingest-test".into(),
+    };
     Harness { state, broker, store }
 }

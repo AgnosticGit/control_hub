@@ -16,11 +16,11 @@ let viewer;
 
 before(async () => {
   admin = new Session();
-  await admin.login('admin@controlhub.local');
+  await admin.login('admin@karbird.local');
   operator = new Session();
-  await operator.login('operator@controlhub.local');
+  await operator.login('operator@karbird.local');
   viewer = new Session();
-  await viewer.login('viewer@controlhub.local');
+  await viewer.login('viewer@karbird.local');
   // Leftovers from an interrupted run would trip the one-open-plan-per-target policy.
   const list = await admin.json(`${DEMO}/actions`);
   for (const p of list.body.filter((p) => p.state === 'proposed' || p.state === 'approved')) {
@@ -52,7 +52,7 @@ test('catalog is visible to viewers and reflects the demo-only policy', async ()
   assert.ok(demo.body.actions.every((a) => a.allowed_here));
 
   const iso = new Session();
-  await iso.login('isolation@controlhub.local');
+  await iso.login('isolation@karbird.local');
   const prod = await iso.json(`${ISO_PROD}/actions/catalog`);
   assert.equal(prod.status, 200);
   assert.equal(prod.body.environment_is_demo, false);
@@ -75,7 +75,7 @@ test('who may propose: not viewers, not API tokens, not in non-demo environments
   await admin.mutate(`${DEMO}/tokens/${tok.body.token.id}/revoke`, {});
 
   const iso = new Session();
-  await iso.login('isolation@controlhub.local');
+  await iso.login('isolation@karbird.local');
   const denied = await propose(iso, 'demo.faults.clear', 'orders', {}, ISO_PROD);
   assert.equal(denied.status, 403);
   assert.equal(denied.body.code, 'policy_denied');
@@ -123,7 +123,7 @@ test('approved fault injection is executed, verified and audited; clearing resto
   const approved = await admin.mutate(`${DEMO}/actions/${p.body.id}/approve`, { comment: 'go' });
   assert.equal(approved.status, 200, JSON.stringify(approved.body));
   assert.equal(approved.body.state, 'approved');
-  assert.equal(approved.body.decided_by, 'admin@controlhub.local');
+  assert.equal(approved.body.decided_by, 'admin@karbird.local');
 
   const done = await waitFinal(p.body.id);
   assert.equal(done.plan.state, 'succeeded', JSON.stringify(done.plan));
@@ -146,11 +146,11 @@ test('approved fault injection is executed, verified and audited; clearing resto
   assert.ok(cleared.plan.verification.errors / cleared.plan.verification.requests <= 0.05);
 });
 
-test('database restart goes through the executor and the service recovers', { skip: process.env.CONTROLHUB_TEST_RESTART === '0' }, async () => {
+test('database restart goes through the executor and the service recovers', { skip: process.env.KARBIRD_TEST_RESTART === '0' }, async () => {
   const p = await propose(operator, 'demo.restart_database', 'demo-postgres');
   assert.equal(p.status, 200, JSON.stringify(p.body));
   assert.equal((await admin.mutate(`${DEMO}/actions/${p.body.id}/approve`, {})).status, 200);
   const done = await waitFinal(p.body.id);
   assert.equal(done.plan.state, 'succeeded', JSON.stringify(done.plan));
-  assert.equal(done.plan.result.container, 'controlhub-demo-postgres-1');
+  assert.equal(done.plan.result.container, 'karbird-demo-postgres-1');
 });

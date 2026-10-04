@@ -1,18 +1,18 @@
-# ControlHub production, host "storage": PostgreSQL, ClickHouse and the S3-compatible archive.
-# Lives in /opt/controlhub next to .env, owner.env and seaweedfs-s3.json, which the deploy
+# karbird production, host "storage": PostgreSQL, ClickHouse and the S3-compatible archive.
+# Lives in /opt/karbird next to .env, owner.env and seaweedfs-s3.json, which the deploy
 # workflow renders (scripts/deploy-config.mjs). Ports bind to the private address only: the
 # "app" host reaches them over the private network, the internet never does.
 #   docker compose -f compose.storage.yaml up -d --wait
 #   docker compose -f compose.storage.yaml run --rm migrate migrate   (on every deploy)
 
-name: controlhub
+name: karbird
 
 services:
   postgres:
     image: postgres:17.6-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: controlhub
+      POSTGRES_DB: karbird
       POSTGRES_USER: ${CH_PG_ADMIN_USER:?rendered by the deploy}
       POSTGRES_PASSWORD: ${CH_PG_ADMIN_PASSWORD:?rendered by the deploy}
     ports:
@@ -20,7 +20,7 @@ services:
     volumes:
       - pg-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d controlhub"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d karbird"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -30,7 +30,7 @@ services:
     image: clickhouse/clickhouse-server:25.8
     restart: unless-stopped
     environment:
-      CLICKHOUSE_DB: controlhub
+      CLICKHOUSE_DB: karbird
       CLICKHOUSE_USER: ${CH_CH_ADMIN_USER:?rendered by the deploy}
       CLICKHOUSE_PASSWORD: ${CH_CH_ADMIN_PASSWORD:?rendered by the deploy}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
@@ -70,7 +70,7 @@ services:
 
   # One-off: schema migrations, retention TTLs, service users, the owner account.
   migrate:
-    image: ${IMAGE_PREFIX:?rendered by the deploy}/controlhub-api:${CONTROLHUB_VERSION:?rendered by the deploy}
+    image: ${IMAGE_PREFIX:?rendered by the deploy}/karbird-api:${KARBIRD_VERSION:?rendered by the deploy}
     profiles: ["tools"]
     command: ["migrate"]
     env_file: [.env, owner.env]
@@ -79,7 +79,7 @@ services:
       CH_PG_PORT: "5432"
       CH_CLICKHOUSE_HOST: clickhouse
       CH_CLICKHOUSE_HTTP_PORT: "8123"
-      CONTROLHUB_LOG_FORMAT: json
+      KARBIRD_LOG_FORMAT: json
     depends_on:
       postgres: { condition: service_healthy }
       clickhouse: { condition: service_healthy }

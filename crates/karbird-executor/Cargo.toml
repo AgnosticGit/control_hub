@@ -1,6 +1,6 @@
 [package]
-name = "controlhub-executor"
-description = "Runs approved action plans (the only ControlHub component with Docker access)"
+name = "karbird-executor"
+description = "Runs approved action plans (the only karbird component with Docker access)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,10 +8,10 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-controlhub-actions.workspace = true
-controlhub-domain.workspace = true
-controlhub-runtime.workspace = true
-controlhub-storage.workspace = true
+karbird-actions.workspace = true
+karbird-domain.workspace = true
+karbird-runtime.workspace = true
+karbird-storage.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 serde_json.workspace = true

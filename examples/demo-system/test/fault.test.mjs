@@ -66,6 +66,26 @@ test('--clear resets both values, a single option defaults the other to 0', asyn
   });
 });
 
+test('--cpu-hog posts the share to the cpu-hog endpoint only', async () => {
+  await withTarget(async (cap, env) => {
+    const r = await runNode(fault, ['orders', '--cpu-hog', '0.95'], env);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(cap.requests.length, 1);
+    assert.equal(cap.requests[0].url, '/__demo/cpu-hog');
+    assert.deepEqual(JSON.parse(cap.requests[0].body), { share: 0.95 });
+  });
+});
+
+test('--cpu-hog needs a number and cannot be combined with other options', async () => {
+  await withTarget(async (cap, env) => {
+    assert.equal((await runNode(fault, ['orders', '--cpu-hog'], env)).code, 2);
+    const both = await runNode(fault, ['orders', '--cpu-hog', '0.5', '--latency', '10'], env);
+    assert.equal(both.code, 2);
+    assert.match(both.stderr, /cannot be combined/);
+    assert.equal(cap.requests.length, 0);
+  });
+});
+
 test('--status only reads', async () => {
   await withTarget(async (cap, env) => {
     const r = await runNode(fault, ['orders', '--status'], env);
@@ -81,7 +101,7 @@ test('exits 1 with a hint when the service refuses (faults disabled)', async () 
       const r = await runNode(fault, ['orders', '--latency', '10'], env);
       assert.equal(r.code, 1);
       assert.match(r.stderr, /fault control failed \(404\)/);
-      assert.match(r.stderr, /CONTROLHUB_DEMO_FAULTS=1/);
+      assert.match(r.stderr, /KARBIRD_DEMO_FAULTS=1/);
     },
     (_req, res) => {
       res.writeHead(404, { 'content-type': 'application/json' });

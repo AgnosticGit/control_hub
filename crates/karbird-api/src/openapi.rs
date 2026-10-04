@@ -4,8 +4,8 @@ use crate::routes;
 
 #[derive(OpenApi)]
 #[openapi(
-    info(title = "ControlHub API", version = "0.1.0",
-        description = "Versioned ControlHub REST API. Nanosecond timestamps are decimal strings."),
+    info(title = "karbird API", version = "0.1.0",
+        description = "Versioned karbird REST API. Nanosecond timestamps are decimal strings."),
     paths(
         routes::health,
         routes::ready,
@@ -44,6 +44,7 @@ use crate::routes;
         routes::telemetry::events,
         routes::telemetry::timeline,
         routes::telemetry::coverage,
+        routes::infrastructure::infrastructure,
         routes::live::live,
         routes::tokens::list,
         routes::tokens::create,
@@ -83,7 +84,7 @@ use crate::routes;
     tags(
         (name = "session"), (name = "account"), (name = "projects"), (name = "telemetry"),
         (name = "timeline"), (name = "audit"), (name = "tokens"), (name = "actions"), (name = "members"), (name = "health"),
-        (name = "admin", description = "ControlHub administration: every project, account and administrator (browser sessions only)")
+        (name = "admin", description = "karbird administration: every project, account and administrator (browser sessions only)")
     ),
     modifiers(&BearerAuth)
 )]
@@ -107,7 +108,7 @@ impl utoipa::Modify for BearerAuth {
         );
         components.add_security_scheme(
             "session",
-            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new("controlhub_session"))),
+            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new("karbird_session"))),
         );
     }
 }

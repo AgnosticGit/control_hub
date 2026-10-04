@@ -3,7 +3,7 @@ import { Prose } from "../prose";
 
 export const metadata: Metadata = {
   title: "Documentation",
-  description: "ControlHub architecture, data model, API and security overview.",
+  description: "karbird architecture, data model, API and security overview.",
 };
 
 export default function DocsPage() {

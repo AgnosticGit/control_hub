@@ -1,25 +1,25 @@
 # Data flow
 
 ```
-app + @controlhub/sdk-node ──OTLP/HTTP protobuf──┐
+app + @karbird/sdk-node ──OTLP/HTTP protobuf──┐
 OTel Collector ──────────────OTLP/gRPC───────────┤
 SDK events client ──────POST /api/v1/events/batch┘
                                                  ▼
-                              controlhub-ingest (:4318 HTTP, :4317 gRPC, :9464 admin)
+                              karbird-ingest (:4318 HTTP, :4317 gRPC, :9464 admin)
                                  1. bearer token → SHA-256 → PostgreSQL lookup (cached briefly)
                                  2. scope (tenant/project/environment) taken from the token only
                                  3. decode, validate limits, redact, attach scope
-                                 4. produce IngestEnvelope to Kafka topic controlhub.telemetry.v1 (acks=-1)
+                                 4. produce IngestEnvelope to Kafka topic karbird.telemetry.v1 (acks=-1)
                                  5. respond 200 only after the broker ACK; else 503 / gRPC UNAVAILABLE
                                                  ▼
-                              controlhub-processor (:9465 admin)
+                              karbird-processor (:9465 admin)
                                  per partition: fetch → decode → insert into ClickHouse
                                  → record undecodable records in processing_errors
                                  → advance the offset in PostgreSQL (consumer_offsets)
                                                  ▼
                               ClickHouse: spans, logs, events (ReplacingMergeTree(ingested_at), TTL)
                                                  ▼
-                              controlhub-api (:8080, /api/v1, cookie session or read-only API token,
+                              karbird-api (:8080, /api/v1, cookie session or read-only API token,
                                               tenant-scoped queries, WebSocket …/live)
                                                  ▼
                               Next.js (:3000) rewrites /api/v1/* → API (HTTP and WebSocket)
@@ -33,13 +33,13 @@ SDK events client ──────POST /api/v1/events/batch┘
 Side paths (not part of the telemetry flow, and no LLM anywhere):
 
 ```
-web (Actions page) ─propose/approve─▶ controlhub-api ─▶ PostgreSQL action_plans + audit_log
+web (Actions page) ─propose/approve─▶ karbird-api ─▶ PostgreSQL action_plans + audit_log
                                                                ▲ claim (SKIP LOCKED, lease)
-controlhub-executor ───────────────────────────────────────────┘
+karbird-executor ───────────────────────────────────────────┘
    ├─ demo adapter: loopback /__demo/faults, docker restart (fixed args, label check)
    └─ verification: ClickHouse service_summaries (SELECT-only user)
 
-controlhub CLI `context` / `mcp` ──read-only API token──▶ controlhub-api (GET only)
+karbird CLI `context` / `mcp` ──read-only API token──▶ karbird-api (GET only)
 ```
 
 ## Delivery guarantees

@@ -1,4 +1,4 @@
-//! ControlHub viewer engine core.
+//! karbird viewer engine core.
 //!
 //! Holds a bounded window of recorded timeline items, reconstructs the
 //! displayed system state at any selected time, filters/culls the visible
@@ -6,6 +6,7 @@
 //! no threads — the same code runs natively (tests, benchmarks) and in WASM.
 
 mod hops;
+mod infra;
 mod layout;
 mod reducer;
 pub mod reference;
@@ -15,9 +16,9 @@ pub mod types;
 
 use std::collections::{HashMap, HashSet};
 
-use controlhub_domain::{EntityKind, HealthStatus, Provenance, RelationKind};
 pub use hops::{HOP_CLAMPED, HOP_DIMMED, HOP_ERROR, HOP_HIGHLIGHT, HOP_LEAF, HOP_STRIDE};
 use hops::{Hop, HopIndex};
+use karbird_domain::{EntityKind, HealthStatus, Provenance, RelationKind};
 use layout::Layout;
 use reducer::*;
 use skew::SkewCache;
@@ -119,6 +120,9 @@ pub struct Engine {
     hop_window: (i64, i64),
     /// Nodes or edges were added since the layout was computed.
     layout_dirty: bool,
+    infra: Option<InfrastructureSnapshot>,
+    /// Machine-frame layout for `infra`; recomputed with the layered layout.
+    infra_layout: Option<infra::InfraLayout>,
 }
 
 #[derive(Debug, Clone)]
@@ -217,6 +221,8 @@ impl Engine {
             timeline_merges: 0,
             hops: None,
             layout_dirty: false,
+            infra: None,
+            infra_layout: None,
         }
     }
 
@@ -368,7 +374,62 @@ impl Engine {
     }
 
     pub fn set_filters(&mut self, filters: Filters) {
+        let toggled = filters.infrastructure != self.filters.infrastructure;
         self.filters = filters;
+        if toggled {
+            self.refresh_infra();
+            self.topology_revision += 1;
+        }
+    }
+
+    /// Machines and instances for the infrastructure layer; replaces the previous snapshot.
+    pub fn set_infrastructure(&mut self, snapshot: InfrastructureSnapshot) {
+        if self.infra.as_ref() == Some(&snapshot) {
+            return;
+        }
+        self.infra = Some(snapshot);
+        self.refresh_infra();
+        if self.filters.infrastructure {
+            self.topology_revision += 1;
+        }
+    }
+
+    pub fn set_infrastructure_json(&mut self, json: &str) -> Result<(), EngineError> {
+        let snap: InfrastructureSnapshot =
+            serde_json::from_str(json).map_err(|e| EngineError::InvalidInput(e.to_string()))?;
+        self.set_infrastructure(snap);
+        Ok(())
+    }
+
+    fn refresh_infra(&mut self) {
+        self.infra_layout = match (&self.infra, self.filters.infrastructure) {
+            (Some(snap), true) => {
+                let nodes: Vec<infra::LayoutNode<'_>> = self
+                    .nodes
+                    .iter()
+                    .enumerate()
+                    .map(|(i, n)| infra::LayoutNode {
+                        index: i as u32,
+                        id: &n.id,
+                        name: &n.name,
+                        service: n.kind == EntityKind::Service,
+                        base: self.layout.position(&n.id).unwrap_or((0.0, 0.0)),
+                    })
+                    .collect();
+                Some(infra::compute(&nodes, snap))
+            }
+            _ => None,
+        };
+    }
+
+    /// Node position in the current layout (machine frames when the infrastructure layer is on).
+    fn pos(&self, index: usize, id: &str) -> Option<(f32, f32)> {
+        if let Some(l) = &self.infra_layout
+            && let Some(&p) = l.positions.get(&(index as u32))
+        {
+            return Some(p);
+        }
+        self.layout.position(id)
     }
 
     /// Which hops frames carry: those overlapping `[time - before, time + after]`, each side
@@ -415,7 +476,7 @@ impl Engine {
                 .iter()
                 .enumerate()
                 .map(|(i, n)| {
-                    let (x, y) = self.layout.position(&n.id).unwrap_or((0.0, 0.0));
+                    let (x, y) = self.pos(i, &n.id).unwrap_or((0.0, 0.0));
                     TopologyViewNode {
                         index: i as u32,
                         id: n.id.clone(),
@@ -438,9 +499,15 @@ impl Engine {
                     relation: e.relation.into(),
                     provenance: e.provenance.into(),
                     reasons: e.reasons.clone(),
-                    points: self.layout.waypoints(i).iter().map(|&(x, y)| [x, y]).collect(),
+                    // Corridors belong to the layered layout; frames place nodes elsewhere.
+                    points: if self.infra_layout.is_some() {
+                        Vec::new()
+                    } else {
+                        self.layout.waypoints(i).iter().map(|&(x, y)| [x, y]).collect()
+                    },
                 })
                 .collect(),
+            infra: self.infra_layout.as_ref().map(|l| l.view.clone()),
         }
     }
 
@@ -495,7 +562,7 @@ impl Engine {
                 continue;
             }
             node_passes[i] = true;
-            let (x, y) = self.layout.position(&n.id).unwrap_or((0.0, 0.0));
+            let (x, y) = self.pos(i, &n.id).unwrap_or((0.0, 0.0));
             let radius = if n.kind == EntityKind::Service { 26.0 } else { 20.0 };
             if !self.in_viewport(x, y, radius) {
                 continue;
@@ -551,8 +618,8 @@ impl Engine {
             let (Some(sn), Some(tn)) = (self.nodes.get(s), self.nodes.get(tg)) else {
                 continue;
             };
-            let (x1, y1) = self.layout.position(&sn.id).unwrap_or((0.0, 0.0));
-            let (x2, y2) = self.layout.position(&tn.id).unwrap_or((0.0, 0.0));
+            let (x1, y1) = self.pos(s, &sn.id).unwrap_or((0.0, 0.0));
+            let (x2, y2) = self.pos(tg, &tn.id).unwrap_or((0.0, 0.0));
             let active = now.edge(i, E_ACTIVE);
             let calls = now.edge(i, E_CALLS) - past.edge(i, E_CALLS);
             let errors = now.edge(i, E_ERRORS) - past.edge(i, E_ERRORS);
@@ -768,13 +835,18 @@ impl Engine {
     pub fn pick(&self, x: f32, y: f32) -> Option<String> {
         self.nodes
             .iter()
-            .filter_map(|n| {
-                let (nx, ny) = self.layout.position(&n.id)?;
+            .enumerate()
+            .filter_map(|(i, n)| {
+                let (nx, ny) = self.pos(i, &n.id)?;
                 let d2 = (nx - x).powi(2) + (ny - y).powi(2);
                 (d2 <= 30.0f32.powi(2)).then_some((d2, n.id.clone()))
             })
             .min_by(|a, b| a.0.total_cmp(&b.0))
             .map(|(_, id)| id)
+            .or_else(|| {
+                let node = self.infra_layout.as_ref()?.chip_at(x, y)?;
+                self.nodes.get(node as usize).map(|n| n.id.clone())
+            })
     }
 
     pub fn diagnostics(&mut self) -> Diagnostics {
@@ -907,6 +979,7 @@ impl Engine {
         let ids: Vec<String> = self.nodes.iter().map(|n| n.id.clone()).collect();
         let edges: Vec<(u32, u32)> = self.edges.iter().map(|e| (e.source, e.target)).collect();
         self.layout.compute(&ids, &edges);
+        self.refresh_infra();
         self.topology_revision += 1;
     }
 

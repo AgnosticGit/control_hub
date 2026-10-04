@@ -34,7 +34,7 @@ if (v !== REQUIRED_BINDGEN) {
 await run("cargo", [
   "build",
   "-p",
-  "controlhub-web-engine",
+  "karbird-web-engine",
   "--target",
   "wasm32-unknown-unknown",
   "--profile",
@@ -49,14 +49,14 @@ await run("wasm-bindgen", [
   "--out-dir",
   pkg,
   "--out-name",
-  "controlhub_engine",
-  join(root, "target", "wasm32-unknown-unknown", "wasm-release", "controlhub_web_engine.wasm"),
+  "karbird_engine",
+  join(root, "target", "wasm32-unknown-unknown", "wasm-release", "karbird_web_engine.wasm"),
 ]);
 
-const wasmPath = join(pkg, "controlhub_engine_bg.wasm");
+const wasmPath = join(pkg, "karbird_engine_bg.wasm");
 const bytes = readFileSync(wasmPath);
 const sha256 = createHash("sha256").update(bytes).digest("hex");
-const fileName = `controlhub_engine.${sha256.slice(0, 16)}.wasm`;
+const fileName = `karbird_engine.${sha256.slice(0, 16)}.wasm`;
 
 const publicDir = join(root, "apps", "web", "public", "wasm");
 mkdirSync(publicDir, { recursive: true });

@@ -5,8 +5,8 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
-use controlhub_storage::pg::{InviteAccept, InviteLookup, InviteRow, NewAuditEntry, NewInvite};
-use controlhub_storage::secrets::{generate_token, hash_token, token_prefix};
+use karbird_storage::pg::{InviteAccept, InviteLookup, InviteRow, NewAuditEntry, NewInvite};
+use karbird_storage::secrets::{generate_token, hash_token, token_prefix};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use time::OffsetDateTime;

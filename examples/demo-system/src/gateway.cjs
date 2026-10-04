@@ -8,7 +8,13 @@ const { logger, sendJson, createFaults, getJson, callJson, listen } = require('.
 const port = Number(process.env.DEMO_GATEWAY_PORT ?? 7001);
 const ordersUrl = process.env.DEMO_ORDERS_URL ?? 'http://127.0.0.1:7002';
 const authUrl = process.env.DEMO_AUTH_URL ?? 'http://127.0.0.1:7007';
-const catalogUrl = process.env.DEMO_CATALOG_URL ?? 'http://127.0.0.1:7006';
+// Catalog runs as several replicas: requests go round-robin over DEMO_CATALOG_URLS.
+const catalogUrls = (process.env.DEMO_CATALOG_URLS ?? process.env.DEMO_CATALOG_URL ?? 'http://127.0.0.1:7006')
+  .split(',')
+  .map((u) => u.trim())
+  .filter(Boolean);
+let nextCatalog = 0;
+const catalogUrl = () => catalogUrls[nextCatalog++ % catalogUrls.length];
 const log = logger();
 const faults = createFaults();
 
@@ -45,7 +51,7 @@ const server = http.createServer(async (req, res) => {
 
     const item = url.pathname.match(/^\/api\/catalog\/(\d{1,9})$/);
     if (req.method === 'GET' && item) {
-      const upstream = await getJson(`${catalogUrl}/items/${item[1]}`);
+      const upstream = await getJson(`${catalogUrl()}/items/${item[1]}`);
       if (upstream.status >= 500) {
         log.error('catalog service failed', { 'http.response.status_code': upstream.status });
         return sendJson(res, 502, { error: 'upstream failure' });

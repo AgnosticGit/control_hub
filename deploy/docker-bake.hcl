@@ -2,7 +2,7 @@
 #   REGISTRY=ghcr.io/<owner> VERSION=v1.2.3 SITE_URL=https://example.com docker buildx bake -f deploy/docker-bake.hcl
 
 variable "REGISTRY" {
-  default = "controlhub.local"
+  default = "karbird.local"
 }
 
 variable "VERSION" {
@@ -26,36 +26,36 @@ target "_common" {
 target "ingest" {
   inherits = ["_common"]
   target   = "ingest"
-  tags     = ["${REGISTRY}/controlhub-ingest:${VERSION}"]
+  tags     = ["${REGISTRY}/karbird-ingest:${VERSION}"]
 }
 
 target "processor" {
   inherits = ["_common"]
   target   = "processor"
-  tags     = ["${REGISTRY}/controlhub-processor:${VERSION}"]
+  tags     = ["${REGISTRY}/karbird-processor:${VERSION}"]
 }
 
 target "api" {
   inherits = ["_common"]
   target   = "api"
-  tags     = ["${REGISTRY}/controlhub-api:${VERSION}"]
+  tags     = ["${REGISTRY}/karbird-api:${VERSION}"]
 }
 
 target "executor" {
   inherits = ["_common"]
   target   = "executor"
-  tags     = ["${REGISTRY}/controlhub-executor:${VERSION}"]
+  tags     = ["${REGISTRY}/karbird-executor:${VERSION}"]
 }
 
 target "archiver" {
   inherits = ["_common"]
   target   = "archiver"
-  tags     = ["${REGISTRY}/controlhub-archiver:${VERSION}"]
+  tags     = ["${REGISTRY}/karbird-archiver:${VERSION}"]
 }
 
 target "web" {
   inherits = ["_common"]
   target   = "web"
-  args     = { CONTROLHUB_SITE_URL = SITE_URL }
-  tags     = ["${REGISTRY}/controlhub-web:${VERSION}"]
+  args     = { KARBIRD_SITE_URL = SITE_URL }
+  tags     = ["${REGISTRY}/karbird-web:${VERSION}"]
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TimelineTracks } from "@controlhub/web-engine";
+import type { TimelineTracks } from "@karbird/web-engine";
 import type { ActionBar } from "./draw";
 import { centeredOn, nearestItems, tracksMatch, viewIsEmpty } from "./neighbours";
 import type { View } from "./scale";

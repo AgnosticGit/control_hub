@@ -5,7 +5,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { api, ApiRequestError, scopedPath, unwrap } from "@/lib/api";
-import { collectorConfig, curlCheck, nodeSteps, otelEnv, otlpEndpoint, safeServiceName } from "./snippets";
+import { curlCheck, otlpEndpoint, safeServiceName, SDK_MIN_NODE, SDK_PACKAGE, sdkCode, sdkEnv, sdkInstall, sdkStart } from "./snippets";
 
 const TOKENS = "/api/v1/projects/{project_id}/environments/{environment_id}/tokens" as const;
 const SERVICES = "/api/v1/projects/{project_id}/environments/{environment_id}/services" as const;
@@ -91,8 +91,9 @@ export function IntegrationGuide({
     <>
       <div className="text-sm text-muted">
         <p>
-          ControlHub receives standard OpenTelemetry traces and logs over OTLP/HTTP (protobuf). Any language with an OpenTelemetry
-          SDK works; no ControlHub-specific library is required. Telemetry for this environment goes to:
+          Services connect with the karbird SDK <code className="font-mono text-text">{SDK_PACKAGE}</code> (Node.js {SDK_MIN_NODE} or
+          newer). It traces incoming and outgoing HTTP requests and PostgreSQL queries, and sends logs and events linked to them.
+          Telemetry for this environment goes to:
         </p>
         <p className="mt-2">
           <code aria-label="OTLP endpoint" className="rounded-md border border-border bg-bg/80 px-2 py-1 font-mono text-xs text-text">
@@ -147,23 +148,26 @@ export function IntegrationGuide({
         ) : null}
       </Step>
 
-      <Step n={2} title="Configure your service">
-        <h3 className="font-medium">Any language (OpenTelemetry SDK)</h3>
-        <p className="text-muted">
-          Set these environment variables for a service instrumented with the official OpenTelemetry SDK (Java, Python, Go, .NET,
-          Node.js, Ruby, PHP, …). Metrics are not stored yet, so their exporter is turned off.
-        </p>
-        <Snippet label="OpenTelemetry environment variables" text={otelEnv(input)} />
-
-        <h3 className="pt-2 font-medium">Node.js without code changes</h3>
-        <Snippet label="Node.js setup" text={nodeSteps(input)} />
-
-        <h3 className="pt-2 font-medium">Through an OpenTelemetry Collector</h3>
-        <p className="text-muted">If your services already send to a Collector, add ControlHub as one more exporter.</p>
-        <Snippet label="Collector configuration" text={collectorConfig(input)} />
+      <Step n={2} title="Install the SDK">
+        <p className="text-muted">In the directory of your service:</p>
+        <Snippet label="Install command" text={sdkInstall()} />
       </Step>
 
-      <Step n={3} title="Check the connection">
+      <Step n={3} title="Start your service with the SDK">
+        <p className="text-muted">
+          Put these variables into your <code className="font-mono">.env</code>, process manager or container environment:
+        </p>
+        <Snippet label="SDK environment variables" text={sdkEnv(input)} />
+        <p className="text-muted">
+          Start the service with the SDK loaded first, so it sees every request from the start. Replace{" "}
+          <code className="font-mono">server.js</code> with your entry file; no code changes are needed.
+        </p>
+        <Snippet label="Start command" text={sdkStart()} />
+        <h3 className="pt-2 font-medium">Logs and events from your code (optional)</h3>
+        <Snippet label="Logs and events from code" text={sdkCode()} />
+      </Step>
+
+      <Step n={4} title="Check the connection">
         <p className="text-muted">
           A <code className="font-mono">200</code> response means the token and endpoint are right;{" "}
           <code className="font-mono">401</code> means the token is wrong, revoked or expired.
@@ -194,12 +198,12 @@ export function IntegrationGuide({
           What is stored
         </h2>
         <ul className="list-disc space-y-1 pl-5 text-muted">
-          <li>Spans (service, operation, timing, status, redacted attributes) and log records.</li>
+          <li>Spans (service, operation, timing, status, redacted attributes), log records and events.</li>
+          <li>The SDK never records request or response headers, bodies or full SQL text.</li>
           <li>
-            Authorization and cookie headers, passwords, tokens and similar secrets are removed on arrival, even if your SDK sent
-            them. Do not put request bodies or personal data into span attributes or log messages.
+            Authorization and cookie headers, passwords, tokens and similar secrets are also removed on arrival. Do not put personal
+            data into log messages or event attributes.
           </li>
-          <li>Only protobuf encoding is accepted (JSON gets 415). Metrics are refused with 501 and not stored.</li>
         </ul>
       </section>
     </>

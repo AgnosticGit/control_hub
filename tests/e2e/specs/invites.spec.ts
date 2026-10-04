@@ -6,7 +6,7 @@ const WORKSPACE = "/app/demo/local-demo";
 const PASSWORD = `invite horse ${randomHex(4)}`;
 
 async function openInviteLinks(page: Page) {
-  await login(page, "admin@controlhub.local", WORKSPACE);
+  await login(page, "admin@karbird.local", WORKSPACE);
   await page.getByRole("link", { name: "Members & roles" }).click();
   await page.getByRole("tab", { name: "Invite links" }).click();
   await expect(page.getByRole("heading", { name: "Invite people with a link" })).toBeVisible();

@@ -27,7 +27,7 @@ pub enum ApiError {
     #[error("unavailable: {0}")]
     Unavailable(&'static str),
     #[error("storage unavailable")]
-    Storage(#[from] controlhub_storage::StorageError),
+    Storage(#[from] karbird_storage::StorageError),
     #[error("internal error")]
     Internal(String),
 }
@@ -93,7 +93,7 @@ mod tests {
             (ApiError::PolicyDenied("x".into()), StatusCode::FORBIDDEN, "policy_denied"),
             (ApiError::Unavailable("x"), StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
             (
-                ApiError::Storage(controlhub_storage::StorageError::Other("x".into())),
+                ApiError::Storage(karbird_storage::StorageError::Other("x".into())),
                 StatusCode::SERVICE_UNAVAILABLE,
                 "storage_unavailable",
             ),
@@ -108,8 +108,8 @@ mod tests {
 
     #[tokio::test]
     async fn storage_and_internal_details_are_never_returned() {
-        let secret = "postgres://controlhub_api:hunter2@db:5432 connection refused";
-        let (_, body) = parts(ApiError::Storage(controlhub_storage::StorageError::Other(secret.into()))).await;
+        let secret = "postgres://karbird_api:hunter2@db:5432 connection refused";
+        let (_, body) = parts(ApiError::Storage(karbird_storage::StorageError::Other(secret.into()))).await;
         assert_eq!(body["message"], "storage unavailable");
         let (_, body) = parts(ApiError::Internal(format!("panic at src/x.rs:1 {secret}"))).await;
         assert_eq!(body["message"], "internal error");
@@ -130,7 +130,7 @@ mod tests {
     #[test]
     fn storage_errors_convert_via_question_mark() {
         fn f() -> ApiResult<()> {
-            Err(controlhub_storage::StorageError::Other("down".into()))?
+            Err(karbird_storage::StorageError::Other("down".into()))?
         }
         assert!(matches!(f(), Err(ApiError::Storage(_))));
     }

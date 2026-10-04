@@ -59,7 +59,7 @@ export function ProfilePage() {
   const session = useSession();
   const user = session.data?.user;
   return (
-    <AccountShell active="profile" title="Personal info" description="How you appear in ControlHub.">
+    <AccountShell active="profile" title="Personal info" description="How you appear in karbird.">
       {user ? <ProfileForm key={user.id} initialName={user.display_name} email={user.email} since={user.created_at} /> : null}
     </AccountShell>
   );

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Production images of ControlHub, built from the repository root (see deploy/docker-bake.hcl):
+# Production images of karbird, built from the repository root (see deploy/docker-bake.hcl):
 #   docker buildx bake -f deploy/docker-bake.hcl
 # One target per service; all Rust services come from one compile stage.
 
@@ -12,11 +12,11 @@ FROM ${RUST_IMAGE} AS rust-build
 WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target,id=controlhub-release-target \
+    --mount=type=cache,target=/src/target,id=karbird-release-target \
     cargo build --release --locked \
-      -p controlhub-ingest -p controlhub-processor -p controlhub-api -p controlhub-executor -p controlhub-archiver \
+      -p karbird-ingest -p karbird-processor -p karbird-api -p karbird-executor -p karbird-archiver \
  && mkdir -p /out \
- && for b in ingest processor api executor archiver; do cp "target/release/controlhub-$b" /out/; done
+ && for b in ingest processor api executor archiver; do cp "target/release/karbird-$b" /out/; done
 
 # ---------------------------------------------------------------- WASM engine
 FROM ${NODE_IMAGE} AS node
@@ -39,13 +39,13 @@ COPY --from=wasm-build /src/apps/web/public/wasm apps/web/public/wasm
 COPY --from=wasm-build /src/apps/web/src/generated/wasm-manifest.ts apps/web/src/generated/wasm-manifest.ts
 # Fixed at build time: rewrites point at the compose service names; the public URL feeds
 # canonical links, robots.txt and the sitemap.
-ARG CONTROLHUB_SITE_URL=http://localhost:3000
-ENV CONTROLHUB_SITE_URL=${CONTROLHUB_SITE_URL} \
-    CONTROLHUB_API_URL=http://api:8080 \
-    CONTROLHUB_INGEST_URL=http://ingest:4318 \
+ARG KARBIRD_SITE_URL=http://localhost:3000
+ENV KARBIRD_SITE_URL=${KARBIRD_SITE_URL} \
+    KARBIRD_API_URL=http://api:8080 \
+    KARBIRD_INGEST_URL=http://ingest:4318 \
     NEXT_TELEMETRY_DISABLED=1
-RUN pnpm install --frozen-lockfile --filter "@controlhub/web..." \
- && pnpm --filter @controlhub/web build
+RUN pnpm install --frozen-lockfile --filter "@karbird/web..." \
+ && pnpm --filter @karbird/web build
 
 FROM ${NODE_IMAGE} AS web
 WORKDIR /app
@@ -62,27 +62,27 @@ FROM ${RUNTIME_IMAGE} AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl \
  && rm -rf /var/lib/apt/lists/* \
- && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin controlhub
-USER controlhub
+ && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin karbird
+USER karbird
 
 FROM runtime AS ingest
-COPY --from=rust-build /out/controlhub-ingest /usr/local/bin/
-ENTRYPOINT ["controlhub-ingest"]
+COPY --from=rust-build /out/karbird-ingest /usr/local/bin/
+ENTRYPOINT ["karbird-ingest"]
 
 FROM runtime AS processor
-COPY --from=rust-build /out/controlhub-processor /usr/local/bin/
-ENTRYPOINT ["controlhub-processor"]
+COPY --from=rust-build /out/karbird-processor /usr/local/bin/
+ENTRYPOINT ["karbird-processor"]
 
 FROM runtime AS api
-COPY --from=rust-build /out/controlhub-api /usr/local/bin/
-ENTRYPOINT ["controlhub-api"]
+COPY --from=rust-build /out/karbird-api /usr/local/bin/
+ENTRYPOINT ["karbird-api"]
 CMD ["serve"]
 
 FROM runtime AS executor
-COPY --from=rust-build /out/controlhub-executor /usr/local/bin/
-ENTRYPOINT ["controlhub-executor"]
+COPY --from=rust-build /out/karbird-executor /usr/local/bin/
+ENTRYPOINT ["karbird-executor"]
 
 FROM runtime AS archiver
-COPY --from=rust-build /out/controlhub-archiver /usr/local/bin/
-ENTRYPOINT ["controlhub-archiver"]
+COPY --from=rust-build /out/karbird-archiver /usr/local/bin/
+ENTRYPOINT ["karbird-archiver"]
 CMD ["run"]

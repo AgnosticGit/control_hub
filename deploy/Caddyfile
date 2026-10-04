@@ -6,7 +6,7 @@
 	email {$ACME_EMAIL}
 }
 
-{$CONTROLHUB_DOMAIN} {
+{$KARBIRD_DOMAIN} {
 	encode zstd gzip
 	header Strict-Transport-Security "max-age=31536000"
 

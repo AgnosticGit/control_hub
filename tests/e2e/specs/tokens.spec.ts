@@ -4,7 +4,7 @@ import { login } from "./helpers";
 const WORKSPACE = "/app/demo/local-demo";
 
 test("admin creates, sees once and revokes an API token", async ({ page }) => {
-  await login(page, "admin@controlhub.local", WORKSPACE);
+  await login(page, "admin@karbird.local", WORKSPACE);
   await page.getByRole("link", { name: "Tokens" }).click();
   await expect(page.getByRole("heading", { name: /Tokens/ })).toBeVisible();
 
@@ -24,7 +24,7 @@ test("admin creates, sees once and revokes an API token", async ({ page }) => {
 });
 
 test("admin creates a non-expiring ingestion token, rotates it with a grace period and cleans up", async ({ page }) => {
-  await login(page, "admin@controlhub.local", `${WORKSPACE}/tokens`);
+  await login(page, "admin@karbird.local", `${WORKSPACE}/tokens`);
   await expect(page.getByRole("heading", { level: 1, name: "Tokens" })).toBeVisible();
   const name = `e2e-ingest-${Date.now()}`;
   const form = page.locator("form");
@@ -69,7 +69,7 @@ test("admin creates a non-expiring ingestion token, rotates it with a grace peri
 });
 
 test("dismissing the confirmation does not revoke; server-side validation errors are shown", async ({ page }) => {
-  await login(page, "admin@controlhub.local", `${WORKSPACE}/tokens`);
+  await login(page, "admin@karbird.local", `${WORKSPACE}/tokens`);
   const name = `e2e-keep-${Date.now()}`;
   await page.getByLabel("Name").fill(name);
   await page.getByRole("button", { name: "Create token" }).click();
@@ -90,7 +90,7 @@ test("dismissing the confirmation does not revoke; server-side validation errors
 });
 
 test("viewer has no token management", async ({ page }) => {
-  await login(page, "viewer@controlhub.local", WORKSPACE);
+  await login(page, "viewer@karbird.local", WORKSPACE);
   await expect(page.getByText("DEMO", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Tokens" })).toHaveCount(0);
   await page.goto(`${WORKSPACE}/tokens`);
@@ -98,7 +98,7 @@ test("viewer has no token management", async ({ page }) => {
 });
 
 test("operator sees tokens read-only", async ({ page }) => {
-  await login(page, "operator@controlhub.local", WORKSPACE);
+  await login(page, "operator@karbird.local", WORKSPACE);
   await page.getByRole("link", { name: "Tokens" }).click();
   await expect(page.getByRole("heading", { name: "Tokens" })).toBeVisible();
   await expect(page.getByRole("table", { name: "Tokens" })).toBeVisible();

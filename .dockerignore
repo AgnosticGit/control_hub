@@ -1,6 +1,6 @@
 # Build context for deploy/Dockerfile: sources only, never local state or secrets.
 .git
-.controlhub
+.karbird
 .env
 .env.*
 !.env.example

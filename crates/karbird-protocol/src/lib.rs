@@ -2,7 +2,7 @@
 
 #[allow(clippy::all, missing_debug_implementations)]
 pub mod v1 {
-    include!(concat!(env!("OUT_DIR"), "/controlhub.v1.rs"));
+    include!(concat!(env!("OUT_DIR"), "/karbird.v1.rs"));
 }
 
 /// Official OTLP protobuf types and tonic services.
@@ -12,7 +12,7 @@ pub use opentelemetry_proto::tonic as otlp;
 pub const ENVELOPE_SCHEMA_VERSION: u32 = 1;
 
 /// Broker topic carrying [`v1::IngestEnvelope`] records.
-pub const TELEMETRY_TOPIC: &str = "controlhub.telemetry.v1";
+pub const TELEMETRY_TOPIC: &str = "karbird.telemetry.v1";
 
 #[cfg(test)]
 mod tests {
@@ -41,7 +41,7 @@ mod tests {
     #[test]
     fn constants_are_stable() {
         assert_eq!(ENVELOPE_SCHEMA_VERSION, 1);
-        assert_eq!(TELEMETRY_TOPIC, "controlhub.telemetry.v1");
+        assert_eq!(TELEMETRY_TOPIC, "karbird.telemetry.v1");
     }
 
     #[test]
@@ -65,6 +65,7 @@ mod tests {
         for payload in [
             Some(Payload::OtlpTraces(traces.encode_to_vec())),
             Some(Payload::OtlpLogs(vec![])),
+            Some(Payload::OtlpMetrics(vec![7, 7])),
             Some(Payload::CustomEvents(CustomEventBatch { events: vec![event] })),
             None,
         ] {

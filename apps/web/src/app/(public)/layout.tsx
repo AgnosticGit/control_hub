@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Logo } from "@/components/ui/Icon";
 
@@ -13,9 +14,9 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-10 border-b border-border bg-bg/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 py-3">
-          <Link href="/" className="flex items-center gap-2.5 text-[17px] font-bold tracking-[-0.01em]">
-            <Logo />
-            ControlHub
+          <Link href="/" className="flex items-center gap-2.5 text-[22px] font-extrabold tracking-[-0.035em]">
+            <Image src="/brand/karbird-owl.png" alt="" width={256} height={256} unoptimized loading="eager" className="h-9 w-9" />
+            karbird
           </Link>
           <nav aria-label="Main" className="-mx-3 flex max-w-full items-center gap-1 overflow-x-auto text-sm">
             {nav.map((n) => (
@@ -34,11 +35,11 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-muted">
           <span className="flex items-center gap-2.5">
             <Logo className="h-5 w-5" />
-            <span className="font-semibold text-text">ControlHub</span>
+            <span className="font-semibold text-text">karbird</span>
             <span>Observability · Replay · Control</span>
           </span>
           <span>
-            Early access: ControlHub is an early development build. See{" "}
+            Early access: karbird is an early development build. See{" "}
             <Link href="/features" className="underline decoration-border-strong hover:text-text">
               Features
             </Link>{" "}

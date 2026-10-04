@@ -1,6 +1,6 @@
 # AI integration
 
-ControlHub contains no LLM anywhere in its data path. Ingestion, processing, storage, queries,
+karbird contains no LLM anywhere in its data path. Ingestion, processing, storage, queries,
 the engine and rendering are all deterministic code. AI assistants may only be **external
 clients** of the same APIs that humans use, with less privilege than humans.
 
@@ -8,14 +8,14 @@ clients** of the same APIs that humans use, with less privilege than humans.
 
 | Surface | Status | Access |
 |---|---|---|
-| `controlhub context` (CLI) | implemented, integration-tested | read-only API token |
-| `controlhub mcp` (read-only MCP server, stdio) | implemented, integration-tested | read-only API token |
+| `karbird context` (CLI) | implemented, integration-tested | read-only API token |
+| `karbird mcp` (read-only MCP server, stdio) | implemented, integration-tested | read-only API token |
 | Assistant-proposed action plans | **not implemented** | — |
 
-1. **`controlhub context`** prints a bounded, sanitized JSON summary of one environment (services,
+1. **`karbird context`** prints a bounded, sanitized JSON summary of one environment (services,
    dependencies, recent error traces, error logs, events, completeness). See
    [CLI.md](CLI.md#context).
-2. **`controlhub mcp`** exposes the same queries as tools (`get_context`, `list_services`,
+2. **`karbird mcp`** exposes the same queries as tools (`get_context`, `list_services`,
    `get_topology`, `search_traces`, `get_trace`, `search_logs`, `list_events`,
    `list_action_plans`). It has no mutation tools. See [CLI.md](CLI.md#mcp) and ADR-0013.
 3. **Actions** exist for humans (operator proposes, a different admin approves, the separate

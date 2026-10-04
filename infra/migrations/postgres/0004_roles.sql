@@ -12,8 +12,8 @@ CREATE TABLE project_roles (
 CREATE UNIQUE INDEX project_roles_name_idx ON project_roles (project_id, lower(name));
 CREATE UNIQUE INDEX project_roles_builtin_idx ON project_roles (project_id, builtin) WHERE builtin IS NOT NULL;
 
--- Built-in roles of one project; kept in sync with `Builtin::permissions` in controlhub-api.
-CREATE FUNCTION controlhub_insert_builtin_roles(p TEXT) RETURNS void LANGUAGE sql AS $$
+-- Built-in roles of one project; kept in sync with `Builtin::permissions` in karbird-api.
+CREATE FUNCTION karbird_insert_builtin_roles(p TEXT) RETURNS void LANGUAGE sql AS $$
     INSERT INTO project_roles (project_id, name, permissions, builtin) VALUES
         (p, 'Owner', ARRAY['telemetry.view','tokens.view','tokens.manage','actions.view','actions.propose',
                            'actions.approve','members.view','members.manage','roles.manage','project.manage'], 'owner'),
@@ -23,16 +23,16 @@ CREATE FUNCTION controlhub_insert_builtin_roles(p TEXT) RETURNS void LANGUAGE sq
         (p, 'Viewer', ARRAY['telemetry.view','actions.view','members.view'], 'viewer');
 $$;
 
-CREATE FUNCTION controlhub_builtin_roles_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION karbird_builtin_roles_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-    PERFORM controlhub_insert_builtin_roles(NEW.id);
+    PERFORM karbird_insert_builtin_roles(NEW.id);
     RETURN NEW;
 END $$;
 
 CREATE TRIGGER projects_builtin_roles AFTER INSERT ON projects
-    FOR EACH ROW EXECUTE FUNCTION controlhub_builtin_roles_trigger();
+    FOR EACH ROW EXECUTE FUNCTION karbird_builtin_roles_trigger();
 
-SELECT controlhub_insert_builtin_roles(id) FROM projects;
+SELECT karbird_insert_builtin_roles(id) FROM projects;
 
 ALTER TABLE memberships
     ADD COLUMN role_id UUID REFERENCES project_roles(id),

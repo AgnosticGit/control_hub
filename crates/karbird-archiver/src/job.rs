@@ -5,12 +5,12 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use controlhub_archive::index::{SegmentIndex, segment_index};
-use controlhub_archive::{Dictionary, LogRecord, dict::MAX_DICT_BYTES};
-use controlhub_domain::{EnvironmentId, ProjectId, Scope, TenantId};
-use controlhub_storage::archive::{ArchiveObjects, SegmentRow, dict_key, segment_key, sha256_hex};
-use controlhub_storage::ch::{ChStore, LogRow};
-use controlhub_storage::pg::PgStore;
+use karbird_archive::index::{SegmentIndex, segment_index};
+use karbird_archive::{Dictionary, LogRecord, dict::MAX_DICT_BYTES};
+use karbird_domain::{EnvironmentId, ProjectId, Scope, TenantId};
+use karbird_storage::archive::{ArchiveObjects, SegmentRow, dict_key, segment_key, sha256_hex};
+use karbird_storage::ch::{ChStore, LogRow};
+use karbird_storage::pg::PgStore;
 use serde::Serialize;
 
 #[derive(Debug, Default)]
@@ -32,17 +32,17 @@ impl Metrics {
     pub fn render(&self) -> String {
         let g = |a: &AtomicU64| a.load(Ordering::Relaxed);
         format!(
-            "controlhub_archiver_windows_total{{result=\"archived\"}} {}\n\
-             controlhub_archiver_windows_total{{result=\"lost\"}} {}\n\
-             controlhub_archiver_windows_total{{result=\"rearchived\"}} {}\n\
-             controlhub_archiver_segments_written_total {}\n\
-             controlhub_archiver_rows_archived_total {}\n\
-             controlhub_archiver_source_bytes_total {}\n\
-             controlhub_archiver_stored_bytes_total {}\n\
-             controlhub_archiver_dictionaries_written_total {}\n\
-             controlhub_archiver_failures_total {}\n\
-             controlhub_archiver_gc_segments_deleted_total {}\n\
-             controlhub_archiver_last_window_end_ns {}\n",
+            "karbird_archiver_windows_total{{result=\"archived\"}} {}\n\
+             karbird_archiver_windows_total{{result=\"lost\"}} {}\n\
+             karbird_archiver_windows_total{{result=\"rearchived\"}} {}\n\
+             karbird_archiver_segments_written_total {}\n\
+             karbird_archiver_rows_archived_total {}\n\
+             karbird_archiver_source_bytes_total {}\n\
+             karbird_archiver_stored_bytes_total {}\n\
+             karbird_archiver_dictionaries_written_total {}\n\
+             karbird_archiver_failures_total {}\n\
+             karbird_archiver_gc_segments_deleted_total {}\n\
+             karbird_archiver_last_window_end_ns {}\n",
             g(&self.windows_archived),
             g(&self.windows_lost),
             g(&self.windows_rearchived),
@@ -119,9 +119,9 @@ pub fn build_segment(
     mut records: Vec<LogRecord>,
     dict: Option<&Dictionary>,
     level: i32,
-) -> anyhow::Result<(controlhub_archive::Encoded, SegmentIndex)> {
-    let enc = controlhub_archive::encode(&records, dict, level)?;
-    let mut back = controlhub_archive::decode(&enc.bytes, dict)?;
+) -> anyhow::Result<(karbird_archive::Encoded, SegmentIndex)> {
+    let enc = karbird_archive::encode(&records, dict, level)?;
+    let mut back = karbird_archive::decode(&enc.bytes, dict)?;
     records.sort();
     back.sort();
     anyhow::ensure!(back == records, "segment verification failed: decoded rows differ from the source");
@@ -211,7 +211,7 @@ pub async fn archive_window(ctx: &Ctx, start: i64, end: i64, scope: Option<&Scop
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
-    use controlhub_archive::index::bloom_may_contain;
+    use karbird_archive::index::bloom_may_contain;
 
     fn row(i: i64) -> LogRow {
         LogRow {
@@ -259,7 +259,7 @@ mod tests {
         assert_eq!(index.max_severity, 17);
         assert!(bloom_may_contain(&index.trace_bloom, &"ab".repeat(16)));
         assert!(!bloom_may_contain(&index.trace_bloom, &"cd".repeat(16)), "one trace in a 64-bit filter");
-        let mut back = controlhub_archive::decode(&enc.bytes, None).unwrap();
+        let mut back = karbird_archive::decode(&enc.bytes, None).unwrap();
         back.sort();
         let mut want = records;
         want.sort();
@@ -279,8 +279,8 @@ mod tests {
         m.windows_lost.fetch_add(2, Ordering::Relaxed);
         m.stored_bytes.fetch_add(10, Ordering::Relaxed);
         let out = m.render();
-        assert!(out.lines().any(|l| l == "controlhub_archiver_windows_total{result=\"lost\"} 2"), "{out}");
-        assert!(out.lines().any(|l| l == "controlhub_archiver_stored_bytes_total 10"));
+        assert!(out.lines().any(|l| l == "karbird_archiver_windows_total{result=\"lost\"} 2"), "{out}");
+        assert!(out.lines().any(|l| l == "karbird_archiver_stored_bytes_total 10"));
         assert_eq!(out.lines().count(), 11);
     }
 }

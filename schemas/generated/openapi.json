@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "ControlHub API",
-    "description": "Versioned ControlHub REST API. Nanosecond timestamps are decimal strings.",
+    "title": "karbird API",
+    "description": "Versioned karbird REST API. Nanosecond timestamps are decimal strings.",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -2728,6 +2728,73 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/infrastructure": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "operationId": "infrastructure",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "Moment to show, unix epoch nanoseconds as a decimal string. Default: now.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfrastructureSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/environments/{environment_id}/live": {
       "get": {
         "tags": [
@@ -5052,7 +5119,7 @@
           },
           "sampling": {
             "type": "string",
-            "description": "Sampling configured in SDKs is not reported to ControlHub yet."
+            "description": "Sampling configured in SDKs is not reported to karbird yet."
           },
           "truncated": {
             "type": "boolean",
@@ -5069,6 +5136,93 @@
               "null"
             ],
             "description": "Data ingested before this time (nanoseconds) has been processed into storage.\n`null` when the processor has not reported progress yet."
+          }
+        }
+      },
+      "ContainerDto": {
+        "type": "object",
+        "properties": {
+          "cpu_cores": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "CPU cores in use (1.0 = one full core).",
+            "default": null
+          },
+          "cpu_share": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Share of the machine's CPU, 0..1.",
+            "default": null
+          },
+          "id": {
+            "type": "string",
+            "default": ""
+          },
+          "memory_limit_bytes": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "memory_share": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Share of the machine's memory, 0..1.",
+            "default": null
+          },
+          "memory_used_bytes": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "name": {
+            "type": "string",
+            "default": ""
+          },
+          "network_rx_bytes_per_sec": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "network_tx_bytes_per_sec": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "service_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Service whose instance runs in this container, when matched.",
+            "default": null
+          },
+          "service_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
           }
         }
       },
@@ -5413,6 +5567,221 @@
           }
         }
       },
+      "HostDto": {
+        "type": "object",
+        "properties": {
+          "containers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContainerDto"
+            },
+            "default": []
+          },
+          "cpu_cores": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "cpu_utilization": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Busy CPU share of the whole machine, 0..1.",
+            "default": null
+          },
+          "disk_total_bytes": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "disk_used_bytes": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "has_metrics": {
+            "type": "boolean",
+            "description": "False for a machine known only from span `host.name` (no Karbird agent on it).",
+            "default": false
+          },
+          "id": {
+            "type": "string",
+            "default": ""
+          },
+          "last_seen_ns": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "memory_total_bytes": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "memory_used_bytes": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "name": {
+            "type": "string",
+            "default": ""
+          },
+          "network_rx_bytes_per_sec": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "network_tx_bytes_per_sec": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "default": null
+          }
+        }
+      },
+      "InfrastructureSnapshot": {
+        "type": "object",
+        "description": "Machines, containers and service instances at one moment, as returned by\n`GET /api/v1/projects/{project}/environments/{env}/infrastructure`.",
+        "properties": {
+          "at_ns": {
+            "type": "string",
+            "default": 0
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoisyNeighborHint"
+            },
+            "default": []
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HostDto"
+            },
+            "default": []
+          },
+          "instances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InstanceDto"
+            },
+            "default": []
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What could not be determined (no agent metrics, unmatched instances, truncation).",
+            "default": []
+          },
+          "window_ns": {
+            "type": "string",
+            "description": "Machine metrics are read from `[at - window, at]`.",
+            "default": 0
+          }
+        }
+      },
+      "InstanceDto": {
+        "type": "object",
+        "properties": {
+          "baseline_p95_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "p95 in the 30 minutes before that.",
+            "default": null
+          },
+          "container_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "host_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "instance_id": {
+            "type": "string",
+            "default": ""
+          },
+          "match_reason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InstanceMatch"
+              }
+            ],
+            "default": "unknown"
+          },
+          "p95_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "p95 of request spans in the last 5 minutes before `at`.",
+            "default": null
+          },
+          "requests": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0,
+            "minimum": 0
+          },
+          "service_id": {
+            "type": "string",
+            "default": ""
+          },
+          "service_name": {
+            "type": "string",
+            "default": ""
+          }
+        }
+      },
+      "InstanceMatch": {
+        "type": "string",
+        "description": "How an instance was placed on a machine.",
+        "enum": [
+          "container_id",
+          "container_hostname",
+          "host_name",
+          "unverified",
+          "unknown"
+        ]
+      },
       "InviteDto": {
         "type": "object",
         "required": [
@@ -5753,6 +6122,75 @@
           }
         }
       },
+      "NoisyNeighborHint": {
+        "type": "object",
+        "description": "Deterministic rule (no LLM): an instance got slower while a neighbour on the same machine\nused most of its CPU.",
+        "properties": {
+          "baseline_p95_ms": {
+            "type": "number",
+            "format": "double",
+            "default": 0
+          },
+          "host_cpu_utilization": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "host_id": {
+            "type": "string",
+            "default": ""
+          },
+          "host_name": {
+            "type": "string",
+            "default": ""
+          },
+          "instance_id": {
+            "type": "string",
+            "default": ""
+          },
+          "neighbor_container_id": {
+            "type": "string",
+            "default": ""
+          },
+          "neighbor_cpu_share": {
+            "type": "number",
+            "format": "double",
+            "default": 0
+          },
+          "neighbor_name": {
+            "type": "string",
+            "default": ""
+          },
+          "neighbor_service_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "p95_ms": {
+            "type": "number",
+            "format": "double",
+            "default": 0
+          },
+          "reason": {
+            "type": "string",
+            "description": "Human-readable explanation of which thresholds fired.",
+            "default": ""
+          },
+          "service_id": {
+            "type": "string",
+            "default": ""
+          },
+          "service_name": {
+            "type": "string",
+            "default": ""
+          }
+        }
+      },
       "ParamSpecDto": {
         "type": "object",
         "required": [
@@ -5839,7 +6277,7 @@
       },
       "PolicyDto": {
         "type": "object",
-        "description": "Schema of the stored policy decision (serialized `controlhub_actions::PolicyDecision`).",
+        "description": "Schema of the stored policy decision (serialized `karbird_actions::PolicyDecision`).",
         "required": [
           "allowed",
           "requires_approval",
@@ -6237,7 +6675,7 @@
               },
               {
                 "$ref": "#/components/schemas/SystemAccessDto",
-                "description": "ControlHub administrator access; absent for everyone else and for API tokens."
+                "description": "karbird administrator access; absent for everyone else and for API tokens."
               }
             ]
           },
@@ -6884,7 +7322,7 @@
       "session": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "controlhub_session"
+        "name": "karbird_session"
       }
     }
   },
@@ -6921,7 +7359,7 @@
     },
     {
       "name": "admin",
-      "description": "ControlHub administration: every project, account and administrator (browser sessions only)"
+      "description": "karbird administration: every project, account and administrator (browser sessions only)"
     }
   ]
 }

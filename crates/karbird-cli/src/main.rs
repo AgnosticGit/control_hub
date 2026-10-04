@@ -1,8 +1,8 @@
-//! `controlhub` CLI.
+//! `karbird` CLI.
 //!
 //! - `doctor`, `discover`, `plan`, `apply`: local and deterministic. `apply` only edits an
 //!   allowlist of files, refuses when files changed since the plan, and needs `--yes`.
-//! - `verify`, `context`, `mcp`: talk to a ControlHub instance. Tokens are read from environment
+//! - `verify`, `context`, `mcp`: talk to a karbird instance. Tokens are read from environment
 //!   variables only (never flags, which leak into shell history and process lists).
 //!   `mcp` is a read-only MCP server on stdio.
 //!
@@ -24,7 +24,7 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
-#[command(name = "controlhub", version, about = "Integrate a project with ControlHub and read context from it")]
+#[command(name = "karbird", version, about = "Integrate a project with karbird and read context from it")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -32,11 +32,11 @@ struct Cli {
 
 #[derive(Debug, Clone, Args)]
 pub struct Conn {
-    /// ControlHub API base URL. Token: CONTROLHUB_API_TOKEN (read-only `cha_…`).
-    #[arg(long, env = "CONTROLHUB_API_URL", default_value = "http://127.0.0.1:8080")]
+    /// karbird API base URL. Token: KARBIRD_API_TOKEN (read-only `cha_…`).
+    #[arg(long, env = "KARBIRD_API_URL", default_value = "http://127.0.0.1:8080")]
     pub api_url: String,
-    /// OTLP/HTTP ingestion endpoint. Token: CONTROLHUB_INGEST_TOKEN (`chi_…`).
-    #[arg(long, env = "CONTROLHUB_OTLP_ENDPOINT", default_value = "http://127.0.0.1:4318")]
+    /// OTLP/HTTP ingestion endpoint. Token: KARBIRD_INGEST_TOKEN (`chi_…`).
+    #[arg(long, env = "KARBIRD_OTLP_ENDPOINT", default_value = "http://127.0.0.1:4318")]
     pub ingest_url: String,
 }
 
@@ -48,8 +48,8 @@ pub struct PlanArgs {
     /// Deployment environment label written to `.env.example`.
     #[arg(long, default_value = "local")]
     pub environment: String,
-    /// Version spec for `@controlhub/sdk-node` (it is not published to a registry yet; use a
-    /// `file:` path to `packages/sdk-node` of a ControlHub checkout).
+    /// Version spec for `@karbird/sdk-node` (it is not published to a registry yet; use a
+    /// `file:` path to `packages/sdk-node` of a karbird checkout).
     #[arg(long, default_value = "^0.1.0")]
     pub sdk_spec: String,
 }
@@ -81,7 +81,7 @@ enum Command {
     Apply {
         #[arg(long, default_value = ".")]
         path: PathBuf,
-        /// Plan file from `controlhub plan --out`. Without it a fresh plan is computed.
+        /// Plan file from `karbird plan --out`. Without it a fresh plan is computed.
         #[arg(long)]
         plan: Option<PathBuf>,
         #[command(flatten)]
@@ -110,7 +110,7 @@ enum Command {
         #[command(flatten)]
         conn: Conn,
     },
-    /// Run a read-only MCP server on stdio (token: CONTROLHUB_API_TOKEN).
+    /// Run a read-only MCP server on stdio (token: KARBIRD_API_TOKEN).
     Mcp {
         #[command(flatten)]
         conn: Conn,
@@ -180,7 +180,7 @@ mod tests {
     use super::*;
 
     fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
-        Cli::try_parse_from(std::iter::once("controlhub").chain(args.iter().copied()))
+        Cli::try_parse_from(std::iter::once("karbird").chain(args.iter().copied()))
     }
 
     #[test]

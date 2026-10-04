@@ -22,9 +22,11 @@ import {
   NODE_STRIDE,
   type EntityKindDto,
   type Frame,
+  type InfraView,
   type TopologyView,
-} from "@controlhub/web-engine";
-import { DEFAULT_EDGE_STYLE, dashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
+} from "@karbird/web-engine";
+import { CHIP_H, CHIP_W, FRAME_HEADER, NOISY_LINK, badgeText, chipAt, frameAt, frameColor, linkLabelAt } from "./infra-layer";
+import { DEFAULT_EDGE_STYLE, build, dashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
 import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
 import { dashedRect, nodeSubLabel } from "./external";
 import { ACCENT, CARD_BG, EDGE_ERROR, EDGE_INFERRED, EDGE_OK, EDGE_WARN, EXTERNAL_COLOR, STATUS_COLORS } from "./map-colors";
@@ -43,6 +45,8 @@ export interface MapCamera {
 export interface MapCallbacks {
   onViewport(x: number, y: number, width: number, height: number, scale: number): void;
   onPick(worldX: number, worldY: number): void;
+  /** A click on a machine frame (infrastructure layer) outside any card or chip. */
+  onPickHost?(hostId: string): void;
 }
 
 const MIN_SCALE = 0.15;
@@ -92,6 +96,25 @@ export class PixiMap {
   private readonly nodesDim = new Graphics({ alpha: DIM_ALPHA });
   private readonly labels = new Container();
   private readonly textPool = new Map<number, NodeText>();
+  /** Infrastructure layer: frames and chips under the cards, links and badges above them. */
+  private readonly infraBack = new Graphics();
+  private readonly infraFront = new Graphics();
+  private readonly infraLabels = new Container();
+  private infraView: InfraView | null = null;
+  private readonly frameStyle = new TextStyle({
+    fill: 0xc4b5fd,
+    fontSize: 13,
+    fontWeight: "600",
+    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  });
+  private readonly frameHotStyle = new TextStyle({
+    fill: 0xfca5a5,
+    fontSize: 13,
+    fontWeight: "600",
+    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  });
+  private readonly chipStyle = new TextStyle({ fill: 0xe6ecf5, fontSize: 11, fontFamily: "Inter, 'Segoe UI', system-ui, sans-serif" });
+  private readonly linkStyle = new TextStyle({ fill: 0xfbbf24, fontSize: 12, fontWeight: "600", fontFamily: "Inter, 'Segoe UI', system-ui, sans-serif" });
   private readonly nameStyle = new TextStyle({
     fill: 0xe6ecf5,
     fontSize: 13,
@@ -143,7 +166,18 @@ export class PixiMap {
     app.canvas.setAttribute("aria-hidden", "true");
     host.appendChild(app.canvas);
     // Hops above cards so a request waiting at its callee stays visible on the card border.
-    this.world.addChild(this.edgesDim, this.nodesDim, this.edges, this.nodes, this.hops, this.labels);
+    this.world.addChild(
+      this.infraBack,
+      this.edgesDim,
+      this.nodesDim,
+      this.edges,
+      this.nodes,
+      this.infraFront,
+      this.hops,
+      this.labels,
+      this.infraLabels,
+    );
+    this.drawInfra();
     app.stage.addChild(this.grid, this.world);
     app.ticker.add(() => this.drawGrid());
     this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -168,6 +202,15 @@ export class PixiMap {
     this.routeNodes = nodes.map((n) => ({ index: n.index, x: n.x, y: n.y }));
     this.routeEdges = (topology?.edges ?? []).map((e) => ({ index: e.index, source: e.source, target: e.target, points: e.points }));
     this.reroute();
+    const infra = topology?.infra ?? null;
+    // Switching the layer moves every card: fit again on the next frame.
+    const refit = (infra === null) !== (this.infraView === null);
+    this.infraView = infra;
+    this.drawInfra();
+    if (refit) {
+      if (this.frame) this.fit();
+      else this.fitted = false;
+    }
     if (names.length !== this.names.length || names.some((n, i) => n !== this.names[i])) {
       this.names = names;
       for (const t of this.textPool.values()) {
@@ -241,6 +284,12 @@ export class PixiMap {
         minY = Math.min(minY, y);
         maxY = Math.max(maxY, y);
       }
+    }
+    for (const fr of this.infraView?.frames ?? []) {
+      minX = Math.min(minX, fr.x);
+      minY = Math.min(minY, fr.y);
+      maxX = Math.max(maxX, fr.x + fr.width);
+      maxY = Math.max(maxY, fr.y + fr.height);
     }
     const padX = CARD_W;
     const padY = CARD_H * 2;
@@ -330,7 +379,69 @@ export class PixiMap {
         }
       }
     }
+    const chip = chipAt(this.infraView, wx, wy);
+    if (chip) {
+      this.callbacks.onPick(chip.x, chip.y);
+      return;
+    }
+    const machine = frameAt(this.infraView, wx, wy);
+    if (machine && this.callbacks.onPickHost) {
+      this.callbacks.onPickHost(machine.host_id);
+      return;
+    }
     this.callbacks.onPick(wx, wy);
+  }
+
+  /** Static per topology: redrawn only when the layout or the snapshot changes. */
+  private drawInfra() {
+    const back = this.infraBack;
+    const front = this.infraFront;
+    back.clear();
+    front.clear();
+    for (const t of this.infraLabels.removeChildren()) t.destroy();
+    const view = this.infraView;
+    this.host?.setAttribute("data-infra-frames", view ? view.frames.map((f) => f.host_id).join(",") : "");
+    if (!view) return;
+    for (const f of view.frames) {
+      const color = frameColor(f);
+      back.roundRect(f.x, f.y, f.width, f.height, 18).fill({ color, alpha: 0.05 }).stroke({ color, width: 1.5, alpha: f.hot ? 0.9 : 0.55 });
+      back.roundRect(f.x, f.y, f.width, FRAME_HEADER - 8, 18).fill({ color, alpha: 0.1 });
+      const label = new Text({ text: f.label, style: f.hot ? this.frameHotStyle : this.frameStyle });
+      label.position.set(f.x + 16, f.y + 10);
+      this.infraLabels.addChild(label);
+    }
+    for (const c of view.chips) {
+      const color = this.colors.get(c.node) ?? 0x64748b;
+      back.roundRect(c.x - CHIP_W / 2, c.y - CHIP_H / 2, CHIP_W, CHIP_H, 8).fill({ color: CARD_BG, alpha: 0.95 }).stroke({ color, width: 1.25, alpha: 0.8 });
+      back.circle(c.x - CHIP_W / 2 + 12, c.y, 3.5).fill({ color });
+      const t = new Text({ text: truncate(c.label, 20), style: this.chipStyle });
+      t.position.set(c.x - CHIP_W / 2 + 22, c.y - 7);
+      this.infraLabels.addChild(t);
+    }
+    const pos = new Map<number, RouteNode>();
+    for (const n of this.routeNodes) pos.set(n.index, n);
+    for (const b of view.badges) {
+      const n = pos.get(b.node);
+      if (!n) continue;
+      const text = badgeText(b.count, b.hosts);
+      const t = new Text({ text, style: this.chipStyle });
+      const w = t.width + 14;
+      const x = n.x + CARD_W / 2 - w + 6;
+      const y = n.y - CARD_H / 2 - 11;
+      front.roundRect(x, y, w, 20, 10).fill({ color: 0x4c1d95, alpha: 0.95 }).stroke({ color: 0xa78bfa, width: 1 });
+      t.position.set(x + 7, y + 3);
+      this.infraLabels.addChild(t);
+    }
+    for (const l of view.links) {
+      for (const dash of dashes(build([l.from[0], l.from[1], l.to[0], l.to[1]]), 8, 6)) line(front, dash);
+      front.stroke({ color: NOISY_LINK, width: 3, alpha: 0.95, ...LINE_STYLE });
+      front.circle(l.to[0], l.to[1], 6).stroke({ color: NOISY_LINK, width: 2 });
+      const [mx, my] = linkLabelAt(l.from, l.to);
+      const t = new Text({ text: l.label, style: this.linkStyle });
+      front.roundRect(mx - t.width / 2 - 6, my - 10, t.width + 12, 20, 6).fill({ color: CARD_BG, alpha: 0.95 }).stroke({ color: NOISY_LINK, width: 1 });
+      t.position.set(mx - t.width / 2, my - 8);
+      this.infraLabels.addChild(t);
+    }
   }
 
   private bindInput(canvas: HTMLCanvasElement) {

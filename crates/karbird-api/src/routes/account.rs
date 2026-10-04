@@ -4,8 +4,8 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use controlhub_storage::pg::{MemberChange, NewAuditEntry, SessionInfoRow};
-use controlhub_storage::secrets::{hash_password, verify_password};
+use karbird_storage::pg::{MemberChange, NewAuditEntry, SessionInfoRow};
+use karbird_storage::secrets::{hash_password, verify_password};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use time::format_description::well_known::Rfc3339;

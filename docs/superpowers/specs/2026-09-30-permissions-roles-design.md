@@ -10,7 +10,7 @@ fine-tunes their permissions with checkboxes, and creates custom templates such 
 
 ## Permission catalog
 
-Fixed in code (`controlhub-api`), project-wide (all environments of the project):
+Fixed in code (`karbird-api`), project-wide (all environments of the project):
 
 | Permission | Allows |
 |---|---|
@@ -71,7 +71,7 @@ Violations return 403 with a short reason; another tenant's project stays 404.
 - `memberships`: add `role_id uuid null fk project_roles`, `permissions text[] null`, `based_on uuid null`;
   migrate `role` → `role_id`; drop `role`; `CHECK ((role_id IS NULL) <> (permissions IS NULL))`.
 - Built-ins are inserted for existing projects by the migration and for new projects by sign-up and bootstrap.
-- `controlhub_api` gets `SELECT, INSERT, UPDATE, DELETE` on `project_roles` and `UPDATE, DELETE` on
+- `karbird_api` gets `SELECT, INSERT, UPDATE, DELETE` on `project_roles` and `UPDATE, DELETE` on
   `memberships`; the executor keeps read access.
 - Every role/member change writes `audit_log` (actor, project, before/after, outcome).
 

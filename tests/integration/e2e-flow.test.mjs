@@ -13,7 +13,7 @@ import { API, OTLP, ORIGIN, WEB, creds, user, Session, DEMO, ISO, eventually } f
 let admin;
 before(async () => {
   admin = new Session();
-  await admin.login('admin@controlhub.local');
+  await admin.login('admin@karbird.local');
 });
 
 test('demo services, logs and events are queryable through the API', async () => {
@@ -80,7 +80,7 @@ test('unauthenticated requests are rejected', async () => {
 });
 
 test('login rejects foreign Origin', async () => {
-  const u = user('viewer@controlhub.local');
+  const u = user('viewer@karbird.local');
   const r = await fetch(`${API}/api/v1/session/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
@@ -93,12 +93,12 @@ test('wrong password is rejected without revealing account existence', async () 
   const a = await fetch(`${API}/api/v1/session/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: 'viewer@controlhub.local', password: 'wrong' }),
+    body: JSON.stringify({ email: 'viewer@karbird.local', password: 'wrong' }),
   });
   const b = await fetch(`${API}/api/v1/session/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: `nobody-${randomUUID()}@controlhub.local`, password: 'wrong' }),
+    body: JSON.stringify({ email: `nobody-${randomUUID()}@karbird.local`, password: 'wrong' }),
   });
   assert.equal(a.status, 401);
   assert.equal(b.status, 401);
@@ -107,12 +107,12 @@ test('wrong password is rejected without revealing account existence', async () 
 
 test('logout requires CSRF token', async () => {
   const s = new Session();
-  await s.login('viewer@controlhub.local');
+  await s.login('viewer@karbird.local');
   const noCsrf = await s.request('/api/v1/session/logout', { method: 'POST', headers: { origin: ORIGIN } });
   assert.equal(noCsrf.status, 403);
   const ok = await s.request('/api/v1/session/logout', {
     method: 'POST',
-    headers: { origin: ORIGIN, 'x-csrf-token': s.cookies.get('controlhub_csrf') },
+    headers: { origin: ORIGIN, 'x-csrf-token': s.cookies.get('karbird_csrf') },
   });
   assert.equal(ok.status, 204);
   const after = await s.json('/api/v1/session');
@@ -121,7 +121,7 @@ test('logout requires CSRF token', async () => {
 
 test('isolation user cannot see demo project and demo user cannot see isolation project', async () => {
   const iso = new Session();
-  const sess = await iso.login('isolation@controlhub.local');
+  const sess = await iso.login('isolation@karbird.local');
   assert.deepEqual(sess.projects.map((p) => p.id), ['isolation']);
   for (const path of ['services', 'topology', 'traces', 'logs', 'events', 'timeline']) {
     const r = await iso.json(`${DEMO}/${path}`);
@@ -157,7 +157,7 @@ test('ingestion scope comes from the token, not from payload', async () => {
   assert.equal(ack.durability, 'broker_acknowledged');
 
   const iso = new Session();
-  await iso.login('isolation@controlhub.local');
+  await iso.login('isolation@karbird.local');
   await eventually(async () => {
     const r = await iso.json(`${ISO}/events`);
     assert.equal(r.status, 200);
@@ -228,7 +228,7 @@ test('live WebSocket requires session, allowed Origin and project access', async
   assert.equal(await handshake(API, path, { cookie: admin.cookieHeader() }), 403, 'no Origin');
   assert.equal(await handshake(API, path, { cookie: admin.cookieHeader(), origin: 'https://evil.example' }), 403);
   const iso = new Session();
-  await iso.login('isolation@controlhub.local');
+  await iso.login('isolation@karbird.local');
   assert.equal(await handshake(API, path, { cookie: iso.cookieHeader(), origin: ORIGIN }), 404, 'foreign project');
   assert.equal(await handshake(API, path, { cookie: admin.cookieHeader(), origin: ORIGIN }), 101);
 });

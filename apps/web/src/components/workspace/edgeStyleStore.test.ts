@@ -28,7 +28,7 @@ describe("edge style preference", () => {
   });
 
   it("stores the chosen style under a namespaced key", () => {
-    expect(EDGE_STYLE_KEY).toBe("controlhub.map.edgeStyle");
+    expect(EDGE_STYLE_KEY).toBe("karbird.map.edgeStyle");
     setEdgeStyle("orthogonal");
     expect(readPersisted(EDGE_STYLE_KEY)).toBe("orthogonal");
   });

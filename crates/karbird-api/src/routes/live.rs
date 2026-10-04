@@ -15,9 +15,9 @@ use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, header};
 use axum::response::Response;
-use controlhub_domain::Scope;
-use controlhub_engine_core::TimelineItem;
 use futures::{SinkExt, StreamExt};
+use karbird_domain::Scope;
+use karbird_engine_core::TimelineItem;
 use serde::{Deserialize, Serialize};
 use tokio::sync::OwnedSemaphorePermit;
 use utoipa::IntoParams;
@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn batch_message_head_is_type_then_resume_and_engine_accepts_it() {
-        let items = vec![TimelineItem::Log(controlhub_engine_core::LogItem {
+        let items = vec![TimelineItem::Log(karbird_engine_core::LogItem {
             id: "l1".into(),
             service_id: "svc_a".into(),
             service_name: "a".into(),
@@ -202,7 +202,7 @@ mod tests {
         })];
         let text = serde_json::to_string(&ServerMessage::Batch { resume: "42".into(), items: &items }).unwrap();
         assert!(text.starts_with(r#"{"type":"batch","resume":"42","items":["#), "{text}");
-        let mut e = controlhub_engine_core::Engine::new(Default::default());
+        let mut e = karbird_engine_core::Engine::new(Default::default());
         e.apply_batch_json(&text).unwrap();
         assert_eq!(e.item_count(), 1);
     }

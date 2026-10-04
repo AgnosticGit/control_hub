@@ -50,7 +50,7 @@ try {
 }
 check("docker daemon running", daemon, daemon ? "ok" : "start Docker Desktop / dockerd");
 
-const infraEnv = join(root, ".controlhub", "infra.env");
+const infraEnv = join(root, ".karbird", "infra.env");
 const ports = { pg: 15432, clickhouse: 18123, kafka: 19092, demoPg: 15433, s3: 19000 };
 if (existsSync(infraEnv)) {
   const env = Object.fromEntries(readFileSync(infraEnv, "utf8").split(/\r?\n/).filter((l) => l.includes("=")).map((l) => l.split("=", 2)));
@@ -69,9 +69,9 @@ function portFree(port) {
 }
 for (const [name, port] of Object.entries({ ...ports, ...servicePorts })) {
   const free = await portFree(port);
-  check(`port ${port} (${name})`, free, free ? "free" : "in use (fine if ControlHub is already running)", false);
+  check(`port ${port} (${name})`, free, free ? "free" : "in use (fine if karbird is already running)", false);
 }
-check("bootstrap done", existsSync(infraEnv), existsSync(infraEnv) ? ".controlhub/ present" : "run just bootstrap", false);
+check("bootstrap done", existsSync(infraEnv), existsSync(infraEnv) ? ".karbird/ present" : "run just bootstrap", false);
 const wasmBuilt = existsSync(join(root, "apps/web/src/generated/wasm-manifest.ts"));
 check("wasm built", wasmBuilt, wasmBuilt ? "apps/web/src/generated/wasm-manifest.ts" : "run just wasm", false);
 

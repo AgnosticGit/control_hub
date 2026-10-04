@@ -1,4 +1,4 @@
-// `controlhub-api migrate` runs on every production deploy (deploy/compose.storage.yaml). Unlike the
+// `karbird-api migrate` runs on every production deploy (deploy/compose.storage.yaml). Unlike the
 // dev `bootstrap` it must be repeatable without side effects: no demo seed, no token rotation, no
 // files, and an existing owner's password is never reset from the deploy secret.
 // Run: node --test tests/integration/migrate.test.mjs (with `just dev` running)
@@ -10,13 +10,13 @@ import { join } from 'node:path';
 import { API, ORIGIN, creds, encodeLogs, nowNs, otlpHttp, ownerAccount, root } from './lib.mjs';
 
 const owner = ownerAccount();
-const skip = owner ? false : 'no .controlhub/owner.env on this machine (bootstrap requires it)';
-const exe = join(root, 'target', 'debug', process.platform === 'win32' ? 'controlhub-api.exe' : 'controlhub-api');
-const credentialsPath = join(root, '.controlhub', 'local-credentials.json');
+const skip = owner ? false : 'no .karbird/owner.env on this machine (bootstrap requires it)';
+const exe = join(root, 'target', 'debug', process.platform === 'win32' ? 'karbird-api.exe' : 'karbird-api');
+const credentialsPath = join(root, '.karbird', 'local-credentials.json');
 
 function envFile(name) {
   return Object.fromEntries(
-    readFileSync(join(root, '.controlhub', name), 'utf8')
+    readFileSync(join(root, '.karbird', name), 'utf8')
       .split(/\r?\n/)
       .filter((l) => l.trim() && !l.trim().startsWith('#') && l.includes('='))
       .map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()]),
@@ -28,7 +28,7 @@ function migrate(email, password) {
     cwd: root,
     encoding: 'utf8',
     timeout: 120_000,
-    env: { ...process.env, ...envFile('infra.env'), CONTROLHUB_OWNER_EMAIL: email, CONTROLHUB_OWNER_PASSWORD: password },
+    env: { ...process.env, ...envFile('infra.env'), KARBIRD_OWNER_EMAIL: email, KARBIRD_OWNER_PASSWORD: password },
   });
   assert.notEqual(r.status, null, `migrate did not exit\n${r.stderr}`);
   return { status: r.status, out: `${r.stdout}\n${r.stderr}` };
@@ -44,7 +44,7 @@ async function login(password) {
 }
 
 before(() => {
-  const build = spawnSync('cargo', ['build', '-q', '-p', 'controlhub-api'], { cwd: root, stdio: 'inherit' });
+  const build = spawnSync('cargo', ['build', '-q', '-p', 'karbird-api'], { cwd: root, stdio: 'inherit' });
   assert.equal(build.status, 0, 'cargo build');
 });
 
@@ -77,12 +77,12 @@ test('migrate is repeatable and never resets the existing owner password', { ski
 test('migrate refuses an owner password below the sign-up minimum before touching storage', { skip }, () => {
   const r = migrate(owner.email, 'short-pw');
   assert.notEqual(r.status, 0);
-  assert.match(r.out, /CONTROLHUB_OWNER_PASSWORD must have at least 12 characters/);
+  assert.match(r.out, /KARBIRD_OWNER_PASSWORD must have at least 12 characters/);
   assert.ok(!r.out.includes('postgres migrations applied'), 'nothing ran before the check');
 });
 
 test('migrate refuses a missing owner configuration', () => {
   const r = migrate('', '');
   assert.notEqual(r.status, 0);
-  assert.match(r.out, /CONTROLHUB_OWNER_EMAIL/);
+  assert.match(r.out, /KARBIRD_OWNER_EMAIL/);
 });

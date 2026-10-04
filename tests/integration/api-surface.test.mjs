@@ -43,9 +43,9 @@ let admin;
 let iso;
 before(async () => {
   admin = new Session();
-  await admin.login('admin@controlhub.local');
+  await admin.login('admin@karbird.local');
   iso = new Session();
-  await iso.login('isolation@controlhub.local');
+  await iso.login('isolation@karbird.local');
 });
 
 test('the committed OpenAPI document is a valid 3.x document with typed error bodies', () => {
@@ -95,7 +95,7 @@ test('every non-public route requires authentication (401 with a typed error bod
 });
 
 test('a forged or expired session cookie is rejected like no session', async () => {
-  const res = await fetch(`${API}/api/v1/session`, { headers: { cookie: 'controlhub_session=chs_forged' } });
+  const res = await fetch(`${API}/api/v1/session`, { headers: { cookie: 'karbird_session=chs_forged' } });
   assert.equal(res.status, 401);
   const bearerSession = await fetch(`${API}/api/v1/session`, { headers: { authorization: 'Bearer chs_forged' } });
   assert.equal(bearerSession.status, 401, 'session secrets are not accepted as bearer tokens');
@@ -131,7 +131,7 @@ test('unknown projects/environments and malformed IDs are 404 for members too', 
 });
 
 test('every cookie-authenticated mutation requires the CSRF header and an allowed Origin', async () => {
-  const csrf = admin.cookies.get('controlhub_csrf');
+  const csrf = admin.cookies.get('karbird_csrf');
   assert.ok(csrf);
   const variants = [
     ['no CSRF header', { origin: ORIGIN }],
@@ -156,17 +156,17 @@ test('every cookie-authenticated mutation requires the CSRF header and an allowe
 
 test('CSRF token of one session does not work for another session', async () => {
   const other = new Session();
-  await other.login('admin@controlhub.local');
+  await other.login('admin@karbird.local');
   const r = await admin.json(`${DEMO}/tokens`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', origin: ORIGIN, 'x-csrf-token': other.cookies.get('controlhub_csrf') },
+    headers: { 'content-type': 'application/json', origin: ORIGIN, 'x-csrf-token': other.cookies.get('karbird_csrf') },
     body: JSON.stringify({ kind: 'api', name: 'cross-session' }),
   });
   assert.equal(r.status, 403);
 });
 
 test('session cookies are HttpOnly (session) / readable (CSRF), SameSite=Strict and scoped to /', async () => {
-  const u = user('viewer@controlhub.local');
+  const u = user('viewer@karbird.local');
   const res = await fetch(`${API}/api/v1/session/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: ORIGIN },
@@ -174,8 +174,8 @@ test('session cookies are HttpOnly (session) / readable (CSRF), SameSite=Strict 
   });
   assert.equal(res.status, 200);
   const cookies = res.headers.getSetCookie();
-  const session = cookies.find((c) => c.startsWith('controlhub_session='));
-  const csrf = cookies.find((c) => c.startsWith('controlhub_csrf='));
+  const session = cookies.find((c) => c.startsWith('karbird_session='));
+  const csrf = cookies.find((c) => c.startsWith('karbird_csrf='));
   assert.ok(session && csrf, JSON.stringify(cookies.map((c) => c.split('=')[0])));
   assert.match(session, /HttpOnly/i);
   assert.match(session, /SameSite=Strict/i);
@@ -204,7 +204,7 @@ test('login validates the body: wrong content type 415, wrong shape 422, oversiz
 });
 
 test('repeated login failures for one account are throttled (429) without affecting others', async () => {
-  const email = `throttle-${randomUUID()}@controlhub.local`;
+  const email = `throttle-${randomUUID()}@karbird.local`;
   const attempt = () =>
     fetch(`${API}/api/v1/session/login`, {
       method: 'POST',
@@ -221,7 +221,7 @@ test('repeated login failures for one account are throttled (429) without affect
   });
   assert.equal(variant.status, 429);
   const other = new Session();
-  await other.login('viewer@controlhub.local');
+  await other.login('viewer@karbird.local');
 });
 
 test('request bodies over 1 MiB are refused with 413', async () => {
@@ -229,7 +229,7 @@ test('request bodies over 1 MiB are refused with 413', async () => {
   assert.equal(
     await postOversized(
       `${API}${DEMO}/tokens`,
-      { 'content-type': 'application/json', origin: ORIGIN, cookie: admin.cookieHeader(), 'x-csrf-token': admin.cookies.get('controlhub_csrf') },
+      { 'content-type': 'application/json', origin: ORIGIN, cookie: admin.cookieHeader(), 'x-csrf-token': admin.cookies.get('karbird_csrf') },
       2 * 1024 * 1024,
     ),
     413,
@@ -247,7 +247,7 @@ test('/session and /projects list only the principal’s own memberships', async
   const envs = Object.fromEntries(i.body[0].environments.map((e) => [e.id, e.is_demo]));
   assert.deepEqual(envs, { 'isolation-prod': false, 'isolation-test': true });
   const s = await admin.json('/api/v1/session');
-  assert.equal(s.body.user.email, 'admin@controlhub.local');
+  assert.equal(s.body.user.email, 'admin@karbird.local');
 });
 
 const RANGE_ROUTES = ['services', 'topology', 'traces', 'logs', 'events', 'timeline', 'coverage'];
@@ -368,7 +368,7 @@ test('coverage lists explicit gaps and audit is readable by viewers but scoped',
   assert.ok(c.body.unsupported.some((u) => /metrics/i.test(u)));
   assert.ok(c.body.services.length > 0);
   const viewer = new Session();
-  await viewer.login('viewer@controlhub.local');
+  await viewer.login('viewer@karbird.local');
   const audit = await viewer.json(`${DEMO}/audit`);
   assert.equal(audit.status, 200);
   assert.ok(Array.isArray(audit.body) && audit.body.length <= 200);
@@ -408,11 +408,11 @@ test('token management validates names, kinds, expiry, grace and unknown IDs', a
 
 test('operators see tokens read-only, viewers not at all; viewers cannot decide actions', async () => {
   const op = new Session();
-  await op.login('operator@controlhub.local');
+  await op.login('operator@karbird.local');
   assert.equal((await op.json(`${DEMO}/tokens`)).status, 200, 'Operator has tokens.view');
   assert.equal((await op.mutate(`${DEMO}/tokens`, { kind: 'api', name: 'op' })).status, 403, 'but not tokens.manage');
   const viewer = new Session();
-  await viewer.login('viewer@controlhub.local');
+  await viewer.login('viewer@karbird.local');
   assert.equal((await viewer.json(`${DEMO}/tokens`)).status, 403);
   for (const verb of ['approve', 'reject', 'cancel']) {
     const r = await viewer.mutate(`${DEMO}/actions/${FAKE_UUID}/${verb}`, { comment: 'nope nope' });
@@ -425,15 +425,15 @@ test('operators see tokens read-only, viewers not at all; viewers cannot decide 
 
 test('logout revokes the session server-side: the old cookie stops working everywhere', async () => {
   const s = new Session();
-  await s.login('viewer@controlhub.local');
+  await s.login('viewer@karbird.local');
   const stolen = s.cookieHeader();
   const out = await s.request('/api/v1/session/logout', {
     method: 'POST',
-    headers: { origin: ORIGIN, 'x-csrf-token': s.cookies.get('controlhub_csrf') },
+    headers: { origin: ORIGIN, 'x-csrf-token': s.cookies.get('karbird_csrf') },
   });
   assert.equal(out.status, 204);
   const cleared = out.headers.getSetCookie();
-  assert.ok(cleared.some((c) => /^controlhub_session=;/.test(c) && /Max-Age=0/.test(c)), 'session cookie cleared');
+  assert.ok(cleared.some((c) => /^karbird_session=;/.test(c) && /Max-Age=0/.test(c)), 'session cookie cleared');
   for (const path of ['/api/v1/session', '/api/v1/projects', `${DEMO}/services`]) {
     const r = await fetch(`${API}${path}`, { headers: { cookie: stolen } });
     assert.equal(r.status, 401, `replayed cookie on ${path}`);

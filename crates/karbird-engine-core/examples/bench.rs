@@ -1,10 +1,10 @@
 //! Reproducible engine benchmark on synthetic data (fixed seed, no I/O):
-//!   cargo run --release -p controlhub-engine-core --example bench [-- <requests>]
+//!   cargo run --release -p karbird-engine-core --example bench [-- <requests>]
 //! Prints wall-clock timings for this machine; numbers are not portable.
 
 use std::time::Instant;
 
-use controlhub_engine_core::{Batch, Engine, EngineConfig, EventItem, LogItem, SpanItem, TimelineItem};
+use karbird_engine_core::{Batch, Engine, EngineConfig, EventItem, LogItem, SpanItem, TimelineItem};
 
 const SERVICES: usize = 20;
 

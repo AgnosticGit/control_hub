@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use controlhub_domain::Signal;
-use controlhub_storage::pg::{IngestCredential, PgStore};
-use controlhub_storage::secrets::hash_token;
+use karbird_domain::Signal;
+use karbird_storage::pg::{IngestCredential, PgStore};
+use karbird_storage::secrets::hash_token;
 use tokio::sync::RwLock;
 
 const CACHE_TTL: Duration = Duration::from_secs(30);
@@ -115,8 +115,8 @@ impl Authenticator {
     }
 }
 
-fn time_now() -> controlhub_storage::pg::OffsetDateTimeAlias {
-    controlhub_storage::pg::OffsetDateTimeAlias::now_utc()
+fn time_now() -> karbird_storage::pg::OffsetDateTimeAlias {
+    karbird_storage::pg::OffsetDateTimeAlias::now_utc()
 }
 
 #[cfg(test)]
@@ -146,7 +146,7 @@ pub(crate) mod fake {
     }
 
     pub(crate) fn credential(tenant: &str, signals: &[&str]) -> IngestCredential {
-        use controlhub_domain::{EnvironmentId, ProjectId, Scope, TenantId};
+        use karbird_domain::{EnvironmentId, ProjectId, Scope, TenantId};
         IngestCredential {
             token_id: uuid::Uuid::now_v7(),
             scope: Scope {

@@ -1,7 +1,7 @@
 import { usePersisted, writePersisted } from "@/lib/persisted";
 import { DEFAULT_EDGE_STYLE, isEdgeStyle, type EdgeStyle } from "@/renderer/edge-path";
 
-export const EDGE_STYLE_KEY = "controlhub.map.edgeStyle";
+export const EDGE_STYLE_KEY = "karbird.map.edgeStyle";
 
 export function parseEdgeStyle(raw: string): EdgeStyle | null {
   return isEdgeStyle(raw) ? raw : null;

@@ -26,7 +26,7 @@ test("requests from outside the project and calls to third-party services are ma
   ]);
 
   const errors = collectErrors(page);
-  await login(page, "isolation@controlhub.local", WORKSPACE);
+  await login(page, "isolation@karbird.local", WORKSPACE);
   await expect(page.getByText("Starting engine…")).toBeHidden();
   await page.getByRole("checkbox", { name: "Table view" }).check();
   const table = page.getByRole("table");

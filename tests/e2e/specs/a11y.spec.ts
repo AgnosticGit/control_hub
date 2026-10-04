@@ -58,7 +58,7 @@ for (const path of PUBLIC) {
 
 test.describe("signed-in pages", () => {
   test.beforeEach(async ({ page }) => {
-    await login(page, "admin@controlhub.local", "/app/demo/local-demo");
+    await login(page, "admin@karbird.local", "/app/demo/local-demo");
     await expect(page.getByText("Starting engine…")).toBeHidden();
   });
 
@@ -111,7 +111,7 @@ test.describe("signed-in pages", () => {
 });
 
 test("app index (environment picker): one main landmark and one h1", async ({ page }) => {
-  await login(page, "isolation@controlhub.local", "/app");
+  await login(page, "isolation@karbird.local", "/app");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   const a = await audit(page);
   expect(a.mains).toBe(1);

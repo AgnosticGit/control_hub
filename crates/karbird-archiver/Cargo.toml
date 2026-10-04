@@ -1,6 +1,6 @@
 [package]
-name = "controlhub-archiver"
-description = "ControlHub archiver: ClickHouse logs -> compressed segments in S3-compatible storage"
+name = "karbird-archiver"
+description = "karbird archiver: ClickHouse logs -> compressed segments in S3-compatible storage"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,10 +8,10 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-controlhub-domain.workspace = true
-controlhub-storage.workspace = true
-controlhub-runtime.workspace = true
-controlhub-archive.workspace = true
+karbird-domain.workspace = true
+karbird-storage.workspace = true
+karbird-runtime.workspace = true
+karbird-archive.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true

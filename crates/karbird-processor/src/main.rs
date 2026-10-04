@@ -1,4 +1,4 @@
-//! controlhub-processor: consumes ingest envelopes from the broker and writes
+//! karbird-processor: consumes ingest envelopes from the broker and writes
 //! normalised rows to ClickHouse.
 //!
 //! Delivery: at-least-once. The partition offset (stored in PostgreSQL) is
@@ -15,37 +15,37 @@ use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use clap::Parser;
-use controlhub_protocol::TELEMETRY_TOPIC;
-use controlhub_runtime::{backoff, connect_broker, ensure_topic, init_tracing, load_local_env, shutdown_signal};
-use controlhub_storage::ch::{ChConfig, ChStore};
-use controlhub_storage::pg::PgStore;
+use karbird_protocol::TELEMETRY_TOPIC;
+use karbird_runtime::{backoff, connect_broker, ensure_topic, init_tracing, load_local_env, shutdown_signal};
+use karbird_storage::ch::{ChConfig, ChStore};
+use karbird_storage::pg::PgStore;
 use rskafka::client::Client;
 use rskafka::client::error::{Error as KafkaError, ProtocolError};
 use rskafka::client::partition::{OffsetAt, PartitionClient, UnknownTopicHandling};
 use tokio::sync::watch;
 
-const CONSUMER: &str = "controlhub-processor";
+const CONSUMER: &str = "karbird-processor";
 const MAX_DEAD_LETTER_PAYLOAD: usize = 1024 * 1024;
 const IDLE_TOUCH_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Parser)]
-#[command(name = "controlhub-processor")]
+#[command(name = "karbird-processor")]
 struct Args {
-    #[arg(long, env = "CONTROLHUB_PROCESSOR_DATABASE_URL")]
+    #[arg(long, env = "KARBIRD_PROCESSOR_DATABASE_URL")]
     database_url: String,
-    #[arg(long, env = "CONTROLHUB_CLICKHOUSE_URL", default_value = "http://127.0.0.1:18123")]
+    #[arg(long, env = "KARBIRD_CLICKHOUSE_URL", default_value = "http://127.0.0.1:18123")]
     clickhouse_url: String,
-    #[arg(long, env = "CONTROLHUB_CLICKHOUSE_DATABASE", default_value = "controlhub")]
+    #[arg(long, env = "KARBIRD_CLICKHOUSE_DATABASE", default_value = "karbird")]
     clickhouse_database: String,
-    #[arg(long, env = "CONTROLHUB_PROCESSOR_CLICKHOUSE_USER")]
+    #[arg(long, env = "KARBIRD_PROCESSOR_CLICKHOUSE_USER")]
     clickhouse_user: String,
-    #[arg(long, env = "CONTROLHUB_PROCESSOR_CLICKHOUSE_PASSWORD")]
+    #[arg(long, env = "KARBIRD_PROCESSOR_CLICKHOUSE_PASSWORD")]
     clickhouse_password: String,
-    #[arg(long, env = "CONTROLHUB_KAFKA_BROKERS", default_value = "127.0.0.1:19092")]
+    #[arg(long, env = "KARBIRD_KAFKA_BROKERS", default_value = "127.0.0.1:19092")]
     brokers: String,
-    #[arg(long, env = "CONTROLHUB_TOPIC_PARTITIONS", default_value_t = 4)]
+    #[arg(long, env = "KARBIRD_TOPIC_PARTITIONS", default_value_t = 4)]
     partitions: i32,
-    #[arg(long, env = "CONTROLHUB_PROCESSOR_ADMIN_ADDR", default_value = "127.0.0.1:9465")]
+    #[arg(long, env = "KARBIRD_PROCESSOR_ADMIN_ADDR", default_value = "127.0.0.1:9465")]
     admin_addr: SocketAddr,
 }
 
@@ -55,6 +55,8 @@ struct Metrics {
     spans: AtomicU64,
     logs: AtomicU64,
     events: AtomicU64,
+    metrics: AtomicU64,
+    dropped_metric_points: AtomicU64,
     write_failures: AtomicU64,
     dead_letters: AtomicU64,
     offset_gaps: AtomicU64,
@@ -64,17 +66,19 @@ struct Metrics {
 impl Metrics {
     fn render(&self) -> String {
         let mut s = format!(
-            "controlhub_processor_records_total {}\ncontrolhub_processor_rows_total{{table=\"spans\"}} {}\ncontrolhub_processor_rows_total{{table=\"logs\"}} {}\ncontrolhub_processor_rows_total{{table=\"events\"}} {}\ncontrolhub_processor_write_failures_total {}\ncontrolhub_processor_dead_letters_total {}\ncontrolhub_processor_offset_gaps_total {}\n",
+            "karbird_processor_records_total {}\nkarbird_processor_rows_total{{table=\"spans\"}} {}\nkarbird_processor_rows_total{{table=\"logs\"}} {}\nkarbird_processor_rows_total{{table=\"events\"}} {}\nkarbird_processor_rows_total{{table=\"metrics\"}} {}\nkarbird_processor_dropped_metric_points_total {}\nkarbird_processor_write_failures_total {}\nkarbird_processor_dead_letters_total {}\nkarbird_processor_offset_gaps_total {}\n",
             self.records.load(Ordering::Relaxed),
             self.spans.load(Ordering::Relaxed),
             self.logs.load(Ordering::Relaxed),
             self.events.load(Ordering::Relaxed),
+            self.metrics.load(Ordering::Relaxed),
+            self.dropped_metric_points.load(Ordering::Relaxed),
             self.write_failures.load(Ordering::Relaxed),
             self.dead_letters.load(Ordering::Relaxed),
             self.offset_gaps.load(Ordering::Relaxed),
         );
         for (p, lag) in self.lag.iter().enumerate() {
-            s.push_str(&format!("controlhub_processor_lag{{partition=\"{p}\"}} {}\n", lag.load(Ordering::Relaxed)));
+            s.push_str(&format!("karbird_processor_lag{{partition=\"{p}\"}} {}\n", lag.load(Ordering::Relaxed)));
         }
         s
     }
@@ -235,11 +239,13 @@ async fn run_partition(ctx: Ctx, pc: PartitionClient) {
         }
 
         let (n_spans, n_logs, n_events) = (batch.spans.len(), batch.logs.len(), batch.events.len());
+        let (n_metrics, n_dropped) = (batch.metrics.len(), batch.dropped_points);
         if !batch.is_empty() {
             let ok = retry_until_ok(&ctx, "clickhouse insert", || async {
                 ctx.ch.insert_spans(&batch.spans).await?;
                 ctx.ch.insert_logs(&batch.logs).await?;
-                ctx.ch.insert_events(&batch.events).await
+                ctx.ch.insert_events(&batch.events).await?;
+                ctx.ch.insert_metrics(&batch.metrics).await
             })
             .await;
             if ok.is_none() {
@@ -283,7 +289,12 @@ async fn run_partition(ctx: Ctx, pc: PartitionClient) {
         ctx.metrics.spans.fetch_add(n_spans as u64, Ordering::Relaxed);
         ctx.metrics.logs.fetch_add(n_logs as u64, Ordering::Relaxed);
         ctx.metrics.events.fetch_add(n_events as u64, Ordering::Relaxed);
-        tracing::debug!(partition, next, n_spans, n_logs, n_events, "batch stored");
+        ctx.metrics.metrics.fetch_add(n_metrics as u64, Ordering::Relaxed);
+        ctx.metrics.dropped_metric_points.fetch_add(n_dropped, Ordering::Relaxed);
+        if n_dropped > 0 {
+            tracing::warn!(partition, n_dropped, "metric points without a gauge/sum value were dropped");
+        }
+        tracing::debug!(partition, next, n_spans, n_logs, n_events, n_metrics, "batch stored");
     }
     tracing::info!(partition, offset, "partition consumer stopped");
 }
@@ -300,7 +311,7 @@ async fn start(client: Arc<Client>, partitions: i32, ctx: Ctx) -> anyhow::Result
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     load_local_env();
-    init_tracing("controlhub-processor");
+    init_tracing("karbird-processor");
     let args = Args::parse();
 
     let pg = PgStore::connect(&args.database_url, 8).await?;
@@ -336,7 +347,7 @@ async fn main() -> anyhow::Result<()> {
             })
             .into_future(),
     );
-    tracing::info!(partitions, admin = %args.admin_addr, "controlhub-processor running");
+    tracing::info!(partitions, admin = %args.admin_addr, "karbird-processor running");
 
     shutdown_signal().await;
     let _ = stop_tx.send(true);
@@ -344,7 +355,7 @@ async fn main() -> anyhow::Result<()> {
         let _ = tokio::time::timeout(Duration::from_secs(30), h).await;
     }
     let _ = admin_task.await;
-    tracing::info!("controlhub-processor stopped");
+    tracing::info!("karbird-processor stopped");
     Ok(())
 }
 
@@ -378,25 +389,29 @@ mod tests {
         m.spans.fetch_add(4, Ordering::Relaxed);
         m.dead_letters.fetch_add(1, Ordering::Relaxed);
         m.offset_gaps.fetch_add(2, Ordering::Relaxed);
+        m.metrics.fetch_add(6, Ordering::Relaxed);
+        m.dropped_metric_points.fetch_add(1, Ordering::Relaxed);
         if let Some(l) = m.lag.get(2) {
             l.store(-3, Ordering::Relaxed);
         }
         let out = m.render();
         for line in [
-            "controlhub_processor_records_total 10",
-            "controlhub_processor_rows_total{table=\"spans\"} 4",
-            "controlhub_processor_rows_total{table=\"logs\"} 0",
-            "controlhub_processor_rows_total{table=\"events\"} 0",
-            "controlhub_processor_write_failures_total 0",
-            "controlhub_processor_dead_letters_total 1",
-            "controlhub_processor_offset_gaps_total 2",
-            "controlhub_processor_lag{partition=\"0\"} 0",
-            "controlhub_processor_lag{partition=\"2\"} -3",
+            "karbird_processor_records_total 10",
+            "karbird_processor_rows_total{table=\"spans\"} 4",
+            "karbird_processor_rows_total{table=\"logs\"} 0",
+            "karbird_processor_rows_total{table=\"events\"} 0",
+            "karbird_processor_rows_total{table=\"metrics\"} 6",
+            "karbird_processor_dropped_metric_points_total 1",
+            "karbird_processor_write_failures_total 0",
+            "karbird_processor_dead_letters_total 1",
+            "karbird_processor_offset_gaps_total 2",
+            "karbird_processor_lag{partition=\"0\"} 0",
+            "karbird_processor_lag{partition=\"2\"} -3",
         ] {
             assert!(out.lines().any(|l| l == line), "missing {line}:\n{out}");
         }
-        assert_eq!(out.lines().count(), 7 + 3);
-        assert_eq!(Metrics::default().render().lines().count(), 7);
+        assert_eq!(out.lines().count(), 9 + 3);
+        assert_eq!(Metrics::default().render().lines().count(), 9);
     }
 
     #[tokio::test]

@@ -9,7 +9,7 @@ pub mod pg;
 pub mod retention;
 pub mod secrets;
 
-pub use controlhub_domain::Scope;
+pub use karbird_domain::Scope;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {

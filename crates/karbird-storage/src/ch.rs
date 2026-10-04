@@ -71,7 +71,7 @@ pub struct LogRow {
     pub severity_number: u8,
     pub severity_text: String,
     pub body: String,
-    /// ID of the body's template (`controlhub_archive::template_id`); lines of one kind share it.
+    /// ID of the body's template (`karbird_archive::template_id`); lines of one kind share it.
     pub template_id: u64,
     pub trace_id: String,
     pub span_id: String,
@@ -105,7 +105,84 @@ pub struct EventRow {
     pub ingested_at: i64,
 }
 
+#[derive(Debug, Clone, Row, Serialize, Deserialize)]
+pub struct MetricRow {
+    pub tenant_id: String,
+    pub project_id: String,
+    pub environment_id: String,
+    pub metric_name: String,
+    pub kind: u8,
+    pub unit: String,
+    pub series_id: u64,
+    pub host_id: String,
+    pub host_name: String,
+    pub container_id: String,
+    pub container_name: String,
+    pub container_hostname: String,
+    pub service_name: String,
+    pub attributes: Vec<(String, String)>,
+    pub value: f64,
+    pub time: i64,
+    pub batch_id: String,
+    pub ingested_at: i64,
+}
+
+pub const METRIC_KIND_GAUGE: u8 = 1;
+pub const METRIC_KIND_CUMULATIVE_SUM: u8 = 2;
+pub const METRIC_KIND_DELTA_SUM: u8 = 3;
+
+/// The machine and container metrics the infrastructure view reads (hostmetrics + docker_stats).
+pub const INFRA_METRIC_NAMES: &[&str] = &[
+    "system.cpu.time",
+    "system.cpu.utilization",
+    "system.cpu.logical.count",
+    "system.memory.usage",
+    "system.memory.limit",
+    "system.filesystem.usage",
+    "system.network.io",
+    "container.cpu.usage.total",
+    "container.cpu.utilization",
+    "container.memory.usage.total",
+    "container.memory.usage.limit",
+    "container.network.io.usage.rx_bytes",
+    "container.network.io.usage.tx_bytes",
+];
+
 // ---------------------------------------------------------------- query results
+
+/// First and last point of one series in a window.
+#[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
+pub struct InfraSeriesRow {
+    pub host_id: String,
+    pub host_name: String,
+    pub container_id: String,
+    pub container_name: String,
+    pub container_hostname: String,
+    pub service_name: String,
+    pub metric_name: String,
+    pub series_id: u64,
+    pub attributes: Vec<(String, String)>,
+    pub first_value: f64,
+    pub first_time: i64,
+    pub last_value: f64,
+    pub last_time: i64,
+}
+
+/// Request latency of one service instance now and in the baseline before it.
+#[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
+pub struct InstanceLatencyRow {
+    pub service_id: String,
+    pub service_name: String,
+    pub service_instance_id: String,
+    pub host_name: String,
+    pub host_id: String,
+    pub container_id: String,
+    pub requests: u64,
+    pub p95_ns: f64,
+    pub baseline_requests: u64,
+    pub baseline_p95_ns: f64,
+    pub last_seen: i64,
+}
 
 #[derive(Debug, Clone, Row, Serialize, Deserialize)]
 pub struct ServiceSummaryRow {
@@ -219,7 +296,7 @@ pub struct LogQuery {
     pub min_severity: Option<u8>,
     pub trace_id: Option<String>,
     pub text: Option<String>,
-    /// Lines of one kind (see `controlhub_archive::template_id`).
+    /// Lines of one kind (see `karbird_archive::template_id`).
     pub template_id: Option<u64>,
     /// Exclusive cursor `(time_ns, log_id)`; results are newest-first.
     pub before: Option<(i64, String)>,
@@ -324,6 +401,45 @@ fn count_logs_sql(scoped: bool) -> String {
     format!(
         "SELECT count() FROM logs FINAL
          WHERE time >= fromUnixTimestamp64Nano(?) AND time < fromUnixTimestamp64Nano(?){scope}"
+    )
+}
+
+fn infra_series_sql() -> String {
+    let names = INFRA_METRIC_NAMES.iter().map(|n| format!("'{n}'")).collect::<Vec<_>>().join(", ");
+    format!(
+        "SELECT host_id, any(host_name) AS host_name, container_id, any(container_name) AS container_name,
+                any(container_hostname) AS container_hostname, any(service_name) AS service_name,
+                metric_name, series_id, any(attributes) AS attributes,
+                argMin(value, time) AS first_value, min(time) AS first_time,
+                argMax(value, time) AS last_value, max(time) AS last_time
+         FROM metrics FINAL
+         WHERE {SCOPE_WHERE} AND metric_name IN ({names})
+           AND time >= fromUnixTimestamp64Nano(?) AND time <= fromUnixTimestamp64Nano(?)
+         GROUP BY host_id, container_id, metric_name, series_id
+         ORDER BY host_id, container_id, metric_name, series_id
+         LIMIT ?"
+    )
+}
+
+/// Server/consumer and root spans per instance; `p95` covers `[now_from, to)`, the baseline
+/// `[from, now_from)`.
+fn instance_latency_sql() -> String {
+    format!(
+        "SELECT service_id, any(service_name) AS service_name, service_instance_id,
+                any(resource_attributes['host.name']) AS host_name,
+                any(resource_attributes['host.id']) AS host_id,
+                any(resource_attributes['container.id']) AS container_id,
+                countIf(start_time >= fromUnixTimestamp64Nano(?)) AS requests,
+                quantileIf(0.95)(toFloat64(duration_ns), start_time >= fromUnixTimestamp64Nano(?)) AS p95_ns,
+                countIf(start_time < fromUnixTimestamp64Nano(?)) AS baseline_requests,
+                quantileIf(0.95)(toFloat64(duration_ns), start_time < fromUnixTimestamp64Nano(?)) AS baseline_p95_ns,
+                max(end_time) AS last_seen
+         FROM spans FINAL
+         WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)
+           AND (kind IN (2, 5) OR parent_span_id = '')
+         GROUP BY service_id, service_instance_id
+         ORDER BY service_id, service_instance_id
+         LIMIT ?"
     )
 }
 
@@ -460,6 +576,29 @@ impl ChStore {
 
     pub async fn insert_events(&self, rows: &[EventRow]) -> Result<()> {
         self.insert_rows("events", rows).await
+    }
+
+    pub async fn insert_metrics(&self, rows: &[MetricRow]) -> Result<()> {
+        self.insert_rows("metrics", rows).await
+    }
+
+    /// First and last point of every infrastructure series in `[from, to]`.
+    pub async fn infra_series(&self, s: &Scope, from: i64, to: i64, limit: u32) -> Result<Vec<InfraSeriesRow>> {
+        let q = self.client.query(&infra_series_sql());
+        Ok(bind_scope(q, s).bind(from).bind(to).bind(limit).fetch_all().await?)
+    }
+
+    /// Request latency per service instance: `[now_from, to)` against the baseline `[from, now_from)`.
+    pub async fn instance_latency(
+        &self,
+        s: &Scope,
+        from: i64,
+        now_from: i64,
+        to: i64,
+        limit: u32,
+    ) -> Result<Vec<InstanceLatencyRow>> {
+        let q = self.client.query(&instance_latency_sql()).bind(now_from).bind(now_from).bind(now_from).bind(now_from);
+        Ok(bind_scope(q, s).bind(from).bind(to).bind(limit).fetch_all().await?)
     }
 
     // ------------------------------------------------------------ reads
@@ -611,7 +750,7 @@ impl ChStore {
         Ok(q.bind(limit).fetch_all().await?)
     }
 
-    // ------------------------------------------------------------ archive (controlhub-archiver)
+    // ------------------------------------------------------------ archive (karbird-archiver)
 
     /// Services with logs in `[from, to)`, per scope; all scopes unless `scope` is given.
     pub async fn log_groups(&self, from: i64, to: i64, scope: Option<&Scope>) -> Result<Vec<LogGroupRow>> {
@@ -795,6 +934,7 @@ mod tests {
         for sql in [
             include_str!("../../../infra/migrations/clickhouse/0001_telemetry.sql"),
             include_str!("../../../infra/migrations/clickhouse/0002_log_templates_and_codecs.sql"),
+            include_str!("../../../infra/migrations/clickhouse/0003_metrics.sql"),
         ] {
             let stmts = split_statements(sql);
             assert!(!stmts.is_empty());
@@ -880,6 +1020,25 @@ mod tests {
     }
 
     #[test]
+    fn infrastructure_sql_is_scoped_and_binds_match() {
+        let series = infra_series_sql();
+        assert_eq!(placeholders(&series), 3 + 2 + 1, "{series}");
+        assert_eq!(scoped_where_count(&series), 1);
+        assert!(series.contains("FROM metrics FINAL"));
+        for name in INFRA_METRIC_NAMES {
+            // Embedded as SQL literals, so they must never need escaping.
+            assert!(
+                name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'_'),
+                "{name}"
+            );
+            assert!(series.contains(&format!("'{name}'")));
+        }
+        let latency = instance_latency_sql();
+        assert_eq!(placeholders(&latency), 4 + 3 + 2 + 1, "{latency}");
+        assert_eq!(scoped_where_count(&latency), 1);
+    }
+
+    #[test]
     fn event_sql_placeholders_match_binds() {
         assert_eq!(placeholders(&events_sql(false)), 3 + 2 + 1);
         assert_eq!(placeholders(&events_sql(true)), 3 + 2 + 1 + 1);
@@ -938,7 +1097,7 @@ mod tests {
     fn store() -> ChStore {
         ChStore::new(&ChConfig {
             url: "http://127.0.0.1:1".into(),
-            database: "controlhub".into(),
+            database: "karbird".into(),
             user: "u".into(),
             password: "p".into(),
         })
@@ -948,8 +1107,8 @@ mod tests {
     async fn ensure_user_rejects_injection_before_any_query() {
         let s = store();
         for (user, pw) in [
-            ("controlhub_api", "pw' ; DROP USER default; --"),
-            ("x; DROP DATABASE controlhub", "pw"),
+            ("karbird_api", "pw' ; DROP USER default; --"),
+            ("x; DROP DATABASE karbird", "pw"),
             ("", "pw"),
             ("user", ""),
             ("user name", "pw"),

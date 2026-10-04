@@ -1,7 +1,7 @@
-// `controlhub` CLI against the fixture project and the running stack:
+// `karbird` CLI against the fixture project and the running stack:
 // discover → plan → apply (dry run, apply, idempotent) → run the instrumented app → verify → context.
 // Uses the isolation tenant so the demo environment stays clean.
-// Run: cargo build -p controlhub-cli && node --test "tests/integration/*.test.mjs"
+// Run: cargo build -p karbird-cli && node --test "tests/integration/*.test.mjs"
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { API, OTLP, root, Session, ISO } from './lib.mjs';
 
-const bin = join(root, 'target', 'debug', process.platform === 'win32' ? 'controlhub.exe' : 'controlhub');
+const bin = join(root, 'target', 'debug', process.platform === 'win32' ? 'karbird.exe' : 'karbird');
 const sdkPath = join(root, 'packages', 'sdk-node');
 const service = `fixture-${randomUUID().slice(0, 8)}`;
 let dir;
@@ -26,10 +26,10 @@ function cli(args, env = {}) {
   const r = spawnSync(bin, args, {
     env: {
       ...process.env,
-      CONTROLHUB_API_URL: API,
-      CONTROLHUB_OTLP_ENDPOINT: OTLP,
-      CONTROLHUB_API_TOKEN: apiToken ?? '',
-      CONTROLHUB_INGEST_TOKEN: ingestToken ?? '',
+      KARBIRD_API_URL: API,
+      KARBIRD_OTLP_ENDPOINT: OTLP,
+      KARBIRD_API_TOKEN: apiToken ?? '',
+      KARBIRD_INGEST_TOKEN: ingestToken ?? '',
       ...env,
     },
     encoding: 'utf8',
@@ -45,14 +45,14 @@ function cli(args, env = {}) {
 }
 
 before(async () => {
-  const build = spawnSync('cargo', ['build', '-q', '-p', 'controlhub-cli'], { cwd: root, stdio: 'inherit' });
-  assert.equal(build.status, 0, 'cargo build -p controlhub-cli');
-  work = mkdtempSync(join(tmpdir(), 'controlhub-cli-'));
+  const build = spawnSync('cargo', ['build', '-q', '-p', 'karbird-cli'], { cwd: root, stdio: 'inherit' });
+  assert.equal(build.status, 0, 'cargo build -p karbird-cli');
+  work = mkdtempSync(join(tmpdir(), 'karbird-cli-'));
   dir = join(work, 'shop-api');
   cpSync(join(root, 'tests', 'fixtures', 'node-http-app'), dir, { recursive: true });
 
   owner = new Session();
-  await owner.login('isolation@controlhub.local');
+  await owner.login('isolation@karbird.local');
   for (const kind of ['api', 'ingest']) {
     const r = await owner.mutate(`${ISO}/tokens`, { kind, name: `cli-test-${kind}`, expires_in_days: 1 });
     assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -69,7 +69,7 @@ after(async () => {
 });
 
 test('discover reports the project without reading .env values', () => {
-  writeFileSync(join(dir, '.env'), 'CONTROLHUB_INGEST_TOKEN=chi_must-not-be-read\n');
+  writeFileSync(join(dir, '.env'), 'KARBIRD_INGEST_TOKEN=chi_must-not-be-read\n');
   const r = cli(['discover', '--path', dir]);
   assert.equal(r.code, 0, r.stderr);
   assert.equal(r.json.ecosystem, 'node');
@@ -88,18 +88,18 @@ test('plan and apply: dry run, apply, idempotent re-apply, drift refusal', () =>
   const before = readFileSync(join(dir, 'package.json'), 'utf8');
   const dry = cli(['apply', '--path', dir, '--plan', planFile]);
   assert.equal(dry.code, 2, 'dry run needs --yes');
-  assert.match(dry.stderr, /\+\s+"start": "node --import @controlhub\/sdk-node\/register src\/server.js"/);
+  assert.match(dry.stderr, /\+\s+"start": "node --import @karbird\/sdk-node\/register src\/server.js"/);
   assert.equal(readFileSync(join(dir, 'package.json'), 'utf8'), before, 'dry run writes nothing');
 
   const applied = cli(['apply', '--path', dir, '--plan', planFile, '--yes']);
   assert.equal(applied.code, 0, applied.stderr);
   assert.ok(applied.json.steps.every((s) => s.state === 'applied'));
   const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-  assert.equal(pkg.scripts.start, 'node --import @controlhub/sdk-node/register src/server.js');
-  assert.equal(pkg.dependencies['@controlhub/sdk-node'], `file:${sdkPath}`);
+  assert.equal(pkg.scripts.start, 'node --import @karbird/sdk-node/register src/server.js');
+  assert.equal(pkg.dependencies['@karbird/sdk-node'], `file:${sdkPath}`);
   const envExample = readFileSync(join(dir, '.env.example'), 'utf8');
-  assert.match(envExample, new RegExp(`CONTROLHUB_SERVICE_NAME=${service}`));
-  assert.match(envExample, /CONTROLHUB_INGEST_TOKEN=\n/);
+  assert.match(envExample, new RegExp(`KARBIRD_SERVICE_NAME=${service}`));
+  assert.match(envExample, /KARBIRD_INGEST_TOKEN=\n/);
   assert.ok(!envExample.includes('chi_'), 'no real token in .env.example');
   assert.match(readFileSync(join(dir, '.gitignore'), 'utf8'), /^\.env$/m);
 
@@ -121,8 +121,8 @@ test('plan and apply: dry run, apply, idempotent re-apply, drift refusal', () =>
 
 test('the instrumented fixture app is verified end to end and appears in context', async () => {
   // Stand-in for `npm install`: link the local SDK checkout (it is not published yet).
-  mkdirSync(join(dir, 'node_modules', '@controlhub'), { recursive: true });
-  symlinkSync(sdkPath, join(dir, 'node_modules', '@controlhub', 'sdk-node'), 'junction');
+  mkdirSync(join(dir, 'node_modules', '@karbird'), { recursive: true });
+  symlinkSync(sdkPath, join(dir, 'node_modules', '@karbird', 'sdk-node'), 'junction');
 
   const start = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).scripts.start.split(' ');
   assert.equal(start[0], 'node');
@@ -131,10 +131,10 @@ test('the instrumented fixture app is verified end to end and appears in context
     env: {
       ...process.env,
       PORT: '0',
-      CONTROLHUB_SERVICE_NAME: service,
-      CONTROLHUB_ENVIRONMENT: 'isolation-test',
-      CONTROLHUB_OTLP_ENDPOINT: OTLP,
-      CONTROLHUB_INGEST_TOKEN: ingestToken,
+      KARBIRD_SERVICE_NAME: service,
+      KARBIRD_ENVIRONMENT: 'isolation-test',
+      KARBIRD_OTLP_ENDPOINT: OTLP,
+      KARBIRD_INGEST_TOKEN: ingestToken,
     },
   });
   let stderr = '';
@@ -175,7 +175,7 @@ test('the instrumented fixture app is verified end to end and appears in context
 });
 
 test('CLI refuses misplaced tokens and cleartext remote URLs', () => {
-  const swapped = cli(['context'], { CONTROLHUB_API_TOKEN: ingestToken });
+  const swapped = cli(['context'], { KARBIRD_API_TOKEN: ingestToken });
   assert.equal(swapped.code, 1);
   assert.match(swapped.stderr, /must be a `cha_…` token/);
   const remote = cli(['context', '--api-url', 'http://hub.example.com']);

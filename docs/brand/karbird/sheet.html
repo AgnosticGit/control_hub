@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@700;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #17181a; color: #eceef0; font-family: "Hanken Grotesk", sans-serif; padding: 48px; width: 1504px; }
+  h1 { font-size: 44px; font-weight: 800; letter-spacing: -0.03em; margin: 0; }
+  .sub { font: 14px "JetBrains Mono", monospace; color: #9a9fa6; margin: 4px 0 32px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .card { background: #1c1d20; border: 1px solid #33363b; border-radius: 8px; height: 300px; position: relative; display: flex; align-items: center; justify-content: center; gap: 18px; }
+  .card.light { background: #eceef0; color: #17181a; }
+  .label { position: absolute; left: 16px; bottom: 12px; font: 12px "JetBrains Mono", monospace; color: #9a9fa6; }
+  .word { font-size: 48px; font-weight: 800; letter-spacing: -0.035em; }
+  .stack { flex-direction: column; gap: 10px; }
+  .line { position: relative; }
+</style>
+</head>
+<body>
+  <h1>karbird</h1>
+  <div class="sub">logo studies · vector</div>
+  <div class="grid">
+    <div class="card"><img src="karbird-mark.svg" height="150"><span class="word">karbird</span><span class="label">01 lockup</span></div>
+    <div class="card"><img src="karbird-app-icon.svg" height="150"><span class="label">02 app icon</span></div>
+    <div class="card stack"><img src="karbird-mark.svg" height="150"><span class="word" style="font-size:40px">karbird</span><span class="label">03 stacked</span></div>
+    <div class="card"><img src="karbird-mark.svg" height="44"><span class="word" style="font-size:26px">karbird</span><span class="label">04 header, 44px</span></div>
+    <div class="card light"><img src="karbird-mark-light.svg" height="150"><span class="word">karbird</span><span class="label">05 light</span></div>
+    <div class="card"><img src="karbird-mark.svg" height="220"><span class="label">06 mark</span></div>
+    <div class="card"><img src="karbird-favicon.svg" height="128"><img src="karbird-favicon.svg" height="32"><img src="karbird-favicon.svg" height="16"><span class="label">07 favicon 128 / 32 / 16</span></div>
+    <div class="card light"><img src="karbird-app-icon.svg" height="96"><img src="karbird-app-icon.svg" height="48"><span class="label">08 icon on light</span></div>
+  </div>
+</body>
+</html>

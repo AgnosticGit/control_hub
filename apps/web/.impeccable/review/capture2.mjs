@@ -4,7 +4,7 @@ const require = createRequire(new URL("../../../../tests/e2e/package.json", impo
 const { chromium } = require("@playwright/test");
 
 const out = new URL(".", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
-const creds = JSON.parse(readFileSync(new URL("../../../../.controlhub/test-credentials.json", import.meta.url), "utf8"));
+const creds = JSON.parse(readFileSync(new URL("../../../../.karbird/test-credentials.json", import.meta.url), "utf8"));
 const u = creds.users.find((x) => x.email.startsWith("isolation@")) ?? creds.users[0];
 
 const browser = await chromium.launch();

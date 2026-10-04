@@ -1,4 +1,4 @@
-//! controlhub-ingest: accepts telemetry and writes it durably to the broker.
+//! karbird-ingest: accepts telemetry and writes it durably to the broker.
 //! It has no access to ClickHouse and no infrastructure-control permissions.
 
 mod auth;
@@ -9,6 +9,7 @@ mod http;
 mod metrics;
 mod pipeline;
 mod sanitize;
+mod series;
 #[cfg(test)]
 mod testing;
 
@@ -17,37 +18,41 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Parser;
-use controlhub_protocol::TELEMETRY_TOPIC;
-use controlhub_protocol::otlp::collector::logs::v1::logs_service_server::LogsServiceServer;
-use controlhub_protocol::otlp::collector::trace::v1::trace_service_server::TraceServiceServer;
-use controlhub_runtime::{connect_broker, ensure_topic, init_tracing, load_local_env, shutdown_signal};
-use controlhub_storage::pg::PgStore;
+use karbird_protocol::TELEMETRY_TOPIC;
+use karbird_protocol::otlp::collector::logs::v1::logs_service_server::LogsServiceServer;
+use karbird_protocol::otlp::collector::metrics::v1::metrics_service_server::MetricsServiceServer;
+use karbird_protocol::otlp::collector::trace::v1::trace_service_server::TraceServiceServer;
+use karbird_runtime::{connect_broker, ensure_topic, init_tracing, load_local_env, shutdown_signal};
+use karbird_storage::pg::PgStore;
 use tokio::sync::watch;
 
 #[derive(Debug, Parser)]
-#[command(name = "controlhub-ingest", about = "ControlHub telemetry ingestion")]
+#[command(name = "karbird-ingest", about = "karbird telemetry ingestion")]
 struct Args {
-    #[arg(long, env = "CONTROLHUB_INGEST_HTTP_ADDR", default_value = "127.0.0.1:4318")]
+    #[arg(long, env = "KARBIRD_INGEST_HTTP_ADDR", default_value = "127.0.0.1:4318")]
     http_addr: SocketAddr,
-    #[arg(long, env = "CONTROLHUB_INGEST_GRPC_ADDR", default_value = "127.0.0.1:4317")]
+    #[arg(long, env = "KARBIRD_INGEST_GRPC_ADDR", default_value = "127.0.0.1:4317")]
     grpc_addr: SocketAddr,
     /// Loopback-only admin endpoint for self-metrics.
-    #[arg(long, env = "CONTROLHUB_INGEST_ADMIN_ADDR", default_value = "127.0.0.1:9464")]
+    #[arg(long, env = "KARBIRD_INGEST_ADMIN_ADDR", default_value = "127.0.0.1:9464")]
     admin_addr: SocketAddr,
-    #[arg(long, env = "CONTROLHUB_INGEST_DATABASE_URL")]
+    #[arg(long, env = "KARBIRD_INGEST_DATABASE_URL")]
     database_url: String,
-    #[arg(long, env = "CONTROLHUB_KAFKA_BROKERS", default_value = "127.0.0.1:19092")]
+    #[arg(long, env = "KARBIRD_KAFKA_BROKERS", default_value = "127.0.0.1:19092")]
     brokers: String,
-    #[arg(long, env = "CONTROLHUB_TOPIC_PARTITIONS", default_value_t = 4)]
+    #[arg(long, env = "KARBIRD_TOPIC_PARTITIONS", default_value_t = 4)]
     partitions: i32,
-    #[arg(long, env = "CONTROLHUB_INGEST_MAX_CONCURRENCY", default_value_t = 512)]
+    #[arg(long, env = "KARBIRD_INGEST_MAX_CONCURRENCY", default_value_t = 512)]
     max_concurrency: usize,
+    /// Distinct metric series accepted per environment and hour by this ingest instance.
+    #[arg(long, env = "KARBIRD_INGEST_MAX_SERIES_PER_ENV", default_value_t = series::DEFAULT_MAX_SERIES_PER_ENV)]
+    max_series_per_env: usize,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     load_local_env();
-    init_tracing("controlhub-ingest");
+    init_tracing("karbird-ingest");
     let args = Args::parse();
 
     let pg = PgStore::connect(&args.database_url, 8).await?;
@@ -67,6 +72,7 @@ async fn main() -> anyhow::Result<()> {
         auth: auth::Authenticator::new(pg),
         publisher,
         metrics: metrics.clone(),
+        series: Arc::new(series::SeriesLimiter::new(args.max_series_per_env)),
         source_id: format!("ingest-{}", uuid::Uuid::now_v7()),
     };
 
@@ -92,7 +98,12 @@ async fn main() -> anyhow::Result<()> {
                     .accept_compressed(tonic::codec::CompressionEncoding::Gzip),
             )
             .add_service(
-                LogsServiceServer::new(grpc_svc)
+                LogsServiceServer::new(grpc_svc.clone())
+                    .max_decoding_message_size(http::MAX_DECOMPRESSED_BODY)
+                    .accept_compressed(tonic::codec::CompressionEncoding::Gzip),
+            )
+            .add_service(
+                MetricsServiceServer::new(grpc_svc)
                     .max_decoding_message_size(http::MAX_DECOMPRESSED_BODY)
                     .accept_compressed(tonic::codec::CompressionEncoding::Gzip),
             )
@@ -112,7 +123,7 @@ async fn main() -> anyhow::Result<()> {
         axum::serve(admin_listener, admin_app).with_graceful_shutdown(wait_stop(stop_rx.clone())).into_future(),
     );
 
-    tracing::info!(http = %args.http_addr, grpc = %args.grpc_addr, admin = %args.admin_addr, partitions, "controlhub-ingest listening");
+    tracing::info!(http = %args.http_addr, grpc = %args.grpc_addr, admin = %args.admin_addr, partitions, "karbird-ingest listening");
     shutdown_signal().await;
     let _ = stop_tx.send(true);
     let _ = http_task.await;
@@ -123,6 +134,6 @@ async fn main() -> anyhow::Result<()> {
     for t in publisher_tasks {
         let _ = tokio::time::timeout(Duration::from_secs(20), t).await;
     }
-    tracing::info!("controlhub-ingest stopped");
+    tracing::info!("karbird-ingest stopped");
     Ok(())
 }

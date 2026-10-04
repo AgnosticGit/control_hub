@@ -1,7 +1,7 @@
 // One colour per service, shared by the map and the timeline, so a request dot can be traced
 // back to the service it started at. Pure, no Pixi, unit-tested.
 
-import type { EntityKindDto } from "@controlhub/web-engine";
+import type { EntityKindDto } from "@karbird/web-engine";
 
 /** Hand-picked, well separated on the dark background; red is left for errors. */
 const PALETTE = [

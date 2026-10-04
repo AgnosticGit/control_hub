@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use controlhub_archive::index::{BLOOM_HASHES, SegmentIndex, bloom_probe};
-use controlhub_archive::{Dictionary, LogRecord};
+use karbird_archive::index::{BLOOM_HASHES, SegmentIndex, bloom_probe};
+use karbird_archive::{Dictionary, LogRecord};
 use object_store::aws::AmazonS3Builder;
 use object_store::memory::InMemory;
 use object_store::path::Path;
@@ -183,7 +183,7 @@ pub fn template_id_to_db(id: u64) -> i64 {
 }
 
 /// Catalog condition: the segment's bloom filter may hold the trace whose probe hashes are bound
-/// at `$h1`/`$h2` (both NULL: no trace filter). Mirrors `controlhub_archive::index`.
+/// at `$h1`/`$h2` (both NULL: no trace filter). Mirrors `karbird_archive::index`.
 fn bloom_sql(h1: usize, h2: usize) -> String {
     let probes: Vec<String> = (0..BLOOM_HASHES)
         .map(|i| {
@@ -456,7 +456,7 @@ pub fn log_matches(q: &LogQuery, row: &LogRow) -> bool {
 }
 
 pub fn log_row(seg: &SegmentRow, r: LogRecord) -> LogRow {
-    let template_id = controlhub_archive::template_id(&controlhub_archive::parse(&r.body).template);
+    let template_id = karbird_archive::template_id(&karbird_archive::parse(&r.body).template);
     LogRow {
         tenant_id: seg.tenant_id.clone(),
         project_id: seg.project_id.clone(),
@@ -524,7 +524,7 @@ impl ArchiveReader {
                 Some(self.dictionary(s, key, v).await?)
             }
         };
-        tokio::task::spawn_blocking(move || controlhub_archive::decode(&bytes, dict.as_deref()))
+        tokio::task::spawn_blocking(move || karbird_archive::decode(&bytes, dict.as_deref()))
             .await
             .map_err(|e| StorageError::Other(e.to_string()))?
             .map_err(|e| StorageError::Other(e.to_string()))
@@ -614,7 +614,7 @@ pub struct ArchivePage {
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
-    use controlhub_domain::{EnvironmentId, ProjectId, TenantId};
+    use karbird_domain::{EnvironmentId, ProjectId, TenantId};
 
     fn scope(t: &str) -> Scope {
         Scope {
@@ -642,7 +642,7 @@ mod tests {
     }
 
     async fn store_segment(objects: &ArchiveObjects, s: &Scope, window: i64, records: &[LogRecord]) -> SegmentRow {
-        let enc = controlhub_archive::encode(records, None, 3).unwrap();
+        let enc = karbird_archive::encode(records, None, 3).unwrap();
         let sha = sha256_hex(&enc.bytes);
         let key = segment_key(s, "svc_a", window, &sha);
         objects.put(&key, enc.bytes).await.unwrap();
@@ -740,7 +740,7 @@ mod tests {
             "cursor is exclusive"
         );
         assert!(log_matches(&LogQuery { before: Some((row.time + 1, String::new())), ..q.clone() }, &row));
-        assert_eq!(row.template_id, controlhub_archive::template_id(&controlhub_archive::parse(&row.body).template));
+        assert_eq!(row.template_id, karbird_archive::template_id(&karbird_archive::parse(&row.body).template));
         assert!(log_matches(&LogQuery { template_id: Some(row.template_id), ..q.clone() }, &row));
         assert!(!log_matches(&LogQuery { template_id: Some(row.template_id ^ 1), ..q }, &row));
     }
@@ -851,13 +851,13 @@ mod tests {
             4,
             vec![format!(
                 "order {} created for user {}",
-                controlhub_archive::template::INT_VAR,
-                controlhub_archive::template::STR_VAR
+                karbird_archive::template::INT_VAR,
+                karbird_archive::template::STR_VAR
             )],
         );
         let dkey = dict_key(&s, "svc_a", 4, &sha256_hex(dict.as_bytes()));
         objects.put(&dkey, dict.as_bytes().to_vec()).await.unwrap();
-        let enc = controlhub_archive::encode(&records, Some(&dict), 3).unwrap();
+        let enc = karbird_archive::encode(&records, Some(&dict), 3).unwrap();
         let mut seg = store_segment(&objects, &s, T0, &[]).await;
         seg.sha256 = sha256_hex(&enc.bytes);
         objects.put(&seg.object_key, enc.bytes).await.unwrap();

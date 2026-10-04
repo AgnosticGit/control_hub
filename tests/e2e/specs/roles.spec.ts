@@ -21,7 +21,7 @@ async function selectedRole(page: Page, member: string) {
 test("admin creates a role with checkboxes, assigns it, and the member sees exactly what it allows", async ({ page, browser }) => {
   const errors = collectErrors(page);
   const role = `[test] Manager ${randomHex(3)}`;
-  await login(page, "admin@controlhub.local", WORKSPACE);
+  await login(page, "admin@karbird.local", WORKSPACE);
   await page.getByRole("link", { name: "Members & roles" }).click();
   await expect(page.getByRole("heading", { name: "Members & roles" })).toBeVisible();
 
@@ -50,7 +50,7 @@ test("admin creates a role with checkboxes, assigns it, and the member sees exac
   // Member A sees Tokens (read-only) but not Actions or Members & roles.
   const memberContext = await browser.newContext();
   const member = await memberContext.newPage();
-  await login(member, "member-a@controlhub.local", WORKSPACE);
+  await login(member, "member-a@karbird.local", WORKSPACE);
   const nav = member.getByRole("navigation", { name: "Workspace" });
   await expect(nav.getByRole("link", { name: "Tokens" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Actions" })).toHaveCount(0);
@@ -60,7 +60,7 @@ test("admin creates a role with checkboxes, assigns it, and the member sees exac
   await expect(member.getByRole("button", { name: "Create token" })).toHaveCount(0);
 
   // Fine-tuning one box turns the role into an individual set based on it.
-  const memberRow = members.getByRole("row").filter({ hasText: "member-a@controlhub.local" });
+  const memberRow = members.getByRole("row").filter({ hasText: "member-a@karbird.local" });
   await memberRow.getByRole("button", { name: "Permissions" }).click();
   await saved(page, () => page.getByRole("group", { name: "Permissions of Member A" }).getByLabel("View members").check());
   await expect.poll(() => selectedRole(page, "Member A")).toBe(`Individual, based on ${role}`);
@@ -83,7 +83,7 @@ test("admin creates a role with checkboxes, assigns it, and the member sees exac
 });
 
 test("a viewer sees members and roles read-only", async ({ page }) => {
-  await login(page, "member-b@controlhub.local", SETTINGS);
+  await login(page, "member-b@karbird.local", SETTINGS);
   await expect(page.getByRole("heading", { name: "Members & roles" })).toBeVisible();
   await expect(page.getByLabel("Role for Member A")).toBeDisabled();
   await expect(page.getByRole("button", { name: "Remove Member A" })).toBeDisabled();
@@ -94,7 +94,7 @@ test("a viewer sees members and roles read-only", async ({ page }) => {
 });
 
 test("another tenant's members page looks absent", async ({ page }) => {
-  await login(page, "viewer@controlhub.local", WORKSPACE);
+  await login(page, "viewer@karbird.local", WORKSPACE);
   await expect(page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Members & roles" })).toBeVisible();
   await page.goto("/app/isolation/isolation-test/settings");
   await expect(page.getByText("This environment does not exist or you do not have access to it.")).toBeVisible();

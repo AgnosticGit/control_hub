@@ -2,11 +2,11 @@ import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 import { config, isPublicAppPath, proxy } from "./proxy";
 
-const ORIGIN = "https://controlhub.test";
+const ORIGIN = "https://karbird.test";
 
 function request(path: string, session: string | null = "s3cr3t-session") {
   const headers = new Headers();
-  if (session !== null) headers.set("cookie", `controlhub_session=${session}`);
+  if (session !== null) headers.set("cookie", `karbird_session=${session}`);
   return new NextRequest(`${ORIGIN}${path}`, { headers });
 }
 

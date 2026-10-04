@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.98"
 license = "Apache-2.0"
-repository = "https://example.invalid/controlhub"
+repository = "https://example.invalid/karbird"
 publish = false
 
 [workspace.lints.rust]
@@ -22,13 +22,13 @@ todo = "warn"
 
 [workspace.dependencies]
 # internal
-controlhub-domain = { path = "crates/controlhub-domain" }
-controlhub-protocol = { path = "crates/controlhub-protocol" }
-controlhub-storage = { path = "crates/controlhub-storage" }
-controlhub-engine-core = { path = "crates/controlhub-engine-core" }
-controlhub-runtime = { path = "crates/controlhub-runtime" }
-controlhub-actions = { path = "crates/controlhub-actions" }
-controlhub-archive = { path = "crates/controlhub-archive" }
+karbird-domain = { path = "crates/karbird-domain" }
+karbird-protocol = { path = "crates/karbird-protocol" }
+karbird-storage = { path = "crates/karbird-storage" }
+karbird-engine-core = { path = "crates/karbird-engine-core" }
+karbird-runtime = { path = "crates/karbird-runtime" }
+karbird-actions = { path = "crates/karbird-actions" }
+karbird-archive = { path = "crates/karbird-archive" }
 
 # pure / shared
 serde = { version = "1", features = ["derive"] }

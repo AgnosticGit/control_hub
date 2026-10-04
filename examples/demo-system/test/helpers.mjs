@@ -4,11 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 export const src = (name) => fileURLToPath(new URL(`../src/${name}`, import.meta.url));
 
-/** Env of this process without DEMO_* / CONTROLHUB_* so tests never reach the running demo. */
+/** Env of this process without DEMO_* / KARBIRD_* so tests never reach the running demo. */
 export function cleanEnv(extra = {}) {
   const env = {};
   for (const [k, v] of Object.entries(process.env)) {
-    if (!k.startsWith('DEMO_') && !k.startsWith('CONTROLHUB_')) env[k] = v;
+    if (!k.startsWith('DEMO_') && !k.startsWith('KARBIRD_')) env[k] = v;
   }
   return { ...env, ...extra };
 }

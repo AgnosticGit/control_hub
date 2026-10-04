@@ -1,6 +1,6 @@
 [package]
-name = "controlhub-protocol"
-description = "ControlHub protobuf contracts (generated from /proto) and OTLP re-exports"
+name = "karbird-protocol"
+description = "karbird protobuf contracts (generated from /proto) and OTLP re-exports"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

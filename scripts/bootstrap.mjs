@@ -17,7 +17,7 @@ try {
   process.exit(2);
 }
 
-const dir = join(root, ".controlhub");
+const dir = join(root, ".karbird");
 mkdirSync(dir, { recursive: true });
 if (ensureSettings(dir)) console.error(`[bootstrap] wrote ${join(dir, "settings.env")} (retention defaults; edit as you like)`);
 const infraPath = join(dir, "infra.env");
@@ -29,13 +29,13 @@ const defaults = {
   CH_PG_PORT: "15432",
   CH_CLICKHOUSE_HTTP_PORT: "18123",
   CH_KAFKA_PORT: "19092",
-  CH_PG_ADMIN_USER: "controlhub_admin",
+  CH_PG_ADMIN_USER: "karbird_admin",
   CH_PG_ADMIN_PASSWORD: secret(),
   CH_PG_API_PASSWORD: secret(),
   CH_PG_INGEST_PASSWORD: secret(),
   CH_PG_PROCESSOR_PASSWORD: secret(),
   CH_PG_EXECUTOR_PASSWORD: secret(),
-  CH_CH_ADMIN_USER: "controlhub_admin",
+  CH_CH_ADMIN_USER: "karbird_admin",
   CH_CH_ADMIN_PASSWORD: secret(),
   CH_CH_API_PASSWORD: secret(),
   CH_CH_PROCESSOR_PASSWORD: secret(),
@@ -71,31 +71,31 @@ const s3Config = JSON.stringify(s3Identities(infra), null, 2);
 const s3ConfigChanged = !existsSync(s3ConfigPath) || readFileSync(s3ConfigPath, "utf8") !== s3Config;
 if (s3ConfigChanged) writeFileSync(s3ConfigPath, s3Config, { mode: 0o600 });
 
-const pg = (user, pw) => `postgres://${user}:${pw}@127.0.0.1:${infra.CH_PG_PORT}/controlhub`;
+const pg = (user, pw) => `postgres://${user}:${pw}@127.0.0.1:${infra.CH_PG_PORT}/karbird`;
 const s3Endpoint = `http://127.0.0.1:${infra.CH_S3_PORT}`;
 const services = {
-  CONTROLHUB_ENV: "dev",
-  CONTROLHUB_KAFKA_BROKERS: `127.0.0.1:${infra.CH_KAFKA_PORT}`,
-  CONTROLHUB_CLICKHOUSE_URL: `http://127.0.0.1:${infra.CH_CLICKHOUSE_HTTP_PORT}`,
-  CONTROLHUB_INGEST_DATABASE_URL: pg("controlhub_ingest", infra.CH_PG_INGEST_PASSWORD),
-  CONTROLHUB_PROCESSOR_DATABASE_URL: pg("controlhub_processor", infra.CH_PG_PROCESSOR_PASSWORD),
-  CONTROLHUB_API_DATABASE_URL: pg("controlhub_api", infra.CH_PG_API_PASSWORD),
-  CONTROLHUB_API_CLICKHOUSE_USER: "controlhub_api",
-  CONTROLHUB_API_CLICKHOUSE_PASSWORD: infra.CH_CH_API_PASSWORD,
-  CONTROLHUB_PROCESSOR_CLICKHOUSE_USER: "controlhub_processor",
-  CONTROLHUB_PROCESSOR_CLICKHOUSE_PASSWORD: infra.CH_CH_PROCESSOR_PASSWORD,
-  CONTROLHUB_EXECUTOR_DATABASE_URL: pg("controlhub_executor", infra.CH_PG_EXECUTOR_PASSWORD),
-  CONTROLHUB_EXECUTOR_CLICKHOUSE_USER: "controlhub_executor",
-  CONTROLHUB_EXECUTOR_CLICKHOUSE_PASSWORD: infra.CH_CH_EXECUTOR_PASSWORD,
-  CONTROLHUB_ARCHIVER_DATABASE_URL: pg("controlhub_archiver", infra.CH_PG_ARCHIVER_PASSWORD),
-  CONTROLHUB_ARCHIVER_CLICKHOUSE_USER: "controlhub_archiver",
-  CONTROLHUB_ARCHIVER_CLICKHOUSE_PASSWORD: infra.CH_CH_ARCHIVER_PASSWORD,
-  CONTROLHUB_ARCHIVE_S3_ENDPOINT: s3Endpoint,
-  CONTROLHUB_ARCHIVE_S3_BUCKET: ARCHIVE_BUCKET,
-  CONTROLHUB_ARCHIVER_S3_ACCESS_KEY: infra.CH_S3_ARCHIVER_ACCESS_KEY,
-  CONTROLHUB_ARCHIVER_S3_SECRET_KEY: infra.CH_S3_ARCHIVER_SECRET_KEY,
-  CONTROLHUB_API_S3_ACCESS_KEY: infra.CH_S3_API_ACCESS_KEY,
-  CONTROLHUB_API_S3_SECRET_KEY: infra.CH_S3_API_SECRET_KEY,
+  KARBIRD_ENV: "dev",
+  KARBIRD_KAFKA_BROKERS: `127.0.0.1:${infra.CH_KAFKA_PORT}`,
+  KARBIRD_CLICKHOUSE_URL: `http://127.0.0.1:${infra.CH_CLICKHOUSE_HTTP_PORT}`,
+  KARBIRD_INGEST_DATABASE_URL: pg("karbird_ingest", infra.CH_PG_INGEST_PASSWORD),
+  KARBIRD_PROCESSOR_DATABASE_URL: pg("karbird_processor", infra.CH_PG_PROCESSOR_PASSWORD),
+  KARBIRD_API_DATABASE_URL: pg("karbird_api", infra.CH_PG_API_PASSWORD),
+  KARBIRD_API_CLICKHOUSE_USER: "karbird_api",
+  KARBIRD_API_CLICKHOUSE_PASSWORD: infra.CH_CH_API_PASSWORD,
+  KARBIRD_PROCESSOR_CLICKHOUSE_USER: "karbird_processor",
+  KARBIRD_PROCESSOR_CLICKHOUSE_PASSWORD: infra.CH_CH_PROCESSOR_PASSWORD,
+  KARBIRD_EXECUTOR_DATABASE_URL: pg("karbird_executor", infra.CH_PG_EXECUTOR_PASSWORD),
+  KARBIRD_EXECUTOR_CLICKHOUSE_USER: "karbird_executor",
+  KARBIRD_EXECUTOR_CLICKHOUSE_PASSWORD: infra.CH_CH_EXECUTOR_PASSWORD,
+  KARBIRD_ARCHIVER_DATABASE_URL: pg("karbird_archiver", infra.CH_PG_ARCHIVER_PASSWORD),
+  KARBIRD_ARCHIVER_CLICKHOUSE_USER: "karbird_archiver",
+  KARBIRD_ARCHIVER_CLICKHOUSE_PASSWORD: infra.CH_CH_ARCHIVER_PASSWORD,
+  KARBIRD_ARCHIVE_S3_ENDPOINT: s3Endpoint,
+  KARBIRD_ARCHIVE_S3_BUCKET: ARCHIVE_BUCKET,
+  KARBIRD_ARCHIVER_S3_ACCESS_KEY: infra.CH_S3_ARCHIVER_ACCESS_KEY,
+  KARBIRD_ARCHIVER_S3_SECRET_KEY: infra.CH_S3_ARCHIVER_SECRET_KEY,
+  KARBIRD_API_S3_ACCESS_KEY: infra.CH_S3_API_ACCESS_KEY,
+  KARBIRD_API_S3_SECRET_KEY: infra.CH_S3_API_SECRET_KEY,
 };
 writeFileSync(
   join(dir, "services.env"),
@@ -117,11 +117,11 @@ await compose([
 ]);
 
 console.error("[bootstrap] migrations, retention, service users, seed data…");
-// The only account, surviving resets: CONTROLHUB_OWNER_EMAIL / CONTROLHUB_OWNER_PASSWORD.
-// Retention comes from .controlhub/settings.env, which the binary loads itself.
-const owner = loadEnvFile(".controlhub/owner.env");
-await run("cargo", ["run", "-q", "-p", "controlhub-api", "--", "bootstrap", "--out-dir", dir, ...apiArgs], {
+// The only account, surviving resets: KARBIRD_OWNER_EMAIL / KARBIRD_OWNER_PASSWORD.
+// Retention comes from .karbird/settings.env, which the binary loads itself.
+const owner = loadEnvFile(".karbird/owner.env");
+await run("cargo", ["run", "-q", "-p", "karbird-api", "--", "bootstrap", "--out-dir", dir, ...apiArgs], {
   env: { ...process.env, ...infra, ...owner },
 });
-console.error(`[bootstrap] owner account: ${owner.CONTROLHUB_OWNER_EMAIL} (password from .controlhub/owner.env)`);
+console.error(`[bootstrap] owner account: ${owner.KARBIRD_OWNER_EMAIL} (password from .karbird/owner.env)`);
 console.error(`[bootstrap] done. Ingestion tokens: ${join(dir, "local-credentials.json")}`);

@@ -4,7 +4,7 @@
 
 **Goal:** Named permissions and per-project role templates (built-in Owner/Admin/Operator/Viewer plus custom ones), assignable per member as a template or an individual set, managed from a project settings page.
 
-**Architecture:** A pure `permissions` module in `controlhub-api` owns the catalog, built-in sets and the anti-escalation rules. PostgreSQL stores templates in `project_roles` (built-ins created by a trigger on `projects`), memberships point to a template or carry an individual set. `authorize()` checks a `Permission` instead of a minimum role. New REST routes for roles and members; the web gets a settings page and gates UI by permissions.
+**Architecture:** A pure `permissions` module in `karbird-api` owns the catalog, built-in sets and the anti-escalation rules. PostgreSQL stores templates in `project_roles` (built-ins created by a trigger on `projects`), memberships point to a template or carry an individual set. `authorize()` checks a `Permission` instead of a minimum role. New REST routes for roles and members; the web gets a settings page and gates UI by permissions.
 
 **Tech Stack:** Rust (axum, sqlx, utoipa, proptest), PostgreSQL, Next.js/React, TanStack Query, vitest, node:test, Playwright.
 
@@ -23,13 +23,13 @@ Spec: `docs/superpowers/specs/2026-09-30-permissions-roles-design.md`.
 
 | File | Responsibility |
 |---|---|
-| `crates/controlhub-api/src/permissions.rs` (new) | `Permission` enum, catalog labels, built-in sets, parsing, `can_grant` / anti-escalation checks (pure) |
+| `crates/karbird-api/src/permissions.rs` (new) | `Permission` enum, catalog labels, built-in sets, parsing, `can_grant` / anti-escalation checks (pure) |
 | `infra/migrations/postgres/0004_roles.sql` (new) | `project_roles`, trigger for built-ins, membership columns, data migration |
-| `crates/controlhub-storage/src/pg.rs` | membership rows with effective permissions; role/member CRUD |
-| `crates/controlhub-api/src/auth.rs` | `authorize(..., Permission)`; remove `Role` |
-| `crates/controlhub-api/src/routes/roles.rs` (new) | roles + members + permissions catalog handlers |
-| `crates/controlhub-api/src/routes/{session,tokens,actions,telemetry,live,mod}.rs` | permission mapping; `ProjectDto` gains `role_name`, `permissions` |
-| `crates/controlhub-api/src/{main.rs,openapi.rs,bootstrap.rs,test_fixtures.rs}` | routes, OpenAPI, grants |
+| `crates/karbird-storage/src/pg.rs` | membership rows with effective permissions; role/member CRUD |
+| `crates/karbird-api/src/auth.rs` | `authorize(..., Permission)`; remove `Role` |
+| `crates/karbird-api/src/routes/roles.rs` (new) | roles + members + permissions catalog handlers |
+| `crates/karbird-api/src/routes/{session,tokens,actions,telemetry,live,mod}.rs` | permission mapping; `ProjectDto` gains `role_name`, `permissions` |
+| `crates/karbird-api/src/{main.rs,openapi.rs,bootstrap.rs,test_fixtures.rs}` | routes, OpenAPI, grants |
 | `apps/web/src/lib/permissions.ts` (new) | `can(project, perm)`, labels (pure, vitest) |
 | `apps/web/src/components/settings/{SettingsPage,MembersTab,RolesTab}.tsx` (new) | settings UI |
 | `apps/web/src/app/app/[projectId]/[environmentId]/settings/page.tsx` (new) | route |
@@ -40,7 +40,7 @@ Spec: `docs/superpowers/specs/2026-09-30-permissions-roles-design.md`.
 
 ### Task 1: Permission model (pure)
 
-**Files:** Create `crates/controlhub-api/src/permissions.rs`; modify `crates/controlhub-api/src/main.rs` (`mod permissions;`).
+**Files:** Create `crates/karbird-api/src/permissions.rs`; modify `crates/karbird-api/src/main.rs` (`mod permissions;`).
 
 **Produces:**
 - `enum Permission { TelemetryView, TokensView, TokensManage, ActionsView, ActionsPropose, ActionsApprove, MembersView, MembersManage, RolesManage, ProjectManage }` with `as_str()` (`"telemetry.view"` …), `parse(&str) -> Option<Self>`, `ALL: [Permission; 10]`, `label()`.
@@ -53,13 +53,13 @@ Spec: `docs/superpowers/specs/2026-09-30-permissions-roles-design.md`.
 
 - [ ] Step 1: Write unit tests in the module: exact parsing (`"Telemetry.view"`, `" telemetry.view"`, `"*"` rejected); built-in sets match the spec table; `normalise` adds `tokens.view`; `check_member_change` refuses self-edit, superset grants, Owner by non-owner, changing an owner by non-owner, last owner demotion/removal (`owners_left_after == 0`), and allows subset grants; `check_template_change` refuses supersets of the actor for new and existing templates.
 - [ ] Step 2: proptest: for random actor sets and random requested sets, `check_member_change` succeeds only if requested ⊆ actor; for random sequences of successful operations over a small member list starting with one owner, no member ever ends up with a permission that the acting member lacked at that step, and at least one owner remains.
-- [ ] Step 3: Run `cargo test -p controlhub-api permissions` → FAIL (module missing).
+- [ ] Step 3: Run `cargo test -p karbird-api permissions` → FAIL (module missing).
 - [ ] Step 4: Implement the module.
-- [ ] Step 5: Run `cargo test -p controlhub-api permissions` → PASS.
+- [ ] Step 5: Run `cargo test -p karbird-api permissions` → PASS.
 
 ### Task 2: Schema and storage
 
-**Files:** Create `infra/migrations/postgres/0004_roles.sql`; modify `crates/controlhub-storage/src/pg.rs`, `crates/controlhub-api/src/bootstrap.rs` (grants), `crates/controlhub-api/src/test_fixtures.rs`.
+**Files:** Create `infra/migrations/postgres/0004_roles.sql`; modify `crates/karbird-storage/src/pg.rs`, `crates/karbird-api/src/bootstrap.rs` (grants), `crates/karbird-api/src/test_fixtures.rs`.
 
 Migration:
 
@@ -75,7 +75,7 @@ CREATE TABLE project_roles (
 CREATE UNIQUE INDEX project_roles_name_idx ON project_roles (project_id, lower(name));
 CREATE UNIQUE INDEX project_roles_builtin_idx ON project_roles (project_id, builtin) WHERE builtin IS NOT NULL;
 
-CREATE FUNCTION controlhub_builtin_roles() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION karbird_builtin_roles() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   INSERT INTO project_roles (project_id, name, permissions, builtin) VALUES
     (NEW.id, 'Owner', ARRAY['telemetry.view','tokens.view','tokens.manage','actions.view','actions.propose','actions.approve','members.view','members.manage','roles.manage','project.manage'], 'owner'),
@@ -84,7 +84,7 @@ BEGIN
     (NEW.id, 'Viewer', ARRAY['telemetry.view','actions.view','members.view'], 'viewer');
   RETURN NEW;
 END $$;
-CREATE TRIGGER projects_builtin_roles AFTER INSERT ON projects FOR EACH ROW EXECUTE FUNCTION controlhub_builtin_roles();
+CREATE TRIGGER projects_builtin_roles AFTER INSERT ON projects FOR EACH ROW EXECUTE FUNCTION karbird_builtin_roles();
 -- existing projects
 INSERT INTO project_roles (project_id, name, permissions, builtin)
 SELECT p.id, b.name, b.perms, b.key FROM projects p CROSS JOIN (VALUES
@@ -103,7 +103,7 @@ ALTER TABLE memberships DROP COLUMN role;
 ALTER TABLE memberships ADD CONSTRAINT memberships_one_grant CHECK ((role_id IS NULL) <> (permissions IS NULL));
 ```
 
-(The trigger function runs as the inserting role, so `controlhub_api` needs `INSERT` on `project_roles`.)
+(The trigger function runs as the inserting role, so `karbird_api` needs `INSERT` on `project_roles`.)
 
 Storage (`pg.rs`), **produces:**
 - `MembershipRow { tenant_id, project_id, project_name, role_key: Option<String>, role_name: String, permissions: Vec<String>, is_owner: bool }` — `role_key` = builtin key, `role_name` = template name or `"Individual"`, `permissions` = `COALESCE(m.permissions, r.permissions)`.
@@ -115,12 +115,12 @@ Storage (`pg.rs`), **produces:**
 - `delete_users_in_domains` keeps working (memberships have no role column now).
 
 - [ ] Step 1: Add unit tests for pure helpers only (row → effective permissions mapping is SQL; covered by integration).
-- [ ] Step 2: Write migration and storage methods; update grants in `bootstrap.rs`: `controlhub_api` gets `SELECT, INSERT, UPDATE, DELETE ON project_roles` and `SELECT, INSERT, UPDATE, DELETE ON memberships`; executor `SELECT ON project_roles, memberships` only if used (it is not today, skip).
-- [ ] Step 3: `cargo test -p controlhub-storage` → PASS; `just bootstrap` applies the migration; `psql` check: built-ins exist for `demo`, owner membership points to the `owner` role.
+- [ ] Step 2: Write migration and storage methods; update grants in `bootstrap.rs`: `karbird_api` gets `SELECT, INSERT, UPDATE, DELETE ON project_roles` and `SELECT, INSERT, UPDATE, DELETE ON memberships`; executor `SELECT ON project_roles, memberships` only if used (it is not today, skip).
+- [ ] Step 3: `cargo test -p karbird-storage` → PASS; `just bootstrap` applies the migration; `psql` check: built-ins exist for `demo`, owner membership points to the `owner` role.
 
 ### Task 3: Authorization by permission
 
-**Files:** modify `auth.rs`, `routes/{telemetry,live,mod,tokens,actions,session}.rs`, `crates/controlhub-cli/src/test_http.rs` (fixture shape).
+**Files:** modify `auth.rs`, `routes/{telemetry,live,mod,tokens,actions,session}.rs`, `crates/karbird-cli/src/test_http.rs` (fixture shape).
 
 **Consumes:** `Permission`, `from_stored`, `MembershipRow`. **Produces:** `authorize(state, user, project, env, Permission) -> Result<Authorized, ApiError>` where `Authorized { scope: Scope, is_demo: bool, actor: permissions::Actor }`.
 
@@ -130,7 +130,7 @@ Mapping: telemetry/live/coverage/services → `TelemetryView`; token list → `T
 
 - [ ] Step 1: Replace the `Role` tests in `auth.rs` with: API tokens get 403 for every permission except `TelemetryView`; 404 for other scopes; malformed ids 404 before lookup (keep existing assertions with `Permission::TelemetryView`).
 - [ ] Step 2: Implement; update every call site.
-- [ ] Step 3: `cargo test -p controlhub-api` → PASS; existing handler tests unchanged in meaning.
+- [ ] Step 3: `cargo test -p karbird-api` → PASS; existing handler tests unchanged in meaning.
 
 ### Task 4: Roles and members API
 
@@ -152,7 +152,7 @@ All mutations write `audit_log` (`action`: `role.create|role.update|role.delete|
 
 - [ ] Step 1: Handler tests (oneshot, fake state where available; otherwise pure checks through `permissions`): 401 without session; 403 without CSRF; 400 unknown permission; 403 self-edit; 403 escalation; 403 last owner; 409 held delete; 404 other tenant.
 - [ ] Step 2: Implement handlers and OpenAPI annotations; `just codegen`.
-- [ ] Step 3: `cargo test -p controlhub-api` → PASS; `just check` → PASS.
+- [ ] Step 3: `cargo test -p karbird-api` → PASS; `just check` → PASS.
 
 ### Task 5: Web — permissions helper and gating
 
@@ -162,7 +162,7 @@ All mutations write `audit_log` (`action`: `role.create|role.update|role.delete|
 
 - [ ] Step 1: vitest: `can` is false for missing project/unknown strings; groups cover every permission exactly once and match the API catalog ids (import from generated schema type).
 - [ ] Step 2: Replace `role === "admin" || role === "owner"` with `can(project, "tokens.manage")` etc.; sidebar shows **Settings** when `members.view`.
-- [ ] Step 3: `pnpm --filter @controlhub/web test` and `typecheck` → PASS.
+- [ ] Step 3: `pnpm --filter @karbird/web test` and `typecheck` → PASS.
 
 ### Task 6: Web — settings page (Members, Roles)
 
@@ -176,7 +176,7 @@ UI:
 
 - [ ] Step 1: vitest for `matrix.ts`.
 - [ ] Step 2: Implement components with TanStack Query mutations (invalidate `members`, `roles`, `session`).
-- [ ] Step 3: `pnpm --filter @controlhub/web test`, `just check` → PASS.
+- [ ] Step 3: `pnpm --filter @karbird/web test`, `just check` → PASS.
 
 ### Task 7: Integration and e2e tests, docs
 

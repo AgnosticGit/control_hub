@@ -4,12 +4,12 @@ import { baselineCsp } from "./src/lib/csp";
 
 // Server-side only: where the Next.js server forwards /api/v1/* (same-origin
 // for the browser, so session cookies stay SameSite=Strict and HttpOnly).
-const apiUrl = process.env.CONTROLHUB_API_URL ?? "http://127.0.0.1:8080";
+const apiUrl = process.env.KARBIRD_API_URL ?? "http://127.0.0.1:8080";
 // Where /otlp/* is forwarded: the Rust ingest (OTLP/HTTP). Lets SDKs send telemetry through
 // the same public address as the web app; tokens are checked by ingest, not here.
-const ingestUrl = process.env.CONTROLHUB_INGEST_URL ?? "http://127.0.0.1:4318";
+const ingestUrl = process.env.KARBIRD_INGEST_URL ?? "http://127.0.0.1:4318";
 // Public tunnel hostname, set only by `just dev ngrok`; the dev server rejects other cross-origin hosts.
-const publicHost = process.env.CONTROLHUB_DEV_PUBLIC_URL ? new URL(process.env.CONTROLHUB_DEV_PUBLIC_URL).hostname : null;
+const publicHost = process.env.KARBIRD_DEV_PUBLIC_URL ? new URL(process.env.KARBIRD_DEV_PUBLIC_URL).hostname : null;
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -27,7 +27,7 @@ const nextConfig: NextConfig = {
   // Rewrites below are fixed at build time, so the image is built with the in-cluster addresses.
   output: "standalone",
   outputFileTracingRoot: resolve(process.cwd(), "../.."),
-  transpilePackages: ["@controlhub/api-client", "@controlhub/web-engine"],
+  transpilePackages: ["@karbird/api-client", "@karbird/web-engine"],
   allowedDevOrigins: publicHost ? [publicHost] : [],
   async rewrites() {
     return [

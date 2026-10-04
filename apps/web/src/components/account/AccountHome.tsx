@@ -18,8 +18,8 @@ export function SetupCard() {
     <section aria-label="Setup" className="rounded-lg border border-border bg-surface p-6 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-md">
-          <h2 className="text-base font-semibold">Finish setting up ControlHub</h2>
-          <p className="mt-1 leading-relaxed text-muted">A few optional steps to get the most out of ControlHub. Skip any of them; you can always come back.</p>
+          <h2 className="text-base font-semibold">Finish setting up karbird</h2>
+          <p className="mt-1 leading-relaxed text-muted">A few optional steps to get the most out of karbird. Skip any of them; you can always come back.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/app/onboarding" className="btn btn-primary h-9 px-4">

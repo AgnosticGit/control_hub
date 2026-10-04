@@ -11,17 +11,17 @@ happen on a production deploy.
 - **Images are built once, in CI** (`deploy/Dockerfile`, `deploy/docker-bake.hcl`): one Rust
   stage compiles all five service binaries, a WASM stage builds the engine, the web stage builds
   Next.js with `output: "standalone"`. Six images go to GHCR as
-  `ghcr.io/<owner>/controlhub-<service>:<tag>`; the tag is the git tag (`v*`) or `sha-<12>`,
+  `ghcr.io/<owner>/karbird-<service>:<tag>`; the tag is the git tag (`v*`) or `sha-<12>`,
   never `latest`. Hosts only pull.
 - **Two hosts, two Compose files.** `storage` runs PostgreSQL, ClickHouse and SeaweedFS with
   ports bound to its private IP only. `app` runs Kafka, ingest, processor, API, executor,
   archiver, web and Caddy; only Caddy (80/443) is public. Caddy terminates TLS (ACME) and routes
   `/api/v1/*` to the API, `/otlp/*` to ingest (prefix stripped), everything else to web.
 - **One deploy secret.** Every service password and S3 key is derived from
-  `CONTROLHUB_SECRET_SEED` with HMAC-SHA256 per purpose (`scripts/deploy-config.mjs`), so GitHub
+  `KARBIRD_SECRET_SEED` with HMAC-SHA256 per purpose (`scripts/deploy-config.mjs`), so GitHub
   holds one secret and every deploy renders identical values. The rendered files exist only on
-  the runner and in `/opt/controlhub` on the hosts (mode 600).
-- **`controlhub-api migrate` replaces `bootstrap` on servers**: migrations, built-in roles,
+  the runner and in `/opt/karbird` on the hosts (mode 600).
+- **`karbird-api migrate` replaces `bootstrap` on servers**: migrations, built-in roles,
   service roles and ClickHouse users, retention (ADR-0016, `--shrink-retention` to confirm a
   decrease), and the owner account if it does not exist. It seeds nothing, rotates nothing,
   writes no files and never resets an existing owner's password. It runs on every deploy before
@@ -33,7 +33,7 @@ happen on a production deploy.
 ## Consequences
 - A release is `git tag vX.Y.Z && git push --tags`; a rollback is a manual run on the older tag
   (migrations must stay backward compatible for one release).
-- Changing `CONTROLHUB_SECRET_SEED` after the first deploy breaks the PostgreSQL admin login
+- Changing `KARBIRD_SECRET_SEED` after the first deploy breaks the PostgreSQL admin login
   (set once when the volume is created); rotating it needs a manual password change.
 - Memory is not tuned yet: with defaults each host idles around 0.5 GB, so `deploy/host-setup.sh`
   adds 2 GB of swap. Limits for 1 GB hosts are a separate task.

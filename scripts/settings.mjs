@@ -1,4 +1,4 @@
-// .controlhub/settings.env: the developer's own settings for the local stand. Created with
+// .karbird/settings.env: the developer's own settings for the local stand. Created with
 // defaults by `just bootstrap` and never overwritten; real environment variables win over it.
 // The services read it themselves (before the generated services.env).
 import { existsSync, writeFileSync } from "node:fs";
@@ -6,15 +6,17 @@ import { join } from "node:path";
 
 export const SETTINGS_FILE = "settings.env";
 
-export const SETTINGS_TEMPLATE = `# Local ControlHub settings. Yours to edit; \`just bootstrap\` creates it once and never overwrites it.
-# Real environment variables win over this file. Never commit .controlhub/.
+export const SETTINGS_TEMPLATE = `# Local karbird settings. Yours to edit; \`just bootstrap\` creates it once and never overwrites it.
+# Real environment variables win over this file. Never commit .karbird/.
 
 # How many days ClickHouse keeps each signal (2..3650). After a change run \`just bootstrap\`:
 # it applies the new value as the table TTL. Until then the API and the archiver refuse to start.
 # Shortening that deletes stored data needs \`just bootstrap --shrink-retention\`.
-CONTROLHUB_LOGS_RETENTION_DAYS=14
-CONTROLHUB_SPANS_RETENTION_DAYS=14
-CONTROLHUB_EVENTS_RETENTION_DAYS=30
+KARBIRD_LOGS_RETENTION_DAYS=14
+KARBIRD_SPANS_RETENTION_DAYS=14
+KARBIRD_EVENTS_RETENTION_DAYS=30
+# Machine and container metrics from the Karbird agent (Infrastructure layer of the map).
+KARBIRD_METRICS_RETENTION_DAYS=14
 `;
 
 /** Writes the template if the file is missing; returns true when it was created. */
@@ -25,7 +27,7 @@ export function ensureSettings(dir) {
   return true;
 }
 
-/** `just bootstrap [--shrink-retention]` → extra args for `controlhub-api bootstrap`. */
+/** `just bootstrap [--shrink-retention]` → extra args for `karbird-api bootstrap`. */
 export function parseBootstrapArgs(argv) {
   const out = [];
   for (const a of argv) {

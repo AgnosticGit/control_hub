@@ -2,8 +2,8 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Response};
-use controlhub_storage::pg::AccountRow;
-use controlhub_storage::secrets::{generate_token, hash_token, verify_password};
+use karbird_storage::pg::AccountRow;
+use karbird_storage::secrets::{generate_token, hash_token, verify_password};
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
@@ -80,7 +80,7 @@ pub struct ProjectDto {
 pub struct SessionResponse {
     pub user: UserDto,
     pub projects: Vec<ProjectDto>,
-    /// ControlHub administrator access; absent for everyone else and for API tokens.
+    /// karbird administrator access; absent for everyone else and for API tokens.
     pub system: Option<crate::routes::admin::SystemAccessDto>,
 }
 
@@ -173,7 +173,7 @@ pub(crate) async fn start_session(
         .await?;
     let _ = state
         .pg
-        .audit(controlhub_storage::pg::NewAuditEntry {
+        .audit(karbird_storage::pg::NewAuditEntry {
             tenant_id: None,
             project_id: None,
             actor_id: &user_id.to_string(),
@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn session_cookie_is_http_only_strict_and_secure_outside_dev() {
         let a = attrs(&cookie(SESSION_COOKIE, "chs_x", true, true, 43_200).unwrap());
-        assert_eq!(a[0], "controlhub_session=chs_x");
+        assert_eq!(a[0], "karbird_session=chs_x");
         for want in ["Path=/", "SameSite=Strict", "Max-Age=43200", "HttpOnly", "Secure"] {
             assert!(a.iter().any(|x| x == want), "missing {want}: {a:?}");
         }
@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn logout_cookies_expire_immediately() {
         let a = attrs(&cookie(SESSION_COOKIE, "", true, true, 0).unwrap());
-        assert_eq!(a[0], "controlhub_session=");
+        assert_eq!(a[0], "karbird_session=");
         assert!(a.iter().any(|x| x == "Max-Age=0"));
     }
 
@@ -275,7 +275,7 @@ mod tests {
     fn cookie_values_cannot_inject_attributes_or_headers() {
         assert!(cookie(SESSION_COOKIE, "x\r\nSet-Cookie: evil=1", true, true, 1).is_err());
         // Generated tokens are base64url, so they never contain `;`; the header stays one cookie.
-        let t = controlhub_storage::secrets::generate_token("chs_").unwrap();
+        let t = karbird_storage::secrets::generate_token("chs_").unwrap();
         assert_eq!(attrs(&cookie(SESSION_COOKIE, &t, true, true, 1).unwrap())[0], format!("{SESSION_COOKIE}={t}"));
     }
 
@@ -292,7 +292,7 @@ mod tests {
     fn dummy_hash_costs_the_same_as_a_real_hash() {
         use argon2::password_hash::PasswordHash;
         let dummy = PasswordHash::new(DUMMY_HASH).unwrap();
-        let real_s = controlhub_storage::secrets::hash_password("x").unwrap();
+        let real_s = karbird_storage::secrets::hash_password("x").unwrap();
         let real = PasswordHash::new(&real_s).unwrap();
         assert_eq!(dummy.algorithm, real.algorithm);
         assert_eq!(dummy.version, real.version);

@@ -85,7 +85,7 @@ export function Onboarding() {
       <header className="flex flex-wrap items-center gap-4 border-b border-border bg-bg-2/60 px-6 py-3">
         <Link href="/app" className="flex items-center gap-2 font-semibold">
           <Logo className="h-6 w-6" />
-          ControlHub
+          karbird
         </Link>
         <div className="mx-auto">
           <Stepper step={step} />
@@ -97,7 +97,7 @@ export function Onboarding() {
 
       <main className="mx-auto max-w-4xl space-y-5 p-6">
         <div>
-          {step === "connect" ? <p className="text-sm text-muted">Welcome to ControlHub, {name}. Setup takes a few minutes; every step is optional.</p> : null}
+          {step === "connect" ? <p className="text-sm text-muted">Welcome to karbird, {name}. Setup takes a few minutes; every step is optional.</p> : null}
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">{step === "done" ? "You're all set" : title}</h1>
           {project ? <p className="mt-1 text-sm text-muted">Project: {project.name}{env ? ` / ${env.name}` : ""}</p> : null}
         </div>
@@ -144,7 +144,7 @@ export function Onboarding() {
                 Go to your account
               </button>
               <button type="button" className="btn btn-primary h-10 px-5" disabled={update.isPending} onClick={() => finish(overview)}>
-                Open {project?.name ?? "ControlHub"}
+                Open {project?.name ?? "karbird"}
                 <Icon name="arrowRight" className="h-4 w-4" />
               </button>
             </>

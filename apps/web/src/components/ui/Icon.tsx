@@ -66,7 +66,7 @@ export function Icon({ name, className = "h-4 w-4", strokeWidth = 2 }: { name: I
   );
 }
 
-/** ControlHub mark: two service lines meeting at an interchange station. */
+/** karbird mark: two service lines meeting at an interchange station. */
 export function Logo({ className = "h-7 w-7" }: { className?: string }) {
   return (
     <svg aria-hidden viewBox="0 0 32 32" className={className}>

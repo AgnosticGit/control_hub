@@ -1,0 +1,99 @@
+# Karbird agent: an OpenTelemetry Collector (contrib) that reports this machine and its Docker
+# containers to karbird ingest. Only the metrics the infrastructure layer reads are exported;
+# no logs, no process command lines, no container environment or labels.
+#
+# Environment (see compose.yaml next to this file):
+#   KARBIRD_OTLP_ENDPOINT  karbird OTLP/HTTP base URL, e.g. https://karbird.example.com/otlp (/v1/metrics is appended)
+#   KARBIRD_INGEST_TOKEN   ingest token with the "metrics" signal for the target environment
+#   KARBIRD_HOST_NAME      machine name shown on the map; the services' SDK must report the same host.name
+
+receivers:
+  hostmetrics:
+    root_path: /hostfs
+    collection_interval: 10s
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.logical.count:
+            enabled: true
+      memory:
+        metrics:
+          system.memory.limit:
+            enabled: true
+      filesystem:
+        include_mount_points:
+          mount_points: ["/"]
+          match_type: strict
+      network:
+        exclude:
+          interfaces: ["lo", "veth.*", "docker.*", "br-.*"]
+          match_type: regexp
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    collection_interval: 10s
+    metrics:
+      container.cpu.usage.total:
+        enabled: true
+      container.memory.usage.total:
+        enabled: true
+      container.memory.usage.limit:
+        enabled: true
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 96
+  filter/karbird:
+    error_mode: ignore
+    metrics:
+      metric:
+        - >-
+          not (name == "system.cpu.time" or name == "system.cpu.logical.count" or
+          name == "system.memory.usage" or name == "system.memory.limit" or
+          name == "system.filesystem.usage" or name == "system.network.io" or
+          name == "container.cpu.usage.total" or name == "container.memory.usage.total" or
+          name == "container.memory.usage.limit" or name == "container.network.io.usage.rx_bytes" or
+          name == "container.network.io.usage.tx_bytes")
+  resource/karbird:
+    attributes:
+      - key: host.name
+        value: ${env:KARBIRD_HOST_NAME}
+        action: upsert
+      - key: host.id
+        value: ${env:KARBIRD_HOST_NAME}
+        action: upsert
+      - key: container.image.name
+        action: delete
+      - key: container.runtime
+        action: delete
+  batch:
+    timeout: 10s
+
+exporters:
+  otlphttp/karbird:
+    endpoint: ${env:KARBIRD_OTLP_ENDPOINT}
+    headers:
+      Authorization: Bearer ${env:KARBIRD_INGEST_TOKEN}
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+    sending_queue:
+      enabled: true
+      queue_size: 200
+
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      level: none
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, docker_stats]
+      processors: [memory_limiter, filter/karbird, resource/karbird, batch]
+      exporters: [otlphttp/karbird]

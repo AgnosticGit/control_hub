@@ -1,5 +1,5 @@
 ---
-name: ControlHub
+name: karbird
 description: Observability, replay and controlled change for distributed systems, drawn as a transit line map on matte graphite.
 colors:
   graphite-ground: "#17181a"
@@ -137,13 +137,13 @@ components:
     height: "40px"
 ---
 
-# Design System: ControlHub
+# Design System: karbird
 
 ## Overview
 
 **Creative North Star: "The Metro Diagram"**
 
-ControlHub draws a distributed system the way a city draws its metro: services are stations on coloured lines, requests are trains running between them, and time is a timetable rail you can scrub. The whole product sits on a matte graphite ground with hairline rules, so the only things that carry colour are the lines themselves and the health of what they connect. Everything else (chrome, cards, navigation, forms) stays neutral and quiet.
+karbird draws a distributed system the way a city draws its metro: services are stations on coloured lines, requests are trains running between them, and time is a timetable rail you can scrub. The whole product sits on a matte graphite ground with hairline rules, so the only things that carry colour are the lines themselves and the health of what they connect. Everything else (chrome, cards, navigation, forms) stays neutral and quiet.
 
 Density is professional-SaaS, not dashboard-crowded: landing sections breathe on wide 80px bands, the account area uses a narrow reading column, and the workspace keeps compact 32px controls. Depth comes from stepping graphite tones up, not from glow, gradient washes or lifted tiles. Primary actions read like wayfinding signs: a light sign fill with dark ink, one per region.
 
@@ -267,7 +267,7 @@ Quiet graphite controls; the primary action is a sign.
 - **Switch:** native checkbox drawn as a 28×16 pill; checked fills accent with a white knob.
 
 ### Navigation
-- **Public header:** logo mark + "ControlHub" in 17px bold; links 14px muted, 6px radius, hover to surface-2 and text; "Open app" is a 36px sign button at the end. Links scroll horizontally on mobile.
+- **Public header:** logo mark + "karbird" in 17px bold; links 14px muted, 6px radius, hover to surface-2 and text; "Open app" is a 36px sign button at the end. Links scroll horizontally on mobile.
 - **Account sidebar:** 14px items with 16px icons, 6px radius; active item is surface-3 + semibold text with `aria-current`; inactive muted with surface-2 hover.
 
 ### Line Swatch and Station (signature)

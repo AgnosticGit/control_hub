@@ -37,7 +37,7 @@ test("every onboarding step can be skipped, and the invite step creates a workin
 test("leaving onboarding never blocks the app; Finish setup brings it back until it is skipped", async ({ page }) => {
   await register(page);
   // Leave without finishing: the workspace opens normally.
-  await page.getByRole("link", { name: "ControlHub" }).click();
+  await page.getByRole("link", { name: "karbird" }).click();
   await expect(page).toHaveURL(/\/app\/p-[0-9a-f]{32}\/e-[0-9a-f]{32}$/);
   const finish = page.getByRole("link", { name: "Finish setup" });
   await expect(finish).toBeVisible();

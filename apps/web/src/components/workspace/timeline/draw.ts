@@ -1,6 +1,6 @@
 // 2D-canvas drawing of the layered timeline. Pure: everything it needs is passed in.
 
-import type { TimelineTracks } from "@controlhub/web-engine";
+import type { TimelineTracks } from "@karbird/web-engine";
 import { formatTick, tickStep, ticks, xOf, type View } from "./scale";
 
 export type RowKind = "actions" | "events" | "errors" | "requests" | "latency" | "group" | "service";

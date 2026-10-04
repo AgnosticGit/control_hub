@@ -16,7 +16,7 @@ function problem(e: unknown): string {
   if (e instanceof ApiRequestError && e.status === 410) {
     return `${e.message.replace(/^gone: /, "").replace(/^./, (c) => c.toUpperCase())}. Ask for a new link.`;
   }
-  return "Cannot reach the ControlHub API.";
+  return "Cannot reach the karbird API.";
 }
 
 function Card({ children }: { children: React.ReactNode }) {
@@ -80,7 +80,7 @@ export default function InvitePage() {
           {secret ? problem(preview.error) : "This invite link is incomplete. Open the full link you were sent."}
         </p>
         <Link href="/app" className="btn h-10 w-full">
-          Go to ControlHub
+          Go to karbird
         </Link>
       </Card>
     );

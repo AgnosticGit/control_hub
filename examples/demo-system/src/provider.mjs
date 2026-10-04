@@ -1,4 +1,4 @@
-// Demo stand-in for an external payment provider. Not instrumented on purpose: ControlHub
+// Demo stand-in for an external payment provider. Not instrumented on purpose: karbird
 // only sees the payments service's client spans and shows the provider as inferred.
 import { createServer } from 'node:http';
 

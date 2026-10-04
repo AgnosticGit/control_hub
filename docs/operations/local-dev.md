@@ -4,7 +4,7 @@
 
 | Port | Service |
 |---|---|
-| 15432 | PostgreSQL (ControlHub metadata) |
+| 15432 | PostgreSQL (karbird metadata) |
 | 18123 | ClickHouse HTTP |
 | 19092 | Kafka (single-node KRaft) |
 | 15433 | Demo Postgres (profile `demo`) |
@@ -20,15 +20,15 @@
 The infrastructure ports sit outside the default ranges, so they don't clash with a local
 Postgres, ClickHouse or Kafka. See ADR-0006.
 
-## Generated local state (`.controlhub/`, gitignored)
+## Generated local state (`.karbird/`, gitignored)
 
 - `settings.env`: your own settings, created once with defaults and never overwritten. Holds the
-  ClickHouse retention in days (`CONTROLHUB_LOGS_RETENTION_DAYS`, `CONTROLHUB_SPANS_RETENTION_DAYS`,
-  `CONTROLHUB_EVENTS_RETENTION_DAYS`). The services read it before `services.env`; real environment
+  ClickHouse retention in days (`KARBIRD_LOGS_RETENTION_DAYS`, `KARBIRD_SPANS_RETENTION_DAYS`,
+  `KARBIRD_EVENTS_RETENTION_DAYS`, `KARBIRD_METRICS_RETENTION_DAYS`). The services read it before `services.env`; real environment
   variables win. See "Changing retention" below.
 - `infra.env`: infrastructure passwords. It is kept across bootstraps.
 - `services.env`: a least-privilege connection string for each service, including the executor.
-  `CONTROLHUB_ENV=dev`.
+  `KARBIRD_ENV=dev`.
 - `demo.env`: the demo services' ingestion token and endpoint.
 - `local-credentials.json`: the web login plus the ingestion token. Every bootstrap generates new
   ones.
@@ -50,15 +50,15 @@ just reset       # asks for confirmation, then deletes volumes (all local teleme
 
 ## Changing retention
 
-1. Edit the days in `.controlhub/settings.env`.
+1. Edit the days in `.karbird/settings.env`.
 2. `just bootstrap` sets them as the ClickHouse table TTLs. If a shorter value would delete stored
    rows, bootstrap stops and says how many. Confirm with `just bootstrap --shrink-retention`.
 3. Restart `just dev`.
 
 Until bootstrap has applied the change, the API and the archiver refuse to start with
-"`CONTROLHUB_…_RETENTION_DAYS` is N days but ClickHouse keeps … for M days; run `just bootstrap`".
+"`KARBIRD_…_RETENTION_DAYS` is N days but ClickHouse keeps … for M days; run `just bootstrap`".
 The API reads logs older than one day less than the log retention from the archive
-(`CONTROLHUB_ARCHIVE_HOT_WINDOW_HOURS` overrides this and must stay below the retention). See ADR-0016.
+(`KARBIRD_ARCHIVE_HOT_WINDOW_HOURS` overrides this and must stay below the retention). See ADR-0016.
 
 ## Health and metrics
 
@@ -71,18 +71,18 @@ curl http://127.0.0.1:8080/api/v1/ready
 ## Troubleshooting
 
 - **`Access is denied` while building on Windows.** An older service binary is still running.
-  Stop `just dev`. The dev script already runs copies from `.controlhub/bin` to avoid this.
+  Stop `just dev`. The dev script already runs copies from `.karbird/bin` to avoid this.
 - **ingest returns 503.** Kafka is down or not acknowledging. This is intentional: clients must
-  retry. Check `docker compose -p controlhub ps`.
+  retry. Check `docker compose -p karbird ps`.
 - **The workspace shows an engine error, or the web build fails on `generated/wasm-manifest`.**
   Run `just wasm`, then restart the web app.
 - **The map is empty.** Check that `just demo` is running and that ingest `accepted` is increasing.
   The completeness badge shows how current the data is.
 - **An approved action stays `approved`.** The executor is not running (it is started by
-  `just dev`; look for `controlhub-executor running`). After 10 minutes the plan expires and is
+  `just dev`; look for `karbird-executor running`). After 10 minutes the plan expires and is
   never run.
 - **An action ends as `failed` with "fault control returned 404".** The demo was started without
-  fault injection. `just demo` sets `CONTROLHUB_DEMO_FAULTS=1`.
+  fault injection. `just demo` sets `KARBIRD_DEMO_FAULTS=1`.
 - **An action is denied by "rate limit".** At most 30 plans per environment per hour. Repeated test
   runs count too (the actions integration test creates 6, the e2e 1), so wait for the window to
   pass. `just bootstrap` does not delete plans.

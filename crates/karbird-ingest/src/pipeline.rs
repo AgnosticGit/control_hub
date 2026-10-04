@@ -4,21 +4,25 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use controlhub_domain::Signal;
-use controlhub_protocol::ENVELOPE_SCHEMA_VERSION;
-use controlhub_protocol::v1::{IngestEnvelope, IngestScope, ingest_envelope::Payload};
-use controlhub_storage::pg::IngestCredential;
+use karbird_domain::Signal;
+use karbird_protocol::ENVELOPE_SCHEMA_VERSION;
+use karbird_protocol::otlp::collector::metrics::v1::ExportMetricsServiceRequest;
+use karbird_protocol::v1::{IngestEnvelope, IngestScope, ingest_envelope::Payload};
+use karbird_storage::pg::IngestCredential;
 use prost::Message;
 
 use crate::auth::{AuthError, Authenticator};
 use crate::broker::{PublishError, Publisher};
 use crate::metrics::Metrics;
+use crate::sanitize::MetricStats;
+use crate::series::SeriesLimiter;
 
 #[derive(Debug, Clone)]
 pub struct AppState {
     pub auth: Authenticator,
     pub publisher: Publisher,
     pub metrics: Arc<Metrics>,
+    pub series: Arc<SeriesLimiter>,
     pub source_id: String,
 }
 
@@ -50,6 +54,17 @@ impl AppState {
             }
             AcceptError::Auth(e)
         })
+    }
+
+    /// Sanitises metrics under the credential's series budget and counts every outcome.
+    pub fn sanitize_metrics(&self, cred: &IngestCredential, req: &mut ExportMetricsServiceRequest) -> MetricStats {
+        let key = format!("{}/{}/{}", cred.scope.tenant_id, cred.scope.project_id, cred.scope.environment_id);
+        let stats = crate::sanitize::sanitize_metrics(req, &mut |series| self.series.admit(&key, series));
+        Metrics::inc(&self.metrics.attributes_redacted, stats.redacted);
+        Metrics::inc(&self.metrics.attributes_truncated, stats.truncated_attrs);
+        Metrics::inc(&self.metrics.metric_points_rejected, stats.rejected);
+        Metrics::inc(&self.metrics.metric_series_rejected, stats.over_limit);
+        stats
     }
 
     /// Publish a sanitised payload under the credential's scope. The payload's

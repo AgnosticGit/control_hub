@@ -32,7 +32,7 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
-      - run: cargo check -p controlhub-engine-core -p controlhub-web-engine --target wasm32-unknown-unknown --locked
+      - run: cargo check -p karbird-engine-core -p karbird-web-engine --target wasm32-unknown-unknown --locked
 
   web:
     name: WASM, codegen drift, web
@@ -56,6 +56,6 @@ jobs:
           git diff --exit-code -- schemas/generated packages/web-engine/src/generated packages/api-client/src/generated
           test -z "$(git status --porcelain -- schemas/generated packages/web-engine/src/generated packages/api-client/src/generated)"
       - run: pnpm -r --if-present typecheck
-      - run: pnpm --filter @controlhub/web lint
-      - run: pnpm --filter @controlhub/sdk-node test
-      - run: pnpm --filter @controlhub/web build
+      - run: pnpm --filter @karbird/web lint
+      - run: pnpm --filter @karbird/sdk-node test
+      - run: pnpm --filter @karbird/web build

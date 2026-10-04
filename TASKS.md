@@ -1,4 +1,4 @@
-# ControlHub — tasks
+# karbird — tasks
 
 Ordered by priority within each stage. `[x]` = done and verified.
 
@@ -17,7 +17,9 @@ Ordered by priority within each stage. `[x]` = done and verified.
 - [x] Demo system + Node SDK + integration tests
 - [x] Automated broker-outage test (`just test-broker-outage`)
 - [x] Content-hash `log_id`, so client retries of logs deduplicate (ADR-0004)
-- [ ] OTLP metrics ingestion (explicitly 501; deferred by ADR-0014 until cardinality limits exist)
+- [x] OTLP metrics ingestion: gauges and sums for machines and containers, series cap per environment (ADR-0018)
+- [x] Infrastructure layer on the map, machine card, instance chain, noisy-neighbour hint (ADR-0018)
+- [ ] Application metrics (histograms, summaries) — still rejected
 
 ## Stage 2 — viewer
 - [x] PixiJS map, table fallback, Worker + WASM engine, inspector, waterfall, virtualized logs
@@ -66,7 +68,7 @@ Ordered by priority within each stage. `[x]` = done and verified.
 
 ## Stage 4 — coding-agent integration
 - [x] Node SDK
-- [x] `controlhub` CLI (Rust): `doctor`, `discover`, `plan`, `apply`, `verify`, `context`
+- [x] `karbird` CLI (Rust): `doctor`, `discover`, `plan`, `apply`, `verify`, `context`
       (`init` was folded into `plan` + `apply`)
 - [x] Fixture project and an apply/verify integration test
 - [x] Cursor-facing docs (`docs/integration/CLI.md`: workflow, suggested rule, MCP config)
@@ -74,10 +76,10 @@ Ordered by priority within each stage. `[x]` = done and verified.
 - [x] Self-service sign-up (email + password, own tenant/project, off by default outside dev) and
       an in-app Integration page (token, OTel env vars, Node, Collector, connection status)
 - [x] `/otlp` proxy on the web app and `just dev ngrok` for a public dev stand
-- [x] No seeded accounts: bootstrap creates only the owner from `.controlhub/owner.env`; test accounts
+- [x] No seeded accounts: bootstrap creates only the owner from `.karbird/owner.env`; test accounts
       exist only during `just test-integration` / `just test-e2e` (`test-fixtures`, removed afterwards)
 - [ ] Email verification, password reset, account deletion; per-client sign-up limits
-- [ ] Publish `@controlhub/sdk-node` and CLI binaries (needs explicit permission)
+- [ ] Publish `@karbird/sdk-node` and CLI binaries (needs explicit permission)
 - [ ] Integration plans for non-Node projects (today: a manual OTLP step)
 
 ## Stage 5 — controlled actions
@@ -92,11 +94,11 @@ Ordered by priority within each stage. `[x]` = done and verified.
 
 ## Stage 6 — public site and expansion
 - [x] Public SEO pages, robots, sitemap
-- [x] Read-only MCP server (`controlhub mcp`, stdio; ADR-0013)
+- [x] Read-only MCP server (`karbird mcp`, stdio; ADR-0013)
 - [x] Strict nonce CSP for `/app/*`, baseline CSP elsewhere
 - [ ] Archiving (ClickHouse TTL to object storage), retention settings per tenant
 - [x] Container images (GHCR, built in CI), two-host Compose deploy via GitHub Actions, TLS at
-      Caddy, secrets derived from one GitHub secret, `controlhub-api migrate`, deploy docs (ADR-0017)
+      Caddy, secrets derived from one GitHub secret, `karbird-api migrate`, deploy docs (ADR-0017)
 - [ ] Production hardening: rustls inside the private network, secrets from a secret manager,
       resource limits tuned for 1 GB hosts, backups of PostgreSQL / ClickHouse
 
@@ -112,7 +114,7 @@ Ordered by priority within each stage. `[x]` = done and verified.
       others), projects (create up to 20 owned, rename, leave)
 - [x] Skippable onboarding after sign-up (`/app/onboarding`): connect, invite, done; "Finish setup"
       stays in the sidebar and account until finished or skipped
-- [x] ControlHub administration (`/app/admin`, `/api/v1/admin/*`, browser sessions only): system
+- [x] karbird administration (`/app/admin`, `/api/v1/admin/*`, browser sessions only): system
       roles Super Admin / Administrator / Auditor plus custom templates and individual sets, with
       the project anti-escalation rules (one Super Admin always remains); all projects (create with
       an owner, rename, add environment, members, delete; demo protected), accounts (disable/enable,

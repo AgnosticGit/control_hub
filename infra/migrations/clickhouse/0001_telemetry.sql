@@ -1,9 +1,9 @@
--- ControlHub telemetry storage.
+-- karbird telemetry storage.
 -- Deduplication: ReplacingMergeTree collapses rows with identical sorting keys
 -- *eventually* (on merge). Queries that must not double count use FINAL.
 -- This is NOT a guarantee that duplicates never exist on disk at any moment.
--- Retention: the TTLs below are only the initial values. `controlhub-api bootstrap` sets them from
--- CONTROLHUB_{LOGS,SPANS,EVENTS}_RETENTION_DAYS (crates/controlhub-storage/src/retention.rs).
+-- Retention: the TTLs below are only the initial values. `karbird-api bootstrap` sets them from
+-- KARBIRD_{LOGS,SPANS,EVENTS}_RETENTION_DAYS (crates/karbird-storage/src/retention.rs).
 
 CREATE TABLE IF NOT EXISTS spans
 (

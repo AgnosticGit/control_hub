@@ -1,4 +1,4 @@
-//! ControlHub archive format (ADR-0015). Pure: no I/O, no clock.
+//! karbird archive format (ADR-0015). Pure: no I/O, no clock.
 //!
 //! - [`template`]: lossless split of a log body into a template and typed variables.
 //! - [`segment`]: columnar, zstd-compressed segment of one service's logs for one time window.

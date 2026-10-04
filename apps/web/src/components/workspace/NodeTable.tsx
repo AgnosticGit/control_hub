@@ -1,6 +1,6 @@
 "use client";
 
-import { NODE_STRIDE, type EntityKindDto, type Frame, type TopologyView } from "@controlhub/web-engine";
+import { NODE_STRIDE, type EntityKindDto, type Frame, type TopologyView } from "@karbird/web-engine";
 import { externalLabel } from "@/renderer/external";
 
 const STATUS_LABEL = ["No data", "Healthy", "Degraded", "Failing"];

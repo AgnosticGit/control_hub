@@ -44,9 +44,9 @@ async function createRole(label, permissions) {
 }
 
 before(async () => {
-  await admin.login('admin@controlhub.local');
-  await a.login('member-a@controlhub.local');
-  await b.login('member-b@controlhub.local');
+  await admin.login('admin@karbird.local');
+  await a.login('member-a@karbird.local');
+  await b.login('member-b@karbird.local');
   const members = await admin.json(MEMBERS);
   assert.equal(members.status, 200, JSON.stringify(members.body));
   ids = Object.fromEntries(members.body.map((m) => [m.email, m.user_id]));
@@ -57,7 +57,7 @@ before(async () => {
 
 after(async () => {
   // Leave the fixture members as viewers so a rerun starts from the same state.
-  for (const email of ['member-a@controlhub.local', 'member-b@controlhub.local']) {
+  for (const email of ['member-a@karbird.local', 'member-b@karbird.local']) {
     await setRole(admin, email, builtin.viewer);
   }
 });
@@ -98,7 +98,7 @@ test('a template grants its permissions and editing it changes every holder at o
   const manager = await createRole('Manager', ['telemetry.view', 'tokens.view', 'actions.view']);
   assert.deepEqual([manager.builtin, manager.holders], [null, 0]);
 
-  const assigned = await setRole(admin, 'member-a@controlhub.local', manager.id);
+  const assigned = await setRole(admin, 'member-a@karbird.local', manager.id);
   assert.equal(assigned.status, 200, JSON.stringify(assigned.body));
   assert.deepEqual([assigned.body.role, assigned.body.role_name], ['custom', manager.name]);
   assert.equal((await a.json(`${DEMO}/tokens`)).status, 200, 'tokens.view now allows listing');
@@ -116,14 +116,14 @@ test('a template grants its permissions and editing it changes every holder at o
   // Held templates cannot be deleted; once nobody holds it, it can.
   const held = await admin.mutate(`${ROLES}/${manager.id}`, null, 'DELETE');
   assert.equal(held.status, 409);
-  assert.equal((await setRole(admin, 'member-a@controlhub.local', builtin.viewer)).status, 200);
+  assert.equal((await setRole(admin, 'member-a@karbird.local', builtin.viewer)).status, 200);
   assert.equal((await admin.mutate(`${ROLES}/${manager.id}`, null, 'DELETE')).status, 204);
   assert.equal((await admin.mutate(`${ROLES}/${manager.id}`, null, 'DELETE')).status, 404);
 });
 
 test('an individual set replaces the role and remembers what it was based on', async () => {
   const r = await admin.mutate(
-    `${MEMBERS}/${ids['member-a@controlhub.local']}`,
+    `${MEMBERS}/${ids['member-a@karbird.local']}`,
     { permissions: ['telemetry.view', 'actions.propose'], based_on: builtin.viewer },
     'PATCH',
   );
@@ -149,7 +149,7 @@ test('role and member input is validated', async () => {
   ]) {
     assert.equal((await admin.mutate(ROLES, body)).status, 400, JSON.stringify(body));
   }
-  const member = `${MEMBERS}/${ids['member-b@controlhub.local']}`;
+  const member = `${MEMBERS}/${ids['member-b@karbird.local']}`;
   assert.equal((await admin.mutate(member, {}, 'PATCH')).status, 400, 'neither role nor permissions');
   assert.equal((await admin.mutate(member, { role_id: builtin.viewer, permissions: [] }, 'PATCH')).status, 400, 'both');
   assert.equal((await admin.mutate(member, { permissions: ['owner'] }, 'PATCH')).status, 400);
@@ -159,11 +159,11 @@ test('role and member input is validated', async () => {
 
 test('a member manager cannot escalate, touch owners, stronger members or themselves', async () => {
   const lead = await createRole('Team lead', ['telemetry.view', 'actions.view', 'members.view', 'members.manage']);
-  assert.equal((await setRole(admin, 'member-a@controlhub.local', lead.id)).status, 200);
-  assert.equal((await setRole(admin, 'member-b@controlhub.local', builtin.viewer)).status, 200);
-  const bId = ids['member-b@controlhub.local'];
+  assert.equal((await setRole(admin, 'member-a@karbird.local', lead.id)).status, 200);
+  assert.equal((await setRole(admin, 'member-b@karbird.local', builtin.viewer)).status, 200);
+  const bId = ids['member-b@karbird.local'];
 
-  const toAdmin = await setRole(a, 'member-b@controlhub.local', builtin.admin);
+  const toAdmin = await setRole(a, 'member-b@karbird.local', builtin.admin);
   assert.equal(toAdmin.status, 403);
   assert.match(toAdmin.body.message, /permissions you have yourself/);
   const extra = await a.mutate(`${MEMBERS}/${bId}`, { permissions: ['telemetry.view', 'tokens.view'] }, 'PATCH');
@@ -171,46 +171,46 @@ test('a member manager cannot escalate, touch owners, stronger members or themse
   const ok = await a.mutate(`${MEMBERS}/${bId}`, { permissions: ['telemetry.view'] }, 'PATCH');
   assert.equal(ok.status, 200, 'within their own permissions it works');
 
-  const self = await a.mutate(`${MEMBERS}/${ids['member-a@controlhub.local']}`, { permissions: ALL }, 'PATCH');
+  const self = await a.mutate(`${MEMBERS}/${ids['member-a@karbird.local']}`, { permissions: ALL }, 'PATCH');
   assert.equal(self.status, 403);
   assert.match(self.body.message, /your own membership/);
-  const owner = await a.mutate(`${MEMBERS}/${ids['admin@controlhub.local']}`, { permissions: [] }, 'PATCH');
+  const owner = await a.mutate(`${MEMBERS}/${ids['admin@karbird.local']}`, { permissions: [] }, 'PATCH');
   assert.equal(owner.status, 403);
-  assert.equal((await a.mutate(`${MEMBERS}/${ids['admin@controlhub.local']}`, null, 'DELETE')).status, 403);
+  assert.equal((await a.mutate(`${MEMBERS}/${ids['admin@karbird.local']}`, null, 'DELETE')).status, 403);
   assert.equal((await a.mutate(ROLES, { name: roleName('Sneaky'), permissions: [] })).status, 403, 'no roles.manage');
 
   // Owners are only changed by owners; the Owner role is only given by owners.
-  assert.equal((await setRole(admin, 'member-b@controlhub.local', builtin.owner)).status, 200);
-  const touchOwner = await setRole(a, 'member-b@controlhub.local', builtin.viewer);
+  assert.equal((await setRole(admin, 'member-b@karbird.local', builtin.owner)).status, 200);
+  const touchOwner = await setRole(a, 'member-b@karbird.local', builtin.viewer);
   assert.equal(touchOwner.status, 403);
   assert.match(touchOwner.body.message, /owner/);
-  assert.equal((await setRole(admin, 'member-b@controlhub.local', builtin.viewer)).status, 200);
+  assert.equal((await setRole(admin, 'member-b@karbird.local', builtin.viewer)).status, 200);
 
   // An owner cannot change their own membership either (so an owner is never lost by accident).
-  const ownSelf = await setRole(admin, 'admin@controlhub.local', builtin.viewer);
+  const ownSelf = await setRole(admin, 'admin@karbird.local', builtin.viewer);
   assert.equal(ownSelf.status, 403);
   assert.equal((await sessionProject(admin)).role, 'owner');
 });
 
 test('removing a member ends their access to the project', async () => {
-  const removed = await admin.mutate(`${MEMBERS}/${ids['member-b@controlhub.local']}`, null, 'DELETE');
+  const removed = await admin.mutate(`${MEMBERS}/${ids['member-b@karbird.local']}`, null, 'DELETE');
   assert.equal(removed.status, 204);
   assert.equal((await b.json(`${DEMO}/services`)).status, 404, 'the project now looks absent');
   assert.equal(await sessionProject(b), undefined);
-  assert.equal((await admin.mutate(`${MEMBERS}/${ids['member-b@controlhub.local']}`, null, 'DELETE')).status, 404);
+  assert.equal((await admin.mutate(`${MEMBERS}/${ids['member-b@karbird.local']}`, null, 'DELETE')).status, 404);
   // Only the membership is gone; the account and its session stay (the next fixture run re-adds it).
   const me = await fetch(`${API}/api/v1/session`, { headers: { cookie: b.cookieHeader() } });
   assert.equal(me.status, 200);
 });
 
 test('mutations need CSRF and an allowed Origin; API tokens never manage members', async () => {
-  const path = `${MEMBERS}/${ids['member-a@controlhub.local']}`;
+  const path = `${MEMBERS}/${ids['member-a@karbird.local']}`;
   const body = JSON.stringify({ role_id: builtin.viewer });
   const noCsrf = await admin.json(path, { method: 'PATCH', headers: { 'content-type': 'application/json', origin: ORIGIN }, body });
   assert.equal(noCsrf.status, 403);
   const evil = await admin.json(path, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', origin: 'https://evil.example', 'x-csrf-token': admin.cookies.get('controlhub_csrf') },
+    headers: { 'content-type': 'application/json', origin: 'https://evil.example', 'x-csrf-token': admin.cookies.get('karbird_csrf') },
     body,
   });
   assert.equal(evil.status, 403);
@@ -233,19 +233,19 @@ test('mutations need CSRF and an allowed Origin; API tokens never manage members
 
 test('another tenant cannot see or change demo members and roles, and ids do not cross projects', async () => {
   const iso = new Session();
-  await iso.login('isolation@controlhub.local');
+  await iso.login('isolation@karbird.local');
   assert.equal((await iso.json(MEMBERS)).status, 404);
   assert.equal((await iso.json(ROLES)).status, 404);
-  assert.equal((await iso.mutate(`${MEMBERS}/${ids['member-a@controlhub.local']}`, { permissions: [] }, 'PATCH')).status, 404);
+  assert.equal((await iso.mutate(`${MEMBERS}/${ids['member-a@karbird.local']}`, { permissions: [] }, 'PATCH')).status, 404);
   assert.equal((await iso.mutate(ROLES, { name: roleName('Intruder'), permissions: [] })).status, 404);
   assert.equal((await admin.json('/api/v1/projects/isolation/members')).status, 404);
 
   const isoRoles = await iso.json('/api/v1/projects/isolation/roles');
   assert.equal(isoRoles.status, 200);
   const foreignRole = isoRoles.body.find((r) => r.builtin === 'viewer').id;
-  const cross = await setRole(admin, 'member-a@controlhub.local', foreignRole);
+  const cross = await setRole(admin, 'member-a@karbird.local', foreignRole);
   assert.equal(cross.status, 404, "a role of another project is unknown here");
-  assert.ok(!(await iso.json('/api/v1/projects/isolation/members')).body.some((m) => m.email === user('member-a@controlhub.local').email));
+  assert.ok(!(await iso.json('/api/v1/projects/isolation/members')).body.some((m) => m.email === user('member-a@karbird.local').email));
 });
 
 test('role and member changes, including refusals, are audited', async () => {

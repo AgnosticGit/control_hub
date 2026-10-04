@@ -40,7 +40,7 @@ export function AppShell({ projectId, environmentId, active, top, status, childr
       <aside className="flex min-h-0 flex-col border-r border-border bg-bg-2/80" aria-label="Sidebar">
         <Link href="/app" className="flex items-center gap-2.5 px-5 pt-5 pb-4 text-[17px] font-semibold tracking-tight">
           <Logo />
-          ControlHub
+          karbird
         </Link>
 
         <div className="mx-3 space-y-2 rounded-xl border border-border bg-surface/70 p-3">
@@ -106,7 +106,7 @@ export function AppShell({ projectId, environmentId, active, top, status, childr
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-text"
             >
               <Icon name="shield" className="h-4 w-4" />
-              ControlHub admin
+              karbird admin
             </Link>
           ) : null}
           {status ? (

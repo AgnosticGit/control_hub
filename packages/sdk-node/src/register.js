@@ -1,15 +1,15 @@
-// Preload entry point: `node --import @controlhub/sdk-node/register app.js`.
+// Preload entry point: `node --import @karbird/sdk-node/register app.js`.
 //
 // Loading the SDK before application modules guarantees that `http` and `pg`
 // are patched before first use. The ESM loader hook is registered so that
 // ESM applications are instrumented as well as CommonJS ones.
 
 import { register } from 'node:module';
-import { startControlHub } from './index.js';
+import { startKarbird } from './index.js';
 
 register('@opentelemetry/instrumentation/hook.mjs', import.meta.url);
 
-const handle = startControlHub();
+const handle = startKarbird();
 
 let shuttingDown = false;
 for (const signal of ['SIGINT', 'SIGTERM']) {
@@ -18,7 +18,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     shuttingDown = true;
     handle
       .shutdown()
-      .catch((err) => console.error('controlhub: telemetry shutdown failed:', err?.message ?? err))
+      .catch((err) => console.error('karbird: telemetry shutdown failed:', err?.message ?? err))
       .finally(() => process.exit(0));
   });
 }

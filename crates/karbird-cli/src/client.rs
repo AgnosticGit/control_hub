@@ -1,4 +1,4 @@
-//! Minimal HTTP client for the ControlHub API (read-only bearer token) and ingestion.
+//! Minimal HTTP client for the karbird API (read-only bearer token) and ingestion.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -7,8 +7,8 @@ use serde_json::Value;
 
 use crate::Conn;
 
-pub const API_TOKEN_ENV: &str = "CONTROLHUB_API_TOKEN";
-pub const INGEST_TOKEN_ENV: &str = "CONTROLHUB_INGEST_TOKEN";
+pub const API_TOKEN_ENV: &str = "KARBIRD_API_TOKEN";
+pub const INGEST_TOKEN_ENV: &str = "KARBIRD_INGEST_TOKEN";
 
 /// A secret that never appears in `Debug` output.
 pub struct Secret(String);

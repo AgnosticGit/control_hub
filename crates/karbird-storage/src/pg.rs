@@ -7,7 +7,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{Result, StorageError};
-use controlhub_domain::{EnvironmentId, ProjectId, Scope, TenantId};
+use karbird_domain::{EnvironmentId, ProjectId, Scope, TenantId};
 
 pub type OffsetDateTimeAlias = OffsetDateTime;
 
@@ -324,7 +324,7 @@ fn new_account_scope() -> Result<Scope> {
 }
 
 fn scope_from(t: String, p: String, e: String) -> Result<Scope> {
-    let err = |e: controlhub_domain::IdError| StorageError::Other(format!("corrupt scope in database: {e}"));
+    let err = |e: karbird_domain::IdError| StorageError::Other(format!("corrupt scope in database: {e}"));
     Ok(Scope {
         tenant_id: TenantId::parse(t).map_err(err)?,
         project_id: ProjectId::parse(p).map_err(err)?,
@@ -380,7 +380,7 @@ impl PgStore {
             .await?;
         let verb = if exists { "ALTER" } else { "CREATE" };
         sqlx::query(&format!("{verb} ROLE {role} LOGIN PASSWORD '{password}'")).execute(&self.pool).await?;
-        sqlx::query(&format!("GRANT CONNECT ON DATABASE controlhub TO {role}")).execute(&self.pool).await?;
+        sqlx::query(&format!("GRANT CONNECT ON DATABASE karbird TO {role}")).execute(&self.pool).await?;
         sqlx::query(&format!("GRANT USAGE ON SCHEMA public TO {role}")).execute(&self.pool).await?;
         for g in grants {
             sqlx::query(&format!("GRANT {g} TO {role}")).execute(&self.pool).await?;
@@ -1508,10 +1508,7 @@ mod tests {
 
     #[test]
     fn email_domain_patterns_match_only_that_exact_domain() {
-        assert_eq!(
-            email_domain_patterns(&["controlhub.local", "Example.TEST"]),
-            ["%@controlhub.local", "%@example.test"]
-        );
+        assert_eq!(email_domain_patterns(&["karbird.local", "Example.TEST"]), ["%@karbird.local", "%@example.test"]);
         // LIKE wildcards in a domain are escaped, so they can never widen a delete.
         assert_eq!(email_domain_patterns(&["%", "a_b.test", r"x\y"]), [r"%@\%", r"%@a\_b.test", r"%@x\\y"]);
         assert!(email_domain_patterns(&["", "  "]).is_empty(), "an empty domain would match every address ending in @");
@@ -1582,15 +1579,15 @@ mod tests {
     #[tokio::test]
     async fn lazy_store_does_no_io_until_used() {
         // Port 1 is never a PostgreSQL server; construction must still succeed.
-        assert!(PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/controlhub", 1).is_ok());
+        assert!(PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/karbird", 1).is_ok());
         assert!(PgStore::connect_lazy("not a url", 1).is_err());
     }
 
     #[tokio::test]
     async fn service_roles_refuse_injection_before_any_query() {
-        let pg = PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/controlhub", 1).unwrap();
+        let pg = PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/karbird", 1).unwrap();
         for (role, pw) in [
-            ("controlhub_api", "x' SUPERUSER; --"),
+            ("karbird_api", "x' SUPERUSER; --"),
             ("api; DROP TABLE users", "pw"),
             ("", "pw"),
             ("role", ""),

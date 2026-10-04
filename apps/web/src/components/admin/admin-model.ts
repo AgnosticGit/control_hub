@@ -1,4 +1,4 @@
-// ControlHub administrator permissions for the admin panel. The API enforces every rule; these
+// karbird administrator permissions for the admin panel. The API enforces every rule; these
 // mirror them so the UI can hide or disable what would be refused and explain why.
 import type { Actor, PermissionModel } from "@/components/settings/matrix";
 

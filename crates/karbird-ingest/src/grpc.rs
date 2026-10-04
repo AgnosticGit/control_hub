@@ -1,21 +1,24 @@
-//! OTLP/gRPC: standard unary `Export` RPCs for traces and logs.
-//! The metrics service is not registered, so clients get `UNIMPLEMENTED`.
+//! OTLP/gRPC: standard unary `Export` RPCs for traces, logs and metrics
+//! (gauges and sums only, ADR-0018).
 
-use controlhub_domain::Signal;
-use controlhub_protocol::otlp::collector::logs::v1::logs_service_server::LogsService;
-use controlhub_protocol::otlp::collector::logs::v1::{
+use karbird_domain::Signal;
+use karbird_protocol::otlp::collector::logs::v1::logs_service_server::LogsService;
+use karbird_protocol::otlp::collector::logs::v1::{
     ExportLogsPartialSuccess, ExportLogsServiceRequest, ExportLogsServiceResponse,
 };
-use controlhub_protocol::otlp::collector::trace::v1::trace_service_server::TraceService;
-use controlhub_protocol::otlp::collector::trace::v1::{
+use karbird_protocol::otlp::collector::metrics::v1::metrics_service_server::MetricsService;
+use karbird_protocol::otlp::collector::metrics::v1::{ExportMetricsServiceRequest, ExportMetricsServiceResponse};
+use karbird_protocol::otlp::collector::trace::v1::trace_service_server::TraceService;
+use karbird_protocol::otlp::collector::trace::v1::{
     ExportTracePartialSuccess, ExportTraceServiceRequest, ExportTraceServiceResponse,
 };
-use controlhub_protocol::v1::ingest_envelope::Payload;
+use karbird_protocol::v1::ingest_envelope::Payload;
 use prost::Message;
 use tonic::{Request, Response, Status};
 
 use crate::auth::AuthError;
 use crate::broker::PublishError;
+use crate::http::metrics_partial_success;
 use crate::metrics::Metrics;
 use crate::pipeline::{AcceptError, AppState};
 use crate::sanitize::{sanitize_logs, sanitize_traces};
@@ -101,14 +104,95 @@ impl LogsService for OtlpGrpc {
     }
 }
 
+#[tonic::async_trait]
+impl MetricsService for OtlpGrpc {
+    async fn export(
+        &self,
+        request: Request<ExportMetricsServiceRequest>,
+    ) -> Result<Response<ExportMetricsServiceResponse>, Status> {
+        let st = &self.state;
+        let header = auth_header(&request);
+        let cred = st.authenticate(header.as_deref(), Signal::Metrics).await.map_err(to_status)?;
+        let mut req = request.into_inner();
+        let stats = st.sanitize_metrics(&cred, &mut req);
+        if stats.accepted > 0 {
+            st.publish(&cred, Payload::OtlpMetrics(req.encode_to_vec())).await.map_err(to_status)?;
+            Metrics::inc(&st.metrics.metric_points_accepted, stats.accepted);
+        }
+        Ok(Response::new(ExportMetricsServiceResponse { partial_success: metrics_partial_success(&stats) }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::broker::fake::Mode;
     use crate::testing::{Harness, TOKEN, TRACES_ONLY, get, harness};
-    use controlhub_protocol::otlp::common::v1::{AnyValue, KeyValue, any_value::Value};
-    use controlhub_protocol::otlp::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
-    use controlhub_protocol::otlp::trace::v1::{ResourceSpans, ScopeSpans, Span};
+    use karbird_protocol::otlp::common::v1::{AnyValue, KeyValue, any_value::Value};
+    use karbird_protocol::otlp::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+    use karbird_protocol::otlp::metrics::v1::{
+        Gauge, Metric, NumberDataPoint, ResourceMetrics, ScopeMetrics, Summary, SummaryDataPoint, metric::Data,
+        number_data_point,
+    };
+
+    fn metrics(token: Option<&str>, with_summary: bool) -> Request<ExportMetricsServiceRequest> {
+        let gauge = Metric {
+            name: "system.memory.usage".into(),
+            data: Some(Data::Gauge(Gauge {
+                data_points: vec![NumberDataPoint {
+                    attributes: vec![kv("state", "used"), kv("password", "pw-secret")],
+                    time_unix_nano: 1,
+                    value: Some(number_data_point::Value::AsInt(870 << 20)),
+                    ..Default::default()
+                }],
+            })),
+            ..Default::default()
+        };
+        let mut list = vec![gauge];
+        if with_summary {
+            list.push(Metric {
+                name: "rpc.duration".into(),
+                data: Some(Data::Summary(Summary { data_points: vec![SummaryDataPoint::default()] })),
+                ..Default::default()
+            });
+        }
+        let mut req = Request::new(ExportMetricsServiceRequest {
+            resource_metrics: vec![ResourceMetrics {
+                scope_metrics: vec![ScopeMetrics { metrics: list, ..Default::default() }],
+                ..Default::default()
+            }],
+        });
+        if let Some(t) = token {
+            req.metadata_mut().insert("authorization", format!("Bearer {t}").parse().unwrap());
+        }
+        req
+    }
+
+    #[tokio::test]
+    async fn metrics_are_accepted_over_grpc() {
+        let h = harness();
+        let resp = MetricsService::export(&svc(&h), metrics(Some(TOKEN), true)).await.unwrap();
+        assert_eq!(resp.into_inner().partial_success.map(|p| p.rejected_data_points), Some(1));
+        let envs = h.envelopes();
+        assert!(matches!(envs[0].payload, Some(Payload::OtlpMetrics(_))));
+        assert!(!format!("{envs:?}").contains("pw-secret"));
+        assert_eq!(get(&h.metrics().metric_points_accepted), 1);
+        assert_eq!(get(&h.metrics().metric_points_rejected), 1);
+    }
+
+    #[tokio::test]
+    async fn metrics_auth_and_broker_failures_over_grpc() {
+        let h = harness();
+        let err = MetricsService::export(&svc(&h), metrics(None, false)).await.unwrap_err();
+        assert_eq!(err.code(), Code::Unauthenticated);
+        let err = MetricsService::export(&svc(&h), metrics(Some(TRACES_ONLY), false)).await.unwrap_err();
+        assert_eq!(err.code(), Code::PermissionDenied);
+        h.broker.set_mode(Mode::Fail(PublishError::Unavailable("down".into())));
+        let err = MetricsService::export(&svc(&h), metrics(Some(TOKEN), false)).await.unwrap_err();
+        assert_eq!(err.code(), Code::Unavailable);
+        assert_eq!(get(&h.metrics().metric_points_accepted), 0);
+    }
+    use karbird_protocol::otlp::trace::v1::{ResourceSpans, ScopeSpans, Span};
     use tonic::Code;
 
     fn kv(k: &str, v: &str) -> KeyValue {

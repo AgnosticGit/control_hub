@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Frame, FrameSummary, TopologyView } from "@controlhub/web-engine";
+import type { Frame, FrameSummary, TopologyView } from "@karbird/web-engine";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import type { EdgeStyle } from "@/renderer/edge-path";
 import type { PixiMap } from "@/renderer/pixi-map";
@@ -35,15 +35,18 @@ interface Props {
   speed: Speed;
   summary: FrameSummary | null;
   memory: WorkspaceMemory;
+  /** A click on a machine frame of the infrastructure layer. */
+  onSelectHost: (hostId: string) => void;
 }
 
-export function MapView({ actions, topology, selectedId, onSelect, forceTable, mode, speed, summary, memory }: Props) {
+export function MapView({ actions, topology, selectedId, onSelect, forceTable, mode, speed, summary, memory, onSelectHost }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<PixiMap | null>(null);
   const [webglError, setWebglError] = useState<string | null>(null);
   const [lastFrame, setLastFrame] = useState<Frame | null>(null);
   const showTable = forceTable || webglError !== null;
   const onSelectRef = useRef(onSelect);
+  const onSelectHostRef = useRef(onSelectHost);
   const topologyRef = useRef(topology);
   const selectedRef = useRef(selectedId);
   const clockRef = useRef(animClockFor(mode, speed));
@@ -55,9 +58,10 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable, m
   }, [edgeStyle]);
   useEffect(() => {
     onSelectRef.current = onSelect;
+    onSelectHostRef.current = onSelectHost;
     topologyRef.current = topology;
     selectedRef.current = selectedId;
-  }, [onSelect, topology, selectedId]);
+  }, [onSelect, onSelectHost, topology, selectedId]);
 
   useEffect(() => {
     clockRef.current = animClockFor(mode, speed);
@@ -80,6 +84,7 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable, m
           onPick: (x, y) => {
             void actions.pick(x, y).then((id) => onSelectRef.current(id));
           },
+          onPickHost: (hostId) => onSelectHostRef.current(hostId),
         });
         await map.mount(host);
         if (disposed) {

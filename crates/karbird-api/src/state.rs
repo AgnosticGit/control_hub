@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use controlhub_storage::archive::ArchiveReader;
-use controlhub_storage::ch::ChStore;
-use controlhub_storage::pg::PgStore;
+use karbird_storage::archive::ArchiveReader;
+use karbird_storage::ch::ChStore;
+use karbird_storage::pg::PgStore;
 use tokio::sync::Semaphore;
 
 use crate::auth::LoginThrottle;
@@ -52,10 +52,10 @@ pub struct AppState {
 #[cfg(test)]
 pub fn test_state(secure_cookies: bool) -> AppState {
     let pg =
-        PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/controlhub", 1).unwrap_or_else(|e| panic!("lazy pool: {e}"));
-    let ch = ChStore::new(&controlhub_storage::ch::ChConfig {
+        PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/karbird", 1).unwrap_or_else(|e| panic!("lazy pool: {e}"));
+    let ch = ChStore::new(&karbird_storage::ch::ChConfig {
         url: "http://127.0.0.1:1".into(),
-        database: "controlhub".into(),
+        database: "karbird".into(),
         user: "u".into(),
         password: "p".into(),
     });

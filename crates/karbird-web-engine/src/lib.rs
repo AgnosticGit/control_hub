@@ -4,8 +4,8 @@
 //! (one copy out of WASM memory; the Worker then transfers them to the UI
 //! thread without further copies).
 
-use controlhub_engine_core::{Engine, EngineConfig, Filters, SeekOutcome, Viewport};
 use js_sys::{Float32Array, Object, Reflect, Uint32Array};
+use karbird_engine_core::{Engine, EngineConfig, Filters, SeekOutcome, Viewport};
 use wasm_bindgen::prelude::*;
 
 fn js_err(e: impl std::fmt::Display) -> JsValue {
@@ -29,7 +29,7 @@ fn parse_config(config_json: &str) -> Result<EngineConfig, serde_json::Error> {
 /// Version of the engine ABI; the TS wrapper refuses to run against a mismatching build.
 #[wasm_bindgen(js_name = engineAbiVersion)]
 pub fn engine_abi_version() -> u32 {
-    3
+    4
 }
 
 #[wasm_bindgen]
@@ -77,6 +77,12 @@ impl WebEngine {
         let f: Filters = serde_wasm_bindgen::from_value(filters).map_err(js_err)?;
         self.inner.set_filters(f);
         Ok(())
+    }
+
+    /// `json`: raw `InfrastructureSnapshot` response text.
+    #[wasm_bindgen(js_name = setInfrastructure)]
+    pub fn set_infrastructure(&mut self, json: &str) -> Result<(), JsValue> {
+        self.inner.set_infrastructure_json(json).map_err(js_err)
     }
 
     #[wasm_bindgen(js_name = setHopWindow)]
@@ -150,7 +156,7 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     use super::*;
-    use controlhub_engine_core as core;
+    use karbird_engine_core as core;
 
     const TS_INDEX: &str = include_str!("../../../packages/web-engine/src/index.ts");
 
@@ -264,6 +270,20 @@ mod tests {
 
         e.evict_before(2_600_000_000);
         assert_eq!(e.inner.item_count(), 1, "only the gateway span ends after the cutoff");
+    }
+
+    #[test]
+    fn infrastructure_snapshot_text_reaches_the_engine() {
+        let mut e = engine();
+        e.inner.set_filters(Filters { infrastructure: true, ..Filters::default() });
+        e.set_infrastructure(
+            r#"{"at_ns":"2000000000","window_ns":"120000000000","hosts":[{"id":"vps-app","name":"vps-app","has_metrics":true,"cpu_utilization":0.5,"containers":[]}],
+                "instances":[{"service_id":"svc_gw","service_name":"gw","instance_id":"i1","host_id":"vps-app","match_reason":"container_id","requests":1}],"hints":[],"notes":[]}"#,
+        )
+        .unwrap();
+        let view = e.inner.topology().infra.unwrap();
+        assert_eq!(view.frames.len(), 1);
+        assert_eq!(view.frames[0].label, "vps-app · CPU 50%");
     }
 
     #[test]

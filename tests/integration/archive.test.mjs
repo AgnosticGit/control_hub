@@ -1,8 +1,8 @@
-// Log archive end to end (ADR-0015): OTLP logs -> ClickHouse -> `controlhub-archiver once` ->
+// Log archive end to end (ADR-0015): OTLP logs -> ClickHouse -> `karbird-archiver once` ->
 // object storage -> API `source=archive`. The archive must return exactly what ClickHouse
 // returns (lossless), with filters, cursors and tenant isolation. Writes only into the isolation
 // tenant's `isolation-test` environment, into the last closed hour.
-// Run: cargo build -p controlhub-archiver && node --test tests/integration/archive.test.mjs
+// Run: cargo build -p karbird-archiver && node --test tests/integration/archive.test.mjs
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { API, DEMO, ISO, Session, encodeLogs, eventually, hex, otlpHttp, root } from './lib.mjs';
 
 const HOUR = 3_600_000_000_000n;
-const bin = join(root, 'target', 'debug', process.platform === 'win32' ? 'controlhub-archiver.exe' : 'controlhub-archiver');
+const bin = join(root, 'target', 'debug', process.platform === 'win32' ? 'karbird-archiver.exe' : 'karbird-archiver');
 const run = hex(6);
 const service = `archive-it-${run}`;
 const traceId = hex(16);
@@ -45,7 +45,7 @@ let viewer;
 
 function archiver(args) {
   const r = spawnSync(bin, args, { cwd: root, encoding: 'utf8', timeout: 180_000 });
-  assert.equal(r.status, 0, `controlhub-archiver ${args.join(' ')}\n${r.stderr}`);
+  assert.equal(r.status, 0, `karbird-archiver ${args.join(' ')}\n${r.stderr}`);
   return JSON.parse(r.stdout.trim().split(/\r?\n/).pop());
 }
 
@@ -96,12 +96,12 @@ async function pages(source, limit) {
 }
 
 before(async () => {
-  const build = spawnSync('cargo', ['build', '-q', '-p', 'controlhub-archiver'], { cwd: root, stdio: 'inherit' });
-  assert.equal(build.status, 0, 'cargo build -p controlhub-archiver');
+  const build = spawnSync('cargo', ['build', '-q', '-p', 'karbird-archiver'], { cwd: root, stdio: 'inherit' });
+  assert.equal(build.status, 0, 'cargo build -p karbird-archiver');
   iso = new Session();
-  await iso.login('isolation@controlhub.local');
+  await iso.login('isolation@karbird.local');
   viewer = new Session();
-  await viewer.login('viewer@controlhub.local');
+  await viewer.login('viewer@karbird.local');
 
   const r = await otlpHttp('logs', encodeLogs(service, logs));
   assert.equal(r.status, 200, `ingest: ${r.status}`);

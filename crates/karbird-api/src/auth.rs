@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 use axum::extract::{FromRequestParts, OptionalFromRequestParts};
 use axum::http::request::Parts;
 use axum::http::{Method, header};
-use controlhub_domain::{EnvironmentId, ProjectId, Scope, TenantId};
-use controlhub_storage::secrets::{constant_time_eq, hash_token};
+use karbird_domain::{EnvironmentId, ProjectId, Scope, TenantId};
+use karbird_storage::secrets::{constant_time_eq, hash_token};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -17,8 +17,8 @@ use crate::error::ApiError;
 use crate::permissions::{self, Actor, Permission, PermissionSet};
 use crate::state::AppState;
 
-pub const SESSION_COOKIE: &str = "controlhub_session";
-pub const CSRF_COOKIE: &str = "controlhub_csrf";
+pub const SESSION_COOKIE: &str = "karbird_session";
+pub const CSRF_COOKIE: &str = "karbird_csrf";
 pub const CSRF_HEADER: &str = "x-csrf-token";
 
 /// The most an API token can do, whatever its owner may do: read telemetry and plans.
@@ -360,17 +360,17 @@ mod tests {
 
     #[test]
     fn cookie_values_are_matched_by_exact_name() {
-        let p = parts(&[("cookie", b"a=1; controlhub_session=chs_abc; controlhub_csrf=chc_x=y")]);
+        let p = parts(&[("cookie", b"a=1; karbird_session=chs_abc; karbird_csrf=chc_x=y")]);
         assert_eq!(cookie_value(&p, SESSION_COOKIE), Some("chs_abc"));
         assert_eq!(cookie_value(&p, CSRF_COOKIE), Some("chc_x=y"), "values may contain =");
-        assert_eq!(cookie_value(&p, "controlhub"), None, "no prefix matching");
-        let p = parts(&[("cookie", b"xcontrolhub_session=evil")]);
+        assert_eq!(cookie_value(&p, "karbird"), None, "no prefix matching");
+        let p = parts(&[("cookie", b"xkarbird_session=evil")]);
         assert_eq!(cookie_value(&p, SESSION_COOKIE), None);
-        let p = parts(&[("cookie", b"a=1"), ("cookie", b"controlhub_session=second")]);
+        let p = parts(&[("cookie", b"a=1"), ("cookie", b"karbird_session=second")]);
         assert_eq!(cookie_value(&p, SESSION_COOKIE), Some("second"), "multiple Cookie headers");
-        let p = parts(&[("cookie", b"controlhub_session=first; controlhub_session=dup")]);
+        let p = parts(&[("cookie", b"karbird_session=first; karbird_session=dup")]);
         assert_eq!(cookie_value(&p, SESSION_COOKIE), Some("first"));
-        assert_eq!(cookie_value(&parts(&[("cookie", b"controlhub_session")]), SESSION_COOKIE), None);
+        assert_eq!(cookie_value(&parts(&[("cookie", b"karbird_session")]), SESSION_COOKIE), None);
         assert_eq!(cookie_value(&parts(&[]), SESSION_COOKIE), None);
     }
 

@@ -9,7 +9,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Duration;
 
-use controlhub_runtime::backoff;
+use karbird_runtime::backoff;
 use rskafka::client::Client;
 use rskafka::client::partition::{Compression, PartitionClient, UnknownTopicHandling};
 use rskafka::record::Record;

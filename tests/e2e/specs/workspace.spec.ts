@@ -9,7 +9,7 @@ const dataPercent = (share: number, width: number) => ((share * width) / (width 
 
 test.describe("workspace on demo data", () => {
   test.beforeEach(async ({ page }) => {
-    await login(page, "admin@controlhub.local", WORKSPACE);
+    await login(page, "admin@karbird.local", WORKSPACE);
     await expect(page).toHaveURL(new RegExp(`${WORKSPACE}$`));
   });
 
@@ -521,6 +521,6 @@ test.describe("workspace on demo data", () => {
 });
 
 test("isolation user cannot open the demo environment", async ({ page }) => {
-  await login(page, "isolation@controlhub.local", WORKSPACE);
+  await login(page, "isolation@karbird.local", WORKSPACE);
   await expect(page.getByText(/does not exist or you do not have access/)).toBeVisible();
 });

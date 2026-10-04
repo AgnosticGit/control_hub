@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { TimelineTracks } from "@controlhub/web-engine";
+import type { TimelineTracks } from "@karbird/web-engine";
 import { Icon } from "@/components/ui/Icon";
 import { api, scopedPath, unwrap } from "@/lib/api";
 import { RESOURCE_COLOR, cssColor, serviceColors } from "@/renderer/service-colors";

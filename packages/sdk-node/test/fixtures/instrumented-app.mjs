@@ -2,9 +2,9 @@
 // Serves one request carrying credentials and a body, then prints diagnostics and shuts down.
 // Requests are sent with `fetch` (undici, not instrumented), so every exported span is a server span.
 import { createServer } from 'node:http';
-import { getControlHub } from '../../src/index.js';
+import { getKarbird } from '../../src/index.js';
 
-const handle = getControlHub();
+const handle = getKarbird();
 if (!handle) throw new Error('SDK not started by register');
 
 const server = createServer((req, res) => {

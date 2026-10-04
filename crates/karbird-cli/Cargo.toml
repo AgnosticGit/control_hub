@@ -1,6 +1,6 @@
 [package]
-name = "controlhub-cli"
-description = "controlhub CLI: discover, plan, apply and verify a ControlHub integration; read-only context"
+name = "karbird-cli"
+description = "karbird CLI: discover, plan, apply and verify a karbird integration; read-only context"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [[bin]]
-name = "controlhub"
+name = "karbird"
 path = "src/main.rs"
 
 [dependencies]

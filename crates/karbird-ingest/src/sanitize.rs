@@ -1,16 +1,21 @@
 //! Server-side sanitisation of OTLP payloads before they are written to the
 //! broker: redaction of sensitive attributes, size limits, ID validation.
 
-use controlhub_domain::model::limits;
-use controlhub_domain::redaction::{
+use karbird_domain::model::limits;
+use karbird_domain::redaction::{
     AttributeDecision, REDACTED, classify_key, mask_bearer, sanitize_attribute, sanitize_value, truncate,
 };
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
+use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value::Value};
+use opentelemetry_proto::tonic::metrics::v1::{NumberDataPoint, metric::Data, number_data_point};
 
 pub const MAX_SPANS_PER_REQUEST: usize = 20_000;
 pub const MAX_LOGS_PER_REQUEST: usize = 20_000;
+pub const MAX_POINTS_PER_REQUEST: usize = 20_000;
+const MAX_METRIC_NAME_LEN: usize = 255;
+const MAX_UNIT_LEN: usize = 63;
 const MAX_NAME_LEN: usize = 1_024;
 const MAX_DEPTH: u32 = 4;
 const MAX_ARRAY_LEN: usize = 128;
@@ -179,6 +184,137 @@ pub fn sanitize_logs(req: &mut ExportLogsServiceRequest) -> SanitizeStats {
             });
         }
     }
+    st
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct MetricStats {
+    pub accepted: u64,
+    /// Invalid points, unsupported metric types (histograms, summaries) and the per-request overflow.
+    pub rejected: u64,
+    /// Points of new series refused by the per-environment series limit.
+    pub over_limit: u64,
+    pub redacted: u64,
+    pub truncated_attrs: u64,
+}
+
+impl MetricStats {
+    pub fn refused(&self) -> u64 {
+        self.rejected + self.over_limit
+    }
+}
+
+/// Dotted identifier as used by OpenTelemetry semantic conventions (`system.cpu.time`).
+pub fn valid_metric_name(name: &str) -> bool {
+    name.len() <= MAX_METRIC_NAME_LEN
+        && name.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'/'))
+}
+
+fn hash_bytes(h: &mut u64, bytes: &[u8]) {
+    for b in (bytes.len() as u64).to_le_bytes().iter().chain(bytes) {
+        *h ^= u64::from(*b);
+        *h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+}
+
+fn hash_attrs(h: &mut u64, attrs: &[KeyValue]) {
+    let mut sorted: Vec<&KeyValue> = attrs.iter().collect();
+    sorted.sort_by(|a, b| a.key.cmp(&b.key));
+    for kv in sorted {
+        hash_bytes(h, kv.key.as_bytes());
+        match kv.value.as_ref().and_then(|v| v.value.as_ref()) {
+            Some(Value::StringValue(s)) => hash_bytes(h, s.as_bytes()),
+            other => hash_bytes(h, format!("{other:?}").as_bytes()),
+        }
+    }
+}
+
+/// Identity of one time series: metric name, resource and point attributes (FNV-1a).
+pub fn series_key(name: &str, resource: &[KeyValue], point: &[KeyValue]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    hash_bytes(&mut h, name.as_bytes());
+    hash_attrs(&mut h, resource);
+    hash_bytes(&mut h, b"|");
+    hash_attrs(&mut h, point);
+    h
+}
+
+fn valid_point(p: &NumberDataPoint) -> bool {
+    p.time_unix_nano > 0
+        && match p.value {
+            Some(number_data_point::Value::AsDouble(v)) => v.is_finite(),
+            Some(number_data_point::Value::AsInt(_)) => true,
+            None => false,
+        }
+}
+
+/// Keeps gauge and sum points only; everything else is removed and counted. `admit` decides
+/// whether a point's series fits the environment's series limit.
+pub fn sanitize_metrics(req: &mut ExportMetricsServiceRequest, admit: &mut dyn FnMut(u64) -> bool) -> MetricStats {
+    let mut st = MetricStats::default();
+    let mut attr_stats = SanitizeStats::default();
+    let mut budget = MAX_POINTS_PER_REQUEST;
+    for rm in &mut req.resource_metrics {
+        if let Some(r) = rm.resource.as_mut() {
+            sanitize_attrs(&mut r.attributes, &mut attr_stats, 0);
+        }
+        let resource: Vec<KeyValue> = rm.resource.as_ref().map(|r| r.attributes.clone()).unwrap_or_default();
+        for sm in &mut rm.scope_metrics {
+            if let Some(scope) = sm.scope.as_mut() {
+                sanitize_attrs(&mut scope.attributes, &mut attr_stats, 0);
+            }
+            sm.metrics.retain_mut(|m| {
+                let points = match m.data.as_mut() {
+                    Some(Data::Gauge(g)) => &mut g.data_points,
+                    Some(Data::Sum(s)) => &mut s.data_points,
+                    Some(Data::Histogram(h)) => {
+                        st.rejected += h.data_points.len() as u64;
+                        return false;
+                    }
+                    Some(Data::ExponentialHistogram(h)) => {
+                        st.rejected += h.data_points.len() as u64;
+                        return false;
+                    }
+                    Some(Data::Summary(s)) => {
+                        st.rejected += s.data_points.len() as u64;
+                        return false;
+                    }
+                    None => return false,
+                };
+                if !valid_metric_name(&m.name) {
+                    st.rejected += points.len() as u64;
+                    return false;
+                }
+                m.description.clear();
+                m.metadata.clear();
+                if m.unit.len() > MAX_UNIT_LEN || !m.unit.bytes().all(|b| b.is_ascii_graphic()) {
+                    m.unit.clear();
+                }
+                let name = m.name.clone();
+                points.retain_mut(|p| {
+                    if budget == 0 || !valid_point(p) {
+                        st.rejected += 1;
+                        return false;
+                    }
+                    sanitize_attrs(&mut p.attributes, &mut attr_stats, 0);
+                    if !admit(series_key(&name, &resource, &p.attributes)) {
+                        st.over_limit += 1;
+                        return false;
+                    }
+                    budget -= 1;
+                    p.exemplars.clear();
+                    st.accepted += 1;
+                    true
+                });
+                !points.is_empty()
+            });
+        }
+        rm.scope_metrics.retain(|sm| !sm.metrics.is_empty());
+    }
+    req.resource_metrics.retain(|rm| !rm.scope_metrics.is_empty());
+    st.redacted = attr_stats.redacted;
+    st.truncated_attrs = attr_stats.truncated_attrs;
     st
 }
 
@@ -582,6 +718,161 @@ mod tests {
         assert_eq!(recs[2].attributes.len(), 1);
     }
 
+    use opentelemetry_proto::tonic::metrics::v1::{
+        Exemplar, Gauge, Histogram, HistogramDataPoint, Metric, ResourceMetrics, ScopeMetrics, Sum, Summary,
+        SummaryDataPoint,
+    };
+
+    fn point(time: u64, v: f64, attrs: Vec<KeyValue>) -> NumberDataPoint {
+        NumberDataPoint {
+            attributes: attrs,
+            time_unix_nano: time,
+            value: Some(number_data_point::Value::AsDouble(v)),
+            ..Default::default()
+        }
+    }
+
+    fn gauge(name: &str, points: Vec<NumberDataPoint>) -> Metric {
+        Metric { name: name.into(), data: Some(Data::Gauge(Gauge { data_points: points })), ..Default::default() }
+    }
+
+    fn metrics_req(resource: Vec<KeyValue>, metrics: Vec<Metric>) -> ExportMetricsServiceRequest {
+        ExportMetricsServiceRequest {
+            resource_metrics: vec![ResourceMetrics {
+                resource: Some(Resource { attributes: resource, ..Default::default() }),
+                scope_metrics: vec![ScopeMetrics { metrics, ..Default::default() }],
+                ..Default::default()
+            }],
+        }
+    }
+
+    fn admit_all() -> impl FnMut(u64) -> bool {
+        |_| true
+    }
+
+    #[test]
+    fn metric_names_follow_semantic_convention_shape() {
+        for ok in ["system.cpu.time", "container.memory.usage.total", "a", "http/server_duration-x"] {
+            assert!(valid_metric_name(ok), "{ok}");
+        }
+        let long = "a".repeat(256);
+        for bad in ["", "1abc", ".cpu", "cpu time", "cpu;drop", "名前", long.as_str()] {
+            assert!(!valid_metric_name(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn gauges_and_sums_are_kept_and_redacted() {
+        let sum = Metric {
+            name: "system.network.io".into(),
+            unit: "By".into(),
+            description: "free text".into(),
+            data: Some(Data::Sum(Sum {
+                data_points: vec![NumberDataPoint {
+                    time_unix_nano: 5,
+                    value: Some(number_data_point::Value::AsInt(42)),
+                    exemplars: vec![Exemplar { trace_id: vec![1; 16], ..Default::default() }],
+                    attributes: vec![kv("direction", "receive"), kv("api_key", "leak")],
+                    ..Default::default()
+                }],
+                aggregation_temporality: 2,
+                is_monotonic: true,
+            })),
+            ..Default::default()
+        };
+        let mut req = metrics_req(
+            vec![kv("host.name", "vps-app"), kv("password", "pw")],
+            vec![gauge("system.cpu.utilization", vec![point(1, 0.5, vec![])]), sum],
+        );
+        let st = sanitize_metrics(&mut req, &mut admit_all());
+        assert_eq!((st.accepted, st.rejected, st.over_limit, st.redacted), (2, 0, 0, 2));
+        let dump = format!("{req:?}");
+        assert!(!dump.contains("leak") && !dump.contains("\"pw\"") && !dump.contains("free text"));
+        let m = &req.resource_metrics[0].scope_metrics[0].metrics[1];
+        assert_eq!(m.unit, "By");
+        let Some(Data::Sum(s)) = &m.data else { panic!("sum expected") };
+        assert!(s.data_points[0].exemplars.is_empty());
+    }
+
+    #[test]
+    fn unsupported_types_invalid_points_and_names_are_counted() {
+        let hist = Metric {
+            name: "http.server.duration".into(),
+            data: Some(Data::Histogram(Histogram {
+                data_points: vec![HistogramDataPoint::default(), HistogramDataPoint::default()],
+                aggregation_temporality: 2,
+            })),
+            ..Default::default()
+        };
+        let summary = Metric {
+            name: "rpc.duration".into(),
+            data: Some(Data::Summary(Summary { data_points: vec![SummaryDataPoint::default()] })),
+            ..Default::default()
+        };
+        let no_value = NumberDataPoint { time_unix_nano: 1, ..Default::default() };
+        let mut req = metrics_req(
+            vec![],
+            vec![
+                hist,
+                summary,
+                gauge("bad name", vec![point(1, 1.0, vec![])]),
+                gauge(
+                    "ok.metric",
+                    vec![point(0, 1.0, vec![]), point(1, f64::NAN, vec![]), no_value, point(2, 3.0, vec![])],
+                ),
+                Metric { name: "empty".into(), data: None, ..Default::default() },
+            ],
+        );
+        let st = sanitize_metrics(&mut req, &mut admit_all());
+        assert_eq!(st.accepted, 1);
+        assert_eq!(st.rejected, 2 + 1 + 1 + 3);
+        let metrics = &req.resource_metrics[0].scope_metrics[0].metrics;
+        assert_eq!(metrics.len(), 1);
+        assert_eq!(metrics[0].name, "ok.metric");
+    }
+
+    #[test]
+    fn empty_groups_are_removed() {
+        let mut req = metrics_req(vec![], vec![gauge("x", vec![point(0, 1.0, vec![])])]);
+        let st = sanitize_metrics(&mut req, &mut admit_all());
+        assert_eq!(st.rejected, 1);
+        assert!(req.resource_metrics.is_empty());
+    }
+
+    #[test]
+    fn series_limit_refusals_are_counted_separately() {
+        let points = (0..4).map(|i| point(1, 1.0, vec![kv("cpu", &i.to_string())])).collect();
+        let mut req = metrics_req(vec![kv("host.name", "h")], vec![gauge("system.cpu.time", points)]);
+        let mut seen = Vec::new();
+        let st = sanitize_metrics(&mut req, &mut |k| {
+            seen.push(k);
+            seen.len() <= 2
+        });
+        assert_eq!((st.accepted, st.over_limit, st.rejected, st.refused()), (2, 2, 0, 2));
+        let unique: std::collections::HashSet<_> = seen.iter().collect();
+        assert_eq!(unique.len(), 4, "every attribute set is its own series");
+    }
+
+    #[test]
+    fn series_key_ignores_attribute_order_but_not_values() {
+        let a = series_key("m", &[kv("host.name", "h"), kv("x", "1")], &[kv("cpu", "0"), kv("state", "idle")]);
+        let b = series_key("m", &[kv("x", "1"), kv("host.name", "h")], &[kv("state", "idle"), kv("cpu", "0")]);
+        assert_eq!(a, b);
+        assert_ne!(a, series_key("m", &[kv("host.name", "h"), kv("x", "1")], &[kv("cpu", "1"), kv("state", "idle")]));
+        assert_ne!(a, series_key("n", &[kv("host.name", "h"), kv("x", "1")], &[kv("cpu", "0"), kv("state", "idle")]));
+        // Resource and point attributes are separated: moving a key across changes the series.
+        assert_ne!(series_key("m", &[kv("a", "1")], &[]), series_key("m", &[], &[kv("a", "1")]));
+    }
+
+    #[test]
+    fn point_budget_rejects_the_overflow() {
+        let points = (0..MAX_POINTS_PER_REQUEST + 3).map(|_| point(1, 1.0, vec![])).collect();
+        let mut req = metrics_req(vec![], vec![gauge("m", points)]);
+        let st = sanitize_metrics(&mut req, &mut admit_all());
+        assert_eq!(st.accepted as usize, MAX_POINTS_PER_REQUEST);
+        assert_eq!(st.rejected, 3);
+    }
+
     mod props {
         use super::*;
         use proptest::prelude::*;
@@ -684,7 +975,7 @@ mod tests {
         /// No value under a sensitive or dropped key survives anywhere in the tree.
         fn no_marker_under_sensitive_keys(attrs: &[KeyValue]) -> bool {
             attrs.iter().all(|kv| {
-                let sensitive = !matches!(controlhub_domain::redaction::classify_key(&kv.key), AttributeDecision::Keep);
+                let sensitive = !matches!(karbird_domain::redaction::classify_key(&kv.key), AttributeDecision::Keep);
                 let dump = format!("{:?}", kv.value);
                 !(sensitive && dump.contains(MARKER))
                     && match kv.value.as_ref().and_then(|v| v.value.as_ref()) {
@@ -754,6 +1045,22 @@ mod tests {
                     prop_assert!(valid_id(&s.trace_id, 16) && valid_id(&s.span_id, 8));
                     prop_assert!(s.start_time_unix_nano > 0 && s.end_time_unix_nano >= s.start_time_unix_nano);
                 }
+            }
+
+            #[test]
+            fn metric_point_accounting_is_complete(
+                pts in prop::collection::vec((0u64..3, prop_oneof![Just(f64::NAN), Just(f64::INFINITY), -1e9f64..1e9], 0u8..4), 0..60),
+                limit in 0usize..5,
+            ) {
+                let n = pts.len() as u64;
+                let points = pts.into_iter().map(|(t, v, a)| point(t, v, vec![kv("k", &a.to_string())])).collect();
+                let mut req = metrics_req(vec![], vec![gauge("m", points)]);
+                let mut admitted = std::collections::HashSet::new();
+                let st = sanitize_metrics(&mut req, &mut |k| admitted.contains(&k) || (admitted.len() < limit && admitted.insert(k)));
+                prop_assert_eq!(st.accepted + st.rejected + st.over_limit, n);
+                let kept: u64 = req.resource_metrics.iter().flat_map(|r| &r.scope_metrics).flat_map(|s| &s.metrics)
+                    .map(|m| match &m.data { Some(Data::Gauge(g)) => g.data_points.len() as u64, _ => 0 }).sum();
+                prop_assert_eq!(kept, st.accepted);
             }
         }
     }

@@ -9,6 +9,7 @@ import type {
   EngineConfig,
   Filters,
   FrameSummary,
+  InfrastructureSnapshot,
   NodeDiff,
   NodeMetrics,
   TimelineTracks,
@@ -19,6 +20,8 @@ export type WorkerRequest =
   | { kind: "init"; id: number; config?: Partial<EngineConfig> }
   | { kind: "loadTopology"; id: number; url: string }
   | { kind: "loadTimeline"; id: number; url: string }
+  /** Machines and instances for the infrastructure layer (`InfrastructureSnapshot`). */
+  | { kind: "loadInfrastructure"; id: number; url: string }
   | { kind: "evictBefore"; id: number; beforeNs: string }
   | { kind: "seek"; timeNs: string; generation: number }
   | { kind: "setViewport"; x: number; y: number; width: number; height: number; scale: number }
@@ -29,6 +32,8 @@ export type WorkerRequest =
   | { kind: "compare"; id: number; aNs: string; bNs: string }
   /** Time of the first recorded item strictly after `afterNs`, or null. */
   | { kind: "nextEvent"; id: number; afterNs: string }
+  /** Time of the last recorded item strictly before `beforeNs`, or null. */
+  | { kind: "prevEvent"; id: number; beforeNs: string }
   | { kind: "pick"; id: number; x: number; y: number }
   /** Layered timeline aggregates over `[fromNs, toNs)`; see `TimelineTracks`. */
   | { kind: "timelineTracks"; id: number; fromNs: string; toNs: string; buckets: number; clipCap: number }
@@ -73,10 +78,12 @@ export interface ResultMap {
   init: InitResult;
   loadTopology: LoadResult;
   loadTimeline: LoadResult;
+  loadInfrastructure: InfrastructureSnapshot;
   evictBefore: null;
   nodeMetrics: NodeMetrics | null;
   compare: NodeDiff[];
   nextEvent: string | null;
+  prevEvent: string | null;
   pick: string | null;
   timelineTracks: TimelineTracks;
   diagnostics: Diagnostics;

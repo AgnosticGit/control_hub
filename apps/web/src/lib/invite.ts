@@ -3,7 +3,7 @@
 
 export const INVITE_PATH = "/app/invite";
 /** Keeps the secret while the visitor signs in or signs up (per tab, cleared after joining). */
-export const INVITE_STORAGE_KEY = "controlhub.invite";
+export const INVITE_STORAGE_KEY = "karbird.invite";
 
 const SECRET = /^chv_[A-Za-z0-9_-]{16,124}$/;
 

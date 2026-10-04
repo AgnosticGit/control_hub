@@ -1,4 +1,4 @@
-//! ControlHub administration: installation-wide roles and grants (`system_roles`,
+//! karbird administration: installation-wide roles and grants (`system_roles`,
 //! `system_memberships`) and the cross-project views and changes of the admin panel. Permission
 //! checks happen in the API; these queries only keep the data consistent (at least one active
 //! Super Admin, see [`MemberChange::LastOwner`]).
@@ -13,7 +13,7 @@ use crate::{Result, StorageError};
 /// The top built-in system role; the one that must never disappear.
 pub const SUPER_ADMIN: &str = "super_admin";
 
-/// A user's ControlHub administrator grant with its effective permissions.
+/// A user's karbird administrator grant with its effective permissions.
 #[derive(Debug, Clone, FromRow)]
 pub struct SystemGrantRow {
     pub role_key: Option<String>,
@@ -400,9 +400,9 @@ impl PgStore {
     }
 
     /// Deletes the project with its environments, members, roles, invites, tokens and plans
-    /// (see `controlhub_delete_project`). `false` when it does not exist.
+    /// (see `karbird_delete_project`). `false` when it does not exist.
     pub async fn delete_project(&self, project_id: &str) -> Result<bool> {
-        Ok(sqlx::query_scalar("SELECT controlhub_delete_project($1)").bind(project_id).fetch_one(self.pool()).await?)
+        Ok(sqlx::query_scalar("SELECT karbird_delete_project($1)").bind(project_id).fetch_one(self.pool()).await?)
     }
 
     // ------------------------------------------------------------ users
@@ -520,7 +520,7 @@ mod tests {
             assert!(sql.contains(key), "{key}");
         }
         assert!(sql.contains("SECURITY DEFINER SET search_path"), "definer function pins its search_path");
-        assert!(sql.contains("REVOKE ALL ON FUNCTION controlhub_delete_project(TEXT) FROM PUBLIC"));
+        assert!(sql.contains("REVOKE ALL ON FUNCTION karbird_delete_project(TEXT) FROM PUBLIC"));
         assert!(sql.contains("ON DELETE CASCADE"), "deleting a user removes their admin grant");
     }
 }

@@ -51,7 +51,7 @@ fn run_with(
         ingest_token,
         &json!({ "events": [{
             "event_id": verify_id,
-            "event_type": "controlhub.verify",
+            "event_type": "karbird.verify",
             "service": { "name": service },
             "event_time": now_ns().to_string(),
             "attributes": { "verify_id": verify_id },
@@ -230,7 +230,7 @@ mod tests {
         assert_eq!(post.authorization.as_deref(), Some("Bearer chi_i"));
         let ev: Value = serde_json::from_str(&post.body).unwrap();
         let ev = &ev["events"][0];
-        assert_eq!(ev["event_type"], "controlhub.verify");
+        assert_eq!(ev["event_type"], "karbird.verify");
         assert_eq!(ev["service"]["name"], "shop");
         assert_eq!(ev["attributes"]["verify_id"], ev["event_id"]);
         assert!(Uuid::parse_str(ev["event_id"].as_str().unwrap()).is_ok());

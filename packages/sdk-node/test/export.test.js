@@ -42,13 +42,15 @@ async function capture() {
 function runFixture(endpoint) {
   const env = {};
   for (const [k, v] of Object.entries(process.env)) {
-    if (!k.startsWith('OTEL_') && !k.startsWith('CONTROLHUB_')) env[k] = v;
+    if (!k.startsWith('OTEL_') && !k.startsWith('KARBIRD_')) env[k] = v;
   }
   Object.assign(env, {
-    CONTROLHUB_SERVICE_NAME: 'fixture-svc',
-    CONTROLHUB_INGEST_TOKEN: 'ingest-token-XYZ',
-    CONTROLHUB_OTLP_ENDPOINT: `${endpoint}/`,
-    CONTROLHUB_ENVIRONMENT: 'unit-test',
+    KARBIRD_SERVICE_NAME: 'fixture-svc',
+    KARBIRD_INGEST_TOKEN: 'ingest-token-XYZ',
+    KARBIRD_OTLP_ENDPOINT: `${endpoint}/`,
+    KARBIRD_ENVIRONMENT: 'unit-test',
+    KARBIRD_HOST_NAME: 'fixture-host',
+    KARBIRD_CONTAINER_ID: 'c0ffee'.repeat(10) + 'beef',
   });
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--import', register, fixture, '--secret-arg=argv-secret-ARG'], { env });
@@ -88,6 +90,10 @@ test('exports traces and logs over OTLP/HTTP protobuf with the ingest token', ()
   assert.ok(traces.includes('fixture-svc'), 'service.name missing');
   assert.ok(traces.includes('/orders'), 'server span missing');
   assert.ok(traces.includes('unit-test'), 'deployment environment missing');
+  for (const s of ['host.name', 'fixture-host', 'container.id', 'c0ffee'.repeat(10) + 'beef', 'process.pid']) {
+    assert.ok(traces.includes(s), `${s} missing from the resource`);
+  }
+  assert.match(traces, /fixture-host-\d+/, 'instance ID derives from host.name');
 });
 
 test('never exports credentials, cookies, bodies or command-line arguments', () => {

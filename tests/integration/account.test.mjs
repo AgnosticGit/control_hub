@@ -133,7 +133,7 @@ test('account mutations need a session, CSRF and Origin, never an API token', as
   assert.equal(noCsrf.status, 403);
   const evil = await me.s.json('/api/v1/projects', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', origin: 'https://evil.example', 'x-csrf-token': me.s.cookies.get('controlhub_csrf') },
+    headers: { 'content-type': 'application/json', origin: 'https://evil.example', 'x-csrf-token': me.s.cookies.get('karbird_csrf') },
     body: JSON.stringify({ name: 'Evil' }),
   });
   assert.equal(evil.status, 403);

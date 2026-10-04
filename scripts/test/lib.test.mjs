@@ -20,8 +20,8 @@ test('parseEnv keeps everything after the first = and does not interpret quotes'
 });
 
 test('loadEnvFile returns {} for a missing file and parses an existing one', () => {
-  assert.deepEqual(loadEnvFile('.controlhub/definitely-missing-unit-test.env'), {});
-  const dir = mkdtempSync(join(tmpdir(), 'controlhub-lib-test-'));
+  assert.deepEqual(loadEnvFile('.karbird/definitely-missing-unit-test.env'), {});
+  const dir = mkdtempSync(join(tmpdir(), 'karbird-lib-test-'));
   try {
     const file = join(dir, 'x.env');
     writeFileSync(file, 'K=v\n');
@@ -38,7 +38,7 @@ test('needsShell only for package-manager shims on Windows', () => {
 });
 
 test('quote leaves safe arguments alone and wraps the rest for the shell', () => {
-  for (const a of ['build', '--filter', '@controlhub/web', 'C:\\dev\\x', 'a=b', 'v1.2.3+x', 'http://h:1/p']) assert.equal(quote(a), a);
+  for (const a of ['build', '--filter', '@karbird/web', 'C:\\dev\\x', 'a=b', 'v1.2.3+x', 'http://h:1/p']) assert.equal(quote(a), a);
   assert.equal(quote('two words'), '"two words"');
   assert.equal(quote('a&b'), '"a&b"');
   assert.equal(quote('x|y'), '"x|y"');

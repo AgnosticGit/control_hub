@@ -22,7 +22,7 @@ test-results/
 .env
 .env.local
 .env.*.local
-/.controlhub/
+/.karbird/
 *.pem
 *.key
 

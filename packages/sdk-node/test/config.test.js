@@ -1,11 +1,11 @@
 // Configuration checks that fail before the OpenTelemetry SDK starts (safe to run in-process).
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { getControlHub, startControlHub } from '../src/index.js';
+import { getKarbird, startKarbird } from '../src/index.js';
 
-const GLOBAL_KEY = Symbol.for('controlhub.sdk-node');
+const GLOBAL_KEY = Symbol.for('karbird.sdk-node');
 const OTEL_API_KEY = Symbol.for('opentelemetry.js.api.1');
-const ENV_KEYS = ['CONTROLHUB_SERVICE_NAME', 'OTEL_SERVICE_NAME', 'CONTROLHUB_INGEST_TOKEN'];
+const ENV_KEYS = ['KARBIRD_SERVICE_NAME', 'OTEL_SERVICE_NAME', 'KARBIRD_INGEST_TOKEN'];
 let saved;
 
 beforeEach(() => {
@@ -22,25 +22,25 @@ afterEach(() => {
   delete globalThis[OTEL_API_KEY];
 });
 
-test('getControlHub is null before start', () => {
-  assert.equal(getControlHub(), null);
+test('getKarbird is null before start', () => {
+  assert.equal(getKarbird(), null);
 });
 
 test('requires a service name', () => {
-  assert.throws(() => startControlHub({ token: 't' }), /serviceName/);
-  assert.equal(getControlHub(), null);
+  assert.throws(() => startKarbird({ token: 't' }), /serviceName/);
+  assert.equal(getKarbird(), null);
 });
 
 test('requires an ingest token and does not fall back to an anonymous exporter', () => {
-  assert.throws(() => startControlHub({ serviceName: 'svc' }), /ingest token/);
+  assert.throws(() => startKarbird({ serviceName: 'svc' }), /ingest token/);
   process.env.OTEL_SERVICE_NAME = 'from-otel-env';
-  assert.throws(() => startControlHub(), /ingest token/);
-  assert.equal(getControlHub(), null);
+  assert.throws(() => startKarbird(), /ingest token/);
+  assert.equal(getKarbird(), null);
 });
 
 test('refuses to start next to a foreign OpenTelemetry setup unless allowed', () => {
   globalThis[OTEL_API_KEY] = { trace: {} };
-  assert.throws(() => startControlHub({ serviceName: 'svc', token: 't' }), /already registered/);
+  assert.throws(() => startKarbird({ serviceName: 'svc', token: 't' }), /already registered/);
 });
 
 test('reuses a running instance with a warning instead of starting twice', async () => {
@@ -50,9 +50,9 @@ test('reuses a running instance with a warning instead of starting twice', async
   const original = process.emitWarning;
   process.emitWarning = (message, options) => warnings.push({ message, code: options?.code });
   try {
-    assert.equal(startControlHub({ serviceName: 'svc', token: 't' }), existing);
+    assert.equal(startKarbird({ serviceName: 'svc', token: 't' }), existing);
   } finally {
     process.emitWarning = original;
   }
-  assert.ok(warnings.some((w) => w.code === 'CONTROLHUB_DOUBLE_INIT'));
+  assert.ok(warnings.some((w) => w.code === 'KARBIRD_DOUBLE_INIT'));
 });

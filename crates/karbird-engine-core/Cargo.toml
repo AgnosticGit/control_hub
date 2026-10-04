@@ -1,6 +1,6 @@
 [package]
-name = "controlhub-engine-core"
-description = "Pure computational core for the ControlHub viewer (native + wasm32, no I/O)"
+name = "karbird-engine-core"
+description = "Pure computational core for the karbird viewer (native + wasm32, no I/O)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,7 +10,7 @@ publish.workspace = true
 [features]
 # Enables TypeScript binding export (used only by codegen, never in the WASM build).
 ts = ["dep:ts-rs"]
-# OpenAPI schema derives, used by controlhub-api (never in the WASM build).
+# OpenAPI schema derives, used by karbird-api (never in the WASM build).
 openapi = ["dep:utoipa"]
 
 [dependencies]
@@ -18,7 +18,7 @@ utoipa = { version = "5", optional = true, default-features = false, features = 
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-controlhub-domain.workspace = true
+karbird-domain.workspace = true
 ts-rs = { workspace = true, optional = true }
 
 [dev-dependencies]

@@ -8,7 +8,7 @@ import type {
   RpcKind,
   WorkerRequest,
   WorkerResponse,
-} from "@controlhub/web-engine";
+} from "@karbird/web-engine";
 
 type RpcRequest<K extends RpcKind> = { kind: K } & Omit<Extract<WorkerRequest, { kind: K }>, "id" | "kind">;
 

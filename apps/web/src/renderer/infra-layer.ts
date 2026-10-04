@@ -1,0 +1,42 @@
+// Geometry of the infrastructure layer drawn by the Pixi map. Positions come from the engine
+// (`TopologyView.infra`); these helpers only hit-test and place decorations.
+
+import type { InfraChip, InfraFrame, InfraView } from "@karbird/web-engine";
+
+/** Must match `CHIP_W` / `CHIP_H` in engine-core `infra.rs`. */
+export const CHIP_W = 150;
+export const CHIP_H = 28;
+/** Height of a frame's title strip (engine `HEADER`). */
+export const FRAME_HEADER = 44;
+
+export const INFRA_FRAME = 0x8b5cf6;
+export const INFRA_HOT = 0xef4444;
+export const INFRA_NO_METRICS = 0x64748b;
+export const NOISY_LINK = 0xf59e0b;
+
+export function frameColor(f: InfraFrame): number {
+  if (!f.has_metrics) return INFRA_NO_METRICS;
+  return f.hot ? INFRA_HOT : INFRA_FRAME;
+}
+
+export function chipAt(view: InfraView | null | undefined, x: number, y: number): InfraChip | null {
+  return view?.chips.find((c) => Math.abs(c.x - x) <= CHIP_W / 2 && Math.abs(c.y - y) <= CHIP_H / 2) ?? null;
+}
+
+/**
+ * The machine whose frame contains the point and has nothing else under it: only the
+ * title strip and empty frame area select the machine, cards and chips keep their own clicks.
+ */
+export function frameAt(view: InfraView | null | undefined, x: number, y: number): InfraFrame | null {
+  return view?.frames.find((f) => x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + f.height) ?? null;
+}
+
+/** `×3`, with the machine count when the replicas are spread out. */
+export function badgeText(count: number, hosts: number): string {
+  return hosts > 1 ? `×${count} · ${hosts} machines` : `×${count}`;
+}
+
+/** Midpoint of a link, where its label goes. */
+export function linkLabelAt(from: [number, number], to: [number, number]): [number, number] {
+  return [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
+}

@@ -41,7 +41,7 @@ spans in view. Items beyond a cap are counted and shown as "+N not drawn".
 
 ## Architecture
 
-- New pure function in `controlhub-engine-core`:
+- New pure function in `karbird-engine-core`:
   `timeline_tracks(from_ns, to_ns, buckets, clip_cap) -> TimelineTracks`.
   - It works on spans, logs and events already in memory, and honours the service filters.
   - Per-bucket arrays: `requests`, `errors`, `events`, `latency_p95_ms` (NaN = no data), and per

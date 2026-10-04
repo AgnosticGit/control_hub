@@ -1,4 +1,4 @@
-//! controlhub-archiver: moves closed log windows from ClickHouse into compressed segments in
+//! karbird-archiver: moves closed log windows from ClickHouse into compressed segments in
 //! S3-compatible object storage (ADR-0015). It only reads ClickHouse; the table TTL deletes.
 //!
 //! A window is recorded as done only after every service's segment is stored, verified and
@@ -14,11 +14,11 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use clap::{Args as ClapArgs, Parser, Subcommand};
-use controlhub_runtime::{backoff, init_tracing, load_local_env, shutdown_signal};
-use controlhub_storage::archive::{ArchiveObjects, ObjectConfig};
-use controlhub_storage::ch::{ChConfig, ChStore};
-use controlhub_storage::pg::PgStore;
-use controlhub_storage::retention::{self, Table};
+use karbird_runtime::{backoff, init_tracing, load_local_env, shutdown_signal};
+use karbird_storage::archive::{ArchiveObjects, ObjectConfig};
+use karbird_storage::ch::{ChConfig, ChStore};
+use karbird_storage::pg::PgStore;
+use karbird_storage::retention::{self, Table};
 use tokio::sync::watch;
 
 use crate::job::{Ctx, Metrics, Summary, archive_window, parse_scope};
@@ -29,7 +29,7 @@ const RECHECK_BATCH: i64 = 24;
 const GC_BATCH: i64 = 500;
 
 #[derive(Debug, Parser)]
-#[command(name = "controlhub-archiver")]
+#[command(name = "karbird-archiver")]
 struct Cli {
     #[command(flatten)]
     common: Common,
@@ -39,33 +39,33 @@ struct Cli {
 
 #[derive(Debug, ClapArgs)]
 struct Common {
-    #[arg(long, env = "CONTROLHUB_ARCHIVER_DATABASE_URL")]
+    #[arg(long, env = "KARBIRD_ARCHIVER_DATABASE_URL")]
     database_url: String,
-    #[arg(long, env = "CONTROLHUB_CLICKHOUSE_URL", default_value = "http://127.0.0.1:18123")]
+    #[arg(long, env = "KARBIRD_CLICKHOUSE_URL", default_value = "http://127.0.0.1:18123")]
     clickhouse_url: String,
-    #[arg(long, env = "CONTROLHUB_CLICKHOUSE_DATABASE", default_value = "controlhub")]
+    #[arg(long, env = "KARBIRD_CLICKHOUSE_DATABASE", default_value = "karbird")]
     clickhouse_database: String,
-    #[arg(long, env = "CONTROLHUB_ARCHIVER_CLICKHOUSE_USER")]
+    #[arg(long, env = "KARBIRD_ARCHIVER_CLICKHOUSE_USER")]
     clickhouse_user: String,
-    #[arg(long, env = "CONTROLHUB_ARCHIVER_CLICKHOUSE_PASSWORD")]
+    #[arg(long, env = "KARBIRD_ARCHIVER_CLICKHOUSE_PASSWORD")]
     clickhouse_password: String,
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_S3_ENDPOINT", default_value = "http://127.0.0.1:19000")]
+    #[arg(long, env = "KARBIRD_ARCHIVE_S3_ENDPOINT", default_value = "http://127.0.0.1:19000")]
     s3_endpoint: String,
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_S3_BUCKET", default_value = "controlhub-archive")]
+    #[arg(long, env = "KARBIRD_ARCHIVE_S3_BUCKET", default_value = "karbird-archive")]
     s3_bucket: String,
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_S3_REGION", default_value = "us-east-1")]
+    #[arg(long, env = "KARBIRD_ARCHIVE_S3_REGION", default_value = "us-east-1")]
     s3_region: String,
-    #[arg(long, env = "CONTROLHUB_ARCHIVER_S3_ACCESS_KEY")]
+    #[arg(long, env = "KARBIRD_ARCHIVER_S3_ACCESS_KEY")]
     s3_access_key: String,
-    #[arg(long, env = "CONTROLHUB_ARCHIVER_S3_SECRET_KEY")]
+    #[arg(long, env = "KARBIRD_ARCHIVER_S3_SECRET_KEY")]
     s3_secret_key: String,
     /// Archive window length.
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_WINDOW_SECS", default_value_t = 3600, value_parser = clap::value_parser!(u32).range(60..=86_400))]
+    #[arg(long, env = "KARBIRD_ARCHIVE_WINDOW_SECS", default_value_t = 3600, value_parser = clap::value_parser!(u32).range(60..=86_400))]
     window_secs: u32,
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_ZSTD_LEVEL", default_value_t = 19, value_parser = clap::value_parser!(i32).range(1..=22))]
+    #[arg(long, env = "KARBIRD_ARCHIVE_ZSTD_LEVEL", default_value_t = 19, value_parser = clap::value_parser!(i32).range(1..=22))]
     zstd_level: i32,
     /// ClickHouse log retention; must equal the `logs` table TTL (`just bootstrap` applies it).
-    #[arg(long, env = "CONTROLHUB_LOGS_RETENTION_DAYS", default_value_t = retention::DEFAULT_LOGS_DAYS, value_parser = clap::value_parser!(u32).range(i64::from(retention::MIN_DAYS)..=i64::from(retention::MAX_DAYS)))]
+    #[arg(long, env = "KARBIRD_LOGS_RETENTION_DAYS", default_value_t = retention::DEFAULT_LOGS_DAYS, value_parser = clap::value_parser!(u32).range(i64::from(retention::MIN_DAYS)..=i64::from(retention::MAX_DAYS)))]
     logs_retention_days: u32,
 }
 
@@ -80,20 +80,20 @@ enum Cmd {
 
 #[derive(Debug, ClapArgs)]
 struct RunArgs {
-    #[arg(long, env = "CONTROLHUB_ARCHIVER_ADMIN_ADDR", default_value = "127.0.0.1:9466")]
+    #[arg(long, env = "KARBIRD_ARCHIVER_ADMIN_ADDR", default_value = "127.0.0.1:9466")]
     admin_addr: SocketAddr,
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_INTERVAL_SECS", default_value_t = 60)]
+    #[arg(long, env = "KARBIRD_ARCHIVE_INTERVAL_SECS", default_value_t = 60)]
     interval_secs: u64,
     /// A window is archived only after it has been closed this long.
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_MIN_AGE_SECS", default_value_t = 3600)]
+    #[arg(long, env = "KARBIRD_ARCHIVE_MIN_AGE_SECS", default_value_t = 3600)]
     min_age_secs: u32,
     /// How long archived segments are kept.
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_RETENTION_DAYS", default_value_t = 365)]
+    #[arg(long, env = "KARBIRD_ARCHIVE_RETENTION_DAYS", default_value_t = 365)]
     retention_days: u32,
     /// Windows are counted again this long after they closed; late rows trigger a re-archive.
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_RECHECK_AFTER_SECS", default_value_t = 86_400)]
+    #[arg(long, env = "KARBIRD_ARCHIVE_RECHECK_AFTER_SECS", default_value_t = 86_400)]
     recheck_after_secs: u32,
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_MAX_WINDOWS_PER_TICK", default_value_t = 24)]
+    #[arg(long, env = "KARBIRD_ARCHIVE_MAX_WINDOWS_PER_TICK", default_value_t = 24)]
     max_windows: usize,
 }
 
@@ -246,7 +246,7 @@ async fn run(ctx: Ctx, window: i64, hot_retention_days: u32, a: RunArgs) -> anyh
             })
             .into_future(),
     );
-    tracing::info!(admin = %a.admin_addr, "controlhub-archiver running");
+    tracing::info!(admin = %a.admin_addr, "karbird-archiver running");
 
     let worker = {
         let mut stop = stop_rx.clone();
@@ -277,7 +277,7 @@ async fn run(ctx: Ctx, window: i64, hot_retention_days: u32, a: RunArgs) -> anyh
     let _ = stop_tx.send(true);
     let _ = tokio::time::timeout(Duration::from_secs(60), worker).await;
     let _ = admin_task.await;
-    tracing::info!("controlhub-archiver stopped");
+    tracing::info!("karbird-archiver stopped");
     Ok(())
 }
 
@@ -301,7 +301,7 @@ async fn once(ctx: Ctx, window: i64, a: OnceArgs) -> anyhow::Result<Summary> {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     load_local_env();
-    init_tracing("controlhub-archiver");
+    init_tracing("karbird-archiver");
     let cli = Cli::parse();
     let window = i64::from(cli.common.window_secs) * NS;
     let ctx = connect(&cli.common).await?;
@@ -325,7 +325,7 @@ mod tests {
 
     fn base() -> Vec<&'static str> {
         vec![
-            "controlhub-archiver",
+            "karbird-archiver",
             "--database-url",
             "postgres://x",
             "--clickhouse-user",
@@ -350,7 +350,7 @@ mod tests {
         args.push("run");
         let cli = Cli::try_parse_from(args).unwrap();
         assert_eq!((cli.common.window_secs, cli.common.zstd_level), (3600, 19));
-        if std::env::var_os("CONTROLHUB_LOGS_RETENTION_DAYS").is_none() {
+        if std::env::var_os("KARBIRD_LOGS_RETENTION_DAYS").is_none() {
             assert_eq!(cli.common.logs_retention_days, 14);
         }
         let Cmd::Run(r) = cli.cmd else { panic!("run expected") };

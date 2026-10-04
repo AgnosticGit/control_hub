@@ -1,6 +1,6 @@
 [package]
-name = "controlhub-runtime"
-description = "Shared process runtime helpers for ControlHub services (tracing, config, shutdown, broker)"
+name = "karbird-runtime"
+description = "Shared process runtime helpers for karbird services (tracing, config, shutdown, broker)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

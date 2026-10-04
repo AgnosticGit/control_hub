@@ -24,7 +24,7 @@ async function signup(label) {
 const preview = (s, token, origin = ORIGIN) =>
   s.json('/api/v1/invites/preview', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', origin, 'x-csrf-token': s.cookies.get('controlhub_csrf') ?? '' },
+    headers: { 'content-type': 'application/json', origin, 'x-csrf-token': s.cookies.get('karbird_csrf') ?? '' },
     body: JSON.stringify({ token }),
   });
 const accept = (who, token) => who.s.mutate('/api/v1/invites/accept', { token });
@@ -161,7 +161,7 @@ test('invite mutations need CSRF and Origin; API tokens and other tenants are re
   assert.equal(noCsrf.status, 403);
   const evil = await owner.s.json(invites, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', origin: 'https://evil.example', 'x-csrf-token': owner.s.cookies.get('controlhub_csrf') },
+    headers: { 'content-type': 'application/json', origin: 'https://evil.example', 'x-csrf-token': owner.s.cookies.get('karbird_csrf') },
     body,
   });
   assert.equal(evil.status, 403);

@@ -1,7 +1,7 @@
 // When a zoomed-in view shows nothing at all, the timeline offers to jump to the nearest item
 // on either side. Pure, unit-tested.
 
-import type { TimelineTracks } from "@controlhub/web-engine";
+import type { TimelineTracks } from "@karbird/web-engine";
 import type { ActionBar } from "./draw";
 import { clampView, type View } from "./scale";
 

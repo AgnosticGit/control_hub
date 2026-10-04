@@ -1,5 +1,5 @@
 //! Permissions, built-in roles and the rules that keep anyone from granting more than they
-//! have. The same rules govern project members (`Permission`) and ControlHub administrators
+//! have. The same rules govern project members (`Permission`) and karbird administrators
 //! (`crate::system_permissions::SystemPermission`). Pure (no I/O): handlers load the actor and
 //! target, these functions decide.
 
@@ -226,7 +226,7 @@ impl Builtin {
 }
 
 /// The member making a change, with their effective permissions. `is_owner`: the top role
-/// (project Owner, ControlHub Super Admin).
+/// (project Owner, karbird Super Admin).
 #[derive(Debug, Clone)]
 pub struct Actor<P: PermissionKind = Permission> {
     pub user_id: Uuid,

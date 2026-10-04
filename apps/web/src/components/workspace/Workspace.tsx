@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { NODE_STRIDE, type Diagnostics, type NodeDiff } from "@controlhub/web-engine";
+import { NODE_STRIDE, type Diagnostics, type NodeDiff } from "@karbird/web-engine";
 import { AppShell, StatusRow } from "@/components/shell/AppShell";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { useSession } from "@/lib/session";
@@ -10,7 +10,10 @@ import { NS_PER_MS, formatClock, formatDateTime, nowNs, parseNs } from "@/lib/ti
 import { Splitter } from "@/components/ui/Splitter";
 import { usePersisted, writePersisted } from "@/lib/persisted";
 import { Inspector } from "./Inspector";
+import type { OpenSignals } from "./InfraInspector";
+import { InfraOverlay } from "./InfraOverlay";
 import { MapView } from "./MapView";
+import { useInfrastructure } from "./useInfrastructure";
 import { SignalsPanel, type Tab } from "./SignalsPanel";
 import { TimelineBar } from "./TimelineBar";
 import { TraceFocusBar } from "./TraceFocusBar";
@@ -61,18 +64,37 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   // Service node IDs switched off on the timeline: dimmed on the map and left out of totals.
   const [muted, setMuted] = useState<string[]>([]);
   const [tableView, setTableView] = useState(false);
+  const [infraOn, setInfraOn] = useState(false);
+  const [selectedHost, setSelectedHost] = useState<string | null>(null);
   const [markA, setMarkA] = useState<bigint | null>(null);
   const [compare, setCompare] = useState<{ a: bigint; b: bigint; diffs: NodeDiff[] } | null>(null);
   const [side, setSide] = useState<SideTab>("signals");
-  const [sideWidth, setSideWidth] = usePersistedSize("controlhub.workspace.sideWidth", 400, SIDE_MIN, SIDE_MAX);
-  const [dockHeight, setDockHeight] = usePersistedSize("controlhub.workspace.timelineHeight", 220, DOCK_MIN, DOCK_MAX);
+  const [sideWidth, setSideWidth] = usePersistedSize("karbird.workspace.sideWidth", 400, SIDE_MIN, SIDE_MAX);
+  const [dockHeight, setDockHeight] = usePersistedSize("karbird.workspace.timelineHeight", 220, DOCK_MIN, DOCK_MAX);
   const debouncedSearch = useDebounced(search, 150);
   const selectedNode = state.topology?.nodes.find((n) => n.id === selectedId) ?? null;
+  const infra = useInfrastructure(actions, state.phase === "ready", infraOn, state.cursor);
+  const infraSnapshot = infraOn ? infra.snapshot : null;
 
   // Selecting something opens its details; the signals tab stays one click away.
   const select = (id: string | null) => {
     setSelectedId(id);
+    setSelectedHost(null);
     if (id !== null) setSide("details");
+  };
+  const selectHost = (id: string | null) => {
+    setSelectedHost(id);
+    if (id !== null) {
+      setSelectedId(null);
+      setSide("details");
+    }
+  };
+  // Traces or logs of the moment on screen: time stops there so the lists match the map.
+  const openSignals: OpenSignals = (signal, serviceId) => {
+    if (state.mode === "live" || state.mode === "replay") actions.pause();
+    if (serviceId !== null) setSelectedId(serviceId);
+    setTab(signal);
+    setSide("signals");
   };
 
   const project = session.data?.projects.find((p) => p.id === projectId);
@@ -87,8 +109,9 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
       selected_trace_id: traceId,
       trace_only: traceOnly,
       muted_services: muted,
+      infrastructure: infraOn,
     });
-  }, [actions, state.phase, debouncedSearch, hideInferred, onlyProblems, traceId, traceOnly, muted]);
+  }, [actions, state.phase, debouncedSearch, hideInferred, onlyProblems, traceId, traceOnly, muted, infraOn]);
 
   const selectTrace = (id: string | null) => {
     setTraceId(id);
@@ -179,6 +202,18 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
               </span>
               <h1>System Map</h1>
               <div className="ml-auto flex items-center gap-4 font-normal">
+                <label className="toggle" title="Group services into the machines they run on">
+                  <input
+                    type="checkbox"
+                    className="switch"
+                    checked={infraOn}
+                    onChange={(e) => {
+                      setInfraOn(e.target.checked);
+                      if (!e.target.checked) setSelectedHost(null);
+                    }}
+                  />
+                  Infrastructure
+                </label>
                 <label className="toggle">
                   <input type="checkbox" className="switch" checked={onlyProblems} onChange={(e) => setOnlyProblems(e.target.checked)} />
                   Only problems
@@ -209,8 +244,18 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                   speed={state.speed}
                   summary={state.summary}
                   memory={memory}
+                  onSelectHost={selectHost}
                 />
               )}
+              {infraOn && state.phase === "ready" ? (
+                <InfraOverlay
+                  snapshot={infraSnapshot}
+                  error={infra.error}
+                  selectedHost={selectedHost}
+                  onSelectHost={selectHost}
+                  onSelect={select}
+                />
+              ) : null}
               {traceId && state.phase === "ready" ? (
                 <TraceFocusBar
                   key={traceId}
@@ -276,6 +321,10 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                   onSelect={select}
                   compare={compare}
                   onCloseCompare={() => setCompare(null)}
+                  infra={infraSnapshot}
+                  selectedHost={selectedHost}
+                  onSelectHost={selectHost}
+                  onSignals={openSignals}
                 />
               </aside>
             ) : (

@@ -1,6 +1,7 @@
 pub mod account;
 pub mod actions;
 pub mod admin;
+pub mod infrastructure;
 pub mod invites;
 pub mod live;
 pub mod roles;
@@ -11,7 +12,7 @@ pub mod tokens;
 
 use axum::Json;
 use axum::extract::{Path, State};
-use controlhub_storage::pg::AuditRow;
+use karbird_storage::pg::AuditRow;
 use serde::Serialize;
 use utoipa::ToSchema;
 

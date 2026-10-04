@@ -1,9 +1,9 @@
 //! OTLP/HTTP (binary Protobuf) and the custom events API.
 //!
-//! Supported: `POST /v1/traces`, `POST /v1/logs` with
-//! `Content-Type: application/x-protobuf`, optional `Content-Encoding: gzip`.
-//! Not supported (explicit errors, never silent success): OTLP/HTTP JSON
-//! encoding (415), `/v1/metrics` (501).
+//! Supported: `POST /v1/traces`, `POST /v1/logs`, `POST /v1/metrics` (gauges and
+//! sums, ADR-0018) with `Content-Type: application/x-protobuf`, optional
+//! `Content-Encoding: gzip`. Not supported (explicit errors, never silent
+//! success): OTLP/HTTP JSON encoding (415).
 
 use std::io::Read;
 use std::time::Duration;
@@ -14,14 +14,17 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use controlhub_domain::Signal;
-use controlhub_protocol::otlp::collector::logs::v1::{
+use karbird_domain::Signal;
+use karbird_protocol::otlp::collector::logs::v1::{
     ExportLogsPartialSuccess, ExportLogsServiceRequest, ExportLogsServiceResponse,
 };
-use controlhub_protocol::otlp::collector::trace::v1::{
+use karbird_protocol::otlp::collector::metrics::v1::{
+    ExportMetricsPartialSuccess, ExportMetricsServiceRequest, ExportMetricsServiceResponse,
+};
+use karbird_protocol::otlp::collector::trace::v1::{
     ExportTracePartialSuccess, ExportTraceServiceRequest, ExportTraceServiceResponse,
 };
-use controlhub_protocol::v1::ingest_envelope::Payload;
+use karbird_protocol::v1::ingest_envelope::Payload;
 use prost::Message;
 use tower::ServiceBuilder;
 use tower_http::timeout::TimeoutLayer;
@@ -31,7 +34,7 @@ use crate::broker::PublishError;
 use crate::events;
 use crate::metrics::Metrics;
 use crate::pipeline::{AcceptError, AppState};
-use crate::sanitize::{sanitize_logs, sanitize_traces};
+use crate::sanitize::{MetricStats, sanitize_logs, sanitize_traces};
 
 pub const MAX_COMPRESSED_BODY: usize = 4 * 1024 * 1024;
 pub const MAX_DECOMPRESSED_BODY: usize = 16 * 1024 * 1024;
@@ -49,7 +52,7 @@ pub fn router(state: AppState, max_concurrency: usize) -> Router {
     Router::new()
         .route("/v1/traces", post(export_traces))
         .route("/v1/logs", post(export_logs))
-        .route("/v1/metrics", post(export_metrics_unsupported))
+        .route("/v1/metrics", post(export_metrics))
         .route("/api/v1/events/batch", post(events_batch))
         .route("/health", get(|| async { "ok" }))
         .layer(
@@ -222,13 +225,50 @@ async fn export_logs(State(st): State<AppState>, headers: HeaderMap, body: Bytes
     protobuf_ok(resp.encode_to_vec())
 }
 
-async fn export_metrics_unsupported() -> Response {
-    protobuf_error(
-        StatusCode::NOT_IMPLEMENTED,
-        12,
-        "OTLP metrics ingestion is not implemented yet in ControlHub; data was NOT accepted",
-        None,
-    )
+async fn export_metrics(State(st): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {
+    let cred = match st.authenticate(auth_header(&headers), Signal::Metrics).await {
+        Ok(c) => c,
+        Err(e) => return accept_error_response(e),
+    };
+    let raw = match decode_body(&headers, &body) {
+        Ok(r) => r,
+        Err(r) => {
+            Metrics::inc(&st.metrics.requests_rejected_invalid, 1);
+            return r;
+        }
+    };
+    let mut req = match ExportMetricsServiceRequest::decode(raw.as_slice()) {
+        Ok(r) => r,
+        Err(_) => {
+            Metrics::inc(&st.metrics.requests_rejected_invalid, 1);
+            return protobuf_error(StatusCode::BAD_REQUEST, 3, "malformed ExportMetricsServiceRequest", None);
+        }
+    };
+    let stats = st.sanitize_metrics(&cred, &mut req);
+    if stats.accepted > 0 {
+        if let Err(e) = st.publish(&cred, Payload::OtlpMetrics(req.encode_to_vec())).await {
+            return accept_error_response(e);
+        }
+        Metrics::inc(&st.metrics.metric_points_accepted, stats.accepted);
+    }
+    let resp = ExportMetricsServiceResponse { partial_success: metrics_partial_success(&stats) };
+    protobuf_ok(resp.encode_to_vec())
+}
+
+pub(crate) fn metrics_partial_success(stats: &MetricStats) -> Option<ExportMetricsPartialSuccess> {
+    (stats.refused() > 0).then(|| ExportMetricsPartialSuccess {
+        rejected_data_points: stats.refused() as i64,
+        error_message: if stats.over_limit > 0 {
+            format!(
+                "{} points of new series over the per-environment series limit and {} invalid or unsupported points \
+                 (only gauges and sums are accepted) were rejected",
+                stats.over_limit, stats.rejected
+            )
+        } else {
+            "invalid or unsupported points (only gauges and sums are accepted) or over the per-request limit were rejected"
+                .into()
+        },
+    })
 }
 
 async fn events_batch(State(st): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {
@@ -298,10 +338,14 @@ mod tests {
     use crate::testing::{Harness, TOKEN, TRACES_ONLY, get, harness};
     use axum::body::Body;
     use axum::http::Request;
-    use controlhub_protocol::otlp::common::v1::{AnyValue, KeyValue, any_value::Value};
-    use controlhub_protocol::otlp::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
-    use controlhub_protocol::otlp::resource::v1::Resource;
-    use controlhub_protocol::otlp::trace::v1::{ResourceSpans, ScopeSpans, Span};
+    use karbird_protocol::otlp::common::v1::{AnyValue, KeyValue, any_value::Value};
+    use karbird_protocol::otlp::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+    use karbird_protocol::otlp::metrics::v1::{
+        Histogram, HistogramDataPoint, Metric, NumberDataPoint, ResourceMetrics, ScopeMetrics, Sum, metric::Data,
+        number_data_point,
+    };
+    use karbird_protocol::otlp::resource::v1::Resource;
+    use karbird_protocol::otlp::trace::v1::{ResourceSpans, ScopeSpans, Span};
     use serde_json::{Value as Json, json};
     use tower::ServiceExt;
 
@@ -416,14 +460,143 @@ mod tests {
         assert_eq!(body, b"ok");
     }
 
+    // ---- metrics ----
+
+    fn cpu_metrics(host: &str, cpus: usize) -> ExportMetricsServiceRequest {
+        let points = (0..cpus)
+            .map(|i| NumberDataPoint {
+                attributes: vec![kv("cpu", &format!("cpu{i}")), kv("state", "user")],
+                time_unix_nano: 10,
+                value: Some(number_data_point::Value::AsDouble(1.5)),
+                ..Default::default()
+            })
+            .collect();
+        ExportMetricsServiceRequest {
+            resource_metrics: vec![ResourceMetrics {
+                resource: Some(Resource {
+                    attributes: vec![
+                        kv("host.name", host),
+                        kv("tenant_id", "someone-else"),
+                        kv("auth_token", "s3cr3t"),
+                    ],
+                    ..Default::default()
+                }),
+                scope_metrics: vec![ScopeMetrics {
+                    metrics: vec![Metric {
+                        name: "system.cpu.time".into(),
+                        unit: "s".into(),
+                        data: Some(Data::Sum(Sum {
+                            data_points: points,
+                            aggregation_temporality: 2,
+                            is_monotonic: true,
+                        })),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        }
+    }
+
+    fn published_metrics(h: &Harness) -> Vec<ExportMetricsServiceRequest> {
+        h.envelopes()
+            .into_iter()
+            .map(|e| match e.payload {
+                Some(Payload::OtlpMetrics(b)) => ExportMetricsServiceRequest::decode(b.as_slice()).unwrap(),
+                other => panic!("unexpected payload {other:?}"),
+            })
+            .collect()
+    }
+
     #[tokio::test]
-    async fn metrics_signal_is_explicitly_not_implemented() {
+    async fn metrics_are_accepted_redacted_and_scoped_by_the_token() {
         let h = harness();
-        let (status, headers, body) = send(&h, post("/v1/metrics", Some(TOKEN), Some(PB), vec![])).await;
-        assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
-        let s = rpc_status(&headers, &body);
-        assert_eq!(s.code, 12);
-        assert!(s.message.contains("NOT accepted"));
+        let body = cpu_metrics("vps-app", 2).encode_to_vec();
+        let (status, headers, resp) = send(&h, post("/v1/metrics", Some(TOKEN), Some(PB), body)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()), Some(PB));
+        assert!(ExportMetricsServiceResponse::decode(resp.as_slice()).unwrap().partial_success.is_none());
+        assert_eq!(h.envelopes()[0].scope.as_ref().unwrap().tenant_id, "t1");
+        let dump = format!("{:?}", published_metrics(&h));
+        assert!(dump.contains("vps-app") && !dump.contains("s3cr3t"), "{dump}");
+        assert_eq!(get(&h.metrics().metric_points_accepted), 2);
+        assert_eq!(get(&h.metrics().attributes_redacted), 1);
+    }
+
+    #[tokio::test]
+    async fn metrics_need_the_metrics_signal_and_a_token() {
+        let h = harness();
+        let body = cpu_metrics("h", 1).encode_to_vec();
+        let (status, headers, resp) = send(&h, post("/v1/metrics", None, Some(PB), body.clone())).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(rpc_status(&headers, &resp).code, 16);
+        let (status, headers, resp) = send(&h, post("/v1/metrics", Some(TRACES_ONLY), Some(PB), body)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(rpc_status(&headers, &resp).message.contains("metrics"));
+        assert!(h.broker.records().is_empty());
+    }
+
+    #[tokio::test]
+    async fn histograms_are_rejected_with_partial_success() {
+        let h = harness();
+        let mut req = cpu_metrics("h", 1);
+        req.resource_metrics[0].scope_metrics[0].metrics.push(Metric {
+            name: "http.server.duration".into(),
+            data: Some(Data::Histogram(Histogram {
+                data_points: vec![HistogramDataPoint::default(); 3],
+                aggregation_temporality: 2,
+            })),
+            ..Default::default()
+        });
+        let (status, _, resp) = send(&h, post("/v1/metrics", Some(TOKEN), Some(PB), req.encode_to_vec())).await;
+        assert_eq!(status, StatusCode::OK);
+        let ps = ExportMetricsServiceResponse::decode(resp.as_slice()).unwrap().partial_success.unwrap();
+        assert_eq!(ps.rejected_data_points, 3);
+        assert!(ps.error_message.contains("gauges and sums"));
+        assert_eq!(get(&h.metrics().metric_points_rejected), 3);
+        let published = published_metrics(&h);
+        assert_eq!(published[0].resource_metrics[0].scope_metrics[0].metrics.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn series_over_the_environment_limit_are_refused_and_counted() {
+        let h = harness();
+        let body = cpu_metrics("h", crate::testing::TEST_MAX_SERIES + 2).encode_to_vec();
+        let (status, _, resp) = send(&h, post("/v1/metrics", Some(TOKEN), Some(PB), body)).await;
+        assert_eq!(status, StatusCode::OK);
+        let ps = ExportMetricsServiceResponse::decode(resp.as_slice()).unwrap().partial_success.unwrap();
+        assert_eq!(ps.rejected_data_points, 2);
+        assert!(ps.error_message.contains("series limit"));
+        assert_eq!(get(&h.metrics().metric_series_rejected), 2);
+        assert_eq!(get(&h.metrics().metric_points_accepted), crate::testing::TEST_MAX_SERIES as u64);
+        // The same series keep flowing on the next export.
+        let body = cpu_metrics("h", crate::testing::TEST_MAX_SERIES).encode_to_vec();
+        let (_, _, resp) = send(&h, post("/v1/metrics", Some(TOKEN), Some(PB), body)).await;
+        assert!(ExportMetricsServiceResponse::decode(resp.as_slice()).unwrap().partial_success.is_none());
+    }
+
+    #[tokio::test]
+    async fn all_rejected_metrics_are_not_published() {
+        let h = harness();
+        let mut req = cpu_metrics("h", 1);
+        req.resource_metrics[0].scope_metrics[0].metrics[0].name = "bad name".into();
+        let (status, _, resp) = send(&h, post("/v1/metrics", Some(TOKEN), Some(PB), req.encode_to_vec())).await;
+        assert_eq!(status, StatusCode::OK);
+        let ps = ExportMetricsServiceResponse::decode(resp.as_slice()).unwrap().partial_success.unwrap();
+        assert_eq!(ps.rejected_data_points, 1);
+        assert!(h.broker.records().is_empty());
+    }
+
+    #[tokio::test]
+    async fn metrics_broker_failure_is_503_never_200() {
+        let h = harness();
+        h.broker.set_mode(Mode::Fail(PublishError::Unavailable("down".into())));
+        let body = cpu_metrics("h", 1).encode_to_vec();
+        let (status, headers, resp) = send(&h, post("/v1/metrics", Some(TOKEN), Some(PB), body)).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(rpc_status(&headers, &resp).message.contains("NOT accepted"));
+        assert_eq!(get(&h.metrics().metric_points_accepted), 0);
     }
 
     #[tokio::test]
@@ -538,14 +711,14 @@ mod tests {
     #[tokio::test]
     async fn malformed_protobuf_is_400() {
         let h = harness();
-        for path in ["/v1/traces", "/v1/logs"] {
+        for path in ["/v1/traces", "/v1/logs", "/v1/metrics"] {
             let (status, headers, resp) = send(&h, post(path, Some(TOKEN), Some(PB), vec![0xff, 0xff, 0xff])).await;
             assert_eq!(status, StatusCode::BAD_REQUEST, "{path}");
             let s = rpc_status(&headers, &resp);
             assert_eq!(s.code, 3);
             assert!(s.message.starts_with("malformed"));
         }
-        assert_eq!(get(&h.metrics().requests_rejected_invalid), 2);
+        assert_eq!(get(&h.metrics().requests_rejected_invalid), 3);
         assert!(h.broker.records().is_empty());
     }
 

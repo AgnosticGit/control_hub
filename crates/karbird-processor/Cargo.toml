@@ -1,6 +1,6 @@
 [package]
-name = "controlhub-processor"
-description = "ControlHub processor: broker -> normalisation -> ClickHouse"
+name = "karbird-processor"
+description = "karbird processor: broker -> normalisation -> ClickHouse"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,11 +8,11 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-controlhub-domain.workspace = true
-controlhub-protocol.workspace = true
-controlhub-storage.workspace = true
-controlhub-runtime.workspace = true
-controlhub-archive.workspace = true
+karbird-domain.workspace = true
+karbird-protocol.workspace = true
+karbird-storage.workspace = true
+karbird-runtime.workspace = true
+karbird-archive.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true

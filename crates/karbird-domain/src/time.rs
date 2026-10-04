@@ -11,7 +11,7 @@ pub type UnixNanos = i64;
 pub const NANOS_PER_MILLI: i64 = 1_000_000;
 pub const NANOS_PER_SEC: i64 = 1_000_000_000;
 
-/// `#[serde(with = "controlhub_domain::time::nanos_string")]` for `i64` fields.
+/// `#[serde(with = "karbird_domain::time::nanos_string")]` for `i64` fields.
 pub mod nanos_string {
     use super::*;
 

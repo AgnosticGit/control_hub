@@ -1,24 +1,25 @@
-# ControlHub production, host "app": Kafka, the Rust services, the web app and Caddy (TLS).
-# Lives in /opt/controlhub next to .env and Caddyfile (rendered by the deploy workflow).
+# karbird production, host "app": Kafka, the Rust services, the web app and Caddy (TLS).
+# Lives in /opt/karbird next to .env and Caddyfile (rendered by the deploy workflow).
 # Only Caddy is reachable from the internet (80/443); everything else stays on the Docker network.
 #   docker compose -f compose.app.yaml up -d --wait
 
-name: controlhub
+name: karbird
 
 x-service: &service
   restart: unless-stopped
   stop_grace_period: 30s
 
 x-storage: &storage
-  CONTROLHUB_ENV: production
-  CONTROLHUB_LOG_FORMAT: json
-  CONTROLHUB_CLICKHOUSE_URL: http://${STORAGE_ADDR:?rendered by the deploy}:8123
-  CONTROLHUB_CLICKHOUSE_DATABASE: controlhub
+  KARBIRD_ENV: production
+  KARBIRD_LOG_FORMAT: json
+  KARBIRD_CLICKHOUSE_URL: http://${STORAGE_ADDR:?rendered by the deploy}:8123
+  KARBIRD_CLICKHOUSE_DATABASE: karbird
 
 x-retention: &retention
-  CONTROLHUB_LOGS_RETENTION_DAYS: ${CONTROLHUB_LOGS_RETENTION_DAYS:-14}
-  CONTROLHUB_SPANS_RETENTION_DAYS: ${CONTROLHUB_SPANS_RETENTION_DAYS:-14}
-  CONTROLHUB_EVENTS_RETENTION_DAYS: ${CONTROLHUB_EVENTS_RETENTION_DAYS:-30}
+  KARBIRD_LOGS_RETENTION_DAYS: ${KARBIRD_LOGS_RETENTION_DAYS:-14}
+  KARBIRD_SPANS_RETENTION_DAYS: ${KARBIRD_SPANS_RETENTION_DAYS:-14}
+  KARBIRD_EVENTS_RETENTION_DAYS: ${KARBIRD_EVENTS_RETENTION_DAYS:-30}
+  KARBIRD_METRICS_RETENTION_DAYS: ${KARBIRD_METRICS_RETENTION_DAYS:-14}
 
 services:
   kafka:
@@ -62,14 +63,14 @@ services:
 
   ingest:
     <<: *service
-    image: ${IMAGE_PREFIX:?rendered by the deploy}/controlhub-ingest:${CONTROLHUB_VERSION:?rendered by the deploy}
+    image: ${IMAGE_PREFIX:?rendered by the deploy}/karbird-ingest:${KARBIRD_VERSION:?rendered by the deploy}
     environment:
-      CONTROLHUB_ENV: production
-      CONTROLHUB_LOG_FORMAT: json
-      CONTROLHUB_KAFKA_BROKERS: kafka:19092
-      CONTROLHUB_INGEST_HTTP_ADDR: 0.0.0.0:4318
-      CONTROLHUB_INGEST_GRPC_ADDR: 0.0.0.0:4317
-      CONTROLHUB_INGEST_DATABASE_URL: postgres://controlhub_ingest:${CH_PG_INGEST_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/controlhub
+      KARBIRD_ENV: production
+      KARBIRD_LOG_FORMAT: json
+      KARBIRD_KAFKA_BROKERS: kafka:19092
+      KARBIRD_INGEST_HTTP_ADDR: 0.0.0.0:4318
+      KARBIRD_INGEST_GRPC_ADDR: 0.0.0.0:4317
+      KARBIRD_INGEST_DATABASE_URL: postgres://karbird_ingest:${CH_PG_INGEST_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/karbird
     depends_on:
       kafka: { condition: service_healthy }
     healthcheck:
@@ -81,31 +82,33 @@ services:
 
   processor:
     <<: *service
-    image: ${IMAGE_PREFIX}/controlhub-processor:${CONTROLHUB_VERSION}
+    image: ${IMAGE_PREFIX}/karbird-processor:${KARBIRD_VERSION}
     environment:
       <<: *storage
-      CONTROLHUB_KAFKA_BROKERS: kafka:19092
-      CONTROLHUB_PROCESSOR_DATABASE_URL: postgres://controlhub_processor:${CH_PG_PROCESSOR_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/controlhub
-      CONTROLHUB_PROCESSOR_CLICKHOUSE_USER: controlhub_processor
-      CONTROLHUB_PROCESSOR_CLICKHOUSE_PASSWORD: ${CH_CH_PROCESSOR_PASSWORD:?rendered by the deploy}
+      KARBIRD_KAFKA_BROKERS: kafka:19092
+      KARBIRD_PROCESSOR_DATABASE_URL: postgres://karbird_processor:${CH_PG_PROCESSOR_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/karbird
+      KARBIRD_PROCESSOR_CLICKHOUSE_USER: karbird_processor
+      KARBIRD_PROCESSOR_CLICKHOUSE_PASSWORD: ${CH_CH_PROCESSOR_PASSWORD:?rendered by the deploy}
     depends_on:
       kafka: { condition: service_healthy }
 
   api:
     <<: *service
-    image: ${IMAGE_PREFIX}/controlhub-api:${CONTROLHUB_VERSION}
+    image: ${IMAGE_PREFIX}/karbird-api:${KARBIRD_VERSION}
     command: ["serve"]
     environment:
       <<: [*storage, *retention]
-      CONTROLHUB_API_ADDR: 0.0.0.0:8080
-      CONTROLHUB_API_DATABASE_URL: postgres://controlhub_api:${CH_PG_API_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/controlhub
-      CONTROLHUB_API_CLICKHOUSE_USER: controlhub_api
-      CONTROLHUB_API_CLICKHOUSE_PASSWORD: ${CH_CH_API_PASSWORD:?rendered by the deploy}
-      CONTROLHUB_ALLOWED_ORIGINS: https://${CONTROLHUB_DOMAIN:?rendered by the deploy}
-      CONTROLHUB_ARCHIVE_S3_ENDPOINT: http://${STORAGE_ADDR}:8333
-      CONTROLHUB_ARCHIVE_S3_BUCKET: ${ARCHIVE_BUCKET:-controlhub-archive}
-      CONTROLHUB_API_S3_ACCESS_KEY: ${CH_S3_API_ACCESS_KEY:?rendered by the deploy}
-      CONTROLHUB_API_S3_SECRET_KEY: ${CH_S3_API_SECRET_KEY:?rendered by the deploy}
+      KARBIRD_API_ADDR: 0.0.0.0:8080
+      KARBIRD_API_DATABASE_URL: postgres://karbird_api:${CH_PG_API_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/karbird
+      KARBIRD_API_CLICKHOUSE_USER: karbird_api
+      KARBIRD_API_CLICKHOUSE_PASSWORD: ${CH_CH_API_PASSWORD:?rendered by the deploy}
+      KARBIRD_ALLOWED_ORIGINS: https://${KARBIRD_DOMAIN:?rendered by the deploy}
+      KARBIRD_SIGNUP: ${KARBIRD_SIGNUP:-open}
+      KARBIRD_SIGNUP_PER_HOUR: ${KARBIRD_SIGNUP_PER_HOUR:-20}
+      KARBIRD_ARCHIVE_S3_ENDPOINT: http://${STORAGE_ADDR}:8333
+      KARBIRD_ARCHIVE_S3_BUCKET: ${ARCHIVE_BUCKET:-karbird-archive}
+      KARBIRD_API_S3_ACCESS_KEY: ${CH_S3_API_ACCESS_KEY:?rendered by the deploy}
+      KARBIRD_API_S3_SECRET_KEY: ${CH_S3_API_SECRET_KEY:?rendered by the deploy}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/v1/ready"]
       interval: 15s
@@ -115,30 +118,30 @@ services:
 
   executor:
     <<: *service
-    image: ${IMAGE_PREFIX}/controlhub-executor:${CONTROLHUB_VERSION}
+    image: ${IMAGE_PREFIX}/karbird-executor:${KARBIRD_VERSION}
     environment:
       <<: *storage
-      CONTROLHUB_EXECUTOR_DATABASE_URL: postgres://controlhub_executor:${CH_PG_EXECUTOR_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/controlhub
-      CONTROLHUB_EXECUTOR_CLICKHOUSE_USER: controlhub_executor
-      CONTROLHUB_EXECUTOR_CLICKHOUSE_PASSWORD: ${CH_CH_EXECUTOR_PASSWORD:?rendered by the deploy}
+      KARBIRD_EXECUTOR_DATABASE_URL: postgres://karbird_executor:${CH_PG_EXECUTOR_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/karbird
+      KARBIRD_EXECUTOR_CLICKHOUSE_USER: karbird_executor
+      KARBIRD_EXECUTOR_CLICKHOUSE_PASSWORD: ${CH_CH_EXECUTOR_PASSWORD:?rendered by the deploy}
 
   archiver:
     <<: *service
-    image: ${IMAGE_PREFIX}/controlhub-archiver:${CONTROLHUB_VERSION}
+    image: ${IMAGE_PREFIX}/karbird-archiver:${KARBIRD_VERSION}
     command: ["run"]
     environment:
       <<: [*storage, *retention]
-      CONTROLHUB_ARCHIVER_DATABASE_URL: postgres://controlhub_archiver:${CH_PG_ARCHIVER_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/controlhub
-      CONTROLHUB_ARCHIVER_CLICKHOUSE_USER: controlhub_archiver
-      CONTROLHUB_ARCHIVER_CLICKHOUSE_PASSWORD: ${CH_CH_ARCHIVER_PASSWORD:?rendered by the deploy}
-      CONTROLHUB_ARCHIVE_S3_ENDPOINT: http://${STORAGE_ADDR}:8333
-      CONTROLHUB_ARCHIVE_S3_BUCKET: ${ARCHIVE_BUCKET:-controlhub-archive}
-      CONTROLHUB_ARCHIVER_S3_ACCESS_KEY: ${CH_S3_ARCHIVER_ACCESS_KEY:?rendered by the deploy}
-      CONTROLHUB_ARCHIVER_S3_SECRET_KEY: ${CH_S3_ARCHIVER_SECRET_KEY:?rendered by the deploy}
+      KARBIRD_ARCHIVER_DATABASE_URL: postgres://karbird_archiver:${CH_PG_ARCHIVER_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/karbird
+      KARBIRD_ARCHIVER_CLICKHOUSE_USER: karbird_archiver
+      KARBIRD_ARCHIVER_CLICKHOUSE_PASSWORD: ${CH_CH_ARCHIVER_PASSWORD:?rendered by the deploy}
+      KARBIRD_ARCHIVE_S3_ENDPOINT: http://${STORAGE_ADDR}:8333
+      KARBIRD_ARCHIVE_S3_BUCKET: ${ARCHIVE_BUCKET:-karbird-archive}
+      KARBIRD_ARCHIVER_S3_ACCESS_KEY: ${CH_S3_ARCHIVER_ACCESS_KEY:?rendered by the deploy}
+      KARBIRD_ARCHIVER_S3_SECRET_KEY: ${CH_S3_ARCHIVER_SECRET_KEY:?rendered by the deploy}
 
   web:
     <<: *service
-    image: ${IMAGE_PREFIX}/controlhub-web:${CONTROLHUB_VERSION}
+    image: ${IMAGE_PREFIX}/karbird-web:${KARBIRD_VERSION}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
       interval: 15s
@@ -150,7 +153,7 @@ services:
     <<: *service
     image: caddy:2.10.2-alpine
     environment:
-      CONTROLHUB_DOMAIN: ${CONTROLHUB_DOMAIN}
+      KARBIRD_DOMAIN: ${KARBIRD_DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL:?rendered by the deploy}
     ports:
       - "80:80"

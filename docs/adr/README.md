@@ -15,7 +15,8 @@
 | [0011](0011-api-tokens-and-live-channel.md) | Read-only, environment-bound API tokens; WebSocket live channel in the Worker | Accepted |
 | [0012](0012-actions-and-executor.md) | Allowlisted actions, policy, four-eyes approval, separate executor, verification | Accepted |
 | [0013](0013-read-only-mcp.md) | Read-only MCP server over the REST API with an API token | Accepted |
-| [0014](0014-otlp-metrics-deferred.md) | OTLP metrics not ingested yet (explicit 501); RED metrics from spans | Accepted |
+| [0014](0014-otlp-metrics-deferred.md) | OTLP metrics not ingested yet (explicit 501); RED metrics from spans | Superseded by 0018 |
 | [0015](0015-log-archive.md) | Log archive: templates, columnar segments, per-service dictionaries, separate archiver | Accepted |
 | [0016](0016-retention-config.md) | ClickHouse retention from one setting per signal, applied by bootstrap, checked at startup | Accepted |
 | [0017](0017-two-host-deploy.md) | Prebuilt GHCR images, two-host Compose deploy from GitHub Actions, `migrate` instead of `bootstrap` | Accepted |
+| [0018](0018-infrastructure-metrics.md) | Machine and container metrics (gauges/sums) from the Karbird agent; Infrastructure layer and noisy-neighbour rule | Accepted |

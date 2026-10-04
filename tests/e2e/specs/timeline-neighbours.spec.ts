@@ -34,7 +34,7 @@ test("a zoomed-in stretch with nothing in it offers the nearest item on each sid
   // One request before and one after the stretch the test zooms into (about 5 minutes ago).
   await ingestSpans(service, [span(now - 9n * minute), span(now - 2n * minute)]);
 
-  await login(page, "isolation@controlhub.local", WORKSPACE);
+  await login(page, "isolation@karbird.local", WORKSPACE);
   const timeline = page.getByLabel("Timeline");
   const earlier = timeline.getByRole("button", { name: /^Go to the nearest earlier item/ });
   const later = timeline.getByRole("button", { name: /^Go to the nearest later item/ });

@@ -1,17 +1,17 @@
 {
-  "name": "@controlhub/demo-system",
+  "name": "@karbird/demo-system",
   "version": "0.1.0",
   "private": true,
-  "description": "Demo-only system observed by ControlHub: gateway, auth, catalog, orders, inventory, payments, notifications, Postgres and an external payment provider, plus a load generator and fault injection",
+  "description": "Demo-only system observed by karbird: gateway, auth, catalog, orders, inventory, payments, notifications, Postgres and an external payment provider, plus a load generator and fault injection",
   "type": "module",
   "scripts": {
-    "gateway": "node --import @controlhub/sdk-node/register src/gateway.cjs",
-    "orders": "node --import @controlhub/sdk-node/register src/orders.cjs",
+    "gateway": "node --import @karbird/sdk-node/register src/gateway.cjs",
+    "orders": "node --import @karbird/sdk-node/register src/orders.cjs",
     "load": "node src/loadgen.mjs",
     "fault": "node src/fault.mjs"
   },
   "dependencies": {
-    "@controlhub/sdk-node": "workspace:*",
+    "@karbird/sdk-node": "workspace:*",
     "pg": "8.23.0"
   }
 }

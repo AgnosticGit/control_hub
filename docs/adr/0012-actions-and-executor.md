@@ -1,7 +1,7 @@
 # ADR-0012: Controlled actions — plans, policy, four-eyes approval, separate executor
 
 ## Decision
-- **Allowlist, typed.** Actions exist only in the `controlhub-actions` catalog, as a Rust `Action`
+- **Allowlist, typed.** Actions exist only in the `karbird-actions` catalog, as a Rust `Action`
   enum with bounded numeric parameters and fixed targets. There is no free-form command, script,
   URL or container name anywhere in a plan. Telemetry never produces a plan.
 - **Plans.** An operator proposes a plan with a reason. Policy is evaluated at proposal, at approval
@@ -19,7 +19,7 @@
   cancelled | expired; running → succeeded | failed | verification_failed. Transitions are guarded
   in SQL (`WHERE state = ANY(from)`), and every transition commits together with its audit row.
   If the audit write fails, the state change fails.
-- **Separate executor process** (`controlhub-executor`):
+- **Separate executor process** (`karbird-executor`):
   - It has its own PostgreSQL role (`SELECT, UPDATE` on `action_plans`, `INSERT` on `audit_log`,
     read-only elsewhere) and a SELECT-only ClickHouse user.
   - It is the only process allowed to touch the observed system or Docker. Web, API and ingest
@@ -31,7 +31,7 @@
   - Fault control uses the demo services' loopback-only `/__demo/faults` endpoint and reads the
     state back.
   - The database restart runs `docker inspect`/`docker restart` with fixed arguments (no shell) on a
-    container whose compose labels must be `controlhub/demo-postgres`. The container name must start
+    container whose compose labels must be `karbird/demo-postgres`. The container name must start
     with an alphanumeric character, so it can never be parsed as a flag.
 - **Verification.** After the step, the executor waits for the observation window (15 s) plus an
   ingestion settle time. It then judges the outcome from ClickHouse `service_summaries` for the

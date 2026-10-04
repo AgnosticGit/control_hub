@@ -34,11 +34,11 @@ export function AccountShell({ active, title, description, children }: { active:
         <div className="flex items-center gap-2 px-5 pt-4 pb-3 md:pt-5 md:pb-4">
           <Link href="/app" className="flex items-center gap-2.5 text-[17px] font-bold tracking-[-0.01em]">
             <Logo />
-            ControlHub
+            karbird
           </Link>
           <span className="ml-auto md:hidden" />
           {session.data?.system ? (
-            <Link href="/app/admin" className="btn btn-icon btn-sm md:hidden" aria-label="ControlHub admin" title="ControlHub admin">
+            <Link href="/app/admin" className="btn btn-icon btn-sm md:hidden" aria-label="karbird admin" title="karbird admin">
               <Icon name="shield" className="h-3.5 w-3.5" />
             </Link>
           ) : null}
@@ -69,7 +69,7 @@ export function AccountShell({ active, title, description, children }: { active:
           {session.data?.system ? (
             <Link href="/app/admin" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-text">
               <Icon name="shield" className="h-4 w-4" />
-              ControlHub admin
+              karbird admin
             </Link>
           ) : null}
           <Link href="/app" className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted hover:bg-surface-2 hover:text-text">

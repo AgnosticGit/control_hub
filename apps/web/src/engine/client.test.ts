@@ -1,4 +1,4 @@
-import type { Frame, FrameSummary, WorkerRequest, WorkerResponse } from "@controlhub/web-engine";
+import type { Frame, FrameSummary, WorkerRequest, WorkerResponse } from "@karbird/web-engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EngineClient } from "./client";
 

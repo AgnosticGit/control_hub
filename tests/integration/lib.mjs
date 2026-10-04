@@ -10,33 +10,33 @@ import { fileURLToPath } from 'node:url';
 export const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const readJson = (name, hint) => {
   try {
-    return JSON.parse(readFileSync(join(root, '.controlhub', name), 'utf8'));
+    return JSON.parse(readFileSync(join(root, '.karbird', name), 'utf8'));
   } catch {
-    throw new Error(`missing .controlhub/${name}: ${hint}`);
+    throw new Error(`missing .karbird/${name}: ${hint}`);
   }
 };
 const local = readJson('local-credentials.json', 'run `just bootstrap`');
 // Test accounts and the isolation token exist only while `just test-integration` runs.
 const fixtures = readJson('test-credentials.json', 'run the suite via `just test-integration`');
 export const creds = { ...local, users: fixtures.users, ingest_tokens: { ...local.ingest_tokens, ...fixtures.ingest_tokens } };
-export const API = process.env.CONTROLHUB_API_URL ?? creds.api_url;
+export const API = process.env.KARBIRD_API_URL ?? creds.api_url;
 export const OTLP = creds.otlp_http_endpoint;
 export const ORIGIN = 'http://localhost:3000';
-export const WEB = process.env.CONTROLHUB_WEB_URL ?? ORIGIN;
+export const WEB = process.env.KARBIRD_WEB_URL ?? ORIGIN;
 export const user = (email) => creds.users.find((u) => u.email === email);
 
-/** The developer's own account from the gitignored `.controlhub/owner.env`, or null. */
+/** The developer's own account from the gitignored `.karbird/owner.env`, or null. */
 export function ownerAccount() {
   try {
     const env = Object.fromEntries(
-      readFileSync(join(root, '.controlhub', 'owner.env'), 'utf8')
+      readFileSync(join(root, '.karbird', 'owner.env'), 'utf8')
         .split(/\r?\n/)
         .map((l) => l.trim())
         .filter((l) => l && !l.startsWith('#') && l.includes('='))
         .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
     );
-    const email = env.CONTROLHUB_OWNER_EMAIL?.trim();
-    return email && env.CONTROLHUB_OWNER_PASSWORD ? { email: email.toLowerCase(), password: env.CONTROLHUB_OWNER_PASSWORD } : null;
+    const email = env.KARBIRD_OWNER_EMAIL?.trim();
+    return email && env.KARBIRD_OWNER_PASSWORD ? { email: email.toLowerCase(), password: env.KARBIRD_OWNER_PASSWORD } : null;
   } catch {
     return null;
   }
@@ -72,7 +72,7 @@ export class Session {
       headers: {
         'content-type': 'application/json',
         origin: ORIGIN,
-        'x-csrf-token': this.cookies.get('controlhub_csrf') ?? '',
+        'x-csrf-token': this.cookies.get('karbird_csrf') ?? '',
       },
       body: JSON.stringify(body ?? {}),
     });
@@ -115,8 +115,8 @@ export async function bearer(token, path, init = {}) {
   return { status: res.status, body: await res.json().catch(() => null) };
 }
 
-export const ADMIN_METRICS = process.env.CONTROLHUB_INGEST_ADMIN_URL ?? 'http://127.0.0.1:9464';
-export const OTLP_GRPC = process.env.CONTROLHUB_OTLP_GRPC_URL ?? 'http://127.0.0.1:4317';
+export const ADMIN_METRICS = process.env.KARBIRD_INGEST_ADMIN_URL ?? 'http://127.0.0.1:9464';
+export const OTLP_GRPC = process.env.KARBIRD_OTLP_GRPC_URL ?? 'http://127.0.0.1:4317';
 export const nowNs = () => BigInt(Date.now()) * 1_000_000n;
 export const hex = (bytes) => randomBytes(bytes).toString('hex');
 
@@ -188,7 +188,7 @@ const anyString = (s) => strField(1, s);
 const keyValues = (field, attrs) =>
   Object.entries(attrs ?? {}).map(([k, v]) => lenField(field, Buffer.concat([strField(1, k), lenField(2, anyString(String(v)))])));
 const resource = (attrs) => lenField(1, Buffer.concat(keyValues(1, attrs)));
-const scope = (field) => lenField(field, strField(1, 'controlhub-integration-tests'));
+const scope = (field) => lenField(field, strField(1, 'karbird-integration-tests'));
 
 /**
  * spans: [{ traceId, spanId, parentSpanId?, name, kind?, startNs, endNs, attributes?, status? }]
@@ -236,6 +236,45 @@ export function encodeLogs(serviceName, logs) {
   return lenField(1, resourceLogs);
 }
 
+function doubleField(field, x) {
+  const b = Buffer.alloc(8);
+  b.writeDoubleLE(x);
+  return Buffer.concat([tag(field, 1), b]);
+}
+
+/**
+ * resources: [{ attributes, metrics: [{ name, unit?, kind: 'gauge' | 'sum' | 'histogram', monotonic?,
+ * points: [{ attributes?, value, timeNs, startNs? }] }] }]. Histogram points carry only count and sum
+ * (ingest rejects histograms; they exist to test that). Returns an ExportMetricsServiceRequest.
+ */
+export function encodeMetrics(resources) {
+  const point = (p, kind) =>
+    Buffer.concat(
+      kind === 'histogram'
+        ? [
+            ...keyValues(9, p.attributes),
+            ...(p.startNs ? [fixed64Field(2, p.startNs)] : []),
+            fixed64Field(3, p.timeNs),
+            fixed64Field(4, 1),
+            doubleField(5, p.value),
+          ]
+        : [...keyValues(7, p.attributes), ...(p.startNs ? [fixed64Field(2, p.startNs)] : []), fixed64Field(3, p.timeNs), doubleField(4, p.value)],
+    );
+  const metric = (m) => {
+    const points = m.points.map((p) => lenField(1, point(p, m.kind)));
+    const data =
+      m.kind === 'sum'
+        ? lenField(7, Buffer.concat([...points, varintField(2, 2), varintField(3, m.monotonic ? 1 : 0)]))
+        : m.kind === 'histogram'
+          ? lenField(9, Buffer.concat([...points, varintField(2, 2)]))
+          : lenField(5, Buffer.concat(points));
+    return lenField(2, Buffer.concat([strField(1, m.name), ...(m.unit ? [strField(3, m.unit)] : []), data]));
+  };
+  return Buffer.concat(
+    resources.map((r) => lenField(1, Buffer.concat([resource(r.attributes), lenField(2, Buffer.concat([scope(1), ...r.metrics.map(metric)]))]))),
+  );
+}
+
 /** Decodes the top-level fields of a protobuf message into { field: [values] } (varints and bytes only). */
 export function decodeFields(buf) {
   const out = {};
@@ -272,7 +311,7 @@ export function decodeFields(buf) {
   return out;
 }
 
-/** OTLP/HTTP protobuf export. `signal` is 'traces' or 'logs'. */
+/** OTLP/HTTP protobuf export. `signal` is 'traces', 'logs' or 'metrics'. */
 export async function otlpHttp(signal, body, { token = creds.ingest_tokens['isolation-test'], headers = {} } = {}) {
   const res = await fetch(`${OTLP}/v1/${signal}`, {
     method: 'POST',

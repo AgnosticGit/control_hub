@@ -1,12 +1,16 @@
 //! Normalisation of broker envelopes into ClickHouse rows.
 
-use controlhub_domain::{EntityId, EnvironmentId, ProjectId, Scope, ServiceId, TenantId};
-use controlhub_protocol::ENVELOPE_SCHEMA_VERSION;
-use controlhub_protocol::otlp::collector::logs::v1::ExportLogsServiceRequest;
-use controlhub_protocol::otlp::collector::trace::v1::ExportTraceServiceRequest;
-use controlhub_protocol::otlp::common::v1::{AnyValue, KeyValue, any_value::Value};
-use controlhub_protocol::v1::{IngestEnvelope, ingest_envelope::Payload};
-use controlhub_storage::ch::{EventRow, LogRow, SpanRow};
+use karbird_domain::{EntityId, EnvironmentId, ProjectId, Scope, ServiceId, TenantId};
+use karbird_protocol::ENVELOPE_SCHEMA_VERSION;
+use karbird_protocol::otlp::collector::logs::v1::ExportLogsServiceRequest;
+use karbird_protocol::otlp::collector::metrics::v1::ExportMetricsServiceRequest;
+use karbird_protocol::otlp::collector::trace::v1::ExportTraceServiceRequest;
+use karbird_protocol::otlp::common::v1::{AnyValue, KeyValue, any_value::Value};
+use karbird_protocol::otlp::metrics::v1::{NumberDataPoint, metric::Data, number_data_point};
+use karbird_protocol::v1::{IngestEnvelope, ingest_envelope::Payload};
+use karbird_storage::ch::{
+    EventRow, LogRow, METRIC_KIND_CUMULATIVE_SUM, METRIC_KIND_DELTA_SUM, METRIC_KIND_GAUGE, MetricRow, SpanRow,
+};
 use prost::Message;
 use sha2::{Digest, Sha256};
 
@@ -15,17 +19,23 @@ pub struct Converted {
     pub spans: Vec<SpanRow>,
     pub logs: Vec<LogRow>,
     pub events: Vec<EventRow>,
+    pub metrics: Vec<MetricRow>,
+    /// Metric points that are not gauges/sums or carry no finite value; ingest already rejects
+    /// them, so a non-zero count means an envelope bypassed it.
+    pub dropped_points: u64,
 }
 
 impl Converted {
     pub fn is_empty(&self) -> bool {
-        self.spans.is_empty() && self.logs.is_empty() && self.events.is_empty()
+        self.spans.is_empty() && self.logs.is_empty() && self.events.is_empty() && self.metrics.is_empty()
     }
 
     pub fn extend(&mut self, other: Converted) {
         self.spans.extend(other.spans);
         self.logs.extend(other.logs);
         self.events.extend(other.events);
+        self.metrics.extend(other.metrics);
+        self.dropped_points += other.dropped_points;
     }
 }
 
@@ -116,7 +126,7 @@ fn service_identity(scope: &Scope, resource: &[(String, String)]) -> ServiceIden
 fn log_fingerprint(
     svc: &ServiceIdentity,
     time: u64,
-    lr: &controlhub_protocol::otlp::logs::v1::LogRecord,
+    lr: &karbird_protocol::otlp::logs::v1::LogRecord,
     body: &str,
     attributes: &[(String, String)],
 ) -> String {
@@ -220,9 +230,96 @@ fn url_authority(url: &str) -> Option<(String, Option<String>)> {
     Some((host, port.map(str::to_owned)))
 }
 
+/// Stable series identity: metric name, resource and point attributes, order-independent.
+fn series_id(name: &str, resource: &[(String, String)], attributes: &[(String, String)]) -> u64 {
+    let mut h = Sha256::new();
+    let mut field = |b: &[u8]| {
+        h.update((b.len() as u64).to_le_bytes());
+        h.update(b);
+    };
+    field(name.as_bytes());
+    for group in [resource, attributes] {
+        let mut sorted: Vec<&(String, String)> = group.iter().collect();
+        sorted.sort();
+        field(&(sorted.len() as u64).to_le_bytes());
+        for (k, v) in sorted {
+            field(k.as_bytes());
+            field(v.as_bytes());
+        }
+    }
+    let digest = h.finalize();
+    let mut first = [0u8; 8];
+    first.copy_from_slice(&digest[..8]);
+    u64::from_le_bytes(first)
+}
+
+fn point_value(p: &NumberDataPoint) -> Option<f64> {
+    match p.value? {
+        number_data_point::Value::AsDouble(v) => Some(v).filter(|v| v.is_finite()),
+        number_data_point::Value::AsInt(v) => Some(v as f64),
+    }
+}
+
+fn convert_metrics(req: ExportMetricsServiceRequest, base: &MetricRow, out: &mut Converted) {
+    for rm in req.resource_metrics {
+        let resource = rm.resource.map(|r| flatten(&r.attributes)).unwrap_or_default();
+        let get = |k: &str| attr(&resource, k).unwrap_or("").to_owned();
+        let host_name = get("host.name");
+        let host_id = attr(&resource, "host.id").map_or_else(|| host_name.clone(), str::to_owned);
+        let template = MetricRow {
+            host_id,
+            host_name,
+            container_id: get("container.id"),
+            container_name: get("container.name"),
+            container_hostname: get("container.hostname"),
+            service_name: get("service.name"),
+            ..base.clone()
+        };
+        for sm in rm.scope_metrics {
+            for m in sm.metrics {
+                let (kind, points) = match m.data {
+                    Some(Data::Gauge(g)) => (METRIC_KIND_GAUGE, g.data_points),
+                    Some(Data::Sum(s)) if s.aggregation_temporality == 1 => (METRIC_KIND_DELTA_SUM, s.data_points),
+                    Some(Data::Sum(s)) => (METRIC_KIND_CUMULATIVE_SUM, s.data_points),
+                    Some(Data::Histogram(h)) => {
+                        out.dropped_points += h.data_points.len() as u64;
+                        continue;
+                    }
+                    Some(Data::ExponentialHistogram(h)) => {
+                        out.dropped_points += h.data_points.len() as u64;
+                        continue;
+                    }
+                    Some(Data::Summary(s)) => {
+                        out.dropped_points += s.data_points.len() as u64;
+                        continue;
+                    }
+                    None => continue,
+                };
+                for p in points {
+                    let Some(value) = point_value(&p).filter(|_| p.time_unix_nano > 0) else {
+                        out.dropped_points += 1;
+                        continue;
+                    };
+                    let attributes = flatten(&p.attributes);
+                    out.metrics.push(MetricRow {
+                        metric_name: m.name.clone(),
+                        kind,
+                        unit: m.unit.clone(),
+                        series_id: series_id(&m.name, &resource, &attributes),
+                        attributes,
+                        value,
+                        time: clamp_ns(p.time_unix_nano),
+                        ..template.clone()
+                    });
+                }
+            }
+        }
+    }
+}
+
 fn scope_of(env: &IngestEnvelope) -> Result<Scope, ConvertError> {
     let s = env.scope.as_ref().ok_or_else(|| ConvertError::Scope("missing".into()))?;
-    let err = |e: controlhub_domain::IdError| ConvertError::Scope(e.to_string());
+    let err = |e: karbird_domain::IdError| ConvertError::Scope(e.to_string());
     Ok(Scope {
         tenant_id: TenantId::parse(s.tenant_id.clone()).map_err(err)?,
         project_id: ProjectId::parse(s.project_id.clone()).map_err(err)?,
@@ -311,7 +408,7 @@ pub fn convert(env: &IngestEnvelope, ingested_at: i64) -> Result<Converted, Conv
                             observed_time: clamp_ns(lr.observed_time_unix_nano),
                             severity_number: u8::try_from(lr.severity_number).unwrap_or(0),
                             severity_text: lr.severity_text,
-                            template_id: controlhub_archive::template_id(&controlhub_archive::parse(&body).template),
+                            template_id: karbird_archive::template_id(&karbird_archive::parse(&body).template),
                             body,
                             trace_id: hex::encode(&lr.trace_id),
                             span_id: hex::encode(&lr.span_id),
@@ -323,6 +420,31 @@ pub fn convert(env: &IngestEnvelope, ingested_at: i64) -> Result<Converted, Conv
                     }
                 }
             }
+        }
+        Payload::OtlpMetrics(bytes) => {
+            let req = ExportMetricsServiceRequest::decode(bytes.as_slice())
+                .map_err(|e| ConvertError::Decode(e.to_string()))?;
+            let base = MetricRow {
+                tenant_id: t.clone(),
+                project_id: p.clone(),
+                environment_id: e.clone(),
+                metric_name: String::new(),
+                kind: 0,
+                unit: String::new(),
+                series_id: 0,
+                host_id: String::new(),
+                host_name: String::new(),
+                container_id: String::new(),
+                container_name: String::new(),
+                container_hostname: String::new(),
+                service_name: String::new(),
+                attributes: Vec::new(),
+                value: 0.0,
+                time: 0,
+                batch_id: env.batch_id.clone(),
+                ingested_at,
+            };
+            convert_metrics(req, &base, &mut out);
         }
         Payload::CustomEvents(batch) => {
             for ev in &batch.events {
@@ -366,9 +488,9 @@ pub fn convert(env: &IngestEnvelope, ingested_at: i64) -> Result<Converted, Conv
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
-    use controlhub_protocol::otlp::resource::v1::Resource;
-    use controlhub_protocol::otlp::trace::v1::{ResourceSpans, ScopeSpans, Span};
-    use controlhub_protocol::v1::IngestScope;
+    use karbird_protocol::otlp::resource::v1::Resource;
+    use karbird_protocol::otlp::trace::v1::{ResourceSpans, ScopeSpans, Span};
+    use karbird_protocol::v1::IngestScope;
 
     fn kv(k: &str, v: &str) -> KeyValue {
         KeyValue {
@@ -430,7 +552,7 @@ mod tests {
     fn scope_comes_from_envelope_not_payload() {
         // A payload claiming another tenant in resource attributes cannot change the scope.
         let env =
-            envelope("t1", vec![kv("service.name", "orders"), kv("tenant_id", "t2"), kv("controlhub.tenant_id", "t2")]);
+            envelope("t1", vec![kv("service.name", "orders"), kv("tenant_id", "t2"), kv("karbird.tenant_id", "t2")]);
         let out = convert(&env, 5).unwrap();
         assert_eq!(out.spans[0].tenant_id, "t1");
         let other = convert(&envelope("t2", vec![kv("service.name", "orders")]), 5).unwrap();
@@ -438,7 +560,7 @@ mod tests {
     }
 
     fn log_envelope(batch_id: &str, body: &str) -> IngestEnvelope {
-        use controlhub_protocol::otlp::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+        use karbird_protocol::otlp::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
         let req = ExportLogsServiceRequest {
             resource_logs: vec![ResourceLogs {
                 resource: Some(Resource { attributes: vec![kv("service.name", "orders")], ..Default::default() }),
@@ -486,10 +608,10 @@ mod tests {
         assert!(matches!(convert(&env, 1), Err(ConvertError::UnsupportedVersion(99))));
     }
 
-    use controlhub_protocol::otlp::common::v1::{ArrayValue, KeyValueList};
-    use controlhub_protocol::otlp::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
-    use controlhub_protocol::otlp::trace::v1::Status;
-    use controlhub_protocol::v1::{CustomEvent, CustomEventBatch};
+    use karbird_protocol::otlp::common::v1::{ArrayValue, KeyValueList};
+    use karbird_protocol::otlp::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+    use karbird_protocol::otlp::trace::v1::Status;
+    use karbird_protocol::v1::{CustomEvent, CustomEventBatch};
 
     fn anyv(v: Value) -> AnyValue {
         AnyValue { value: Some(v) }
@@ -981,6 +1103,155 @@ mod tests {
         assert_eq!((a.spans.len(), a.logs.len(), a.events.len()), (1, 1, 0));
     }
 
+    use karbird_protocol::otlp::metrics::v1::{
+        Gauge, Histogram, HistogramDataPoint, Metric, ResourceMetrics, ScopeMetrics, Sum,
+    };
+
+    fn num(time: u64, v: number_data_point::Value, attrs: Vec<KeyValue>) -> NumberDataPoint {
+        NumberDataPoint { attributes: attrs, time_unix_nano: time, value: Some(v), ..Default::default() }
+    }
+
+    fn metrics_env(tenant: &str, resource_attrs: Vec<KeyValue>, metrics: Vec<Metric>) -> IngestEnvelope {
+        let req = ExportMetricsServiceRequest {
+            resource_metrics: vec![ResourceMetrics {
+                resource: Some(Resource { attributes: resource_attrs, ..Default::default() }),
+                scope_metrics: vec![ScopeMetrics { metrics, ..Default::default() }],
+                ..Default::default()
+            }],
+        };
+        let mut env = envelope(tenant, vec![]);
+        env.batch_id = "mb".into();
+        env.payload = Some(Payload::OtlpMetrics(req.encode_to_vec()));
+        env
+    }
+
+    fn cpu_time(points: Vec<NumberDataPoint>, temporality: i32) -> Metric {
+        Metric {
+            name: "system.cpu.time".into(),
+            unit: "s".into(),
+            data: Some(Data::Sum(Sum {
+                data_points: points,
+                aggregation_temporality: temporality,
+                is_monotonic: true,
+            })),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn metric_points_become_rows_with_host_and_container_columns() {
+        use number_data_point::Value::{AsDouble, AsInt};
+        let env = metrics_env(
+            "t1",
+            vec![
+                kv("host.name", "vps-app"),
+                kv("container.id", "abc123"),
+                kv("container.name", "orders"),
+                kv("container.hostname", "abc123def456"),
+                kv("service.name", "orders"),
+            ],
+            vec![
+                cpu_time(vec![num(10, AsDouble(1.5), vec![kv("cpu", "cpu0"), kv("state", "user")])], 2),
+                Metric {
+                    name: "system.memory.usage".into(),
+                    unit: "By".into(),
+                    data: Some(Data::Gauge(Gauge { data_points: vec![num(11, AsInt(870 << 20), vec![])] })),
+                    ..Default::default()
+                },
+                cpu_time(vec![num(12, AsDouble(0.5), vec![])], 1),
+            ],
+        );
+        let out = convert(&env, 99).unwrap();
+        assert_eq!(out.metrics.len(), 3);
+        assert_eq!(out.dropped_points, 0);
+        let m = &out.metrics[0];
+        assert_eq!((m.tenant_id.as_str(), m.project_id.as_str(), m.environment_id.as_str()), ("t1", "p1", "dev"));
+        assert_eq!(
+            (m.metric_name.as_str(), m.kind, m.unit.as_str()),
+            ("system.cpu.time", METRIC_KIND_CUMULATIVE_SUM, "s")
+        );
+        assert_eq!(
+            (m.host_id.as_str(), m.host_name.as_str()),
+            ("vps-app", "vps-app"),
+            "host.name stands in for host.id"
+        );
+        assert_eq!((m.container_id.as_str(), m.container_name.as_str()), ("abc123", "orders"));
+        assert_eq!(m.container_hostname, "abc123def456");
+        assert_eq!(m.service_name, "orders");
+        assert_eq!(m.attributes, vec![("cpu".into(), "cpu0".into()), ("state".into(), "user".into())]);
+        assert_eq!((m.value, m.time, m.ingested_at, m.batch_id.as_str()), (1.5, 10, 99, "mb"));
+        assert_eq!(out.metrics[1].kind, METRIC_KIND_GAUGE);
+        assert_eq!(out.metrics[1].value, (870u64 << 20) as f64);
+        assert_eq!(out.metrics[2].kind, METRIC_KIND_DELTA_SUM);
+    }
+
+    #[test]
+    fn host_id_wins_over_host_name() {
+        let env = metrics_env(
+            "t1",
+            vec![kv("host.name", "vps-app"), kv("host.id", "i-0abc")],
+            vec![cpu_time(vec![num(1, number_data_point::Value::AsInt(1), vec![])], 2)],
+        );
+        let m = &convert(&env, 1).unwrap().metrics[0];
+        assert_eq!((m.host_id.as_str(), m.host_name.as_str()), ("i-0abc", "vps-app"));
+    }
+
+    #[test]
+    fn series_ids_are_stable_and_distinguish_series() {
+        let id = |res: Vec<KeyValue>, attrs: Vec<KeyValue>, tenant: &str| {
+            let env =
+                metrics_env(tenant, res, vec![cpu_time(vec![num(1, number_data_point::Value::AsInt(1), attrs)], 2)]);
+            convert(&env, 1).unwrap().metrics[0].series_id
+        };
+        let a = id(vec![kv("host.name", "h"), kv("x", "1")], vec![kv("cpu", "0"), kv("state", "idle")], "t1");
+        assert_eq!(a, id(vec![kv("x", "1"), kv("host.name", "h")], vec![kv("state", "idle"), kv("cpu", "0")], "t1"));
+        assert_eq!(
+            a,
+            id(vec![kv("host.name", "h"), kv("x", "1")], vec![kv("cpu", "0"), kv("state", "idle")], "t2"),
+            "the scope is in the sorting key, the series id need not repeat it"
+        );
+        assert_ne!(a, id(vec![kv("host.name", "h2"), kv("x", "1")], vec![kv("cpu", "0"), kv("state", "idle")], "t1"));
+        assert_ne!(a, id(vec![kv("host.name", "h"), kv("x", "1")], vec![kv("cpu", "1"), kv("state", "idle")], "t1"));
+        assert_ne!(id(vec![kv("a", "1")], vec![], "t1"), id(vec![], vec![kv("a", "1")], "t1"));
+    }
+
+    #[test]
+    fn unsupported_metric_points_are_counted_not_stored() {
+        let hist = Metric {
+            name: "http.server.duration".into(),
+            data: Some(Data::Histogram(Histogram {
+                data_points: vec![HistogramDataPoint::default(); 2],
+                aggregation_temporality: 2,
+            })),
+            ..Default::default()
+        };
+        let bad_points = cpu_time(
+            vec![
+                num(0, number_data_point::Value::AsDouble(1.0), vec![]),
+                num(1, number_data_point::Value::AsDouble(f64::NAN), vec![]),
+                NumberDataPoint { time_unix_nano: 1, ..Default::default() },
+                num(1, number_data_point::Value::AsDouble(2.0), vec![]),
+            ],
+            2,
+        );
+        let out = convert(&metrics_env("t1", vec![], vec![hist, bad_points]), 1).unwrap();
+        assert_eq!(out.metrics.len(), 1);
+        assert_eq!(out.dropped_points, 2 + 3);
+        let mut all = Converted::default();
+        all.extend(out);
+        assert_eq!(all.dropped_points, 5);
+        assert!(!all.is_empty());
+    }
+
+    #[test]
+    fn malformed_metrics_payload_is_a_decode_error() {
+        let mut env = envelope("t1", vec![]);
+        env.payload = Some(Payload::OtlpMetrics(vec![0xff, 0xff]));
+        assert_eq!(convert(&env, 1).unwrap_err().kind(), "decode");
+        env.payload = Some(Payload::OtlpMetrics(vec![]));
+        assert!(convert(&env, 1).unwrap().is_empty());
+    }
+
     #[test]
     fn error_messages_carry_context() {
         assert!(ConvertError::UnsupportedVersion(7).to_string().contains('7'));
@@ -1001,9 +1272,13 @@ mod tests {
             }
 
             #[test]
-            fn arbitrary_otlp_payload_bytes_never_panic(bytes in prop::collection::vec(any::<u8>(), 0..256), logs in any::<bool>()) {
+            fn arbitrary_otlp_payload_bytes_never_panic(bytes in prop::collection::vec(any::<u8>(), 0..256), which in 0u8..3) {
                 let mut env = envelope("t1", vec![]);
-                env.payload = Some(if logs { Payload::OtlpLogs(bytes) } else { Payload::OtlpTraces(bytes) });
+                env.payload = Some(match which {
+                    0 => Payload::OtlpLogs(bytes),
+                    1 => Payload::OtlpTraces(bytes),
+                    _ => Payload::OtlpMetrics(bytes),
+                });
                 let _ = convert(&env, 1);
             }
 

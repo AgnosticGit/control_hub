@@ -1,8 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Expects a running stack: `just dev` (or `pnpm --filter @controlhub/web start`
+// Expects a running stack: `just dev` (or `pnpm --filter @karbird/web start`
 // + backend) and `just demo` for telemetry. Base URL is overridable.
-const baseURL = process.env.CONTROLHUB_WEB_URL ?? "http://127.0.0.1:3000";
+const baseURL = process.env.KARBIRD_WEB_URL ?? "http://127.0.0.1:3000";
 
 export default defineConfig({
   testDir: "./specs",

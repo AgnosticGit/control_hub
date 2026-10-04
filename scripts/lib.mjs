@@ -74,17 +74,17 @@ export function run(cmd, args, opts = {}) {
 }
 
 export function compose(args, extra = []) {
-  const infra = join(root, ".controlhub", "infra.env");
-  if (!existsSync(infra)) throw new Error("missing .controlhub/infra.env — run `just bootstrap` first");
+  const infra = join(root, ".karbird", "infra.env");
+  if (!existsSync(infra)) throw new Error("missing .karbird/infra.env — run `just bootstrap` first");
   return run("docker", ["compose", "--env-file", infra, "-f", join(root, "infra/compose/compose.yaml"), ...extra, ...args]);
 }
 
 // PID files let `just stop` clean up children that outlive a force-killed supervisor
 // (closing a terminal or `taskkill /F` on it skips the SIGINT handler below).
-const runDir = join(root, ".controlhub", "run");
+const runDir = join(root, ".karbird", "run");
 const pidFile = (group) => join(runDir, `${group}.json`);
 // Only these images are ever killed from a PID file, so a reused PID of another program is safe.
-const OURS = /^(node|cmd|sh|bash|ngrok|controlhub-[a-z]+)(\.exe)?$/i;
+const OURS = /^(node|cmd|sh|bash|ngrok|karbird-[a-z]+)(\.exe)?$/i;
 
 function processName(pid) {
   try {

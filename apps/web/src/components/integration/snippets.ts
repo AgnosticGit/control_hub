@@ -1,7 +1,10 @@
-// Copy-paste configuration for sending telemetry to one ControlHub environment.
+// Copy-paste configuration for sending telemetry to one karbird environment.
 // Pure functions: the page renders the text, it never evaluates or executes it.
 
 export const TOKEN_PLACEHOLDER = "<your-ingestion-token>";
+export const SDK_PACKAGE = "@karbird/sdk-node";
+/** `module.register`, used by the SDK's preload entry point, exists from this version on. */
+export const SDK_MIN_NODE = "20.6";
 
 export interface SnippetInput {
   /** Base OTLP/HTTP endpoint, e.g. `https://example.test/otlp`. */
@@ -29,59 +32,36 @@ export function safeServiceName(raw: string): string {
 
 const token = (i: SnippetInput) => i.token ?? TOKEN_PLACEHOLDER;
 
-/** Standard OpenTelemetry SDK variables; work for any language with an OTLP/HTTP exporter. */
-export function otelEnv(i: SnippetInput): string {
+export function sdkInstall(): string {
+  return `npm install ${SDK_PACKAGE}`;
+}
+
+/** The variables `@karbird/sdk-node` reads at start-up. */
+export function sdkEnv(i: SnippetInput): string {
   return [
-    `OTEL_SERVICE_NAME=${safeServiceName(i.serviceName)}`,
-    `OTEL_EXPORTER_OTLP_ENDPOINT=${i.endpoint}`,
-    "OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf",
-    // Header values are percent-encoded in this variable (OpenTelemetry spec), hence %20.
-    `OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer%20${token(i)}`,
-    "OTEL_TRACES_EXPORTER=otlp",
-    "OTEL_LOGS_EXPORTER=otlp",
-    "OTEL_METRICS_EXPORTER=none",
+    `KARBIRD_SERVICE_NAME=${safeServiceName(i.serviceName)}`,
+    `KARBIRD_OTLP_ENDPOINT=${i.endpoint}`,
+    `KARBIRD_INGEST_TOKEN=${token(i)}`,
   ].join("\n");
 }
 
-/** Node.js with the official OpenTelemetry zero-code instrumentation. */
-export function nodeSteps(i: SnippetInput): string {
-  return [
-    "npm install --save @opentelemetry/api @opentelemetry/auto-instrumentations-node",
-    "",
-    "# .env (or your process manager / container environment)",
-    otelEnv(i),
-    "",
-    "# start your app with the instrumentation loaded first",
-    "node --import @opentelemetry/auto-instrumentations-node/register server.js",
-  ].join("\n");
+/** Preloading the SDK patches `http` and `pg` before the application imports them (CommonJS and ESM). */
+export function sdkStart(entry = "server.js"): string {
+  return `node --import ${SDK_PACKAGE}/register ${entry}`;
 }
 
-/** OpenTelemetry Collector that forwards what your services already send it. */
-export function collectorConfig(i: SnippetInput): string {
+/** Trace-correlated logs and custom events from application code, through the instance `register` started. */
+export function sdkCode(): string {
   return [
-    "receivers:",
-    "  otlp:",
-    "    protocols:",
-    "      grpc: {}",
-    "      http: {}",
-    "processors:",
-    "  batch: {}",
-    "exporters:",
-    "  otlphttp/controlhub:",
-    `    endpoint: ${i.endpoint}`,
-    "    encoding: proto",
-    "    headers:",
-    `      authorization: "Bearer ${token(i)}"`,
-    "service:",
-    "  pipelines:",
-    "    traces:",
-    "      receivers: [otlp]",
-    "      processors: [batch]",
-    "      exporters: [otlphttp/controlhub]",
-    "    logs:",
-    "      receivers: [otlp]",
-    "      processors: [batch]",
-    "      exporters: [otlphttp/controlhub]",
+    `import { getKarbird } from "${SDK_PACKAGE}";`,
+    "",
+    "const karbird = getKarbird();",
+    "",
+    "// Logs are linked to the request being handled.",
+    'karbird?.logger.info("order created", { "order.items": 3 });',
+    "",
+    "// Events appear on the timeline next to the traces.",
+    'karbird?.events.emit("deployment.finished", { attributes: { version: "1.4.2" } });',
   ].join("\n");
 }
 

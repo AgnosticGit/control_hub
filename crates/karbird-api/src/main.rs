@@ -1,4 +1,4 @@
-//! controlhub-api: sessions, scoped telemetry queries, timeline and audit.
+//! karbird-api: sessions, scoped telemetry queries, timeline and audit.
 //! Has read-only ClickHouse credentials and no infrastructure-control access.
 
 mod auth;
@@ -19,17 +19,17 @@ use axum::Router;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::routing::{get, post};
 use clap::{Parser, Subcommand};
-use controlhub_runtime::{init_tracing, load_local_env, shutdown_signal};
-use controlhub_storage::ch::{ChConfig, ChStore};
-use controlhub_storage::pg::PgStore;
-use controlhub_storage::retention::{self, Table};
+use karbird_runtime::{init_tracing, load_local_env, shutdown_signal};
+use karbird_storage::ch::{ChConfig, ChStore};
+use karbird_storage::pg::PgStore;
+use karbird_storage::retention::{self, Table};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
 #[derive(Debug, Parser)]
-#[command(name = "controlhub-api")]
+#[command(name = "karbird-api")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -41,7 +41,7 @@ enum Command {
     Serve(Box<ServeArgs>),
     /// Local development bootstrap (migrations, retention TTLs, service users, seed data).
     Bootstrap {
-        #[arg(long, default_value = ".controlhub")]
+        #[arg(long, default_value = ".karbird")]
         out_dir: PathBuf,
         #[command(flatten)]
         retention: RetentionArgs,
@@ -60,7 +60,7 @@ enum Command {
     },
     /// Create (or with --remove delete) the accounts and scopes the integration/e2e tests use.
     TestFixtures {
-        #[arg(long, default_value = ".controlhub")]
+        #[arg(long, default_value = ".karbird")]
         out_dir: PathBuf,
         #[arg(long)]
         remove: bool,
@@ -72,12 +72,14 @@ enum Command {
 /// How many days ClickHouse keeps each signal; `bootstrap` applies these as table TTLs.
 #[derive(Debug, Clone, clap::Args)]
 struct RetentionArgs {
-    #[arg(long, env = "CONTROLHUB_LOGS_RETENTION_DAYS", default_value_t = retention::DEFAULT_LOGS_DAYS, value_parser = retention_days())]
+    #[arg(long, env = "KARBIRD_LOGS_RETENTION_DAYS", default_value_t = retention::DEFAULT_LOGS_DAYS, value_parser = retention_days())]
     logs_retention_days: u32,
-    #[arg(long, env = "CONTROLHUB_SPANS_RETENTION_DAYS", default_value_t = retention::DEFAULT_SPANS_DAYS, value_parser = retention_days())]
+    #[arg(long, env = "KARBIRD_SPANS_RETENTION_DAYS", default_value_t = retention::DEFAULT_SPANS_DAYS, value_parser = retention_days())]
     spans_retention_days: u32,
-    #[arg(long, env = "CONTROLHUB_EVENTS_RETENTION_DAYS", default_value_t = retention::DEFAULT_EVENTS_DAYS, value_parser = retention_days())]
+    #[arg(long, env = "KARBIRD_EVENTS_RETENTION_DAYS", default_value_t = retention::DEFAULT_EVENTS_DAYS, value_parser = retention_days())]
     events_retention_days: u32,
+    #[arg(long, env = "KARBIRD_METRICS_RETENTION_DAYS", default_value_t = retention::DEFAULT_METRICS_DAYS, value_parser = retention_days())]
+    metrics_retention_days: u32,
 }
 
 fn retention_days() -> clap::builder::RangedI64ValueParser<u32> {
@@ -85,58 +87,59 @@ fn retention_days() -> clap::builder::RangedI64ValueParser<u32> {
 }
 
 impl RetentionArgs {
-    fn tables(&self) -> [(Table, u32); 3] {
+    fn tables(&self) -> [(Table, u32); 4] {
         [
             (Table::Logs, self.logs_retention_days),
             (Table::Spans, self.spans_retention_days),
             (Table::Events, self.events_retention_days),
+            (Table::Metrics, self.metrics_retention_days),
         ]
     }
 }
 
 #[derive(Debug, Parser)]
 struct ServeArgs {
-    #[arg(long, env = "CONTROLHUB_API_ADDR", default_value = "127.0.0.1:8080")]
+    #[arg(long, env = "KARBIRD_API_ADDR", default_value = "127.0.0.1:8080")]
     addr: SocketAddr,
-    #[arg(long, env = "CONTROLHUB_API_DATABASE_URL")]
+    #[arg(long, env = "KARBIRD_API_DATABASE_URL")]
     database_url: String,
-    #[arg(long, env = "CONTROLHUB_CLICKHOUSE_URL", default_value = "http://127.0.0.1:18123")]
+    #[arg(long, env = "KARBIRD_CLICKHOUSE_URL", default_value = "http://127.0.0.1:18123")]
     clickhouse_url: String,
-    #[arg(long, env = "CONTROLHUB_CLICKHOUSE_DATABASE", default_value = "controlhub")]
+    #[arg(long, env = "KARBIRD_CLICKHOUSE_DATABASE", default_value = "karbird")]
     clickhouse_database: String,
-    #[arg(long, env = "CONTROLHUB_API_CLICKHOUSE_USER")]
+    #[arg(long, env = "KARBIRD_API_CLICKHOUSE_USER")]
     clickhouse_user: String,
-    #[arg(long, env = "CONTROLHUB_API_CLICKHOUSE_PASSWORD")]
+    #[arg(long, env = "KARBIRD_API_CLICKHOUSE_PASSWORD")]
     clickhouse_password: String,
     /// Comma-separated origins allowed for cookie-authenticated mutations.
-    #[arg(long, env = "CONTROLHUB_ALLOWED_ORIGINS", default_value = "http://localhost:3000,http://127.0.0.1:3000")]
+    #[arg(long, env = "KARBIRD_ALLOWED_ORIGINS", default_value = "http://localhost:3000,http://127.0.0.1:3000")]
     allowed_origins: String,
     /// `dev` disables the Secure cookie flag for plain-http localhost. Anything else enforces it.
-    #[arg(long, env = "CONTROLHUB_ENV", default_value = "production")]
+    #[arg(long, env = "KARBIRD_ENV", default_value = "production")]
     env: String,
     /// Maximum concurrent live WebSocket connections; further upgrades get 429.
-    #[arg(long, env = "CONTROLHUB_MAX_LIVE_CONNECTIONS", default_value_t = 256)]
+    #[arg(long, env = "KARBIRD_MAX_LIVE_CONNECTIONS", default_value_t = 256)]
     max_live_connections: usize,
     /// Self-service sign-up at `POST /api/v1/session/register`: `open` or `closed`.
-    #[arg(long, env = "CONTROLHUB_SIGNUP", default_value = "closed", value_parser = ["open", "closed"])]
+    #[arg(long, env = "KARBIRD_SIGNUP", default_value = "closed", value_parser = ["open", "closed"])]
     signup: String,
     /// Sign-up attempts allowed per hour across all clients.
-    #[arg(long, env = "CONTROLHUB_SIGNUP_PER_HOUR", default_value_t = 20)]
+    #[arg(long, env = "KARBIRD_SIGNUP_PER_HOUR", default_value_t = 20)]
     signup_per_hour: u32,
     /// S3-compatible endpoint of the log archive. Without it logs are served from ClickHouse only.
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_S3_ENDPOINT")]
+    #[arg(long, env = "KARBIRD_ARCHIVE_S3_ENDPOINT")]
     archive_s3_endpoint: Option<String>,
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_S3_BUCKET", default_value = "controlhub-archive")]
+    #[arg(long, env = "KARBIRD_ARCHIVE_S3_BUCKET", default_value = "karbird-archive")]
     archive_s3_bucket: String,
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_S3_REGION", default_value = "us-east-1")]
+    #[arg(long, env = "KARBIRD_ARCHIVE_S3_REGION", default_value = "us-east-1")]
     archive_s3_region: String,
-    #[arg(long, env = "CONTROLHUB_API_S3_ACCESS_KEY", requires = "archive_s3_endpoint")]
+    #[arg(long, env = "KARBIRD_API_S3_ACCESS_KEY", requires = "archive_s3_endpoint")]
     archive_s3_access_key: Option<String>,
-    #[arg(long, env = "CONTROLHUB_API_S3_SECRET_KEY", requires = "archive_s3_endpoint")]
+    #[arg(long, env = "KARBIRD_API_S3_SECRET_KEY", requires = "archive_s3_endpoint")]
     archive_s3_secret_key: Option<String>,
     /// Logs older than this are read from the archive by default. Default: one day less than
     /// the log retention; must stay below it.
-    #[arg(long, env = "CONTROLHUB_ARCHIVE_HOT_WINDOW_HOURS", value_parser = clap::value_parser!(u32).range(1..=24 * i64::from(retention::MAX_DAYS)))]
+    #[arg(long, env = "KARBIRD_ARCHIVE_HOT_WINDOW_HOURS", value_parser = clap::value_parser!(u32).range(1..=24 * i64::from(retention::MAX_DAYS)))]
     archive_hot_window_hours: Option<u32>,
     #[command(flatten)]
     retention: RetentionArgs,
@@ -148,8 +151,8 @@ fn hot_window_hours(args: &ServeArgs) -> anyhow::Result<u32> {
     let retention_hours = args.retention.logs_retention_days * 24;
     match args.archive_hot_window_hours {
         Some(h) if h >= retention_hours => anyhow::bail!(
-            "CONTROLHUB_ARCHIVE_HOT_WINDOW_HOURS={h} must be below the log retention \
-             (CONTROLHUB_LOGS_RETENTION_DAYS={} = {retention_hours} h): ClickHouse no longer has older logs",
+            "KARBIRD_ARCHIVE_HOT_WINDOW_HOURS={h} must be below the log retention \
+             (KARBIRD_LOGS_RETENTION_DAYS={} = {retention_hours} h): ClickHouse no longer has older logs",
             args.retention.logs_retention_days
         ),
         Some(h) => Ok(h),
@@ -168,7 +171,7 @@ async fn verify_retention(ch: &ChStore, retention: &RetentionArgs) -> anyhow::Re
                 Err(e) if failures < 20 => {
                     failures += 1;
                     tracing::warn!(error = %e, failures, "ClickHouse not ready for the retention check; retrying");
-                    tokio::time::sleep(controlhub_runtime::backoff(
+                    tokio::time::sleep(karbird_runtime::backoff(
                         failures,
                         Duration::from_millis(250),
                         Duration::from_secs(5),
@@ -187,11 +190,9 @@ fn archive_config(args: &ServeArgs) -> anyhow::Result<Option<state::ArchiveConfi
     let hot_window_hours = hot_window_hours(args)?;
     let Some(endpoint) = &args.archive_s3_endpoint else { return Ok(None) };
     let (Some(access_key), Some(secret_key)) = (&args.archive_s3_access_key, &args.archive_s3_secret_key) else {
-        anyhow::bail!(
-            "CONTROLHUB_ARCHIVE_S3_ENDPOINT needs CONTROLHUB_API_S3_ACCESS_KEY and CONTROLHUB_API_S3_SECRET_KEY"
-        );
+        anyhow::bail!("KARBIRD_ARCHIVE_S3_ENDPOINT needs KARBIRD_API_S3_ACCESS_KEY and KARBIRD_API_S3_SECRET_KEY");
     };
-    let objects = controlhub_storage::archive::ArchiveObjects::s3(&controlhub_storage::archive::ObjectConfig {
+    let objects = karbird_storage::archive::ArchiveObjects::s3(&karbird_storage::archive::ObjectConfig {
         endpoint: endpoint.clone(),
         bucket: args.archive_s3_bucket.clone(),
         region: args.archive_s3_region.clone(),
@@ -199,7 +200,7 @@ fn archive_config(args: &ServeArgs) -> anyhow::Result<Option<state::ArchiveConfi
         secret_key: secret_key.clone(),
     })?;
     Ok(Some(state::ArchiveConfig {
-        reader: controlhub_storage::archive::ArchiveReader::new(objects),
+        reader: karbird_storage::archive::ArchiveReader::new(objects),
         hot_window_ns: i64::from(hot_window_hours) * 3_600_000_000_000,
     }))
 }
@@ -246,6 +247,7 @@ fn router(state: state::AppState) -> Router {
         .route(&format!("{scoped}/events"), get(telemetry::events))
         .route(&format!("{scoped}/timeline"), get(telemetry::timeline))
         .route(&format!("{scoped}/coverage"), get(telemetry::coverage))
+        .route(&format!("{scoped}/infrastructure"), get(routes::infrastructure::infrastructure))
         .route(&format!("{scoped}/live"), get(routes::live::live))
         .route(&format!("{scoped}/audit"), get(routes::audit))
         .route(&format!("{scoped}/tokens"), get(routes::tokens::list).post(routes::tokens::create))
@@ -308,7 +310,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     });
     verify_retention(&ch, &args.retention).await?;
     if !config.secure_cookies {
-        tracing::warn!("CONTROLHUB_ENV=dev: Secure cookie flag disabled for local http. Never use in production.");
+        tracing::warn!("KARBIRD_ENV=dev: Secure cookie flag disabled for local http. Never use in production.");
     }
     let state = state::AppState {
         pg,
@@ -320,7 +322,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         live_slots: std::sync::Arc::new(tokio::sync::Semaphore::new(args.max_live_connections)),
     };
     let listener = tokio::net::TcpListener::bind(args.addr).await?;
-    tracing::info!(addr = %args.addr, "controlhub-api listening");
+    tracing::info!(addr = %args.addr, "karbird-api listening");
     axum::serve(listener, router(state)).with_graceful_shutdown(shutdown_signal()).await?;
     Ok(())
 }
@@ -335,24 +337,24 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Some(Command::Bootstrap { out_dir, retention, shrink_retention }) => {
-            init_tracing("controlhub-api");
+            init_tracing("karbird-api");
             bootstrap::run(&out_dir, &retention.tables(), shrink_retention).await
         }
         Some(Command::Migrate { retention, shrink_retention }) => {
-            init_tracing("controlhub-api");
+            init_tracing("karbird-api");
             bootstrap::migrate(&retention.tables(), shrink_retention).await
         }
         Some(Command::TestFixtures { out_dir, remove }) => {
-            init_tracing("controlhub-api");
+            init_tracing("karbird-api");
             if remove { test_fixtures::remove(&out_dir).await } else { test_fixtures::create(&out_dir).await }
         }
         Some(Command::Serve(args)) => {
-            init_tracing("controlhub-api");
+            init_tracing("karbird-api");
             serve(*args).await
         }
         None => {
-            init_tracing("controlhub-api");
-            serve(ServeArgs::parse_from(["controlhub-api"])).await
+            init_tracing("karbird-api");
+            serve(ServeArgs::parse_from(["karbird-api"])).await
         }
     }
 }
@@ -367,7 +369,7 @@ mod tests {
     }
 
     fn argon2_parse(s: &str) -> bool {
-        !controlhub_storage::secrets::verify_password("x", s) && s.starts_with("$argon2id$")
+        !karbird_storage::secrets::verify_password("x", s) && s.starts_with("$argon2id$")
     }
 
     #[test]
@@ -380,7 +382,7 @@ mod tests {
     fn timeline_contract_is_engine_compatible() {
         // The Worker hands the REST response text straight to the WASM engine.
         let json = r#"{"items":[{"type":"span","trace_id":"t","span_id":"s","parent_span_id":null,"service_id":"svc_a","service_name":"a","target_entity_id":null,"name":"GET /","kind":2,"start_ns":"1790000000000000000","end_ns":"1790000000100000000","is_error":false}],"from_ns":"1","to_ns":"2","spans_truncated":false,"logs_truncated":false,"events_truncated":false,"completeness":{}}"#;
-        let mut e = controlhub_engine_core::Engine::new(Default::default());
+        let mut e = karbird_engine_core::Engine::new(Default::default());
         e.apply_batch_json(json).unwrap();
         assert_eq!(e.item_count(), 1);
     }
@@ -404,6 +406,7 @@ mod tests {
             "/events",
             "/timeline",
             "/coverage",
+            "/infrastructure",
             "/live",
             "/audit",
             "/tokens",
@@ -443,7 +446,7 @@ mod tests {
             assert_eq!(s, StatusCode::FORBIDDEN, "{m} {uri}");
             assert_eq!(b["message"], "forbidden: API tokens are read-only", "{m} {uri}");
             // With a session cookie the session lookup hits storage (down here): fail closed.
-            let (s, _, _) = send(state(), req(m.clone(), &uri, &[("cookie", "controlhub_session=chs_x")], body)).await;
+            let (s, _, _) = send(state(), req(m.clone(), &uri, &[("cookie", "karbird_session=chs_x")], body)).await;
             assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "{m} {uri}");
         }
     }
@@ -473,7 +476,7 @@ mod tests {
             let (s, _, b) = send(state(), req(m.clone(), &uri, &[("authorization", "Bearer cha_x")], body)).await;
             assert_eq!(s, StatusCode::FORBIDDEN, "{m} {uri}");
             assert_eq!(b["message"], "forbidden: API tokens are read-only", "{m} {uri}");
-            let (s, _, _) = send(state(), req(m.clone(), &uri, &[("cookie", "controlhub_session=chs_x")], body)).await;
+            let (s, _, _) = send(state(), req(m.clone(), &uri, &[("cookie", "karbird_session=chs_x")], body)).await;
             assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "{m} {uri}: session lookup fails closed");
         }
         for uri in ["/api/v1/account/sessions", "/api/v1/projects/demo/invites"] {
@@ -482,7 +485,7 @@ mod tests {
         }
     }
 
-    /// ControlHub administration mutations (method, uri).
+    /// karbird administration mutations (method, uri).
     fn admin_mutations() -> Vec<(Method, String)> {
         vec![
             (Method::POST, "/api/v1/admin/projects".to_owned()),
@@ -512,7 +515,7 @@ mod tests {
             let (s, _, b) = send(state(), req(m.clone(), &uri, &[("authorization", "Bearer cha_x")], body)).await;
             assert_eq!(s, StatusCode::FORBIDDEN, "{m} {uri}");
             assert_eq!(b["message"], "forbidden: API tokens are read-only", "{m} {uri}");
-            let (s, _, _) = send(state(), req(m.clone(), &uri, &[("cookie", "controlhub_session=chs_x")], body)).await;
+            let (s, _, _) = send(state(), req(m.clone(), &uri, &[("cookie", "karbird_session=chs_x")], body)).await;
             assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "{m} {uri}: session lookup fails closed");
         }
         for uri in [
@@ -625,7 +628,7 @@ mod tests {
             req(
                 Method::POST,
                 &format!("{SCOPED}/tokens"),
-                &[("authorization", "Bearer cha_x"), ("cookie", "controlhub_session=chs_x")],
+                &[("authorization", "Bearer cha_x"), ("cookie", "karbird_session=chs_x")],
                 "{}",
             ),
         )
@@ -645,7 +648,7 @@ mod tests {
 
     #[tokio::test]
     async fn storage_outage_fails_closed_without_leaking_details() {
-        for headers in [vec![("cookie", "controlhub_session=chs_x")], vec![("authorization", "Bearer cha_x")]] {
+        for headers in [vec![("cookie", "karbird_session=chs_x")], vec![("authorization", "Bearer cha_x")]] {
             let (s, _, body) = send(state(), req(Method::GET, &format!("{SCOPED}/services"), &headers, "")).await;
             assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "{headers:?}");
             assert_eq!(body, serde_json::json!({ "code": "storage_unavailable", "message": "storage unavailable" }));
@@ -657,7 +660,7 @@ mod tests {
     #[tokio::test]
     async fn login_checks_origin_and_input_before_touching_storage() {
         let login = "/api/v1/session/login";
-        let body = r#"{"email":"admin@controlhub.local","password":"pw"}"#;
+        let body = r#"{"email":"admin@karbird.local","password":"pw"}"#;
         let (s, _, b) = send(state(), req(Method::POST, login, &[("origin", "http://evil.example")], body)).await;
         assert_eq!((s, b["message"].as_str()), (StatusCode::FORBIDDEN, Some("forbidden: origin not allowed")));
 
@@ -741,7 +744,7 @@ mod tests {
 
     #[test]
     fn signup_is_closed_unless_explicitly_opened() {
-        if std::env::var_os("CONTROLHUB_SIGNUP").is_none() {
+        if std::env::var_os("KARBIRD_SIGNUP").is_none() {
             assert!(!super::api_config(&serve_args(&[])).signup.open, "default is closed");
         }
         let open = super::api_config(&serve_args(&["--signup", "open", "--signup-per-hour", "5"])).signup;
@@ -749,7 +752,7 @@ mod tests {
         assert_eq!(open.per_hour, 5);
         assert!(!super::api_config(&serve_args(&["--signup", "closed"])).signup.open);
         let mut argv =
-            vec!["controlhub-api", "--database-url", "x", "--clickhouse-user", "u", "--clickhouse-password", "p"];
+            vec!["karbird-api", "--database-url", "x", "--clickhouse-user", "u", "--clickhouse-password", "p"];
         for bad in ["Open", "yes", "true", ""] {
             argv.extend_from_slice(&["--signup", bad]);
             assert!(super::ServeArgs::try_parse_from(&argv).is_err(), "{bad:?}");
@@ -843,6 +846,7 @@ mod tests {
             ("/events", "get"),
             ("/timeline", "get"),
             ("/coverage", "get"),
+            ("/infrastructure", "get"),
             ("/live", "get"),
             ("/audit", "get"),
             ("/tokens", "get"),
@@ -868,12 +872,12 @@ mod tests {
         let schemes = &spec["components"]["securitySchemes"];
         assert_eq!(schemes["api_token"]["scheme"], "bearer");
         assert_eq!(schemes["session"]["in"], "cookie");
-        assert_eq!(schemes["session"]["name"], "controlhub_session");
+        assert_eq!(schemes["session"]["name"], "karbird_session");
     }
 
     fn serve_args(extra: &[&str]) -> super::ServeArgs {
         let mut argv = vec![
-            "controlhub-api",
+            "karbird-api",
             "--database-url",
             "postgres://x@127.0.0.1/db",
             "--clickhouse-user",
@@ -892,26 +896,37 @@ mod tests {
         assert!(super::api_config(&serve_args(&["--env", "Dev"])).secure_cookies, "exact match only");
         assert!(super::api_config(&serve_args(&["--env", "dev "])).secure_cookies);
         assert!(!super::api_config(&serve_args(&["--env", "dev"])).secure_cookies);
-        if std::env::var_os("CONTROLHUB_ENV").is_none() {
+        if std::env::var_os("KARBIRD_ENV").is_none() {
             assert!(super::api_config(&serve_args(&[])).secure_cookies, "default is production");
         }
     }
 
     #[test]
     fn retention_defaults_and_bounds() {
-        let unset =
-            ["CONTROLHUB_LOGS_RETENTION_DAYS", "CONTROLHUB_SPANS_RETENTION_DAYS", "CONTROLHUB_EVENTS_RETENTION_DAYS"]
-                .iter()
-                .all(|v| std::env::var_os(v).is_none());
+        let unset = [
+            "KARBIRD_LOGS_RETENTION_DAYS",
+            "KARBIRD_SPANS_RETENTION_DAYS",
+            "KARBIRD_EVENTS_RETENTION_DAYS",
+            "KARBIRD_METRICS_RETENTION_DAYS",
+        ]
+        .iter()
+        .all(|v| std::env::var_os(v).is_none());
         if unset {
             assert_eq!(
                 serve_args(&[]).retention.tables(),
-                [(super::Table::Logs, 14), (super::Table::Spans, 14), (super::Table::Events, 30)]
+                [
+                    (super::Table::Logs, 14),
+                    (super::Table::Spans, 14),
+                    (super::Table::Events, 30),
+                    (super::Table::Metrics, 14)
+                ]
             );
         }
         let mut argv =
-            vec!["controlhub-api", "--database-url", "x", "--clickhouse-user", "u", "--clickhouse-password", "p"];
-        for flag in ["--logs-retention-days", "--spans-retention-days", "--events-retention-days"] {
+            vec!["karbird-api", "--database-url", "x", "--clickhouse-user", "u", "--clickhouse-password", "p"];
+        for flag in
+            ["--logs-retention-days", "--spans-retention-days", "--events-retention-days", "--metrics-retention-days"]
+        {
             for bad in ["0", "1", "3651", "-5", "two", ""] {
                 argv.extend_from_slice(&[flag, bad]);
                 assert!(super::ServeArgs::try_parse_from(&argv).is_err(), "{flag} {bad:?}");
@@ -928,7 +943,7 @@ mod tests {
     #[test]
     fn the_hot_window_follows_log_retention_and_stays_below_it() {
         let hours = |extra: &[&str]| super::hot_window_hours(&serve_args(extra));
-        if std::env::var_os("CONTROLHUB_ARCHIVE_HOT_WINDOW_HOURS").is_none() {
+        if std::env::var_os("KARBIRD_ARCHIVE_HOT_WINDOW_HOURS").is_none() {
             assert_eq!(hours(&["--logs-retention-days", "14"]).unwrap(), 13 * 24, "one day less by default");
             assert_eq!(hours(&["--logs-retention-days", "2"]).unwrap(), 24);
             assert_eq!(hours(&["--logs-retention-days", "90"]).unwrap(), 89 * 24);
@@ -938,7 +953,7 @@ mod tests {
         for too_long in ["336", "1000"] {
             let e = hours(&["--logs-retention-days", "14", "--archive-hot-window-hours", too_long]).unwrap_err();
             let msg = e.to_string();
-            assert!(msg.contains("CONTROLHUB_ARCHIVE_HOT_WINDOW_HOURS") && msg.contains("336 h"), "{msg}");
+            assert!(msg.contains("KARBIRD_ARCHIVE_HOT_WINDOW_HOURS") && msg.contains("336 h"), "{msg}");
         }
         let args = serve_args(&[
             "--logs-retention-days",
@@ -965,12 +980,12 @@ mod tests {
     #[test]
     fn cli_subcommands_parse() {
         assert!(matches!(
-            super::Cli::try_parse_from(["controlhub-api", "openapi"]).unwrap().command,
+            super::Cli::try_parse_from(["karbird-api", "openapi"]).unwrap().command,
             Some(super::Command::Openapi)
         ));
-        assert!(super::Cli::try_parse_from(["controlhub-api"]).unwrap().command.is_none());
-        assert!(super::Cli::try_parse_from(["controlhub-api", "drop-database"]).is_err());
-        match super::Cli::try_parse_from(["controlhub-api", "migrate", "--logs-retention-days", "7"]).unwrap().command {
+        assert!(super::Cli::try_parse_from(["karbird-api"]).unwrap().command.is_none());
+        assert!(super::Cli::try_parse_from(["karbird-api", "drop-database"]).is_err());
+        match super::Cli::try_parse_from(["karbird-api", "migrate", "--logs-retention-days", "7"]).unwrap().command {
             Some(super::Command::Migrate { retention, shrink_retention }) => {
                 assert!(!shrink_retention, "deleting data is never the default");
                 assert_eq!(retention.tables()[0], (super::Table::Logs, 7));
@@ -978,18 +993,18 @@ mod tests {
             other => panic!("{other:?}"),
         }
         assert!(
-            super::Cli::try_parse_from(["controlhub-api", "migrate", "--out-dir", "x"]).is_err(),
+            super::Cli::try_parse_from(["karbird-api", "migrate", "--out-dir", "x"]).is_err(),
             "migrate writes no files"
         );
-        match super::Cli::try_parse_from(["controlhub-api", "bootstrap"]).unwrap().command {
+        match super::Cli::try_parse_from(["karbird-api", "bootstrap"]).unwrap().command {
             Some(super::Command::Bootstrap { out_dir, shrink_retention, .. }) => {
-                assert_eq!(out_dir, std::path::PathBuf::from(".controlhub"));
+                assert_eq!(out_dir, std::path::PathBuf::from(".karbird"));
                 assert!(!shrink_retention, "deleting data is never the default");
             }
             other => panic!("{other:?}"),
         }
         match super::Cli::try_parse_from([
-            "controlhub-api",
+            "karbird-api",
             "bootstrap",
             "--shrink-retention",
             "--logs-retention-days",
@@ -998,6 +1013,8 @@ mod tests {
             "3",
             "--events-retention-days",
             "90",
+            "--metrics-retention-days",
+            "5",
         ])
         .unwrap()
         .command
@@ -1006,7 +1023,12 @@ mod tests {
                 assert!(shrink_retention);
                 assert_eq!(
                     retention.tables(),
-                    [(super::Table::Logs, 7), (super::Table::Spans, 3), (super::Table::Events, 90)]
+                    [
+                        (super::Table::Logs, 7),
+                        (super::Table::Spans, 3),
+                        (super::Table::Events, 90),
+                        (super::Table::Metrics, 5)
+                    ]
                 );
             }
             other => panic!("{other:?}"),

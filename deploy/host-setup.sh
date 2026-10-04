@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# One-time preparation of a ControlHub host (Ubuntu 22.04/24.04), run by the deploy workflow
+# One-time preparation of a karbird host (Ubuntu 22.04/24.04), run by the deploy workflow
 # with `setup_hosts` or by hand: Docker with the Compose plugin from the Ubuntu archive, a swap
-# file (1 GB hosts need it), and /opt/controlhub owned by the deploy user. Idempotent.
+# file (1 GB hosts need it), and /opt/karbird owned by the deploy user. Idempotent.
 set -euo pipefail
 
 DEPLOY_USER="${1:-$(id -un)}"
@@ -22,8 +22,8 @@ if ! swapon --show=NAME --noheadings | grep -q .; then
   grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
 fi
 # Prefer RAM, swap only under pressure.
-echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/90-controlhub.conf >/dev/null
+echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/90-karbird.conf >/dev/null
 sudo sysctl -q --system
 
-sudo install -d -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/controlhub
+sudo install -d -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/karbird
 echo "host ready: $(docker --version), $(docker compose version), swap $(swapon --show=SIZE --noheadings | head -n1)"

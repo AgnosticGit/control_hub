@@ -31,7 +31,7 @@ export default function AppIndex() {
         <div className="mx-auto flex max-w-4xl items-center gap-3 px-6 py-3">
           <Link href="/app" className="flex shrink-0 items-center gap-2.5 text-[17px] font-bold tracking-[-0.01em]">
             <Logo />
-            ControlHub
+            karbird
           </Link>
           <nav aria-label="Account" className="ml-auto flex gap-2">
             <Link href="/app/account/projects" className="btn btn-sm">
@@ -45,7 +45,7 @@ export default function AppIndex() {
             {session.data?.system ? (
               <Link href="/app/admin" className="btn btn-sm">
                 <Icon name="shield" className="h-3.5 w-3.5" />
-                <span className="max-sm:sr-only">ControlHub admin</span>
+                <span className="max-sm:sr-only">karbird admin</span>
               </Link>
             ) : null}
           </nav>

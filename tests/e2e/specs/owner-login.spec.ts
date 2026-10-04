@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { collectErrors, ownerAccount } from "./helpers";
 
-// The developer's own account from .controlhub/owner.env, signing in on the page they use.
+// The developer's own account from .karbird/owner.env, signing in on the page they use.
 const owner = ownerAccount();
 
 test("the owner signs in on /app/login and lands in the demo workspace", async ({ page }) => {
-  test.skip(!owner, "no .controlhub/owner.env on this machine (bootstrap requires it)");
+  test.skip(!owner, "no .karbird/owner.env on this machine (bootstrap requires it)");
   if (!owner) return;
   const errors = collectErrors(page);
   await page.goto("/app/login");
@@ -31,7 +31,7 @@ test("the owner signs in on /app/login and lands in the demo workspace", async (
 
 test("the login page does not point to generated demo accounts", async ({ page }) => {
   await page.goto("/app/login");
-  await expect(page.getByRole("heading", { name: "Sign in to ControlHub" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to karbird" })).toBeVisible();
   await expect(page.getByText("local-credentials.json")).toHaveCount(0);
-  await expect(page.getByText(".controlhub/owner.env")).toBeVisible();
+  await expect(page.getByText(".karbird/owner.env")).toBeVisible();
 });

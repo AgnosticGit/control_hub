@@ -6,10 +6,10 @@ import { createServer } from 'node:http';
 const require = createRequire(import.meta.url);
 const { createFaults, readJson, sendJson, callJson, getJson, serve } = require('../src/common.cjs');
 
-const saved = process.env.CONTROLHUB_DEMO_FAULTS;
+const saved = process.env.KARBIRD_DEMO_FAULTS;
 afterEach(() => {
-  if (saved === undefined) delete process.env.CONTROLHUB_DEMO_FAULTS;
-  else process.env.CONTROLHUB_DEMO_FAULTS = saved;
+  if (saved === undefined) delete process.env.KARBIRD_DEMO_FAULTS;
+  else process.env.KARBIRD_DEMO_FAULTS = saved;
 });
 
 async function listen(server) {
@@ -21,8 +21,8 @@ async function listen(server) {
 }
 
 async function faultServer(enabled) {
-  if (enabled) process.env.CONTROLHUB_DEMO_FAULTS = '1';
-  else delete process.env.CONTROLHUB_DEMO_FAULTS;
+  if (enabled) process.env.KARBIRD_DEMO_FAULTS = '1';
+  else delete process.env.KARBIRD_DEMO_FAULTS;
   const faults = createFaults();
   const srv = await listen(
     createServer(async (req, res) => {
@@ -32,7 +32,7 @@ async function faultServer(enabled) {
   return { faults, ...srv };
 }
 
-test('fault endpoint is hidden (404) unless CONTROLHUB_DEMO_FAULTS=1', async () => {
+test('fault endpoint is hidden (404) unless KARBIRD_DEMO_FAULTS=1', async () => {
   const s = await faultServer(false);
   try {
     const r = await callJson('POST', `${s.url}/__demo/faults`, { latencyMs: 100, errorRate: 1 });
@@ -76,6 +76,54 @@ test('fault endpoint validates ranges and rejects bad input without changing sta
   }
 });
 
+test('resources report this process CPU time and memory, even with faults disabled', async () => {
+  const s = await faultServer(false);
+  try {
+    const r = await getJson(`${s.url}/__demo/resources`);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.pid, process.pid);
+    assert.ok(r.body.cpuMicros > 0 && r.body.rssBytes > 0, JSON.stringify(r.body));
+    assert.equal(r.body.cpuHog, 0);
+    assert.equal((await fetch(`${s.url}/__demo/resources`, { method: 'POST' })).status, 405);
+  } finally {
+    await s.close();
+  }
+});
+
+test('cpu hog is hidden unless faults are enabled', async () => {
+  const s = await faultServer(false);
+  try {
+    assert.equal((await callJson('POST', `${s.url}/__demo/cpu-hog`, { share: 0.5 })).status, 404);
+    assert.equal(s.faults.hog.share, 0);
+  } finally {
+    await s.close();
+  }
+});
+
+test('cpu hog burns the requested share of one core and stops at 0', async () => {
+  const s = await faultServer(true);
+  try {
+    for (const body of [{ share: -0.1 }, { share: 1 }, { share: 'x' }]) {
+      assert.equal((await callJson('POST', `${s.url}/__demo/cpu-hog`, body)).status, 400, JSON.stringify(body));
+    }
+    assert.equal(s.faults.hog.share, 0);
+    const before = process.cpuUsage();
+    const started = performance.now();
+    assert.deepEqual((await callJson('POST', `${s.url}/__demo/cpu-hog`, { share: 0.6 })).body, { share: 0.6 });
+    // The hog shares this event loop with the test, so wait with a timer that fires between bursts.
+    await new Promise((r) => setTimeout(r, 600));
+    const used = process.cpuUsage(before);
+    const share = (used.user + used.system) / 1000 / (performance.now() - started);
+    assert.ok(share > 0.35, `CPU share ${share.toFixed(2)} too low for a 0.6 hog`);
+    assert.deepEqual((await getJson(`${s.url}/__demo/cpu-hog`)).body, { share: 0.6 });
+    assert.deepEqual((await callJson('POST', `${s.url}/__demo/cpu-hog`, {})).body, { share: 0 });
+    assert.equal(s.faults.hog.share, 0);
+  } finally {
+    s.faults.hog.set(0);
+    await s.close();
+  }
+});
+
 test('readJson enforces the size limit', async () => {
   const srv = await listen(
     createServer(async (req, res) => {
@@ -114,7 +162,7 @@ test('getJson keeps a short excerpt of non-JSON bodies', async () => {
 });
 
 test('serve() answers health, 404 for unknown routes and 500 on handler errors', async () => {
-  delete process.env.CONTROLHUB_DEMO_FAULTS;
+  delete process.env.KARBIRD_DEMO_FAULTS;
   const log = console.log;
   console.log = () => {};
   const server = serve('unit', 0, async (_req, res, url) => {
