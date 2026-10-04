@@ -19811,7 +19811,7 @@
       "file_type": "code",
       "norm_label": "envfile()",
       "source_file": "scripts/deploy-config.mjs",
-      "source_location": "L60"
+      "source_location": "L63"
     },
     {
       "id": "scripts_deploy_config_hexkey",
@@ -19835,7 +19835,7 @@
       "file_type": "code",
       "norm_label": "render()",
       "source_file": "scripts/deploy-config.mjs",
-      "source_location": "L66"
+      "source_location": "L69"
     },
     {
       "id": "scripts_deploy_config_validate",
@@ -152269,6 +152269,18 @@
     },
     {
       "source": "scripts_deploy_config_render",
+      "target": "scripts_deploy_config_envfile",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "scripts/deploy-config.mjs",
+      "source_location": "L102",
+      "weight": 1.0
+    },
+    {
+      "source": "scripts_deploy_config_render",
       "target": "scripts_archive_storage_s3identities",
       "relation": "calls",
       "_origin": "ast",
@@ -152276,7 +152288,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "scripts/deploy-config.mjs",
-      "source_location": "L107",
+      "source_location": "L110",
       "weight": 1.0
     },
     {
@@ -152288,7 +152300,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "scripts/deploy-config.mjs",
-      "source_location": "L67",
+      "source_location": "L70",
       "weight": 1.0
     },
     {
@@ -152300,7 +152312,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "scripts/deploy-config.mjs",
-      "source_location": "L69",
+      "source_location": "L72",
       "weight": 1.0
     },
     {
@@ -152312,19 +152324,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "scripts/deploy-config.mjs",
-      "source_location": "L71",
-      "weight": 1.0
-    },
-    {
-      "source": "scripts_deploy_config_render",
-      "target": "scripts_deploy_config_envfile",
-      "relation": "calls",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "call",
-      "source_file": "scripts/deploy-config.mjs",
-      "source_location": "L99",
+      "source_location": "L74",
       "weight": 1.0
     },
     {
@@ -287188,7 +287188,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "scripts/deploy-config.mjs",
-      "source_location": "L60",
+      "source_location": "L63",
       "weight": 1.0
     },
     {
@@ -287199,7 +287199,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "scripts/deploy-config.mjs",
-      "source_location": "L66",
+      "source_location": "L69",
       "weight": 1.0
     },
     {
@@ -302328,5 +302328,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "88694018f426f12210bc3f40c5388bf45e884965"
+  "built_at_commit": "75d5cdb77c67e079d4b000c48bb6f4584720d1f6"
 }

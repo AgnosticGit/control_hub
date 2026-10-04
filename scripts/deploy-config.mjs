@@ -50,6 +50,9 @@ function validate(env) {
   if (/['\r\n]/.test(env.CONTROLHUB_OWNER_PASSWORD)) {
     throw new Error("CONTROLHUB_OWNER_PASSWORD must not contain single quotes or line breaks");
   }
+  if ([...env.CONTROLHUB_OWNER_PASSWORD].length < 12) {
+    throw new Error("CONTROLHUB_OWNER_PASSWORD must have at least 12 characters");
+  }
   if (!/^[a-z0-9._/-]+$/.test(env.IMAGE_PREFIX)) throw new Error("IMAGE_PREFIX must be a lowercase registry path");
   if (!/^[A-Za-z0-9._-]{1,128}$/.test(env.CONTROLHUB_VERSION)) throw new Error("CONTROLHUB_VERSION is not a valid image tag");
   for (const k of Object.keys(RETENTION_DEFAULTS)) {

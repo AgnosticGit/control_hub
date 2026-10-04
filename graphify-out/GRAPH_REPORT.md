@@ -1,7 +1,7 @@
-# Graph Report - control_hub  (2026-10-03)
+# Graph Report - control_hub  (2026-10-04)
 
 ## Corpus Check
-- 545 files · ~612,729 words
+- 545 files · ~612,980 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 23 file(s) not represented in the graph (top: (none) 9, .mdc 4, .toml 3)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `88694018`
+- Built from commit: `75d5cdb7`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -1602,10 +1602,10 @@ Nodes (7): Audit Health Score, Detailed Findings by Severity, Executive Summary,
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `rounded()` connect `edge-path.ts` to `Inspector.tsx`?**
-  _High betweenness centrality (0.015) - this node is a cross-community bridge._
 - **Why does `State` connect `State` to `Event`, `invites.rs`, `mod.rs`, `CurrentUser`, `Option`, `routes/actions.rs`, `Action`, `session.rs`, `tokens.rs`, `controlhub-actions/src/lib.rs`, `live.rs`, `roles.rs`, `signup.rs`, `export_logs`?**
   _High betweenness centrality (0.015) - this node is a cross-community bridge._
+- **Why does `rounded()` connect `edge-path.ts` to `Inspector.tsx`?**
+  _High betweenness centrality (0.014) - this node is a cross-community bridge._
 - **What connects `lockPath`, `logPath`, `require` to the rest of the system?**
   _1824 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `.pool` be split into smaller, more focused modules?**

@@ -3270,15 +3270,15 @@
     "semantic_hash": ""
   },
   "scripts/deploy-config.mjs": {
-    "mtime": 1791034084.6144528,
-    "seen": 1791036141.7405555,
-    "ast_hash": "cd67466db832fb3e2d2ee3466d66d201",
+    "mtime": 1791078894.1537576,
+    "seen": 1791078931.5529628,
+    "ast_hash": "e1671d80901805729478f79bce51cea6",
     "semantic_hash": ""
   },
   "scripts/test/deploy-config.test.mjs": {
-    "mtime": 1791034920.294577,
-    "seen": 1791036141.7415557,
-    "ast_hash": "65b73801cdf54821973d7c1878bfeafc",
+    "mtime": 1791078894.4277968,
+    "seen": 1791078931.553971,
+    "ast_hash": "63571ac9e99636e8c91f29a443a5f89e",
     "semantic_hash": ""
   },
   "tests/integration/migrate.test.mjs": {

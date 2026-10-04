@@ -56,6 +56,12 @@ test('the owner password is written literally, single-quoted', () => {
   assert.throws(() => render({ ...input, CONTROLHUB_OWNER_PASSWORD: 'a\nb' }), /line breaks/);
 });
 
+test('a short owner password fails before anything reaches the servers', () => {
+  assert.throws(() => render({ ...input, CONTROLHUB_OWNER_PASSWORD: 'elevenchars' }), /at least 12 characters/);
+  assert.throws(() => render({ ...input, CONTROLHUB_OWNER_PASSWORD: 'пароль-ёжик' }), /at least 12 characters/);
+  assert.doesNotThrow(() => render({ ...input, CONTROLHUB_OWNER_PASSWORD: 'twelve chars' }));
+});
+
 test('S3 identities match the derived keys and stay scoped to the archive bucket', () => {
   const s3 = JSON.parse(files['storage/seaweedfs-s3.json']);
   const api = s3.identities.find((i) => i.name === 'api');
