@@ -91,6 +91,22 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   const banner = page.getByRole("status", { name: "Noisy neighbour" }).filter({ hasText: orders });
   await expect(banner).toBeVisible({ timeout: 30_000 });
   await expect(banner).toContainText(`${inventory} used 95% of CPU on ${host}`);
+
+  // Fit to screen keeps every card below the machines panel and the hints.
+  await page.getByRole("button", { name: "Fit to screen" }).click();
+  const map = page.locator("[data-fit-top]");
+  await expect
+    .poll(async () => {
+      const [panel, hostBox, top] = await Promise.all([
+        machines.boundingBox(),
+        map.boundingBox(),
+        map.getAttribute("data-fit-top"),
+      ]);
+      if (!panel || !hostBox || top === null) return -1;
+      return Number(top) - (panel.y + panel.height - hostBox.y);
+    })
+    .toBeGreaterThanOrEqual(0);
+
   await banner.getByRole("button", { name: "Show" }).click();
 
   // Service → instance → container → machine.

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { EDGE_STYLES } from "./edge-path";
-import { assignLanes, portOffsets, routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
+import { orderedLanes, portOffsets, routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
 
 const CARD_W = 172;
 const CARD_H = 56;
-const BOX = { hw: CARD_W / 2 + 4, hh: CARD_H / 2 + 4, portSpan: CARD_H - 20 };
+const BOX = { hw: CARD_W / 2 + 4, hh: CARD_H / 2 + 4, portSpan: CARD_H - 12 };
 
 // A shape like the demo: a fans out to b and c; a -> d skips a column through a corridor.
 const nodes: RouteNode[] = [
@@ -35,16 +35,94 @@ describe("portOffsets", () => {
   });
 });
 
-describe("assignLanes", () => {
-  it("gives overlapping intervals different lanes and reuses free ones", () => {
-    const lanes = assignLanes([
-      [0, 100],
-      [50, 150],
-      [120, 200],
+describe("orderedLanes", () => {
+  it("gives overlapping runs different lanes and lets separate ones share", () => {
+    const lanes = orderedLanes([
+      { y0: 0, y1: 100 },
+      { y0: 50, y1: 150 },
+      { y0: 300, y1: 400 },
     ]);
     expect(lanes[0]).not.toBe(lanes[1]);
-    expect(lanes[2]).toBe(lanes[0]);
+    expect(lanes[2]).toBe(0);
   });
+
+  it("going down, the run starting lower turns first; going up, the one starting higher", () => {
+    expect(orderedLanes([{ y0: 0, y1: 200 }, { y0: 10, y1: 300 }])).toEqual([1, 0]);
+    // The mirror image of the first case.
+    expect(orderedLanes([{ y0: 0, y1: -200 }, { y0: -10, y1: -300 }])).toEqual([1, 0]);
+  });
+});
+
+/** Proper crossings between two polylines (shared end points do not count). */
+function crossingCount(a: number[], b: number[]): number {
+  let n = 0;
+  for (let i = 0; i + 3 < a.length; i += 2) {
+    for (let j = 0; j + 3 < b.length; j += 2) {
+      const [p1x, p1y, p2x, p2y] = [a[i] ?? 0, a[i + 1] ?? 0, a[i + 2] ?? 0, a[i + 3] ?? 0];
+      const [q1x, q1y, q2x, q2y] = [b[j] ?? 0, b[j + 1] ?? 0, b[j + 2] ?? 0, b[j + 3] ?? 0];
+      const d = (p2x - p1x) * (q2y - q1y) - (p2y - p1y) * (q2x - q1x);
+      if (Math.abs(d) < 1e-9) continue;
+      const t = ((q1x - p1x) * (q2y - q1y) - (q1y - p1y) * (q2x - q1x)) / d;
+      const u = ((q1x - p1x) * (p2y - p1y) - (q1y - p1y) * (p2x - p1x)) / d;
+      if (t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6) n++;
+    }
+  }
+  return n;
+}
+
+/** Shortest distance between two polylines' vertices and segments, sampled at vertices. */
+function closest(a: number[], b: number[]): number {
+  let best = Infinity;
+  for (let i = 0; i + 1 < a.length; i += 2) {
+    for (let j = 0; j + 3 < b.length; j += 2) {
+      const [px, py] = [a[i] ?? 0, a[i + 1] ?? 0];
+      const [x1, y1, x2, y2] = [b[j] ?? 0, b[j + 1] ?? 0, b[j + 2] ?? 0, b[j + 3] ?? 0];
+      const len2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / len2)) : 0;
+      best = Math.min(best, Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1))));
+    }
+  }
+  return best;
+}
+
+describe("fan-out from one card", () => {
+  // Like "External clients": one card calling eight cards in the next column.
+  const fanNodes: RouteNode[] = [{ index: 0, x: 0, y: 0 }, ...Array.from({ length: 8 }, (_, k) => ({ index: k + 1, x: 300, y: (k - 3.5) * 120 }))];
+  const fanEdges: RouteEdge[] = Array.from({ length: 8 }, (_, k) => ({ index: k, source: 0, target: k + 1, points: [] }));
+
+  for (const style of EDGE_STYLES) {
+    it(`${style}: the edges never lie on each other`, () => {
+      const paths = routeEdges(style, fanNodes, fanEdges, BOX);
+      const pts = fanEdges.map((e) => paths.get(e.index)?.pts ?? []);
+      for (let i = 0; i < pts.length; i++) {
+        for (let j = i + 1; j < pts.length; j++) {
+          // Apart by at least the line width everywhere (ports at least 4 px apart).
+          expect(closest(pts[i] ?? [], pts[j] ?? []), `${style} edges ${i} and ${j}`).toBeGreaterThanOrEqual(3.5);
+          if (style !== "curved") expect(crossingCount(pts[i] ?? [], pts[j] ?? []), `${style} edges ${i} and ${j} cross`).toBe(0);
+        }
+      }
+    });
+  }
+});
+
+describe("fan-out into targets far below", () => {
+  // Like "External clients" in the infrastructure layout: targets mostly far below the
+  // caller, at uneven distances, so the metro diagonals of neighbouring lanes run parallel.
+  const ys = [-120, 120, 240, 480, 600, 840];
+  const fanNodes: RouteNode[] = [{ index: 0, x: 0, y: 0 }, ...ys.map((y, k) => ({ index: k + 1, x: 300, y }))];
+  const fanEdges: RouteEdge[] = ys.map((_, k) => ({ index: k, source: 0, target: k + 1, points: [] }));
+
+  for (const style of EDGE_STYLES) {
+    it(`${style}: the edges never lie on each other`, () => {
+      const paths = routeEdges(style, fanNodes, fanEdges, BOX);
+      const pts = fanEdges.map((e) => paths.get(e.index)?.pts ?? []);
+      for (let i = 0; i < pts.length; i++) {
+        for (let j = i + 1; j < pts.length; j++) {
+          expect(closest(pts[i] ?? [], pts[j] ?? []), `${style} edges ${i} and ${j}`).toBeGreaterThanOrEqual(3.5);
+        }
+      }
+    });
+  }
 });
 
 describe("routeEdges", () => {

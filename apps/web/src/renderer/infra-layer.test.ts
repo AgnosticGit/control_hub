@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { InfraFrame, InfraView } from "@karbird/web-engine";
-import { CHIP_H, CHIP_W, INFRA_FRAME, INFRA_HOT, INFRA_NO_METRICS, badgeText, chipAt, frameAt, frameColor, linkLabelAt } from "./infra-layer";
+import { CHIP_H, CHIP_W, INFRA_FRAME, INFRA_HOT, INFRA_NO_METRICS, badgeText, chipAt, frameAt, frameColor, linkArc, linkLabelAt } from "./infra-layer";
 
 const frame = (over: Partial<InfraFrame> = {}): InfraFrame => ({
   host_id: "vps-app",
@@ -49,7 +49,20 @@ describe("infra layer styling", () => {
     expect(badgeText(2, 1)).toBe("×2");
   });
 
-  it("puts a link label in the middle", () => {
-    expect(linkLabelAt([0, 0], [100, 50])).toEqual([50, 25]);
+  it("draws a link as an arc above the straight line and labels its top", () => {
+    const from: [number, number] = [0, 100];
+    const to: [number, number] = [300, 100];
+    const arc = linkArc(from, to);
+    expect(arc.slice(0, 2)).toEqual(from);
+    expect(arc.slice(-2)).toEqual(to);
+    // Every inner point is well above the straight call edge between the same cards.
+    for (let i = 2; i + 2 < arc.length - 2; i += 2) expect(arc[i + 1] ?? 0).toBeLessThan(100 - 10);
+    const [mx, my] = linkLabelAt(from, to);
+    expect(mx).toBeCloseTo(150);
+    const top = Math.min(...arc.filter((_, i) => i % 2 === 1));
+    expect(my).toBeCloseTo(top, 0);
+    // Same bow side whichever way the link points; a zero-length link still has an arc.
+    expect(linkLabelAt(to, from)[1]).toBeCloseTo(my);
+    expect(linkArc(from, from).length).toBeGreaterThan(4);
   });
 });

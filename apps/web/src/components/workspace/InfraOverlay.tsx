@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { InfrastructureSnapshot } from "@karbird/web-engine";
 import { Icon } from "@/components/ui/Icon";
 import { hintText, hostLabel } from "./infrastructure";
@@ -10,13 +11,28 @@ interface Props {
   selectedHost: string | null;
   onSelectHost: (hostId: string) => void;
   onSelect: (serviceId: string) => void;
+  /** How far down the map the overlay reaches, in pixels (0 once it is gone). */
+  onBottom?: (px: number) => void;
 }
 
 /** Machines of the infrastructure layer and its noisy-neighbour hints, above the map canvas. */
-export function InfraOverlay({ snapshot, error, selectedHost, onSelectHost, onSelect }: Props) {
+export function InfraOverlay({ snapshot, error, selectedHost, onSelectHost, onSelect, onBottom }: Props) {
   const hosts = snapshot?.hosts ?? [];
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || !onBottom) return;
+    const report = () => onBottom(el.offsetTop + el.offsetHeight);
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      onBottom(0);
+    };
+  }, [onBottom]);
   return (
-    <div className="pointer-events-none absolute top-3 left-3 z-10 flex max-w-[min(28rem,60%)] flex-col gap-2">
+    <div ref={rootRef} className="pointer-events-none absolute top-3 left-3 z-10 flex max-w-[min(28rem,60%)] flex-col gap-2">
       {snapshot?.hints.map((h) => (
         <div
           key={`${h.instance_id}-${h.neighbor_container_id}`}

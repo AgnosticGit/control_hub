@@ -37,9 +37,11 @@ interface Props {
   memory: WorkspaceMemory;
   /** A click on a machine frame of the infrastructure layer. */
   onSelectHost: (hostId: string) => void;
+  /** Screen pixels at the top of the map covered by an overlay. */
+  topInset?: number;
 }
 
-export function MapView({ actions, topology, selectedId, onSelect, forceTable, mode, speed, summary, memory, onSelectHost }: Props) {
+export function MapView({ actions, topology, selectedId, onSelect, forceTable, mode, speed, summary, memory, onSelectHost, topInset = 0 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<PixiMap | null>(null);
   const [webglError, setWebglError] = useState<string | null>(null);
@@ -52,6 +54,11 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable, m
   const clockRef = useRef(animClockFor(mode, speed));
   const edgeStyle = useEdgeStyle();
   const edgeStyleRef = useRef(edgeStyle);
+  const topInsetRef = useRef(topInset);
+  useEffect(() => {
+    topInsetRef.current = topInset;
+    mapRef.current?.setTopInset(topInset);
+  }, [topInset]);
   useEffect(() => {
     edgeStyleRef.current = edgeStyle;
     mapRef.current?.setEdgeStyle(edgeStyle);
@@ -97,6 +104,7 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable, m
         const topo = topologyRef.current;
         map.setClock(clockRef.current);
         map.setEdgeStyle(edgeStyleRef.current);
+        map.setTopInset(topInsetRef.current);
         map.setTopology(topo);
         const sel = selectedRef.current;
         map.setSelected(sel ? (topo?.nodes.find((n) => n.id === sel)?.index ?? null) : null);

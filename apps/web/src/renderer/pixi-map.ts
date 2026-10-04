@@ -25,12 +25,13 @@ import {
   type InfraView,
   type TopologyView,
 } from "@karbird/web-engine";
-import { CHIP_H, CHIP_W, FRAME_HEADER, NOISY_LINK, badgeText, chipAt, frameAt, frameColor, linkLabelAt } from "./infra-layer";
+import { CHIP_H, CHIP_W, FRAME_HEADER, NOISY_LINK, badgeText, chipAt, frameAt, frameColor, linkArc, linkLabelAt } from "./infra-layer";
 import { DEFAULT_EDGE_STYLE, build, dashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
 import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
 import { dashedRect, nodeSubLabel } from "./external";
 import { ACCENT, CARD_BG, EDGE_ERROR, EDGE_INFERRED, EDGE_OK, EDGE_WARN, EXTERNAL_COLOR, STATUS_COLORS } from "./map-colors";
 import { cullRect } from "./cull";
+import { fitCamera } from "./fit";
 import { gridLines } from "./grid";
 import { animTimeMs, hopPhase, type AnimClock } from "./hops";
 import { serviceColors } from "./service-colors";
@@ -55,7 +56,8 @@ const MAX_SCALE = 4;
 const CARD_W = 172;
 const CARD_H = 56;
 const CARD_BOX = { hw: CARD_W / 2 + 4, hh: CARD_H / 2 + 4 };
-const ROUTE_BOX = { ...CARD_BOX, portSpan: CARD_H - 20 };
+// Ports use the whole card side but its rounded corners, so many edges stay apart.
+const ROUTE_BOX = { ...CARD_BOX, portSpan: CARD_H - 12 };
 const LINE_STYLE = { join: "round", cap: "round" } as const;
 /** Opacity of switched-off services and everything attached to them. */
 const DIM_ALPHA = 0.22;
@@ -140,6 +142,10 @@ export class PixiMap {
   private colors = new Map<number, number>();
   private selectedIndex: number | null = null;
   private fitted = false;
+  /** The camera is where `fit` put it (no pan or zoom since). */
+  private cameraIsFit = false;
+  /** Screen pixels at the top covered by an overlay; `fit` keeps the map below them. */
+  private topInset = 0;
   private reducedMotion = false;
   private destroyed = false;
   private cleanup: Array<() => void> = [];
@@ -291,17 +297,33 @@ export class PixiMap {
       maxX = Math.max(maxX, fr.x + fr.width);
       maxY = Math.max(maxY, fr.y + fr.height);
     }
-    const padX = CARD_W;
-    const padY = CARD_H * 2;
-    const w = app.screen.width;
-    const h = app.screen.height;
-    const scale = Math.max(
-      MIN_SCALE,
-      Math.min(1.3, Math.min(w / (maxX - minX + padX * 2), h / (maxY - minY + padY * 2))),
+    const cam = fitCamera(
+      { minX, minY, maxX, maxY },
+      {
+        width: app.screen.width,
+        height: app.screen.height,
+        padX: CARD_W,
+        padY: CARD_H * 2,
+        topInset: this.topInset,
+        insetGap: CARD_H,
+        minScale: MIN_SCALE,
+        maxScale: 1.3,
+      },
     );
-    this.world.scale.set(scale);
-    this.world.position.set(w / 2 - ((minX + maxX) / 2) * scale, h / 2 - ((minY + maxY) / 2) * scale);
+    this.world.scale.set(cam.scale);
+    this.world.position.set(cam.x, cam.y);
     this.reportViewport();
+    this.cameraIsFit = true;
+    // Screen y of the top card edge after a fit, for tests: it must stay below any overlay.
+    this.host?.setAttribute("data-fit-top", String(Math.round(cam.y + (minY - CARD_H / 2) * cam.scale)));
+  }
+
+  /** Keeps `fit` clear of an overlay this many screen pixels tall; refits a fitted camera. */
+  setTopInset(px: number) {
+    const next = Math.max(0, Math.round(px));
+    if (next === this.topInset) return;
+    this.topInset = next;
+    if (this.cameraIsFit) this.fit();
   }
 
   zoomBy(factor: number, sx?: number, sy?: number) {
@@ -359,6 +381,7 @@ export class PixiMap {
   }
 
   private reportViewport() {
+    this.cameraIsFit = false;
     const app = this.app;
     if (!app) return;
     const s = this.world.scale.x;
@@ -433,7 +456,7 @@ export class PixiMap {
       this.infraLabels.addChild(t);
     }
     for (const l of view.links) {
-      for (const dash of dashes(build([l.from[0], l.from[1], l.to[0], l.to[1]]), 8, 6)) line(front, dash);
+      for (const dash of dashes(build(linkArc(l.from, l.to)), 8, 6)) line(front, dash);
       front.stroke({ color: NOISY_LINK, width: 3, alpha: 0.95, ...LINE_STYLE });
       front.circle(l.to[0], l.to[1], 6).stroke({ color: NOISY_LINK, width: 2 });
       const [mx, my] = linkLabelAt(l.from, l.to);

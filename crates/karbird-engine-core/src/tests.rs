@@ -1135,7 +1135,7 @@ fn infrastructure_layer_moves_cards_into_machine_frames_and_back() {
     assert!(gateway.x > app.x && gateway.x < app.x + app.width && gateway.y > app.y && gateway.y < app.y + app.height);
     assert_eq!(view.badges, vec![InfraBadge { node: 1, count: 3, hosts: 2 }]);
     assert_eq!(view.chips.len(), 3);
-    assert!(topo.edges.iter().all(|edge| edge.points.is_empty()), "no layered corridors inside frames");
+    assert!(topo.edges.iter().all(|edge| edge.points.is_empty()), "adjacent columns need no corridors");
 
     // Frames drive the frame geometry too, not only the topology view.
     let vs = e.visible_state();
@@ -1187,7 +1187,9 @@ fn nodes_discovered_later_are_placed_after_relayout() {
         .unwrap();
     let topo = e.topology();
     let view = topo.infra.as_ref().unwrap();
-    let right = view.frames.iter().map(|f| f.x + f.width).fold(0.0f32, f32::max);
     let payments = topo.nodes.iter().find(|n| n.id == "svc_payments").unwrap();
-    assert!(payments.x > right, "a service on no known machine sits right of the frames");
+    for f in &view.frames {
+        let inside = payments.x > f.x && payments.x < f.x + f.width && payments.y > f.y && payments.y < f.y + f.height;
+        assert!(!inside, "a service on no known machine stays outside {}", f.host_id);
+    }
 }

@@ -36,7 +36,39 @@ export function badgeText(count: number, hosts: number): string {
   return hosts > 1 ? `×${count} · ${hosts} machines` : `×${count}`;
 }
 
-/** Midpoint of a link, where its label goes. */
+const ARC_STEPS = 24;
+
+/** Control point of a link's arc: bowed above the straight line, so it never lies on the call edge between the same cards. */
+function arcControl(from: [number, number], to: [number, number]): [number, number] {
+  const dx = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) return [from[0], from[1] - 60];
+  const bow = Math.max(48, Math.min(120, len * 0.35));
+  // The normal pointing up (negative y); for vertical links, to the left.
+  let nx = dy / len;
+  let ny = -dx / len;
+  if (ny > 0 || (ny === 0 && nx > 0)) {
+    nx = -nx;
+    ny = -ny;
+  }
+  return [(from[0] + to[0]) / 2 + nx * bow * 2, (from[1] + to[1]) / 2 + ny * bow * 2];
+}
+
+/** The noisy-neighbour link as a polyline (flat x, y pairs): a quadratic arc above the cards it joins. */
+export function linkArc(from: [number, number], to: [number, number]): number[] {
+  const [cx, cy] = arcControl(from, to);
+  const out: number[] = [];
+  for (let s = 0; s <= ARC_STEPS; s++) {
+    const t = s / ARC_STEPS;
+    const u = 1 - t;
+    out.push(u * u * from[0] + 2 * u * t * cx + t * t * to[0], u * u * from[1] + 2 * u * t * cy + t * t * to[1]);
+  }
+  return out;
+}
+
+/** Top of a link's arc, where its label goes. */
 export function linkLabelAt(from: [number, number], to: [number, number]): [number, number] {
-  return [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
+  const [cx, cy] = arcControl(from, to);
+  return [(from[0] + 2 * cx + to[0]) / 4, (from[1] + 2 * cy + to[1]) / 4];
 }

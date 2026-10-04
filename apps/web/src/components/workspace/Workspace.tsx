@@ -66,6 +66,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const [tableView, setTableView] = useState(false);
   const [infraOn, setInfraOn] = useState(false);
   const [selectedHost, setSelectedHost] = useState<string | null>(null);
+  const [overlayBottom, setOverlayBottom] = useState(0);
   const [markA, setMarkA] = useState<bigint | null>(null);
   const [compare, setCompare] = useState<{ a: bigint; b: bigint; diffs: NodeDiff[] } | null>(null);
   const [side, setSide] = useState<SideTab>("signals");
@@ -245,6 +246,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                   summary={state.summary}
                   memory={memory}
                   onSelectHost={selectHost}
+                  topInset={infraOn ? overlayBottom : 0}
                 />
               )}
               {infraOn && state.phase === "ready" ? (
@@ -254,6 +256,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                   selectedHost={selectedHost}
                   onSelectHost={selectHost}
                   onSelect={select}
+                  onBottom={setOverlayBottom}
                 />
               ) : null}
               {traceId && state.phase === "ready" ? (

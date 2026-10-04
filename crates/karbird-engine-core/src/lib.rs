@@ -413,10 +413,10 @@ impl Engine {
                         id: &n.id,
                         name: &n.name,
                         service: n.kind == EntityKind::Service,
-                        base: self.layout.position(&n.id).unwrap_or((0.0, 0.0)),
                     })
                     .collect();
-                Some(infra::compute(&nodes, snap))
+                let edges: Vec<(u32, u32)> = self.edges.iter().map(|e| (e.source, e.target)).collect();
+                Some(infra::compute(&nodes, &edges, snap))
             }
             _ => None,
         };
@@ -499,12 +499,13 @@ impl Engine {
                     relation: e.relation.into(),
                     provenance: e.provenance.into(),
                     reasons: e.reasons.clone(),
-                    // Corridors belong to the layered layout; frames place nodes elsewhere.
-                    points: if self.infra_layout.is_some() {
-                        Vec::new()
-                    } else {
-                        self.layout.waypoints(i).iter().map(|&(x, y)| [x, y]).collect()
-                    },
+                    points: match &self.infra_layout {
+                        Some(l) => l.waypoints.get(i).map_or(&[][..], Vec::as_slice),
+                        None => self.layout.waypoints(i),
+                    }
+                    .iter()
+                    .map(|&(x, y)| [x, y])
+                    .collect(),
                 })
                 .collect(),
             infra: self.infra_layout.as_ref().map(|l| l.view.clone()),

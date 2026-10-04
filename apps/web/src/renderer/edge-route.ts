@@ -33,6 +33,12 @@ export interface RouteBox extends CardBox {
 
 /** Distance between lanes (and between ports, at most). */
 const LANE = 10;
+/** Closest a lane comes to the cards on either side of its gap. */
+const LANE_MARGIN = 18;
+/** Vertical runs closer than this share no lane (line width plus a little air). */
+const LANE_OVERLAP = 4;
+/** Longest 45° diagonal of a metro connector. */
+const MAX_DIAGONAL = 80;
 const CURVE_STEPS = 20;
 
 interface Connector {
@@ -51,23 +57,36 @@ export function portOffsets(count: number, span: number): number[] {
 }
 
 /**
- * Lane index for each vertical interval so that overlapping intervals (with a margin) never
- * share a lane: greedy interval colouring in order of the interval start.
+ * Lane of each turning connector in one gap (0 = leftmost). Overlapping connectors get
+ * separate lanes in an order that avoids needless crossings: of two connectors going down,
+ * the one starting lower turns first; going up, the one starting higher. Connectors that do
+ * not overlap share lanes.
  */
-export function assignLanes(intervals: ReadonlyArray<readonly [number, number]>, margin = 4): number[] {
-  const order = intervals.map((_, i) => i).sort((a, b) => (intervals[a]?.[0] ?? 0) - (intervals[b]?.[0] ?? 0) || a - b);
-  const laneEnd: number[] = [];
-  const lanes = new Array<number>(intervals.length).fill(0);
+export function orderedLanes(conns: ReadonlyArray<{ y0: number; y1: number }>): number[] {
+  const key = (c: { y0: number; y1: number }) => (c.y1 > c.y0 ? [0, -c.y0, -c.y1] : [1, c.y0, c.y1]);
+  const order = conns.map((_, i) => i);
+  order.sort((a, b) => {
+    const ka = key(conns[a] ?? { y0: 0, y1: 0 });
+    const kb = key(conns[b] ?? { y0: 0, y1: 0 });
+    for (let k = 0; k < 3; k++) {
+      const d = (ka[k] ?? 0) - (kb[k] ?? 0);
+      if (d !== 0) return d;
+    }
+    return a - b;
+  });
+  const lanes = new Array<number>(conns.length).fill(0);
+  // Each connector takes the lane after the last one it overlaps, so the order is kept.
+  const placed: number[] = [];
   for (const i of order) {
-    const [lo, hi] = intervals[i] ?? [0, 0];
-    let lane = laneEnd.findIndex((end) => end + margin <= lo);
-    if (lane < 0) {
-      lane = laneEnd.length;
-      laneEnd.push(hi);
-    } else {
-      laneEnd[lane] = hi;
+    const c = conns[i] ?? { y0: 0, y1: 0 };
+    const [lo, hi] = [Math.min(c.y0, c.y1), Math.max(c.y0, c.y1)];
+    let lane = 0;
+    for (const j of placed) {
+      const o = conns[j] ?? { y0: 0, y1: 0 };
+      if (Math.min(o.y0, o.y1) - LANE_OVERLAP <= hi && lo <= Math.max(o.y0, o.y1) + LANE_OVERLAP) lane = Math.max(lane, (lanes[j] ?? 0) + 1);
     }
     lanes[i] = lane;
+    placed.push(i);
   }
   return lanes;
 }
@@ -151,6 +170,7 @@ export function routeEdges(
 
   // Lanes: square and metro connectors that turn in the same gap get separate vertical runs.
   const laneX = new Map<Connector, number>();
+  const diagonal = new Map<Connector, number>();
   const gaps = new Map<string, Connector[]>();
   for (const c of connectors) {
     const key = `${Math.round(c.x0)}:${Math.round(c.x1)}`;
@@ -160,12 +180,25 @@ export function routeEdges(
   }
   for (const g of gaps.values()) {
     const turning = g.filter((c) => Math.abs(c.y1 - c.y0) >= 0.5);
-    const lanes = assignLanes(turning.map((c) => [Math.min(c.y0, c.y1), Math.max(c.y0, c.y1)] as const));
+    const lanes = orderedLanes(turning);
     const count = lanes.reduce((m, l) => Math.max(m, l + 1), 0);
+    const first = turning[0];
+    if (!first) continue;
+    // Lanes keep clear of the cards on both sides of the gap.
+    const room = Math.max(0, first.x1 - first.x0 - 2 * LANE_MARGIN);
+    const step = count > 1 ? Math.min(LANE, room / (count - 1)) : 0;
     turning.forEach((c, i) => {
       const mid = (c.x0 + c.x1) / 2;
-      laneX.set(c, mid + ((lanes[i] ?? 0) - (count - 1) / 2) * LANE);
+      laneX.set(c, mid + ((lanes[i] ?? 0) - (count - 1) / 2) * step);
     });
+    // One diagonal length per gap: with the lane order above, equal 45° diagonals of
+    // overlapping connectors are parallel and never collinear.
+    let diag = MAX_DIAGONAL;
+    for (const c of turning) {
+      const lx = laneX.get(c) ?? (c.x0 + c.x1) / 2;
+      diag = Math.min(diag, Math.max(0, Math.min(lx - c.x0, c.x1 - lx) * 2 - 8));
+    }
+    for (const c of turning) diagonal.set(c, diag);
   }
 
   const byEdge = new Map<number, Connector[]>();
@@ -197,7 +230,7 @@ export function routeEdges(
       list.forEach((run, k) => {
         if (k > 0) {
           const c = conns[k - 1];
-          if (c) corners.push(...turn(style, c, laneX.get(c) ?? (c.x0 + c.x1) / 2));
+          if (c) corners.push(...turn(style, c, laneX.get(c) ?? (c.x0 + c.x1) / 2, diagonal.get(c) ?? 0));
           corners.push(run[0], run[1]);
         }
         corners.push(run[2], run[3]);
@@ -224,13 +257,12 @@ function bezier(c: Connector): number[] {
 }
 
 /** Corner points of a square or metro connector turning at `lx`, end points excluded. */
-function turn(style: EdgeStyle, c: Connector, lx: number): number[] {
+function turn(style: EdgeStyle, c: Connector, lx: number, maxDiag: number): number[] {
   const dy = c.y1 - c.y0;
   if (Math.abs(dy) < 0.5) return [];
   if (style !== "metro") return [lx, c.y0, lx, c.y1];
-  // 45° diagonal centred on the lane, as long as the gap allows; the rest is vertical.
-  const room = Math.max(0, Math.min(lx - c.x0, c.x1 - lx) * 2 - 8);
-  const diag = Math.min(Math.abs(dy), room);
+  // 45° diagonal centred on the lane, `maxDiag` long at most; the rest is vertical.
+  const diag = Math.min(Math.abs(dy), maxDiag);
   const side = dy > 0 ? 1 : -1;
   const x0 = lx - diag / 2;
   const x1 = lx + diag / 2;

@@ -96,6 +96,8 @@ export function asCompleteness(v: unknown): Completeness | null {
 
 export function useWorkspaceEngine(projectId: string, environmentId: string) {
   const clientRef = useRef<EngineClient | null>(null);
+  /** Settles once every range load started so far is done (success or not). */
+  const loadsRef = useRef<Promise<void>>(Promise.resolve());
   const frameListeners = useRef(new Set<(f: Frame) => void>());
   const lastFrameRef = useRef<Frame | null>(null);
   const [state, setState] = useState<EngineState>(() => {
@@ -160,6 +162,12 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     async (from: bigint, to: bigint, opts: { reset: boolean; topology: boolean }) => {
       const c = clientRef.current;
       if (!c) return;
+      let done = () => {};
+      const settled = new Promise<void>((resolve) => {
+        done = resolve;
+      });
+      const before = loadsRef.current;
+      loadsRef.current = Promise.all([before, settled]).then(() => undefined);
       patch({ loading: true });
       try {
         if (opts.reset) await c.call({ kind: "evictBefore", beforeNs: EVICT_ALL.toString() });
@@ -174,6 +182,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
         patch({ error: e instanceof Error ? e.message : String(e) });
       } finally {
         patch({ loading: false });
+        done();
       }
     },
     [patch, url, recordLoad, refreshTopologyView],
@@ -369,7 +378,8 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       const s = stateRef.current;
       const start = playStart(s.cursor, s.rangeFrom, s.rangeTo, s.loop);
       if (!s.loop && start !== s.cursor) {
-        // Starting over: skip the empty stretch before the first recorded item.
+        // Starting over: skip the empty stretch before the first recorded item, once it is loaded.
+        await loadsRef.current;
         const first = await clientRef.current
           ?.call({ kind: "nextEvent", afterNs: (s.rangeFrom - 1n).toString() })
           .catch(() => null);
@@ -408,7 +418,9 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       seek(t);
     },
     // From the cursor itself: the last frame may still describe an earlier seek (e.g. Home, then Next).
+    // After the range loads: before that the engine only holds what live streaming brought.
     stepPrev: async () => {
+      await loadsRef.current;
       const t = await clientRef.current
         ?.call({ kind: "prevEvent", beforeNs: stateRef.current.cursor.toString() })
         .catch(() => null);
@@ -416,6 +428,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       if (p !== null) a.seek(p);
     },
     stepNext: async () => {
+      await loadsRef.current;
       const t = await clientRef.current
         ?.call({ kind: "nextEvent", afterNs: stateRef.current.cursor.toString() })
         .catch(() => null);
