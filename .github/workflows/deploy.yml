@@ -142,8 +142,14 @@ jobs:
           dc() { docker compose -f compose.storage.yaml "$@"; }
           dc pull --quiet
           dc up -d --wait --wait-timeout 900 --remove-orphans
-          dc exec -T seaweedfs sh -c "echo s3.bucket.list | weed shell -master=localhost:9333 | grep -q controlhub-archive || echo 's3.bucket.create -name controlhub-archive' | weed shell -master=localhost:9333"
-          dc run --rm --pull always migrate migrate $SHRINK
+          # The script arrives on stdin: every docker command that reads stdin gets </dev/null,
+          # otherwise it swallows the rest of the script and bash exits 0 without running it.
+          dc exec -T seaweedfs sh -c "echo s3.bucket.list | weed shell -master=localhost:9333 | grep -q controlhub-archive || echo 's3.bucket.create -name controlhub-archive' | weed shell -master=localhost:9333" </dev/null
+          dc run --rm --pull always migrate migrate $SHRINK </dev/null
+          admin=$(grep '^CH_PG_ADMIN_USER=' .env | cut -d= -f2-)
+          dc exec -T postgres psql -U "$admin" -d controlhub -tAc "SELECT to_regclass('public.users') IS NOT NULL" </dev/null | grep -qx t \
+            || { echo "::error::migrate did not create the schema"; exit 1; }
+          echo "storage ready, schema migrated"
           EOF
 
       - name: App host (Kafka, services, web, Caddy)
@@ -153,8 +159,8 @@ jobs:
           set -euo pipefail
           cd /opt/controlhub
           chmod 600 .env
-          docker compose -f compose.app.yaml pull --quiet
-          docker compose -f compose.app.yaml up -d --wait --wait-timeout 900 --remove-orphans
+          docker compose -f compose.app.yaml pull --quiet </dev/null
+          docker compose -f compose.app.yaml up -d --wait --wait-timeout 900 --remove-orphans </dev/null
           EOF
 
       - name: Registry logout and image cleanup
