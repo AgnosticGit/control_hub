@@ -150,3 +150,52 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("with many machines the list scrolls and fit to screen keeps every card below it", async ({ page }) => {
+  const run = randomHex(4);
+  const service = `crowd-${run}`;
+  const now = BigInt(Date.now()) * 1_000_000n;
+  const hosts = Array.from({ length: 30 }, (_, i) => `e2e-crowd-${run}-${String(i).padStart(2, "0")}`);
+  await ingestMetrics(
+    hosts.map((host) => ({
+      attributes: { "host.name": host, "host.id": host },
+      metrics: [{ name: "system.cpu.logical.count", unit: "{cpu}", kind: "gauge", points: [{ value: 2, timeNs: now - 20n * SEC }] }],
+    })),
+  );
+  await ingestSpans(service, serverSpans(5, now - 60n * SEC, 10));
+
+  const errors = collectErrors(page);
+  await login(page, "isolation@karbird.local", WORKSPACE);
+  await expect(page.getByText("Starting engine…")).toBeHidden();
+  await page.getByRole("checkbox", { name: "Infrastructure" }).check();
+  const machines = page.getByRole("region", { name: "Machines" });
+  const last = machines.getByRole("button", { name: new RegExp(`^${hosts[29]}`) });
+  await expect
+    .poll(
+      async () => {
+        if ((await last.count()) > 0) return true;
+        await page.reload();
+        await expect(page.getByText("Starting engine…")).toBeHidden();
+        await page.getByRole("checkbox", { name: "Infrastructure" }).check();
+        return false;
+      },
+      { timeout: 60_000, intervals: [3_000] },
+    )
+    .toBe(true);
+
+  const map = page.locator("[data-fit-top]");
+  const [panel, mapBox] = await Promise.all([machines.boundingBox(), map.boundingBox()]);
+  expect(panel && mapBox && panel.y + panel.height - mapBox.y).toBeLessThanOrEqual((mapBox?.height ?? 0) / 2);
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+
+  await page.getByRole("button", { name: "Fit to screen" }).click();
+  await expect
+    .poll(async () => {
+      const [box, hostBox, top] = await Promise.all([machines.boundingBox(), map.boundingBox(), map.getAttribute("data-fit-top")]);
+      if (!box || !hostBox || top === null) return -1;
+      return Number(top) - (box.y + box.height - hostBox.y);
+    })
+    .toBeGreaterThanOrEqual(0);
+  expect(errors).toEqual([]);
+});

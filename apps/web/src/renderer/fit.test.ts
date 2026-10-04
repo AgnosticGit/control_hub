@@ -37,6 +37,15 @@ describe("fitCamera", () => {
     expect(c.scale).toBeGreaterThanOrEqual(OPTS.minScale);
   });
 
+  it("a map too tall even at the minimum scale starts right below the overlay instead of being centred under it", () => {
+    const tall = { minX: 0, minY: 0, maxX: 1200, maxY: 20_000 };
+    const c = fitCamera(tall, { ...OPTS, topInset: 200 });
+    expect(c.scale).toBe(OPTS.minScale);
+    expect(screenY(tall.minY, c)).toBeCloseTo(200 + 50 * c.scale);
+    const plain = fitCamera(tall, OPTS);
+    expect(screenY(tall.minY, plain)).toBeCloseTo(100 * plain.scale);
+  });
+
   it("does not zoom a tiny map past the maximum scale", () => {
     const c = fitCamera({ minX: 0, minY: 0, maxX: 10, maxY: 10 }, OPTS);
     expect(c.scale).toBe(1.3);

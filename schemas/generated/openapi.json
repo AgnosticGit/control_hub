@@ -2795,6 +2795,93 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/infrastructure/timeline": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "operationId": "infra_timeline",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Start, unix epoch nanoseconds as a decimal string. Default: `to - 15m`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "End (exclusive), unix epoch nanoseconds as a decimal string. Default: now.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "buckets",
+            "in": "query",
+            "description": "Number of buckets (default 200, max 1000).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfraTimeline"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/environments/{environment_id}/live": {
       "get": {
         "tags": [
@@ -5226,6 +5313,57 @@
           }
         }
       },
+      "ContainerEvent": {
+        "type": "object",
+        "required": [
+          "time_ns",
+          "kind",
+          "host_id",
+          "host_name",
+          "container_id",
+          "container_name",
+          "detail"
+        ],
+        "properties": {
+          "container_id": {
+            "type": "string"
+          },
+          "container_name": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "host_name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ContainerEventKind"
+          },
+          "service_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "time_ns": {
+            "type": "string"
+          }
+        }
+      },
+      "ContainerEventKind": {
+        "type": "string",
+        "enum": [
+          "started",
+          "stopped",
+          "restarted",
+          "redeployed",
+          "out_of_memory"
+        ]
+      },
       "CoverageResponse": {
         "type": "object",
         "required": [
@@ -5661,6 +5799,98 @@
             ],
             "format": "double",
             "default": null
+          }
+        }
+      },
+      "HostTrack": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "cpu",
+          "memory"
+        ],
+        "properties": {
+          "cpu": {
+            "type": "array",
+            "items": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "float"
+            },
+            "description": "Busy share of the machine's CPU time per bucket (0–1); `null` without data."
+          },
+          "id": {
+            "type": "string"
+          },
+          "memory": {
+            "type": "array",
+            "items": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "float"
+            },
+            "description": "Used share of the machine's memory per bucket (0–1); `null` without data."
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "InfraTimeline": {
+        "type": "object",
+        "description": "Machines over time and what happened to their containers.",
+        "required": [
+          "from_ns",
+          "to_ns",
+          "buckets",
+          "bucket_ns",
+          "hosts",
+          "events",
+          "events_total",
+          "truncated"
+        ],
+        "properties": {
+          "bucket_ns": {
+            "type": "string",
+            "description": "Bucket `i` covers `[from + i * bucket_ns, from + (i + 1) * bucket_ns)`."
+          },
+          "buckets": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContainerEvent"
+            },
+            "description": "Oldest first, at most 500."
+          },
+          "events_total": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "from_ns": {
+            "type": "string"
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HostTrack"
+            }
+          },
+          "to_ns": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "The range holds more metric rows than were read: later buckets may be missing."
           }
         }
       },

@@ -168,6 +168,40 @@ pub struct InfraSeriesRow {
     pub last_time: i64,
 }
 
+/// Metrics the infrastructure timeline reads (a subset of [`INFRA_METRIC_NAMES`]).
+pub const INFRA_TIMELINE_METRIC_NAMES: &[&str] = &[
+    "system.cpu.time",
+    "system.cpu.utilization",
+    "system.memory.usage",
+    "system.memory.limit",
+    "container.cpu.usage.total",
+    "container.memory.usage.total",
+    "container.memory.usage.limit",
+];
+
+/// One class of series of a machine or container in one time bucket.
+#[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
+pub struct InfraBucketRow {
+    pub host_id: String,
+    pub host_name: String,
+    pub container_id: String,
+    pub container_name: String,
+    pub service_name: String,
+    pub metric_name: String,
+    /// `busy` / `idle` for CPU time and utilization, `used` / `other` for memory usage, else empty.
+    pub class: String,
+    /// Bucket index counted from the query's `base`.
+    pub bucket: i64,
+    /// Series summed into this row.
+    pub series: u64,
+    /// Sums over the series of their first, last and highest value in the bucket.
+    pub first_value: f64,
+    pub last_value: f64,
+    pub max_value: f64,
+    pub first_time: i64,
+    pub last_time: i64,
+}
+
 /// Request latency of one service instance now and in the baseline before it.
 #[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
 pub struct InstanceLatencyRow {
@@ -421,6 +455,36 @@ fn infra_series_sql() -> String {
     )
 }
 
+/// Per machine/container, metric, class and bucket of `bucket_ns` counted from `base`: sums of
+/// the first, last and highest value of each series in the bucket.
+fn infra_buckets_sql() -> String {
+    let names = INFRA_TIMELINE_METRIC_NAMES.iter().map(|n| format!("'{n}'")).collect::<Vec<_>>().join(", ");
+    format!(
+        "SELECT host_id, any(host_name) AS host_name, container_id, any(container_name) AS container_name,
+                any(service_name) AS service_name, metric_name, class, bucket, count() AS series,
+                sum(first_v) AS first_value, sum(last_v) AS last_value, sum(max_v) AS max_value,
+                min(first_t) AS first_time, max(last_t) AS last_time
+         FROM (
+             SELECT host_id, any(host_name) AS host_name, container_id, any(container_name) AS container_name,
+                    any(service_name) AS service_name, metric_name, series_id,
+                    multiIf(metric_name IN ('system.cpu.time', 'system.cpu.utilization'),
+                                if(attributes['state'] IN ('idle', 'wait'), 'idle', 'busy'),
+                            metric_name = 'system.memory.usage', if(attributes['state'] = 'used', 'used', 'other'),
+                            '') AS class,
+                    intDiv(toUnixTimestamp64Nano(time) - ?, ?) AS bucket,
+                    argMin(value, time) AS first_v, argMax(value, time) AS last_v, max(value) AS max_v,
+                    min(time) AS first_t, max(time) AS last_t
+             FROM metrics FINAL
+             WHERE {SCOPE_WHERE} AND metric_name IN ({names})
+               AND time >= fromUnixTimestamp64Nano(?) AND time < fromUnixTimestamp64Nano(?)
+             GROUP BY host_id, container_id, metric_name, series_id, class, bucket
+         )
+         GROUP BY host_id, container_id, metric_name, class, bucket
+         ORDER BY host_id, container_id, metric_name, class, bucket
+         LIMIT ?"
+    )
+}
+
 /// Server/consumer and root spans per instance; `p95` covers `[now_from, to)`, the baseline
 /// `[from, now_from)`.
 fn instance_latency_sql() -> String {
@@ -586,6 +650,19 @@ impl ChStore {
     pub async fn infra_series(&self, s: &Scope, from: i64, to: i64, limit: u32) -> Result<Vec<InfraSeriesRow>> {
         let q = self.client.query(&infra_series_sql());
         Ok(bind_scope(q, s).bind(from).bind(to).bind(limit).fetch_all().await?)
+    }
+
+    /// Infrastructure metrics in `[base, to)` per bucket of `bucket_ns` (see [`InfraBucketRow`]).
+    pub async fn infra_buckets(
+        &self,
+        s: &Scope,
+        base: i64,
+        to: i64,
+        bucket_ns: i64,
+        limit: u32,
+    ) -> Result<Vec<InfraBucketRow>> {
+        let q = self.client.query(&infra_buckets_sql()).bind(base).bind(bucket_ns);
+        Ok(bind_scope(q, s).bind(base).bind(to).bind(limit).fetch_all().await?)
     }
 
     /// Request latency per service instance: `[now_from, to)` against the baseline `[from, now_from)`.
@@ -1016,6 +1093,19 @@ mod tests {
                 assert_eq!(scoped_where_count(&sql), usize::from(scoped), "{sql}");
                 assert!(sql.contains("FINAL"), "archive reads see deduplicated rows: {sql}");
             }
+        }
+    }
+
+    #[test]
+    fn infrastructure_timeline_sql_is_scoped_and_binds_match() {
+        let sql = infra_buckets_sql();
+        // base and bucket size, scope, base and to, limit (as bound in `infra_buckets`).
+        assert_eq!(placeholders(&sql), 2 + 3 + 2 + 1, "{sql}");
+        assert_eq!(scoped_where_count(&sql), 1);
+        assert!(sql.contains("FROM metrics FINAL"));
+        for name in INFRA_TIMELINE_METRIC_NAMES {
+            assert!(INFRA_METRIC_NAMES.contains(name), "{name} is an infrastructure metric");
+            assert!(sql.contains(&format!("'{name}'")));
         }
     }
 

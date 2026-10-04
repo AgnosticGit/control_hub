@@ -101,6 +101,8 @@ test('agent metrics and SDK spans become a machine, containers, instances and a 
       const r = await snapshot();
       assert.equal(r.status, 200, JSON.stringify(r.body));
       assert.ok(r.body.hints.some((h) => h.service_name === ORDERS), JSON.stringify(r.body.hints));
+      // Inventory's spans are sent last; under load they can still be in the pipeline.
+      assert.ok(r.body.instances.some((i) => i.service_name === INVENTORY), JSON.stringify(r.body.instances));
       return r.body;
     },
     { timeoutMs: 60_000, intervalMs: 2000 },

@@ -207,6 +207,37 @@ describe("draw", () => {
     expect(fills).toContain("rgba(239, 68, 68, 0.2)");
   });
 
+  it("draws machine CPU on an absolute scale, hot buckets in red, and memory as a broken line", () => {
+    const { ctx, calls, named } = fakeCtx();
+    const machines = {
+      from_ns: "0",
+      to_ns: "1000000000",
+      buckets: 4,
+      bucket_ns: "250000000",
+      hosts: [{ id: "h", name: "h", cpu: [0.5, null, 0.95, 0.1], memory: [0.4, 0.5, null, 0.6] }],
+      events: [],
+      events_total: 0,
+      truncated: false,
+    };
+    draw(ctx, input({ rows: [row("m", "machine", 26, { host: 0 }), row("x", "machine", 26, { host: 3 })], machines, cursor: -10n }));
+    const cool = calls.filter((c) => c.name === "fillRect" && c.fillStyle === "rgba(34, 211, 238, 0.5)");
+    const hot = calls.filter((c) => c.name === "fillRect" && c.fillStyle === "rgba(239, 68, 68, 0.75)");
+    // 26 px row minus 6 px padding: 50 % is 10 px tall, not scaled to the busiest bucket.
+    expect(cool.map((c) => [c.args[0], c.args[3]])).toEqual([
+      [0, 10],
+      [750, 2],
+    ]);
+    expect(hot.map((c) => c.args[0])).toEqual([500]);
+    expect(named("moveTo").map((c) => c.args[0])).toEqual([125, 875]);
+    expect(named("lineTo").map((c) => c.args[0])).toEqual([375]);
+  });
+
+  it("draws machine rows as empty without machine data", () => {
+    const { ctx, named } = fakeCtx();
+    draw(ctx, input({ rows: [row("hd", "heading", 22), row("m", "machine", 26, { host: 0 })], cursor: -10n }));
+    expect(named("moveTo")).toHaveLength(0);
+  });
+
   it("withAlpha converts #rrggbb", () => {
     expect(withAlpha("#3b82f6", 0.5)).toBe("rgba(59, 130, 246, 0.5)");
     expect(withAlpha("#000000", 1)).toBe("rgba(0, 0, 0, 1)");

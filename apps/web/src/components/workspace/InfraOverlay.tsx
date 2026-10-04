@@ -31,14 +31,15 @@ export function InfraOverlay({ snapshot, error, selectedHost, onSelectHost, onSe
       onBottom(0);
     };
   }, [onBottom]);
+  // Fit gives up at most half the map to the overlay, so it never grows past that: the machine list scrolls.
   return (
-    <div ref={rootRef} className="pointer-events-none absolute top-3 left-3 z-10 flex max-w-[min(28rem,60%)] flex-col gap-2">
+    <div ref={rootRef} className="pointer-events-none absolute top-3 left-3 z-10 flex max-h-[45%] max-w-[min(28rem,60%)] flex-col gap-2">
       {snapshot?.hints.map((h) => (
         <div
           key={`${h.instance_id}-${h.neighbor_container_id}`}
           role="status"
           aria-label="Noisy neighbour"
-          className="pointer-events-auto flex items-start gap-2 rounded-lg border border-warn/50 bg-surface/95 px-3 py-2 text-xs backdrop-blur"
+          className="pointer-events-auto flex shrink-0 items-start gap-2 rounded-lg border border-warn/50 bg-surface/95 px-3 py-2 text-xs backdrop-blur"
         >
           <Icon name="alert" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" />
           <span className="min-w-0 flex-1">{hintText(h)}</span>
@@ -49,9 +50,9 @@ export function InfraOverlay({ snapshot, error, selectedHost, onSelectHost, onSe
       ))}
       <section
         aria-label="Machines"
-        className="pointer-events-auto rounded-lg border border-border bg-surface/90 px-2 py-1.5 text-xs backdrop-blur"
+        className="pointer-events-auto flex min-h-0 flex-col rounded-lg border border-border bg-surface/90 px-2 py-1.5 text-xs backdrop-blur"
       >
-        <h2 className="px-1 pb-1 text-[11px] text-muted">Machines</h2>
+        <h2 className="shrink-0 px-1 pb-1 text-[11px] text-muted">Machines</h2>
         {error ? (
           <p role="alert" className="px-1 text-error">
             Infrastructure unavailable: {error}
@@ -61,7 +62,7 @@ export function InfraOverlay({ snapshot, error, selectedHost, onSelectHost, onSe
         {snapshot && hosts.length === 0 ? (
           <p className="px-1 text-muted">No machines yet: run the Karbird agent on your hosts.</p>
         ) : null}
-        <ul className="space-y-0.5">
+        <ul className="min-h-0 space-y-0.5 overflow-y-auto">
           {hosts.map((h) => (
             <li key={h.id}>
               <button

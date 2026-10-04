@@ -45,6 +45,7 @@ use crate::routes;
         routes::telemetry::timeline,
         routes::telemetry::coverage,
         routes::infrastructure::infrastructure,
+        routes::infra_timeline::infra_timeline,
         routes::live::live,
         routes::tokens::list,
         routes::tokens::create,

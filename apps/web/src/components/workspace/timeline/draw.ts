@@ -1,9 +1,10 @@
 // 2D-canvas drawing of the layered timeline. Pure: everything it needs is passed in.
 
 import type { TimelineTracks } from "@karbird/web-engine";
+import { machineGeometry, type InfraTimeline, type MachineGeometry } from "./machines";
 import { formatTick, tickStep, ticks, xOf, type View } from "./scale";
 
-export type RowKind = "actions" | "events" | "errors" | "requests" | "latency" | "group" | "service";
+export type RowKind = "actions" | "events" | "errors" | "requests" | "latency" | "group" | "service" | "heading" | "machine";
 
 export interface Row {
   id: string;
@@ -18,6 +19,8 @@ export interface Row {
   dimmed?: boolean;
   /** `#rrggbb` of a service row, the same colour the service has on the map. */
   color?: string;
+  /** Index into `InfraTimeline.hosts` for machine rows. */
+  host?: number;
 }
 
 export interface ActionBar {
@@ -42,6 +45,8 @@ export interface DrawInput {
   range: View | null;
   /** Where the loaded data ends ("now" when live): everything after it has not happened yet. */
   future?: bigint | null;
+  /** Machine CPU and memory for machine rows. */
+  machines?: InfraTimeline | null;
 }
 
 export interface RulerInput {
@@ -193,6 +198,50 @@ function latency(ctx: CanvasRenderingContext2D, values: Array<number | null>, y:
   flush();
 }
 
+/** CPU busy share above which a machine bucket is drawn as overloaded. */
+export const HOT_CPU = 0.9;
+
+/** CPU as bars on a fixed 0–100 % scale (red when hot), memory as a line on the same scale. */
+function machine(
+  ctx: CanvasRenderingContext2D,
+  cpu: Array<number | null>,
+  memory: Array<number | null>,
+  y: number,
+  h: number,
+  g: MachineGeometry,
+  width: number,
+) {
+  const top = y + 3;
+  const span = h - 6;
+  const w = Math.max(1, g.bucketPx - (g.bucketPx > 3 ? 1 : 0));
+  for (let i = 0; i < cpu.length; i++) {
+    const v = cpu[i];
+    if (v === null || v === undefined) continue;
+    const x = g.x0 + i * g.bucketPx;
+    if (x + w < 0 || x > width) continue;
+    const bh = Math.max(1, v * span);
+    ctx.fillStyle = v >= HOT_CPU ? "rgba(239, 68, 68, 0.75)" : "rgba(34, 211, 238, 0.5)";
+    ctx.fillRect(x, top + span - bh, w, bh);
+  }
+  ctx.strokeStyle = C.violet;
+  ctx.lineWidth = 1.25;
+  ctx.beginPath();
+  let drawing = false;
+  for (let i = 0; i < memory.length; i++) {
+    const v = memory[i];
+    if (v === null || v === undefined) {
+      drawing = false;
+      continue;
+    }
+    const x = g.x0 + (i + 0.5) * g.bucketPx;
+    const yy = top + span - v * span;
+    if (drawing) ctx.lineTo(x, yy);
+    else ctx.moveTo(x, yy);
+    drawing = true;
+  }
+  ctx.stroke();
+}
+
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   const rr = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
@@ -329,10 +378,17 @@ export function draw(ctx: CanvasRenderingContext2D, d: DrawInput) {
 
   const t = d.tracks;
   const g = t ? bucketGeometry(t, view, width) : null;
+  const infra = d.machines ?? null;
+  const mg = infra ? machineGeometry(infra, view, width) : null;
   rows.forEach((r, i) => {
     const y = rowTop(rows, i);
     ctx.globalAlpha = r.dimmed ? DIMMED_ROW_ALPHA : 1;
-    if (r.kind === "group") {
+    if (r.kind === "machine") {
+      const h = infra && r.host !== undefined ? infra.hosts[r.host] : undefined;
+      if (h && mg) machine(ctx, h.cpu, h.memory, y, r.height, mg, width);
+      return;
+    }
+    if (r.kind === "group" || r.kind === "heading") {
       ctx.fillStyle = C.grid;
       ctx.fillRect(0, y + r.height - 1, width, 1);
       return;

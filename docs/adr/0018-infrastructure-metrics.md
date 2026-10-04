@@ -46,6 +46,24 @@ and containers are resource gauges; spans cannot provide them.
   container — not its own, not the same service — uses at least 80 % of the machine's CPU, or the
   machine is at least 90 % busy and that top consumer uses at least 50 %. The hint states which
   thresholds fired.
+- **Timeline.** `GET …/environments/{env}/infrastructure/timeline?from=&to=&buckets=` (range up
+  to 7 days, 1–1000 buckets, default 200) returns per machine the CPU busy share (increase of
+  `system.cpu.time` busy vs idle; fallback `system.cpu.utilization`) and memory used share per
+  bucket, plus container events derived from the same metrics — the agent needs no Docker events.
+  Rules (deterministic, no LLM; 3 minutes before `from` are read so containers already running are
+  not reported as started):
+  - *started*: the container's first point is more than 90 s after its machine's first point;
+  - *stopped*: the machine kept reporting more than 90 s after the container's last point;
+  - *restarted*: `container.cpu.usage.total` went down (between buckets or within one);
+  - *out_of_memory*: a stop or restart with memory at ≥ 95 % of the container's memory limit in
+    that bucket or the one before;
+  - *redeployed*: a stop and a start with the same name on the same machine and a different
+    container ID, the stop within 5 minutes before (or 90 s after) the start — one event.
+
+  Events are oldest first, at most 500 (`events_total` has the full count). The web timeline shows
+  a "Machines" group with one row per machine (CPU bars on a fixed 0–100 % scale, red from 90 %,
+  memory as a line; a value holds up to 90 s between exports) and a marker per event that moves the
+  cursor there.
 - **Map.** The engine lays out the Infrastructure layer itself (machine frames around the service
   cards, a chip per instance of multi-instance services, `×N` badges, links from the slowed
   service to the noisy neighbour), so picking, culling and edges keep working. The UI shows the

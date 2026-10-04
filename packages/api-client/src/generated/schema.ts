@@ -596,6 +596,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/infrastructure/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["infra_timeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/environments/{environment_id}/live": {
         parameters: {
             query?: never;
@@ -1160,6 +1176,18 @@ export interface components {
             /** @default null */
             service_name: string | null;
         };
+        ContainerEvent: {
+            container_id: string;
+            container_name: string;
+            detail: string;
+            host_id: string;
+            host_name: string;
+            kind: components["schemas"]["ContainerEventKind"];
+            service_name?: string | null;
+            time_ns: string;
+        };
+        /** @enum {string} */
+        ContainerEventKind: "started" | "stopped" | "restarted" | "redeployed" | "out_of_memory";
         CoverageResponse: {
             completeness: components["schemas"]["Completeness"];
             services: components["schemas"]["ServiceDto"][];
@@ -1310,6 +1338,30 @@ export interface components {
              * @default null
              */
             network_tx_bytes_per_sec: number | null;
+        };
+        HostTrack: {
+            /** @description Busy share of the machine's CPU time per bucket (0–1); `null` without data. */
+            cpu: (number | null)[];
+            id: string;
+            /** @description Used share of the machine's memory per bucket (0–1); `null` without data. */
+            memory: (number | null)[];
+            name: string;
+        };
+        /** @description Machines over time and what happened to their containers. */
+        InfraTimeline: {
+            /** @description Bucket `i` covers `[from + i * bucket_ns, from + (i + 1) * bucket_ns)`. */
+            bucket_ns: string;
+            /** Format: int32 */
+            buckets: number;
+            /** @description Oldest first, at most 500. */
+            events: components["schemas"]["ContainerEvent"][];
+            /** Format: int32 */
+            events_total: number;
+            from_ns: string;
+            hosts: components["schemas"]["HostTrack"][];
+            to_ns: string;
+            /** @description The range holds more metric rows than were read: later buckets may be missing. */
+            truncated: boolean;
         };
         /**
          * @description Machines, containers and service instances at one moment, as returned by
@@ -3831,6 +3883,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InfrastructureSnapshot"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    infra_timeline: {
+        parameters: {
+            query?: {
+                /** @description Start, unix epoch nanoseconds as a decimal string. Default: `to - 15m`. */
+                from?: string;
+                /** @description End (exclusive), unix epoch nanoseconds as a decimal string. Default: now. */
+                to?: string;
+                /** @description Number of buckets (default 200, max 1000). */
+                buckets?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InfraTimeline"];
                 };
             };
             400: {

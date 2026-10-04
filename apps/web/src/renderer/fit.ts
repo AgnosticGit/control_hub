@@ -31,9 +31,11 @@ export function fitCamera(b: Bounds, o: FitOptions): { x: number; y: number; sca
   scale = Math.max(o.minScale, scale);
   const top = Math.max(o.padY * scale, inset + o.insetGap * scale);
   const bottom = o.height - o.padY * scale;
+  // Too tall even at the minimum scale: show its start below the overlay rather than its middle.
+  const fits = spanY * scale <= bottom - top;
   return {
     x: o.width / 2 - ((b.minX + b.maxX) / 2) * scale,
-    y: (top + bottom) / 2 - ((b.minY + b.maxY) / 2) * scale,
+    y: fits ? (top + bottom) / 2 - ((b.minY + b.maxY) / 2) * scale : top - b.minY * scale,
     scale,
   };
 }

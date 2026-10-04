@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TimelineTracks } from "@karbird/web-engine";
@@ -11,6 +11,7 @@ import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime } from "@/lib
 import type { EngineState, WorkspaceActions } from "../useWorkspaceEngine";
 import type { WorkspaceMemory } from "../workspace-memory";
 import { RULER_H, bucketGeometry, draw, drawRuler, rowTop, totalHeight, type ActionBar, type Row } from "./draw";
+import { EVENT_COLOR, eventLabel, eventMarkers, formatShare, holdSamples, machineAt, machineWindow, type EventMarker, type InfraTimeline } from "./machines";
 import { centeredOn, nearestItems, tracksMatch, viewIsEmpty } from "./neighbours";
 import { placeAbove, rangeBetween, viewAround } from "./range";
 import {
@@ -185,6 +186,24 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     return out;
   }, [plans.data, data.to]);
 
+  const win = machineWindow(view, width, BUCKET_PX);
+  const machines = useQuery({
+    queryKey: ["infra-timeline", projectId, environmentId, win?.from.toString(), win?.to.toString(), win?.buckets],
+    enabled: ready && win !== null,
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/v1/projects/{project_id}/environments/{environment_id}/infrastructure/timeline", {
+          params: {
+            path: scopedPath(projectId, environmentId),
+            query: { from: win?.from.toString(), to: win?.to.toString(), buckets: win?.buckets },
+          },
+        }),
+      ),
+    placeholderData: keepPreviousData,
+    refetchInterval: state.mode === "live" ? 15_000 : false,
+  });
+  const infra = useMemo<InfraTimeline | null>(() => (machines.data ? holdSamples(machines.data) : null), [machines.data]);
+
   const nodeIds = useMemo(() => {
     const ids = new Map<number, string>();
     for (const n of state.topology?.nodes ?? []) ids.set(n.index, n.id);
@@ -203,7 +222,15 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
       { id: "latency", label: "Latency p95", kind: "latency", height: 26 },
     ];
     const services = tracks?.services ?? [];
-    if (services.length === 0) return base;
+    const hosts = infra?.hosts ?? [];
+    const machineRows: Row[] =
+      hosts.length === 0
+        ? []
+        : [
+            { id: "machines", label: "Machines", kind: "heading", height: 22 },
+            ...hosts.map((h, i) => ({ id: `host-${h.id}`, label: h.name, kind: "machine" as const, height: 30, host: i })),
+          ];
+    if (services.length === 0) return base.concat(machineRows);
     return base.concat(
       { id: "services", label: "Services", kind: "group", height: 22 },
       services.map((s, i) => {
@@ -219,10 +246,16 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
           color: cssColor(colors.get(s.node) ?? RESOURCE_COLOR),
         };
       }),
+      machineRows,
     );
-  }, [tracks?.services, nodeIds, mutedSet, colors]);
+  }, [tracks?.services, infra?.hosts, nodeIds, mutedSet, colors]);
   const height = totalHeight(rows);
-  const groupAt = rows.findIndex((r) => r.kind === "group");
+  const groupAt = rows.findIndex((r) => r.kind === "group" || r.kind === "heading");
+  const markers = useMemo(() => (infra && width > 0 ? eventMarkers(infra, view, width) : []), [infra, view, width]);
+  const hostRowTop = (host: number) => {
+    const i = rows.findIndex((r) => r.kind === "machine" && r.host === host);
+    return i === -1 ? null : rowTop(rows, i);
+  };
   const baseRowsHeight = rowTop(rows, groupAt === -1 ? rows.length : groupAt);
 
   // Zoomed into a stretch with nothing in it: offer the nearest item on either side.
@@ -251,8 +284,8 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
 
   useEffect(() => {
     const ctx = setupCanvas(rowsRef.current, width, height);
-    if (ctx) draw(ctx, { width, rows, view, tracks, actions: actionBars, cursor: state.cursor, markA, hoverX, range, future });
-  }, [width, height, rows, view, tracks, actionBars, state.cursor, markA, hoverX, range, future]);
+    if (ctx) draw(ctx, { width, rows, view, tracks, actions: actionBars, cursor: state.cursor, markA, hoverX, range, future, machines: infra });
+  }, [width, height, rows, view, tracks, actionBars, state.cursor, markA, hoverX, range, future, infra]);
 
   // Wheel and drag need the latest values without re-binding listeners.
   const live = useRef({ view, bounds, width, setView });
@@ -414,7 +447,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     hover && hover.y !== null && !dragging
       ? future !== null && width > 0 && timeAt(hover.x, view, width) > future
         ? ["Future", "Nothing has happened here yet. Move the cursor here to go back to live."]
-        : describe({ x: hover.x, y: hover.y }, rows, view, width, tracks, actionBars)
+        : describe({ x: hover.x, y: hover.y }, rows, view, width, tracks, actionBars, infra, markers)
       : null;
 
   return (
@@ -489,6 +522,28 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
                 </li>
               );
             }
+            if (r.kind === "heading") {
+              return (
+                <li key={r.id} className="flex items-center gap-1 border-b border-border px-2.5 text-[10px] font-semibold tracking-wider text-muted uppercase" style={{ height: r.height }}>
+                  <span>{r.label}</span>
+                  <span className="ml-auto font-normal normal-case" title="Bars: CPU busy · line: memory used, both 0–100 %">
+                    CPU · RAM
+                  </span>
+                </li>
+              );
+            }
+            if (r.kind === "machine" && infra && r.host !== undefined) {
+              const at = machineAt(infra, r.host, state.cursor);
+              return (
+                <li key={r.id} className="flex items-center gap-1.5 px-2.5" style={{ height: r.height }} title={r.label}>
+                  <span className={`dot shrink-0 ${ROW_DOT.machine}`} aria-hidden />
+                  <span className="truncate">{r.label}</span>
+                  <span className="ml-auto shrink-0 font-mono text-[10px] text-muted" title={`At the cursor: CPU ${formatShare(at.cpu)}, memory ${formatShare(at.memory)}`}>
+                    {formatShare(at.cpu)} · {formatShare(at.memory)}
+                  </span>
+                </li>
+              );
+            }
             if (r.kind === "service" && r.nodeId !== undefined) {
               const id = r.nodeId;
               return (
@@ -540,6 +595,11 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
           {...pointer}
         >
           <canvas ref={rowsRef} aria-hidden className="absolute inset-0" style={{ width, height }} />
+          {markers.map((m) => {
+            const top = hostRowTop(m.host);
+            if (top === null) return null;
+            return <EventButton key={`${m.event.time_ns}-${m.event.container_id}-${m.event.kind}`} marker={m} top={top} onClick={() => goToItem(m.time)} />;
+          })}
           {neighbours ? (
             <div
               className="pointer-events-none absolute inset-x-2 flex -translate-y-1/2 items-center gap-2"
@@ -579,6 +639,23 @@ function NeighbourButton({ dir, distance, onClick }: { dir: "prev" | "next"; dis
   );
 }
 
+/** A container event on its machine's row; a click moves the cursor there. */
+function EventButton({ marker, top, onClick }: { marker: EventMarker; top: number; onClick: () => void }) {
+  const e = marker.event;
+  const label = `${eventLabel(e)} at ${formatClock(marker.time, false)}`;
+  return (
+    <button
+      type="button"
+      className="absolute z-10 h-3 w-3 -translate-x-1/2 rotate-45 rounded-[2px] border border-bg shadow-sm hover:scale-125 focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none"
+      style={{ left: marker.x, top: top + 2, background: EVENT_COLOR[e.kind] }}
+      aria-label={label}
+      title={e.detail}
+      onPointerDown={(ev) => ev.stopPropagation()}
+      onClick={onClick}
+    />
+  );
+}
+
 const ROW_DOT: Record<Row["kind"], string> = {
   actions: "bg-ok",
   events: "bg-accent-2",
@@ -587,6 +664,8 @@ const ROW_DOT: Record<Row["kind"], string> = {
   latency: "bg-violet",
   group: "bg-transparent",
   service: "bg-accent/60",
+  heading: "bg-transparent",
+  machine: "bg-accent-2/70",
 };
 
 /**
@@ -628,6 +707,8 @@ function describe(
   width: number,
   tracks: TimelineTracks | null,
   bars: ActionBar[],
+  infra: InfraTimeline | null,
+  markers: EventMarker[],
 ): string[] | null {
   if (width <= 0) return null;
   const index = rows.findIndex((_, i) => hover.y >= rowTop(rows, i) && hover.y < rowTop(rows, i + 1));
@@ -639,6 +720,11 @@ function describe(
   if (row.kind === "actions") {
     const a = bars.find((b) => t >= b.from && t <= b.to);
     return a ? [clock(t), `${a.title} · ${a.target}`, a.state] : null;
+  }
+  if (row.kind === "machine" && infra && row.host !== undefined) {
+    const at = machineAt(infra, row.host, t);
+    const near = markers.filter((m) => m.host === row.host && Math.abs(m.x - hover.x) <= 6);
+    return [clock(t), `${row.label}: CPU ${formatShare(at.cpu)} · memory ${formatShare(at.memory)}`, ...near.slice(0, 4).map((m) => `◆ ${m.event.detail}`)];
   }
   if (!tracks) return null;
   const g = bucketGeometry(tracks, view, width);
