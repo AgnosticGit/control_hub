@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
-import type { ContainerDto, HostDto, InfrastructureSnapshot, InstanceDto, NoisyNeighborHint } from "@karbird/web-engine";
+import type {
+  ContainerDto,
+  HostDto,
+  InfrastructureSnapshot,
+  InstanceDto,
+  NoisyNeighborHint,
+  ResourceMatch,
+  ResourcePlacementDto,
+} from "@karbird/web-engine";
 import {
   INFRA_STEP_NS,
+  RESOURCE_MATCH_TEXT,
+  resourceHeadline,
+  resourceWhere,
   containersByLoad,
   formatBytes,
   formatRate,
@@ -24,6 +35,10 @@ function container(id: string, name: string, service: string | null, cpu: number
     name,
     service_id: service ? `svc_${service}` : null,
     service_name: service,
+    image: null,
+    compose_service: null,
+    resource_id: null,
+    resource_name: null,
     cpu_cores: cpu,
     cpu_share: cpu,
     memory_used_bytes: null,
@@ -88,7 +103,12 @@ const snap: InfrastructureSnapshot = {
   window_ns: "120000000000",
   hosts: [
     host("vps-app", {
-      containers: [container("c-ord", "orders", "orders", 0.02), container("c-inv", "inventory", "inventory", 0.95), container("c-cat1", "catalog-1", "catalog", 0.02)],
+      containers: [
+        container("c-ord", "orders", "orders", 0.02),
+        container("c-inv", "inventory", "inventory", 0.95),
+        container("c-cat1", "catalog-1", "catalog", 0.02),
+        { ...container("c-pg", "demo-db-1", null, 0.03), image: "postgres:16-alpine", compose_service: "db", resource_id: "res_pg", resource_name: "postgresql: orders" },
+      ],
     }),
     host("vps-worker", { cpu_utilization: 0.2, containers: [container("c-cat2", "catalog-2", "catalog", 0.1), container("c-cat3", "catalog-3", "catalog", 0.1)] }),
   ],
@@ -100,8 +120,34 @@ const snap: InfrastructureSnapshot = {
     instance("ghost", "ghost-1", null, null),
   ],
   hints: [hint],
+  resources: [
+    resource("res_pg", "internal", "vps-app", "c-pg", "compose_service"),
+    resource("res_managed", "external", null, null, "none"),
+    resource("res_unknown", "unknown", null, null, "none"),
+    resource("res_gone", "internal", "vps-gone", null, "host_name"),
+  ],
   notes: [],
 };
+
+function resource(
+  nodeId: string,
+  location: ResourcePlacementDto["location"],
+  hostId: string | null,
+  containerId: string | null,
+  how: ResourceMatch,
+): ResourcePlacementDto {
+  return {
+    node_id: nodeId,
+    name: `postgresql: ${nodeId}`,
+    kind: "database",
+    location,
+    host_id: hostId,
+    container_id: containerId,
+    match_reason: how,
+    addresses: ["db:5432"],
+    reason: "why",
+  };
+}
 
 describe("infraAt", () => {
   it("quantises the cursor to the end of a 10 s bucket", () => {
@@ -204,5 +250,39 @@ describe("hints", () => {
 
   it("lists the instances on a machine", () => {
     expect(instancesOnHost(snap, "vps-worker").map((i) => i.instance_id)).toEqual(["catalog-3", "catalog-2"]);
+  });
+});
+
+describe("resourceWhere", () => {
+  it("links an internal database to its machine and container", () => {
+    const w = resourceWhere(snap, "res_pg");
+    expect(w?.host?.id).toBe("vps-app");
+    expect(w?.container?.name).toBe("demo-db-1");
+    expect(w && resourceHeadline(w)).toBe("vps-app · container demo-db-1");
+  });
+
+  it("says external or unknown without inventing a machine", () => {
+    const ext = resourceWhere(snap, "res_managed");
+    expect(ext?.host).toBeNull();
+    expect(ext && resourceHeadline(ext)).toBe("External: no Karbird agent there");
+    const unknown = resourceWhere(snap, "res_unknown");
+    expect(unknown && resourceHeadline(unknown)).toBe("Location unknown");
+  });
+
+  it("falls back to the machine ID when the machine left the snapshot", () => {
+    const w = resourceWhere(snap, "res_gone");
+    expect(w?.host).toBeNull();
+    expect(w && resourceHeadline(w)).toBe("vps-gone");
+  });
+
+  it("is null without a snapshot or for a node the API did not place", () => {
+    expect(resourceWhere(null, "res_pg")).toBeNull();
+    expect(resourceWhere(snap, "svc_orders")).toBeNull();
+  });
+
+  it("explains every match reason except none", () => {
+    for (const [how, text] of Object.entries(RESOURCE_MATCH_TEXT)) {
+      expect(text.length > 0).toBe(how !== "none");
+    }
   });
 });

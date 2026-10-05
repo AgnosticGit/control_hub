@@ -5229,6 +5229,14 @@
       "ContainerDto": {
         "type": "object",
         "properties": {
+          "compose_service": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Docker Compose service name.",
+            "default": null
+          },
           "cpu_cores": {
             "type": [
               "number",
@@ -5250,6 +5258,14 @@
           "id": {
             "type": "string",
             "default": ""
+          },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`container.image.name`, e.g. `postgres:16-alpine`.",
+            "default": null
           },
           "memory_limit_bytes": {
             "type": [
@@ -5294,6 +5310,21 @@
               "null"
             ],
             "format": "double",
+            "default": null
+          },
+          "resource_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Database or queue node placed in this container.",
+            "default": null
+          },
+          "resource_name": {
+            "type": [
+              "string",
+              "null"
+            ],
             "default": null
           },
           "service_id": {
@@ -5929,6 +5960,14 @@
               "type": "string"
             },
             "description": "What could not be determined (no agent metrics, unmatched instances, truncation).",
+            "default": []
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourcePlacementDto"
+            },
+            "description": "Databases and queues on the map and where they run: on a machine with the agent\n(internal) or not (external).",
             "default": []
           },
           "window_ns": {
@@ -6661,6 +6700,89 @@
           "publishes_to",
           "consumes_from"
         ]
+      },
+      "ResourceLocation": {
+        "type": "string",
+        "description": "Where a database or queue runs, derived from the addresses services connect to it at.",
+        "enum": [
+          "internal",
+          "external",
+          "unknown"
+        ]
+      },
+      "ResourceMatch": {
+        "type": "string",
+        "description": "Which evidence placed a resource.",
+        "enum": [
+          "compose_service",
+          "container_name",
+          "container_hostname",
+          "loopback",
+          "host_name",
+          "none"
+        ]
+      },
+      "ResourcePlacementDto": {
+        "type": "object",
+        "properties": {
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`address:port` the services connect to, at most a few.",
+            "default": []
+          },
+          "container_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "host_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "kind": {
+            "type": "string",
+            "description": "`database` or `queue`.",
+            "default": ""
+          },
+          "location": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ResourceLocation"
+              }
+            ],
+            "default": "unknown"
+          },
+          "match_reason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ResourceMatch"
+              }
+            ],
+            "default": "none"
+          },
+          "name": {
+            "type": "string",
+            "default": ""
+          },
+          "node_id": {
+            "type": "string",
+            "description": "Topology node ID of the database or queue.",
+            "default": ""
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why it was placed (or not), for people.",
+            "default": ""
+          }
+        }
       },
       "RevokeTokenRequest": {
         "type": "object",

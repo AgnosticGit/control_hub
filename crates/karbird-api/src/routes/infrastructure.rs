@@ -7,9 +7,10 @@ use std::collections::{BTreeMap, HashMap};
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use karbird_engine_core::{
-    ContainerDto, HostDto, InfrastructureSnapshot, InstanceDto, InstanceMatch, NoisyNeighborHint,
+    ContainerDto, HostDto, InfrastructureSnapshot, InstanceDto, InstanceMatch, NoisyNeighborHint, ResourceLocation,
+    ResourceMatch, ResourcePlacementDto,
 };
-use karbird_storage::ch::{InfraSeriesRow, InstanceLatencyRow};
+use karbird_storage::ch::{InfraSeriesRow, InstanceLatencyRow, ResourceAddressRow};
 use serde::Deserialize;
 use utoipa::IntoParams;
 
@@ -27,6 +28,10 @@ pub const RECENT_NS: i64 = 300 * NS_PER_SEC;
 pub const BASELINE_NS: i64 = 1_800 * NS_PER_SEC;
 const MAX_SERIES: u32 = 20_000;
 const MAX_INSTANCES: u32 = 2_000;
+const MAX_RESOURCE_ROWS: u32 = 5_000;
+/// Addresses listed per resource, and the longest address kept (telemetry is untrusted).
+const MAX_ADDRESSES: usize = 5;
+const MAX_ADDRESS_LEN: usize = 253;
 
 // Noisy-neighbour rule: all thresholds in one place, documented in ADR-0018.
 pub const MIN_SAMPLES: u64 = 20;
@@ -55,7 +60,7 @@ pub async fn infrastructure(
 ) -> ApiResult<Json<InfrastructureSnapshot>> {
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let at = parse_ns(&q.at, "at")?.unwrap_or_else(now_ns);
-    let (series, latency) = tokio::try_join!(
+    let (series, latency, addresses) = tokio::try_join!(
         state.ch.infra_series(&scope, at.saturating_sub(METRICS_WINDOW_NS), at, MAX_SERIES),
         state.ch.instance_latency(
             &scope,
@@ -64,9 +69,14 @@ pub async fn infrastructure(
             at,
             MAX_INSTANCES
         ),
+        state.ch.resource_addresses(&scope, at.saturating_sub(RECENT_NS), at, MAX_RESOURCE_ROWS),
     )?;
-    let truncated = series.len() >= MAX_SERIES as usize || latency.len() >= MAX_INSTANCES as usize;
-    Ok(Json(build_snapshot(at, &series, &latency, truncated)))
+    let truncated = series.len() >= MAX_SERIES as usize
+        || latency.len() >= MAX_INSTANCES as usize
+        || addresses.len() >= MAX_RESOURCE_ROWS as usize;
+    let mut snap = build_snapshot(at, &series, &latency, truncated);
+    place_resources(&mut snap, &series, &addresses);
+    Ok(Json(snap))
 }
 
 // ---------------------------------------------------------------- metrics → machines
@@ -203,6 +213,10 @@ fn container_metrics(id: &str, rows: &[&InfraSeriesRow], host: &HostDto) -> Cont
         name,
         service_id: None,
         service_name: rows.iter().map(|r| r.service_name.clone()).find(|n| !n.is_empty()),
+        image: rows.iter().map(|r| r.container_image.clone()).find(|n| !n.is_empty()),
+        compose_service: rows.iter().map(|r| r.container_service.clone()).find(|n| !n.is_empty()),
+        resource_id: None,
+        resource_name: None,
         cpu_cores: finite(cpu_cores),
         cpu_share: finite(cpu_share),
         memory_used_bytes: finite(memory_used_bytes),
@@ -257,8 +271,11 @@ struct Matched {
     reason: InstanceMatch,
 }
 
-fn match_instance(
-    row: &InstanceLatencyRow,
+/// Where telemetry with these resource attributes comes from (`host.name`, `host.id`, `container.id`).
+fn locate(
+    host_name: &str,
+    host_id: &str,
+    container_id: &str,
     hosts: &[HostDto],
     hostnames: &HashMap<String, (String, String)>,
 ) -> Matched {
@@ -268,35 +285,43 @@ fn match_instance(
         reason,
     };
     for h in hosts {
-        if let Some(c) = h.containers.iter().find(|c| same_container(&c.id, &row.container_id)) {
+        if let Some(c) = h.containers.iter().find(|c| same_container(&c.id, container_id)) {
             return found(h, c, InstanceMatch::ContainerId);
         }
     }
-    if !row.host_name.is_empty() {
-        if let Some((host, container)) = hostnames.get(&row.host_name) {
+    if !host_name.is_empty() {
+        if let Some((host, container)) = hostnames.get(host_name) {
             return Matched {
                 host_id: Some(host.clone()),
                 container_id: Some(container.clone()),
                 reason: InstanceMatch::ContainerHostname,
             };
         }
-        if is_short_id(&row.host_name) {
+        if is_short_id(host_name) {
             for h in hosts {
-                if let Some(c) = h.containers.iter().find(|c| same_container(&c.id, &row.host_name)) {
+                if let Some(c) = h.containers.iter().find(|c| same_container(&c.id, host_name)) {
                     return found(h, c, InstanceMatch::ContainerHostname);
                 }
             }
         }
     }
-    for key in [&row.host_id, &row.host_name] {
-        if let Some(h) = hosts.iter().find(|h| h.has_metrics && !key.is_empty() && (h.id == *key || h.name == *key)) {
+    for key in [host_id, host_name] {
+        if let Some(h) = hosts.iter().find(|h| h.has_metrics && !key.is_empty() && (h.id == key || h.name == key)) {
             return Matched { host_id: Some(h.id.clone()), container_id: None, reason: InstanceMatch::HostName };
         }
     }
-    if !row.host_name.is_empty() {
-        return Matched { host_id: Some(row.host_name.clone()), container_id: None, reason: InstanceMatch::Unverified };
+    if !host_name.is_empty() {
+        return Matched { host_id: Some(host_name.to_owned()), container_id: None, reason: InstanceMatch::Unverified };
     }
     Matched { host_id: None, container_id: None, reason: InstanceMatch::Unknown }
+}
+
+fn match_instance(
+    row: &InstanceLatencyRow,
+    hosts: &[HostDto],
+    hostnames: &HashMap<String, (String, String)>,
+) -> Matched {
+    locate(&row.host_name, &row.host_id, &row.container_id, hosts, hostnames)
 }
 
 fn ms(ns: f64) -> Option<f64> {
@@ -396,8 +421,279 @@ pub fn build_snapshot(
             })
             .collect(),
         hints,
+        resources: Vec::new(),
         notes,
     }
+}
+
+// ---------------------------------------------------------------- databases and queues → machines
+
+/// A container as the agent identifies it, with the names other containers can reach it by.
+struct Ctr<'a> {
+    host: &'a str,
+    id: &'a str,
+    name: String,
+    hostname: String,
+    image: String,
+    service: String,
+}
+
+fn containers_of(series: &[InfraSeriesRow]) -> Vec<Ctr<'_>> {
+    let mut by: BTreeMap<(&str, &str), Ctr<'_>> = BTreeMap::new();
+    for r in series.iter().filter(|r| !r.host_id.is_empty() && !r.container_id.is_empty()) {
+        let c = by.entry((&r.host_id, &r.container_id)).or_insert_with(|| Ctr {
+            host: &r.host_id,
+            id: &r.container_id,
+            name: String::new(),
+            hostname: String::new(),
+            image: String::new(),
+            service: String::new(),
+        });
+        let fill = |slot: &mut String, v: &str| {
+            if slot.is_empty() {
+                *slot = normalize(v);
+            }
+        };
+        fill(&mut c.name, r.container_name.trim_start_matches('/'));
+        fill(&mut c.hostname, &r.container_hostname);
+        fill(&mut c.image, &r.container_image);
+        fill(&mut c.service, &r.container_service);
+    }
+    by.into_values().collect()
+}
+
+/// `server.address` as a comparable name: lowercase, no trailing dot, no IPv6 brackets.
+fn normalize(address: &str) -> String {
+    address.trim().trim_start_matches('[').trim_end_matches(']').trim_end_matches('.').to_ascii_lowercase()
+}
+
+/// Addresses that mean "the machine the caller runs on".
+fn is_loopback(address: &str) -> bool {
+    address == "localhost"
+        || address.ends_with(".localhost")
+        || address == "host.docker.internal"
+        || address.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+}
+
+/// Image names that run a `db.system` / `messaging.system`; otherwise the system's own name.
+fn image_families(system: &str) -> &'static [&'static str] {
+    match system {
+        "postgresql" => &["postgres", "postgis", "timescale", "pgvector"],
+        "mysql" | "mariadb" => &["mysql", "mariadb", "percona"],
+        "redis" => &["redis", "valkey", "keydb", "dragonfly"],
+        "mongodb" => &["mongo"],
+        "elasticsearch" | "opensearch" => &["elasticsearch", "opensearch"],
+        "kafka" => &["kafka", "redpanda"],
+        "cassandra" => &["cassandra", "scylla"],
+        _ => &[],
+    }
+}
+
+/// The image's repository name (no registry, path or tag) runs `system`.
+fn image_runs(image: &str, system: &str) -> bool {
+    let repo = image.split('@').next().unwrap_or("");
+    let repo = repo.rsplit('/').next().unwrap_or("");
+    let repo = repo.split(':').next().unwrap_or("");
+    if repo.is_empty() || system.is_empty() {
+        return false;
+    }
+    let families = image_families(system);
+    if families.is_empty() {
+        system.len() >= 3 && repo.contains(system)
+    } else {
+        families.iter().any(|f| repo.contains(f))
+    }
+}
+
+/// The one container on `host` whose image runs `system`; none when zero or several.
+fn by_image<'a>(ctrs: &'a [Ctr<'a>], host: &str, system: &str) -> Option<&'a Ctr<'a>> {
+    let mut it = ctrs.iter().filter(|c| c.host == host && image_runs(&c.image, system));
+    let first = it.next()?;
+    it.next().is_none().then_some(first)
+}
+
+type CtrPredicate<'p> = dyn Fn(&Ctr<'_>) -> bool + 'p;
+
+struct Found<'a> {
+    host: String,
+    container: Option<&'a Ctr<'a>>,
+    how: ResourceMatch,
+}
+
+/// Where one address a caller connects to points, by the rules in ADR-0018.
+fn resolve<'a>(
+    address: &str,
+    system: &str,
+    caller_host: Option<&str>,
+    hosts: &[HostDto],
+    ctrs: &'a [Ctr<'a>],
+) -> Option<Found<'a>> {
+    if is_loopback(address) {
+        let host = caller_host?;
+        return Some(Found {
+            host: host.to_owned(),
+            container: by_image(ctrs, host, system),
+            how: ResourceMatch::Loopback,
+        });
+    }
+    let unique = |pred: &dyn Fn(&Ctr<'_>) -> bool| -> Option<&'a Ctr<'a>> {
+        let pick = |cands: Vec<&'a Ctr<'a>>| (cands.len() == 1).then(|| cands[0]);
+        let local: Vec<&Ctr<'_>> = ctrs.iter().filter(|c| Some(c.host) == caller_host && pred(c)).collect();
+        if !local.is_empty() {
+            return pick(local);
+        }
+        pick(ctrs.iter().filter(|c| pred(c)).collect())
+    };
+    let rules: [(ResourceMatch, &CtrPredicate); 3] = [
+        (ResourceMatch::ComposeService, &|c| c.service == address),
+        (ResourceMatch::ContainerName, &|c| c.name == address),
+        (ResourceMatch::ContainerHostname, &|c| c.hostname == address || same_container(c.id, address)),
+    ];
+    for (how, pred) in rules {
+        if let Some(c) = unique(pred) {
+            return Some(Found { host: c.host.to_owned(), container: Some(c), how });
+        }
+    }
+    let mut machines =
+        hosts.iter().filter(|h| h.has_metrics && (normalize(&h.id) == address || normalize(&h.name) == address));
+    let host = machines.next()?;
+    if machines.next().is_some() {
+        return None;
+    }
+    Some(Found { host: host.id.clone(), container: by_image(ctrs, &host.id, system), how: ResourceMatch::HostName })
+}
+
+fn evidence(how: ResourceMatch, address: &str) -> String {
+    match how {
+        ResourceMatch::ComposeService => format!("services connect to \"{address}\", its Compose service"),
+        ResourceMatch::ContainerName => format!("services connect to \"{address}\", the container's name"),
+        ResourceMatch::ContainerHostname => format!("services connect to \"{address}\", the container's hostname"),
+        ResourceMatch::Loopback => format!("services on that machine connect over {address}"),
+        ResourceMatch::HostName => format!("services connect to \"{address}\", the machine's name"),
+        ResourceMatch::None => String::new(),
+    }
+}
+
+/// Places every database and queue services called in the window: inside a container or on a
+/// machine the agent reports (internal), nowhere the agent sees (external), or undecided.
+pub fn place_resources(snap: &mut InfrastructureSnapshot, series: &[InfraSeriesRow], addresses: &[ResourceAddressRow]) {
+    let ctrs = containers_of(series);
+    let hostnames: HashMap<String, (String, String)> = series
+        .iter()
+        .filter(|r| !r.container_hostname.is_empty() && !r.container_id.is_empty())
+        .map(|r| (r.container_hostname.clone(), (r.host_id.clone(), r.container_id.clone())))
+        .collect();
+    let mut by_node: BTreeMap<&str, Vec<&ResourceAddressRow>> = BTreeMap::new();
+    for r in addresses.iter().filter(|r| !r.target_entity_id.is_empty()) {
+        by_node.entry(&r.target_entity_id).or_default().push(r);
+    }
+
+    let mut out = Vec::new();
+    for (node_id, rows) in by_node {
+        let first = rows[0];
+        let system = first.target_name.split_once(": ").map_or("", |(s, _)| s).trim().to_ascii_lowercase();
+        let mut shown: Vec<String> = Vec::new();
+        let mut found: Vec<(Found<'_>, String)> = Vec::new();
+        let mut any_address = false;
+        for r in &rows {
+            let address = normalize(&r.address);
+            if address.is_empty() || address.len() > MAX_ADDRESS_LEN {
+                continue;
+            }
+            any_address = true;
+            let label = if r.port.is_empty() { address.clone() } else { format!("{address}:{}", r.port) };
+            if shown.len() < MAX_ADDRESSES && label.len() <= MAX_ADDRESS_LEN + 6 && !shown.contains(&label) {
+                shown.push(label);
+            }
+            let caller =
+                locate(&r.caller_host_name, &r.caller_host_id, &r.caller_container_id, &snap.hosts, &hostnames);
+            let caller_host =
+                caller.host_id.as_deref().filter(|id| snap.hosts.iter().any(|h| h.has_metrics && h.id == *id));
+            if let Some(f) = resolve(&address, &system, caller_host, &snap.hosts, &ctrs) {
+                found.push((f, address));
+            }
+        }
+
+        let mut placement = ResourcePlacementDto {
+            node_id: node_id.to_owned(),
+            name: first.target_name.clone(),
+            kind: first.target_kind.clone(),
+            addresses: shown,
+            ..ResourcePlacementDto::default()
+        };
+        let mut machines: Vec<&str> = found.iter().map(|(f, _)| f.host.as_str()).collect();
+        machines.sort_unstable();
+        machines.dedup();
+        match machines.as_slice() {
+            [] if !any_address => {
+                placement.reason =
+                    "Services do not report the address they connect to (server.address), so where it runs is unknown."
+                        .to_owned();
+            }
+            [] => {
+                placement.location = ResourceLocation::External;
+                placement.reason = format!(
+                    "No machine with the Karbird agent answers to {}: a managed or external {}.",
+                    placement.addresses.join(", "),
+                    if placement.kind == "queue" { "queue" } else { "database" }
+                );
+            }
+            [host] => {
+                let mut ids: Vec<&str> = found.iter().filter_map(|(f, _)| f.container.map(|c| c.id)).collect();
+                ids.sort_unstable();
+                ids.dedup();
+                let container = match ids.as_slice() {
+                    [id] => found.iter().find_map(|(f, _)| f.container.filter(|c| c.id == *id)),
+                    _ => None,
+                };
+                let (best, address) = found
+                    .iter()
+                    .filter(|(f, _)| container.is_none() || f.container.map(|c| c.id) == container.map(|c| c.id))
+                    .min_by_key(|(f, _)| f.how as u8)
+                    .map(|(f, a)| (f.how, a.as_str()))
+                    .unwrap_or((ResourceMatch::None, ""));
+                let host_name = snap.hosts.iter().find(|h| h.id == *host).map_or(*host, |h| h.name.as_str());
+                placement.location = ResourceLocation::Internal;
+                placement.host_id = Some((*host).to_owned());
+                placement.match_reason = best;
+                placement.reason = match container {
+                    Some(c) => format!("Runs in container {} on {host_name}: {}.", c.name, evidence(best, address)),
+                    None if ids.len() > 1 => format!(
+                        "Runs on {host_name}: {}; its addresses point to different containers.",
+                        evidence(best, address)
+                    ),
+                    None => format!(
+                        "Runs on {host_name}: {}; no single container there runs {}.",
+                        evidence(best, address),
+                        if system.is_empty() { "it" } else { system.as_str() }
+                    ),
+                };
+                if let Some(c) = container {
+                    placement.container_id = Some(c.id.to_owned());
+                    if let Some(dto) = snap
+                        .hosts
+                        .iter_mut()
+                        .filter(|h| h.id == *host)
+                        .flat_map(|h| h.containers.iter_mut())
+                        .find(|d| d.id == c.id)
+                        && dto.resource_id.is_none()
+                    {
+                        dto.resource_id = Some(placement.node_id.clone());
+                        dto.resource_name = Some(placement.name.clone());
+                    }
+                }
+            }
+            several => {
+                let names: Vec<&str> = several
+                    .iter()
+                    .map(|id| snap.hosts.iter().find(|h| h.id == *id).map_or(*id, |h| h.name.as_str()))
+                    .collect();
+                placement.reason = format!("Its addresses point to different machines ({}).", names.join(", "));
+            }
+        }
+        out.push(placement);
+    }
+    snap.resources = out;
 }
 
 // ---------------------------------------------------------------- noisy neighbour
@@ -483,6 +779,8 @@ mod tests {
             container_id: container.into(),
             container_name: if container.is_empty() { String::new() } else { format!("/{container}-name") },
             container_hostname: String::new(),
+            container_image: String::new(),
+            container_service: String::new(),
             service_name: String::new(),
             metric_name: metric.into(),
             series_id: 0,
@@ -707,6 +1005,220 @@ mod tests {
         let h = &hosts_from_series(&rows)[0];
         assert!((h.cpu_utilization.unwrap() - 0.7).abs() < 1e-9);
         assert_eq!(h.cpu_cores, Some(2.0));
+    }
+
+    // ------------------------------------------------------------ resource placement
+
+    const PG: &str = "res_pg";
+
+    /// vps-app with a `postgres:16-alpine` container (Compose service `db`, hostname `pghost`)
+    /// next to the two service containers.
+    fn with_postgres() -> Vec<InfraSeriesRow> {
+        let mut rows = vps_app();
+        let mut pg = series("vps-app", "5ee123456789abc", "container.cpu.usage.total", &[], 0.0, 1.8e9);
+        pg.container_name = "/demo-db-1".into();
+        pg.container_hostname = "pghost".into();
+        pg.container_image = "docker.io/library/postgres:16-alpine".into();
+        pg.container_service = "db".into();
+        rows.push(pg);
+        rows
+    }
+
+    fn call(address: &str, port: &str, caller_host: &str, caller_container: &str) -> ResourceAddressRow {
+        ResourceAddressRow {
+            target_entity_id: PG.into(),
+            target_name: "postgresql: orders".into(),
+            target_kind: "database".into(),
+            address: address.into(),
+            port: port.into(),
+            caller_service_id: "svc_orders".into(),
+            caller_host_name: caller_host.into(),
+            caller_host_id: String::new(),
+            caller_container_id: caller_container.into(),
+            calls: 10,
+        }
+    }
+
+    fn placed(series: &[InfraSeriesRow], calls: &[ResourceAddressRow]) -> InfrastructureSnapshot {
+        let mut s = build_snapshot(T, series, &[], false);
+        place_resources(&mut s, series, calls);
+        s
+    }
+
+    fn pg(s: &InfrastructureSnapshot) -> &ResourcePlacementDto {
+        s.resources.iter().find(|r| r.node_id == PG).unwrap()
+    }
+
+    #[test]
+    fn a_database_reached_by_compose_service_name_is_internal_in_that_container() {
+        let s = placed(&with_postgres(), &[call("db", "5432", "", "0dd123456789abc")]);
+        let r = pg(&s);
+        assert_eq!(r.location, ResourceLocation::Internal);
+        assert_eq!((r.host_id.as_deref(), r.container_id.as_deref()), (Some("vps-app"), Some("5ee123456789abc")));
+        assert_eq!(r.match_reason, ResourceMatch::ComposeService);
+        assert_eq!(r.addresses, vec!["db:5432"]);
+        assert!(r.reason.contains("demo-db-1") && r.reason.contains("vps-app"), "{}", r.reason);
+        let c = s.hosts[0].containers.iter().find(|c| c.id == "5ee123456789abc").unwrap();
+        assert_eq!(c.resource_id.as_deref(), Some(PG));
+        assert_eq!(c.resource_name.as_deref(), Some("postgresql: orders"));
+        assert_eq!(c.image.as_deref(), Some("docker.io/library/postgres:16-alpine"));
+        assert_eq!(c.compose_service.as_deref(), Some("db"));
+    }
+
+    #[test]
+    fn container_name_hostname_and_short_id_also_place_it() {
+        for (address, how) in [
+            ("demo-db-1", ResourceMatch::ContainerName),
+            ("PGHOST.", ResourceMatch::ContainerHostname),
+            ("5ee123456789", ResourceMatch::ContainerHostname),
+        ] {
+            let s = placed(&with_postgres(), &[call(address, "5432", "vps-app", "")]);
+            let r = pg(&s);
+            assert_eq!((r.location, r.match_reason), (ResourceLocation::Internal, how), "{address}");
+            assert_eq!(r.container_id.as_deref(), Some("5ee123456789abc"), "{address}");
+        }
+    }
+
+    #[test]
+    fn localhost_means_the_callers_machine_and_the_image_picks_the_container() {
+        for address in ["localhost", "127.0.0.1", "127.3.0.9", "::1", "[::1]", "host.docker.internal"] {
+            let s = placed(&with_postgres(), &[call(address, "15433", "", "0dd123456789abc")]);
+            let r = pg(&s);
+            assert_eq!(r.location, ResourceLocation::Internal, "{address}");
+            assert_eq!(r.match_reason, ResourceMatch::Loopback, "{address}");
+            assert_eq!(r.container_id.as_deref(), Some("5ee123456789abc"), "{address}");
+        }
+    }
+
+    #[test]
+    fn localhost_without_a_matching_image_is_the_machine_only() {
+        let s = placed(&vps_app(), &[call("localhost", "5432", "vps-app", "")]);
+        let r = pg(&s);
+        assert_eq!(
+            (r.location, r.host_id.as_deref(), r.container_id.as_deref()),
+            (ResourceLocation::Internal, Some("vps-app"), None)
+        );
+        assert!(r.reason.contains("no single container"), "{}", r.reason);
+    }
+
+    #[test]
+    fn localhost_from_a_caller_on_no_known_machine_is_not_placed() {
+        let s = placed(&with_postgres(), &[call("localhost", "5432", "laptop", "")]);
+        assert_eq!(pg(&s).location, ResourceLocation::External, "{:?}", pg(&s));
+        let s = placed(&with_postgres(), &[call("localhost", "5432", "", "")]);
+        assert_ne!(pg(&s).location, ResourceLocation::Internal);
+    }
+
+    #[test]
+    fn the_machine_name_places_it_on_that_machine() {
+        let s = placed(&with_postgres(), &[call("VPS-APP", "5432", "elsewhere", "")]);
+        let r = pg(&s);
+        assert_eq!((r.location, r.match_reason), (ResourceLocation::Internal, ResourceMatch::HostName));
+        assert_eq!(r.container_id.as_deref(), Some("5ee123456789abc"));
+    }
+
+    #[test]
+    fn managed_databases_are_external() {
+        for address in ["rc1a-abc.mdb.yandexcloud.net", "db.abcdefgh.supabase.co", "10.0.0.7", "evil\"<b>"] {
+            let s = placed(&with_postgres(), &[call(address, "6432", "vps-app", "")]);
+            let r = pg(&s);
+            assert_eq!(r.location, ResourceLocation::External, "{address}");
+            assert_eq!((r.host_id.as_ref(), r.container_id.as_ref()), (None, None));
+            assert!(r.reason.contains("managed or external database"), "{}", r.reason);
+        }
+        let c = placed(&with_postgres(), &[call("db.abcdefgh.supabase.co", "6432", "vps-app", "")]);
+        assert!(c.hosts[0].containers.iter().all(|c| c.resource_id.is_none()));
+    }
+
+    #[test]
+    fn without_an_address_the_location_is_unknown() {
+        let s = placed(&with_postgres(), &[call("", "", "vps-app", "")]);
+        assert_eq!(pg(&s).location, ResourceLocation::Unknown);
+        assert!(pg(&s).reason.contains("server.address"));
+        let huge = "a".repeat(MAX_ADDRESS_LEN + 1);
+        let s = placed(&with_postgres(), &[call(&huge, "1", "vps-app", "")]);
+        assert_eq!(pg(&s).location, ResourceLocation::Unknown, "oversized addresses are ignored");
+        assert!(pg(&s).addresses.is_empty());
+    }
+
+    #[test]
+    fn addresses_pointing_to_different_machines_are_ambiguous() {
+        let mut rows = with_postgres();
+        rows.push(series("vps-worker", "", "system.cpu.time", &[("cpu", "cpu0"), ("state", "user")], 0.0, 1.0));
+        let s = placed(&rows, &[call("db", "5432", "vps-app", ""), call("vps-worker", "5432", "vps-app", "")]);
+        let r = pg(&s);
+        assert_eq!(r.location, ResourceLocation::Unknown);
+        assert!(r.reason.contains("vps-app") && r.reason.contains("vps-worker"), "{}", r.reason);
+    }
+
+    #[test]
+    fn two_matching_containers_are_not_guessed_between() {
+        let mut rows = with_postgres();
+        let mut other = series("vps-app", "6ff123456789abc", "container.cpu.usage.total", &[], 0.0, 1.0);
+        other.container_image = "postgis/postgis:16".into();
+        rows.push(other);
+        let s = placed(&rows, &[call("localhost", "5432", "vps-app", "")]);
+        let r = pg(&s);
+        assert_eq!((r.location, r.container_id.as_deref()), (ResourceLocation::Internal, None));
+    }
+
+    #[test]
+    fn one_internal_address_wins_over_an_external_one_and_addresses_are_bounded() {
+        let mut calls = vec![call("db", "5432", "vps-app", "")];
+        for i in 0..10 {
+            calls.push(call(&format!("replica-{i}.example.com"), "5432", "vps-app", ""));
+        }
+        let s = placed(&with_postgres(), &calls);
+        let r = pg(&s);
+        assert_eq!(r.location, ResourceLocation::Internal);
+        assert_eq!(r.addresses.len(), MAX_ADDRESSES);
+    }
+
+    #[test]
+    fn image_families_cover_common_images_without_false_friends() {
+        for (image, system) in [
+            ("postgres:16-alpine", "postgresql"),
+            ("supabase/postgres:15.1", "postgresql"),
+            ("timescale/timescaledb:latest-pg16", "postgresql"),
+            ("bitnami/postgresql@sha256:abc", "postgresql"),
+            ("mariadb:11", "mysql"),
+            ("valkey/valkey:8", "redis"),
+            ("ghcr.io/x/redpanda:v24", "kafka"),
+            ("clickhouse/clickhouse-server:24.8", "clickhouse"),
+            ("rabbitmq:3-management", "rabbitmq"),
+        ] {
+            assert!(image_runs(image, system), "{image} runs {system}");
+        }
+        for (image, system) in [
+            ("redis:7", "postgresql"),
+            ("myregistry:5000/app:postgres", "postgresql"),
+            ("orders:1", "postgresql"),
+            ("", "postgresql"),
+            ("postgres:16", ""),
+        ] {
+            assert!(!image_runs(image, system), "{image} does not run {system}");
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn placement_never_panics_and_internal_always_names_a_known_machine(
+            address in ".{0,40}",
+            port in "[0-9]{0,6}",
+            host in prop::sample::select(vec!["", "vps-app", "laptop", "5ee123456789"]),
+        ) {
+            let rows = with_postgres();
+            let s = placed(&rows, &[call(&address, &port, host, "")]);
+            let r = pg(&s);
+            if r.location == ResourceLocation::Internal {
+                prop_assert!(s.hosts.iter().any(|h| h.has_metrics && Some(&h.id) == r.host_id.as_ref()));
+            } else {
+                prop_assert!(r.host_id.is_none() && r.container_id.is_none());
+            }
+            prop_assert!(r.addresses.len() <= MAX_ADDRESSES);
+            let again = placed(&rows, &[call(&address, &port, host, "")]);
+            prop_assert_eq!(&s, &again);
+        }
     }
 
     proptest! {

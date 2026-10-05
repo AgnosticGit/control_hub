@@ -6,6 +6,18 @@ export type ContainerDto = { id: string, name: string,
  */
 service_id: string | null, service_name: string | null, 
 /**
+ * `container.image.name`, e.g. `postgres:16-alpine`.
+ */
+image: string | null, 
+/**
+ * Docker Compose service name.
+ */
+compose_service: string | null, 
+/**
+ * Database or queue node placed in this container.
+ */
+resource_id: string | null, resource_name: string | null, 
+/**
  * CPU cores in use (1.0 = one full core).
  */
 cpu_cores: number | null, 

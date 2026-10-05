@@ -3,6 +3,7 @@
 // virtual machines (DEMO_INFRA_PLACEMENT) and reports, under the same metric names as the
 // real agent:
 // - per container: the real CPU time and RSS of the service process (`/__demo/resources`);
+//   the demo database container reports a steady synthetic load, image and Compose service;
 // - per machine: CPU time = the sum of its containers plus a small base load, capped by the
 //   machine's cores; memory = base + container RSS; disk and network are synthetic.
 // DEMO ONLY.
@@ -17,9 +18,14 @@ const DISK_USED = 9.4 * 1024 * MIB;
 const NET_BYTES_PER_CPU_SECOND = 4 * MIB;
 
 /**
- * @typedef {{ name: string, id: string, url: string }} ContainerSpec
+ * A container is measured from a demo service (`url`) or, for stand-ins like the demo
+ * database, reports a steady synthetic load (`synthetic`).
+ * @typedef {{ cores: number, rssMb: number }} SyntheticLoad
+ * @typedef {{ name: string, id: string, url?: string, synthetic?: SyntheticLoad, image?: string, service?: string }} ContainerSpec
  * @typedef {{ host: string, cores: number, memoryMb: number, diskGb: number, containers: ContainerSpec[] }} HostSpec
  */
+
+const positive = (v) => Number.isFinite(v) && v > 0;
 
 /** Validates DEMO_INFRA_PLACEMENT. */
 export function parsePlacement(text) {
@@ -28,14 +34,24 @@ export function parsePlacement(text) {
   for (const h of hosts) {
     if (typeof h.host !== 'string' || !h.host) throw new Error('every machine needs a host name');
     for (const k of ['cores', 'memoryMb', 'diskGb']) {
-      if (!(Number.isFinite(h[k]) && h[k] > 0)) throw new Error(`${h.host}: ${k} must be positive`);
+      if (!positive(h[k])) throw new Error(`${h.host}: ${k} must be positive`);
     }
     if (!Array.isArray(h.containers)) throw new Error(`${h.host}: containers must be an array`);
     for (const c of h.containers) {
-      if (!c.name || !/^[0-9a-f]{64}$/.test(c.id ?? '') || !c.url) throw new Error(`${h.host}: container needs name, 64-hex id and url`);
+      if (!c.name || !/^[0-9a-f]{64}$/.test(c.id ?? '')) throw new Error(`${h.host}: container needs name and 64-hex id`);
+      const synthetic = c.synthetic !== undefined && positive(c.synthetic?.cores) && positive(c.synthetic?.rssMb);
+      if (!c.url === !synthetic) throw new Error(`${h.host}: container ${c.name} needs either a url or a synthetic load`);
+      for (const k of ['image', 'service']) {
+        if (c[k] !== undefined && (typeof c[k] !== 'string' || !c[k])) throw new Error(`${h.host}: ${c.name}.${k} must be a string`);
+      }
     }
   }
   return hosts;
+}
+
+/** Cumulative CPU and RSS of a synthetic container `elapsedSeconds` after the agent started. */
+export function syntheticSample(load, elapsedSeconds) {
+  return { cpuMicros: Math.round(load.cores * Math.max(0, elapsedSeconds) * 1e6), rssBytes: load.rssMb * MIB };
 }
 
 /** Cumulative counters of one machine; `step` adds one sampling interval. */
@@ -104,6 +120,8 @@ export function buildResources(states, samples, startNs, timeNs) {
           'container.id': c.id,
           'container.name': c.name,
           'container.hostname': c.id.slice(0, 12),
+          ...(c.image ? { 'container.image.name': c.image } : {}),
+          ...(c.service ? { 'docker.compose.service': c.service } : {}),
         },
         metrics: [
           sum('container.cpu.usage.total', 'ns', true, [pt(s.cpuMicros * 1000)]),
@@ -137,6 +155,7 @@ async function main() {
   const intervalMs = Number(process.env.DEMO_INFRA_INTERVAL_MS ?? 10_000);
   const states = placement.map(createHostState);
   const startNs = nowNs();
+  const startedAt = Date.now();
   const lastCpu = new Map();
   let last = Date.now();
 
@@ -149,7 +168,7 @@ async function main() {
       placement.flatMap((h) =>
         h.containers.map(async (c) => {
           try {
-            samples.set(c.id, await sample(c.url));
+            samples.set(c.id, c.synthetic ? syntheticSample(c.synthetic, (now - startedAt) / 1000) : await sample(c.url));
           } catch {
             // The service may still be starting; it is simply missing from this round.
           }

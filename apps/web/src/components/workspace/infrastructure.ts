@@ -5,6 +5,8 @@ import type {
   InstanceDto,
   InstanceMatch,
   NoisyNeighborHint,
+  ResourceMatch,
+  ResourcePlacementDto,
 } from "@karbird/web-engine";
 import { NS_PER_SEC } from "@/lib/time";
 
@@ -108,6 +110,39 @@ export function hintText(h: NoisyNeighborHint): string {
   return `${h.service_name} got slower (p95 ${Math.round(h.baseline_p95_ms)} → ${Math.round(h.p95_ms)} ms) while ${
     h.neighbor_name
   } used ${percent(h.neighbor_cpu_share)} of CPU on ${h.host_name}`;
+}
+
+export const RESOURCE_MATCH_TEXT: Record<ResourceMatch, string> = {
+  compose_service: "matched by Docker Compose service name",
+  container_name: "matched by container name",
+  container_hostname: "matched by container hostname",
+  loopback: "connected over localhost; container found by its image",
+  host_name: "matched by machine name",
+  none: "",
+};
+
+export interface ResourceWhere {
+  placement: ResourcePlacementDto;
+  host: HostDto | null;
+  container: ContainerDto | null;
+}
+
+/** Where a database or queue node runs, from the snapshot; null when the API did not see it called. */
+export function resourceWhere(snap: InfrastructureSnapshot | null, nodeId: string): ResourceWhere | null {
+  const placement = snap?.resources.find((r) => r.node_id === nodeId);
+  if (!snap || !placement) return null;
+  const host = placement.location === "internal" ? (snap.hosts.find((h) => h.id === placement.host_id) ?? null) : null;
+  const container = host?.containers.find((c) => c.id === placement.container_id) ?? null;
+  return { placement, host, container };
+}
+
+/** One line for the inspector: `vps-app · container postgres` / `External` / `Unknown`. */
+export function resourceHeadline(w: ResourceWhere): string {
+  const { placement, host, container } = w;
+  if (placement.location === "external") return "External: no Karbird agent there";
+  if (placement.location === "unknown") return "Location unknown";
+  const machine = host ? host.name || host.id : (placement.host_id ?? "unknown machine");
+  return container ? `${machine} · container ${container.name}` : machine;
 }
 
 /** Instances of a service that run on a machine. */

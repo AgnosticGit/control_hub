@@ -6,7 +6,7 @@ import type { EngineState, WorkspaceActions } from "./useWorkspaceEngine";
 import { Icon } from "@/components/ui/Icon";
 import { formatClock } from "@/lib/time";
 import { externalExplanation, externalLabel } from "@/renderer/external";
-import { HostCard, RunsOn, SignalLinks, type OpenSignals } from "./InfraInspector";
+import { HostCard, ResourceRunsOn, RunsOn, SignalLinks, type OpenSignals } from "./InfraInspector";
 
 const STATUS_CLASS: Record<string, string> = {
   healthy: "text-accent",
@@ -139,6 +139,9 @@ export function Inspector({
 
         {infra && node.kind === "service" ? (
           <RunsOn serviceId={node.id} snapshot={infra} onSelect={onSelect} onSelectHost={(id) => onSelectHost(id)} />
+        ) : null}
+        {infra && (node.kind === "database" || node.kind === "cache" || node.kind === "queue") ? (
+          <ResourceRunsOn nodeId={node.id} snapshot={infra} onSelectHost={(id) => onSelectHost(id)} />
         ) : null}
 
         <section aria-label="Relations">

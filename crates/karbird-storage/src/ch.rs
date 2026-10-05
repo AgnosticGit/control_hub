@@ -119,6 +119,11 @@ pub struct MetricRow {
     pub container_id: String,
     pub container_name: String,
     pub container_hostname: String,
+    /// `container.image.name`, e.g. `postgres:16-alpine`.
+    pub container_image: String,
+    /// Docker Compose service name (label `com.docker.compose.service`), reported by the agent as
+    /// `docker.compose.service`.
+    pub container_service: String,
     pub service_name: String,
     pub attributes: Vec<(String, String)>,
     pub value: f64,
@@ -158,6 +163,8 @@ pub struct InfraSeriesRow {
     pub container_id: String,
     pub container_name: String,
     pub container_hostname: String,
+    pub container_image: String,
+    pub container_service: String,
     pub service_name: String,
     pub metric_name: String,
     pub series_id: u64,
@@ -200,6 +207,22 @@ pub struct InfraBucketRow {
     pub max_value: f64,
     pub first_time: i64,
     pub last_time: i64,
+}
+
+/// Where one service instance connects to a database or queue: the address and port of its
+/// client spans (`server.address`, else `net.peer.name`) and where the caller runs.
+#[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
+pub struct ResourceAddressRow {
+    pub target_entity_id: String,
+    pub target_name: String,
+    pub target_kind: String,
+    pub address: String,
+    pub port: String,
+    pub caller_service_id: String,
+    pub caller_host_name: String,
+    pub caller_host_id: String,
+    pub caller_container_id: String,
+    pub calls: u64,
 }
 
 /// Request latency of one service instance now and in the baseline before it.
@@ -442,7 +465,8 @@ fn infra_series_sql() -> String {
     let names = INFRA_METRIC_NAMES.iter().map(|n| format!("'{n}'")).collect::<Vec<_>>().join(", ");
     format!(
         "SELECT host_id, any(host_name) AS host_name, container_id, any(container_name) AS container_name,
-                any(container_hostname) AS container_hostname, any(service_name) AS service_name,
+                any(container_hostname) AS container_hostname, any(container_image) AS container_image,
+                any(container_service) AS container_service, any(service_name) AS service_name,
                 metric_name, series_id, any(attributes) AS attributes,
                 argMin(value, time) AS first_value, min(time) AS first_time,
                 argMax(value, time) AS last_value, max(time) AS last_time
@@ -503,6 +527,26 @@ fn instance_latency_sql() -> String {
            AND (kind IN (2, 5) OR parent_span_id = '')
          GROUP BY service_id, service_instance_id
          ORDER BY service_id, service_instance_id
+         LIMIT ?"
+    )
+}
+
+/// Client/producer spans to databases and queues in `[from, to)`, per target, address and caller.
+fn resource_addresses_sql() -> String {
+    format!(
+        "SELECT target_entity_id, target_name, target_kind,
+                if(attributes['server.address'] != '', attributes['server.address'], attributes['net.peer.name']) AS address,
+                if(attributes['server.port'] != '', attributes['server.port'], attributes['net.peer.port']) AS port,
+                service_id AS caller_service_id,
+                resource_attributes['host.name'] AS caller_host_name,
+                resource_attributes['host.id'] AS caller_host_id,
+                resource_attributes['container.id'] AS caller_container_id,
+                count() AS calls
+         FROM spans FINAL
+         WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)
+           AND kind IN (3, 4) AND target_kind IN ('database', 'queue') AND target_entity_id != ''
+         GROUP BY target_entity_id, target_name, target_kind, address, port, caller_service_id, caller_host_name, caller_host_id, caller_container_id
+         ORDER BY target_entity_id, address, port, caller_service_id, caller_host_name, caller_host_id, caller_container_id
          LIMIT ?"
     )
 }
@@ -675,6 +719,18 @@ impl ChStore {
         limit: u32,
     ) -> Result<Vec<InstanceLatencyRow>> {
         let q = self.client.query(&instance_latency_sql()).bind(now_from).bind(now_from).bind(now_from).bind(now_from);
+        Ok(bind_scope(q, s).bind(from).bind(to).bind(limit).fetch_all().await?)
+    }
+
+    /// Addresses services connect to databases and queues at in `[from, to)` (see [`ResourceAddressRow`]).
+    pub async fn resource_addresses(
+        &self,
+        s: &Scope,
+        from: i64,
+        to: i64,
+        limit: u32,
+    ) -> Result<Vec<ResourceAddressRow>> {
+        let q = self.client.query(&resource_addresses_sql());
         Ok(bind_scope(q, s).bind(from).bind(to).bind(limit).fetch_all().await?)
     }
 
@@ -1012,6 +1068,7 @@ mod tests {
             include_str!("../../../infra/migrations/clickhouse/0001_telemetry.sql"),
             include_str!("../../../infra/migrations/clickhouse/0002_log_templates_and_codecs.sql"),
             include_str!("../../../infra/migrations/clickhouse/0003_metrics.sql"),
+            include_str!("../../../infra/migrations/clickhouse/0004_metrics_container_identity.sql"),
         ] {
             let stmts = split_statements(sql);
             assert!(!stmts.is_empty());
@@ -1126,6 +1183,24 @@ mod tests {
         let latency = instance_latency_sql();
         assert_eq!(placeholders(&latency), 4 + 3 + 2 + 1, "{latency}");
         assert_eq!(scoped_where_count(&latency), 1);
+        assert!(series.contains("container_image") && series.contains("container_service"));
+    }
+
+    #[test]
+    fn resource_address_sql_is_scoped_reads_only_resource_calls_and_binds_match() {
+        let sql = resource_addresses_sql();
+        assert_eq!(placeholders(&sql), 3 + 2 + 1, "{sql}");
+        assert_eq!(scoped_where_count(&sql), 1);
+        assert!(sql.contains("FROM spans FINAL"));
+        assert!(sql.contains("kind IN (3, 4)"), "only outgoing calls: {sql}");
+        assert!(sql.contains("target_kind IN ('database', 'queue')"), "{sql}");
+        // The statement text is never read: only where the call went.
+        assert!(!sql.contains("db.statement") && !sql.contains("db.query.text"), "{sql}");
+        // ClickHouse resolves an alias before the column: `any(target_kind) AS target_kind`
+        // would put an aggregate into WHERE (ILLEGAL_AGGREGATION).
+        for column in ["target_kind", "target_name", "target_entity_id"] {
+            assert!(!sql.contains(&format!("AS {column}")), "{column} is aliased: {sql}");
+        }
     }
 
     #[test]

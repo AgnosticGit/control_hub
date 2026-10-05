@@ -422,6 +422,11 @@ impl Engine {
         };
     }
 
+    /// A database or queue the infrastructure layer found outside every machine with the agent.
+    fn infra_external(&self, index: usize) -> bool {
+        self.infra_layout.as_ref().is_some_and(|l| l.external.contains(&(index as u32)))
+    }
+
     /// Node position in the current layout (machine frames when the infrastructure layer is on).
     fn pos(&self, index: usize, id: &str) -> Option<(f32, f32)> {
         if let Some(l) = &self.infra_layout
@@ -582,7 +587,7 @@ impl Engine {
             if n.kind != EntityKind::Service {
                 flags |= FLAG_RESOURCE;
             }
-            if n.kind.is_external() {
+            if n.kind.is_external() || self.infra_external(i) {
                 flags |= FLAG_EXTERNAL;
             }
             if problem {
@@ -637,7 +642,7 @@ impl Engine {
             if ratio >= self.config.degraded_error_ratio && calls > 0 {
                 flags |= FLAG_PROBLEM;
             }
-            if sn.kind.is_external() || tn.kind.is_external() {
+            if sn.kind.is_external() || tn.kind.is_external() || self.infra_external(s) || self.infra_external(tg) {
                 flags |= FLAG_EXTERNAL;
             }
             let off_trace = isolated && !highlight.1.contains(&(i as u32));

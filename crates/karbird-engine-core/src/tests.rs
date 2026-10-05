@@ -1178,6 +1178,51 @@ fn identical_snapshots_do_not_bump_the_revision_and_bad_json_is_rejected() {
     assert_eq!(e.topology().revision, r, "a rejected snapshot changes nothing");
 }
 
+fn db_infra_json(location: &str, host: Option<&str>) -> String {
+    serde_json::json!({
+        "at_ns": (BASE + 5 * MS).to_string(),
+        "window_ns": (120 * SEC).to_string(),
+        "hosts": [{"id": "vps-app", "name": "vps-app", "has_metrics": true, "cpu_utilization": 0.3, "containers": []}],
+        "instances": [
+            {"service_id": "svc_orders", "service_name": "orders", "instance_id": "o1", "host_id": "vps-app", "match_reason": "container_id", "requests": 3}
+        ],
+        "hints": [],
+        "resources": [{"node_id": "res_db", "name": "postgresql: orders", "kind": "database", "location": location,
+            "host_id": host, "match_reason": "loopback", "addresses": ["localhost:5432"], "reason": "r"}],
+        "notes": []
+    })
+    .to_string()
+}
+
+#[test]
+fn an_external_database_is_flagged_external_only_with_the_infrastructure_layer() {
+    let mut e = chain_engine();
+    e.seek(BASE + 5 * MS, 1);
+    e.set_infrastructure_json(&db_infra_json("external", None)).unwrap();
+    let db = edge_between(&e, "svc_orders", "res_db");
+    let vs = e.visible_state();
+    assert_eq!(node_flags(&e, &vs, "res_db") & FLAG_EXTERNAL, 0, "layer off: the map is unchanged");
+    infra_on(&mut e, true);
+    let vs = e.visible_state();
+    assert_eq!(node_flags(&e, &vs, "res_db") & FLAG_EXTERNAL, FLAG_EXTERNAL);
+    assert_eq!(edge_flags(&vs, db) & FLAG_EXTERNAL, FLAG_EXTERNAL);
+    assert_eq!(node_flags(&e, &vs, "svc_orders") & FLAG_EXTERNAL, 0);
+}
+
+#[test]
+fn an_internal_database_sits_in_its_machine_frame_and_is_not_external() {
+    let mut e = chain_engine();
+    e.seek(BASE + 5 * MS, 1);
+    e.set_infrastructure_json(&db_infra_json("internal", Some("vps-app"))).unwrap();
+    infra_on(&mut e, true);
+    let topo = e.topology();
+    let f = &topo.infra.as_ref().unwrap().frames[0];
+    let db = topo.nodes.iter().find(|n| n.id == "res_db").unwrap();
+    assert!(db.x > f.x && db.x < f.x + f.width && db.y > f.y && db.y < f.y + f.height, "database inside vps-app");
+    let vs = e.visible_state();
+    assert_eq!(node_flags(&e, &vs, "res_db") & FLAG_EXTERNAL, 0);
+}
+
 #[test]
 fn nodes_discovered_later_are_placed_after_relayout() {
     let mut e = engine_with(demo_items());

@@ -376,8 +376,66 @@ pub struct InfrastructureSnapshot {
     pub hosts: Vec<HostDto>,
     pub instances: Vec<InstanceDto>,
     pub hints: Vec<NoisyNeighborHint>,
+    /// Databases and queues on the map and where they run: on a machine with the agent
+    /// (internal) or not (external).
+    pub resources: Vec<ResourcePlacementDto>,
     /// What could not be determined (no agent metrics, unmatched instances, truncation).
     pub notes: Vec<String>,
+}
+
+/// Where a database or queue runs, derived from the addresses services connect to it at.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceLocation {
+    /// On a machine the Karbird agent reports.
+    Internal,
+    /// At an address no machine with the agent answers to (a managed database, another network).
+    External,
+    /// Addresses point to different machines, or services report no address.
+    #[default]
+    Unknown,
+}
+
+/// Which evidence placed a resource.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceMatch {
+    /// The address is a container's Docker Compose service name.
+    ComposeService,
+    /// The address is a container's name.
+    ContainerName,
+    /// The address is a container's hostname or short ID.
+    ContainerHostname,
+    /// `localhost` / loopback: the caller's machine; the container by its image.
+    Loopback,
+    /// The address is a machine's name; the container by its image.
+    HostName,
+    #[default]
+    None,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(default)]
+pub struct ResourcePlacementDto {
+    /// Topology node ID of the database or queue.
+    pub node_id: String,
+    pub name: String,
+    /// `database` or `queue`.
+    pub kind: String,
+    pub location: ResourceLocation,
+    pub host_id: Option<String>,
+    pub container_id: Option<String>,
+    pub match_reason: ResourceMatch,
+    /// `address:port` the services connect to, at most a few.
+    pub addresses: Vec<String>,
+    /// Why it was placed (or not), for people.
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -415,6 +473,13 @@ pub struct ContainerDto {
     /// Service whose instance runs in this container, when matched.
     pub service_id: Option<String>,
     pub service_name: Option<String>,
+    /// `container.image.name`, e.g. `postgres:16-alpine`.
+    pub image: Option<String>,
+    /// Docker Compose service name.
+    pub compose_service: Option<String>,
+    /// Database or queue node placed in this container.
+    pub resource_id: Option<String>,
+    pub resource_name: Option<String>,
     /// CPU cores in use (1.0 = one full core).
     pub cpu_cores: Option<f64>,
     /// Share of the machine's CPU, 0..1.

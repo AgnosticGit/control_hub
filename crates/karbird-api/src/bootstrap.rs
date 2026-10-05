@@ -27,6 +27,10 @@ const CH_MIGRATIONS: &[(&str, &str)] = &[
         include_str!("../../../infra/migrations/clickhouse/0002_log_templates_and_codecs.sql"),
     ),
     ("0003_metrics.sql", include_str!("../../../infra/migrations/clickhouse/0003_metrics.sql")),
+    (
+        "0004_metrics_container_identity.sql",
+        include_str!("../../../infra/migrations/clickhouse/0004_metrics_container_identity.sql"),
+    ),
 ];
 
 pub(crate) struct SeedScope {

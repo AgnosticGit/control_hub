@@ -1,6 +1,9 @@
 # Karbird agent: an OpenTelemetry Collector (contrib) that reports this machine and its Docker
 # containers to karbird ingest. Only the metrics the infrastructure layer reads are exported;
-# no logs, no process command lines, no container environment or labels.
+# no logs, no process command lines, no container environment. Per container: ID, name,
+# hostname, image name and the Docker Compose service label, so databases and queues the
+# services connect to (`db:5432`, `localhost:5432`) are placed in their container (ADR-0018).
+# No other labels.
 #
 # Environment (see compose.yaml next to this file):
 #   KARBIRD_OTLP_ENDPOINT  karbird OTLP/HTTP base URL, e.g. https://karbird.example.com/otlp (/v1/metrics is appended)
@@ -31,6 +34,8 @@ receivers:
   docker_stats:
     endpoint: unix:///var/run/docker.sock
     collection_interval: 10s
+    container_labels_to_metric_labels:
+      com.docker.compose.service: docker.compose.service
     metrics:
       container.cpu.usage.total:
         enabled: true
@@ -62,8 +67,6 @@ processors:
       - key: host.id
         value: ${env:KARBIRD_HOST_NAME}
         action: upsert
-      - key: container.image.name
-        action: delete
       - key: container.runtime
         action: delete
   batch:

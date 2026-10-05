@@ -2,6 +2,7 @@
 import type { HostDto } from "./HostDto";
 import type { InstanceDto } from "./InstanceDto";
 import type { NoisyNeighborHint } from "./NoisyNeighborHint";
+import type { ResourcePlacementDto } from "./ResourcePlacementDto";
 
 /**
  * Machines, containers and service instances at one moment, as returned by
@@ -12,6 +13,11 @@ export type InfrastructureSnapshot = { at_ns: string,
  * Machine metrics are read from `[at - window, at]`.
  */
 window_ns: string, hosts: Array<HostDto>, instances: Array<InstanceDto>, hints: Array<NoisyNeighborHint>, 
+/**
+ * Databases and queues on the map and where they run: on a machine with the agent
+ * (internal) or not (external).
+ */
+resources: Array<ResourcePlacementDto>, 
 /**
  * What could not be determined (no agent metrics, unmatched instances, truncation).
  */

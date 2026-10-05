@@ -32,6 +32,14 @@ test("the agent reports host.name from KARBIRD_HOST_NAME and sends the ingest to
   assert.match(config, /receivers: \[hostmetrics, docker_stats\]/);
 });
 
+test("the agent keeps the image name and maps only the Compose service label", () => {
+  assert.doesNotMatch(config, /key: container\.image\.name\s+action: delete/, "image name places databases by image");
+  const labels = /container_labels_to_metric_labels:\n((?:\s{6}\S.*\n)+)/.exec(config);
+  assert.ok(labels, "container_labels_to_metric_labels not found");
+  assert.deepEqual(labels[1].trim().split("\n").map((l) => l.trim()), ["com.docker.compose.service: docker.compose.service"]);
+  assert.doesNotMatch(config, /env_vars_to_metric_labels/, "no container environment");
+});
+
 test("the agent image is pinned and host mounts are read-only", () => {
   const image = /image: (\S+)/.exec(compose)?.[1] ?? "";
   assert.match(image, /^otel\/opentelemetry-collector-contrib:\d+\.\d+\.\d+$/);

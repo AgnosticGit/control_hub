@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/Icon";
 import { formatClock } from "@/lib/time";
 import {
   MATCH_TEXT,
+  RESOURCE_MATCH_TEXT,
   containersByLoad,
   formatBytes,
   formatRate,
@@ -14,6 +15,8 @@ import {
   hostLabel,
   instancesOnHost,
   percent,
+  resourceHeadline,
+  resourceWhere,
   serviceChain,
   usedShare,
 } from "./infrastructure";
@@ -167,10 +170,20 @@ export function HostCard({ host, snapshot, cursor, onClose, onSelect, onSignals 
                       {c.service_name}
                     </button>
                   ) : null}
+                  {c.resource_id ? (
+                    <button type="button" className="text-accent hover:underline" onClick={() => onSelect(c.resource_id ?? "")}>
+                      {c.resource_name ?? c.resource_id}
+                    </button>
+                  ) : null}
                   <span className="ml-auto tabular-nums" aria-label={`${c.name} CPU share`}>
                     CPU {percent(c.cpu_share)}
                   </span>
                 </div>
+                {c.image ? (
+                  <p className="mt-0.5 truncate font-mono text-[10px] text-muted" title="container.image.name">
+                    {c.image}
+                  </p>
+                ) : null}
                 <div className="mt-1.5 grid grid-cols-[3rem_1fr_3rem] items-center gap-x-2 gap-y-1 text-[11px] text-muted">
                   <span>CPU</span>
                   <Bar share={c.cpu_share} tone={tone(c.cpu_share)} />
@@ -211,6 +224,69 @@ export function HostCard({ host, snapshot, cursor, onClose, onSelect, onSignals 
         </p>
       </div>
     </div>
+  );
+}
+
+interface ResourceRunsOnProps {
+  nodeId: string;
+  snapshot: InfrastructureSnapshot;
+  onSelectHost: (hostId: string) => void;
+}
+
+/** Database or queue → container → machine, or why it is external. */
+export function ResourceRunsOn({ nodeId, snapshot, onSelectHost }: ResourceRunsOnProps) {
+  const where = resourceWhere(snapshot, nodeId);
+  if (!where) {
+    return (
+      <section aria-label="Runs on" className="space-y-1">
+        <h3 className="label">Runs on</h3>
+        <p className="text-xs text-muted">No service called it in the last 5 minutes.</p>
+      </section>
+    );
+  }
+  const { placement, host, container } = where;
+  const how = RESOURCE_MATCH_TEXT[placement.match_reason];
+  return (
+    <section aria-label="Runs on" className="space-y-2">
+      <h3 className="label">Runs on</h3>
+      <div className="rounded-lg border border-border bg-bg/50 p-2.5 text-xs">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {placement.location === "internal" ? (
+            <>
+              <span className="badge border border-accent/50 text-accent">Internal</span>
+              {host ? (
+                <button type="button" className="font-medium text-accent hover:underline" onClick={() => onSelectHost(host.id)}>
+                  {host.name || host.id}
+                </button>
+              ) : (
+                <span>{placement.host_id}</span>
+              )}
+              {container ? (
+                <>
+                  <Icon name="arrowRight" className="h-3 w-3 text-muted" />
+                  <span title={container.id}>container {container.name}</span>
+                </>
+              ) : null}
+            </>
+          ) : (
+            <span className="badge border border-dashed border-current text-text">{resourceHeadline(where)}</span>
+          )}
+        </div>
+        {container ? (
+          <p className="mt-1 text-[11px] text-muted tabular-nums">
+            CPU {percent(container.cpu_share)} of machine · RAM {formatBytes(container.memory_used_bytes)}
+            {container.image ? ` · ${container.image}` : ""}
+          </p>
+        ) : null}
+        <p className="mt-1 text-[11px] text-muted">{placement.reason}</p>
+        {how ? <p className="mt-1 text-[11px] text-muted">{how}</p> : null}
+        {placement.addresses.length > 0 ? (
+          <p className="mt-1 font-mono text-[10px] text-muted" aria-label="Addresses services connect to">
+            {placement.addresses.join(", ")}
+          </p>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

@@ -1127,6 +1127,11 @@ export interface components {
         };
         ContainerDto: {
             /**
+             * @description Docker Compose service name.
+             * @default null
+             */
+            compose_service: string | null;
+            /**
              * Format: double
              * @description CPU cores in use (1.0 = one full core).
              * @default null
@@ -1140,6 +1145,11 @@ export interface components {
             cpu_share: number | null;
             /** @default  */
             id: string;
+            /**
+             * @description `container.image.name`, e.g. `postgres:16-alpine`.
+             * @default null
+             */
+            image: string | null;
             /**
              * Format: double
              * @default null
@@ -1168,6 +1178,13 @@ export interface components {
              * @default null
              */
             network_tx_bytes_per_sec: number | null;
+            /**
+             * @description Database or queue node placed in this container.
+             * @default null
+             */
+            resource_id: string | null;
+            /** @default null */
+            resource_name: string | null;
             /**
              * @description Service whose instance runs in this container, when matched.
              * @default null
@@ -1381,6 +1398,12 @@ export interface components {
              * @default []
              */
             notes: string[];
+            /**
+             * @description Databases and queues on the map and where they run: on a machine with the agent
+             *     (internal) or not (external).
+             * @default []
+             */
+            resources: components["schemas"]["ResourcePlacementDto"][];
             /**
              * @description Machine metrics are read from `[at - window, at]`.
              * @default 0
@@ -1641,6 +1664,48 @@ export interface components {
         };
         /** @enum {string} */
         RelationKindDto: "calls" | "depends_on" | "runs_on" | "deployed_from" | "owns" | "publishes_to" | "consumes_from";
+        /**
+         * @description Where a database or queue runs, derived from the addresses services connect to it at.
+         * @enum {string}
+         */
+        ResourceLocation: "internal" | "external" | "unknown";
+        /**
+         * @description Which evidence placed a resource.
+         * @enum {string}
+         */
+        ResourceMatch: "compose_service" | "container_name" | "container_hostname" | "loopback" | "host_name" | "none";
+        ResourcePlacementDto: {
+            /**
+             * @description `address:port` the services connect to, at most a few.
+             * @default []
+             */
+            addresses: string[];
+            /** @default null */
+            container_id: string | null;
+            /** @default null */
+            host_id: string | null;
+            /**
+             * @description `database` or `queue`.
+             * @default
+             */
+            kind: string;
+            /** @default unknown */
+            location: components["schemas"]["ResourceLocation"];
+            /** @default none */
+            match_reason: components["schemas"]["ResourceMatch"];
+            /** @default  */
+            name: string;
+            /**
+             * @description Topology node ID of the database or queue.
+             * @default
+             */
+            node_id: string;
+            /**
+             * @description Why it was placed (or not), for people.
+             * @default
+             */
+            reason: string;
+        };
         RevokeTokenRequest: {
             reason?: string | null;
         };

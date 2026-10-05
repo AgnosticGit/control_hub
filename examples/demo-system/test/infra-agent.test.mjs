@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildResources, createHostState, parsePlacement, stepHost } from '../src/infra-agent.mjs';
+import { buildResources, createHostState, parsePlacement, stepHost, syntheticSample } from '../src/infra-agent.mjs';
 import { encodeMetrics } from '../src/otlp-metrics.mjs';
 import { captureServer, cleanEnv, runNode, src, startNode } from './helpers.mjs';
 
@@ -62,6 +62,47 @@ test('placement must name machines with positive sizes and 64-hex container IDs'
   ]) {
     assert.throws(() => parsePlacement(JSON.stringify(bad)), JSON.stringify(bad));
   }
+});
+
+test('a container has either a url or a synthetic load, and image/service are non-empty strings', () => {
+  const host = (containers) => [{ host: 'h', cores: 1, memoryMb: 1, diskGb: 1, containers }];
+  const pg = { name: 'postgres', id: ID('c'), image: 'postgres:16-alpine', service: 'db', synthetic: { cores: 0.03, rssMb: 96 } };
+  assert.equal(parsePlacement(JSON.stringify(host([pg])))[0].containers[0].image, 'postgres:16-alpine');
+  for (const bad of [
+    { name: 'x', id: ID('c') },
+    { ...pg, url: 'http://127.0.0.1:1' },
+    { ...pg, synthetic: { cores: 0, rssMb: 96 } },
+    { ...pg, synthetic: { cores: 0.1 } },
+    { ...pg, image: '' },
+    { ...pg, service: 5 },
+  ]) {
+    assert.throws(() => parsePlacement(JSON.stringify(host([bad]))), JSON.stringify(bad));
+  }
+});
+
+test('a synthetic container reports cumulative CPU at its steady load and a fixed RSS', () => {
+  assert.deepEqual(syntheticSample({ cores: 0.03, rssMb: 96 }, 100), { cpuMicros: 3_000_000, rssBytes: 96 * MIB });
+  assert.equal(syntheticSample({ cores: 0.5, rssMb: 1 }, -5).cpuMicros, 0, 'never negative');
+});
+
+test('image and Compose service go into the container resource only when known', () => {
+  const states = [
+    createHostState({
+      ...placement()[0],
+      containers: [
+        { name: 'orders', id: ID('a'), url: 'u' },
+        { name: 'postgres', id: ID('c'), image: 'postgres:16-alpine', service: 'db', synthetic: { cores: 0.03, rssMb: 96 } },
+      ],
+    }),
+  ];
+  const samples = new Map([
+    [ID('a'), { cpuMicros: 1, rssBytes: 1 }],
+    [ID('c'), syntheticSample({ cores: 0.03, rssMb: 96 }, 10)],
+  ]);
+  const [, orders, pg] = buildResources(states, samples, 1n, 2n);
+  assert.equal(pg.attributes['container.image.name'], 'postgres:16-alpine');
+  assert.equal(pg.attributes['docker.compose.service'], 'db');
+  assert.ok(!('container.image.name' in orders.attributes) && !('docker.compose.service' in orders.attributes));
 });
 
 test('a machine is never busier than its cores, and a hog shows as a full machine', () => {

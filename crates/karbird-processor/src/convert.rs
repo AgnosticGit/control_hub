@@ -272,6 +272,8 @@ fn convert_metrics(req: ExportMetricsServiceRequest, base: &MetricRow, out: &mut
             container_id: get("container.id"),
             container_name: get("container.name"),
             container_hostname: get("container.hostname"),
+            container_image: get("container.image.name"),
+            container_service: get("docker.compose.service"),
             service_name: get("service.name"),
             ..base.clone()
         };
@@ -437,6 +439,8 @@ pub fn convert(env: &IngestEnvelope, ingested_at: i64) -> Result<Converted, Conv
                 container_id: String::new(),
                 container_name: String::new(),
                 container_hostname: String::new(),
+                container_image: String::new(),
+                container_service: String::new(),
                 service_name: String::new(),
                 attributes: Vec::new(),
                 value: 0.0,
@@ -1148,6 +1152,8 @@ mod tests {
                 kv("container.id", "abc123"),
                 kv("container.name", "orders"),
                 kv("container.hostname", "abc123def456"),
+                kv("container.image.name", "postgres:16-alpine"),
+                kv("docker.compose.service", "db"),
                 kv("service.name", "orders"),
             ],
             vec![
@@ -1177,6 +1183,7 @@ mod tests {
         );
         assert_eq!((m.container_id.as_str(), m.container_name.as_str()), ("abc123", "orders"));
         assert_eq!(m.container_hostname, "abc123def456");
+        assert_eq!((m.container_image.as_str(), m.container_service.as_str()), ("postgres:16-alpine", "db"));
         assert_eq!(m.service_name, "orders");
         assert_eq!(m.attributes, vec![("cpu".into(), "cpu0".into()), ("state".into(), "user".into())]);
         assert_eq!((m.value, m.time, m.ingested_at, m.batch_id.as_str()), (1.5, 10, 99, "mb"));

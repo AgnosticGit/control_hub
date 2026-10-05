@@ -1,10 +1,10 @@
 //! Infrastructure layer of the map (ADR-0018): service cards grouped into the machines they run
 //! on. Pure and deterministic: the same topology and snapshot always give the same picture.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::layout::{BandSpec, COLUMN_SPACING, Layout};
-use crate::types::{InfraBadge, InfraChip, InfraFrame, InfraLink, InfraView, InfrastructureSnapshot};
+use crate::types::{InfraBadge, InfraChip, InfraFrame, InfraLink, InfraView, InfrastructureSnapshot, ResourceLocation};
 
 pub const CHIP_W: f32 = 150.0;
 pub const CHIP_H: f32 = 28.0;
@@ -31,6 +31,8 @@ pub struct InfraLayout {
     pub positions: HashMap<u32, (f32, f32)>,
     /// Corridor points of each edge, like [`Layout::waypoints`].
     pub waypoints: Vec<Vec<(f32, f32)>>,
+    /// Database and queue nodes that run outside every machine with the agent.
+    pub external: HashSet<u32>,
     pub view: InfraView,
 }
 
@@ -116,6 +118,27 @@ pub fn compute(nodes: &[LayoutNode<'_>], edges: &[(u32, u32)], snap: &Infrastruc
                     placements[s].chips.push((node, service_id, instance, n + 1));
                 }
             }
+        }
+    }
+
+    // Databases and queues the API placed on a machine join its frame; those it found at an
+    // address no agent answers to are external while this layer is on.
+    let node_by_id: HashMap<&str, u32> = nodes.iter().filter(|n| !n.service).map(|n| (n.id, n.index)).collect();
+    let mut external = HashSet::new();
+    for r in &snap.resources {
+        let Some(&node) = node_by_id.get(r.node_id.as_str()) else { continue };
+        match r.location {
+            ResourceLocation::Internal => {
+                if let Some(&s) = r.host_id.as_deref().and_then(|h| slot.get(h))
+                    && !placements.iter().any(|p| p.cards.contains(&node))
+                {
+                    placements[s].cards.push(node);
+                }
+            }
+            ResourceLocation::External => {
+                external.insert(node);
+            }
+            ResourceLocation::Unknown => {}
         }
     }
 
@@ -210,7 +233,7 @@ pub fn compute(nodes: &[LayoutNode<'_>], edges: &[(u32, u32)], snap: &Infrastruc
     }
 
     let links = noisy_links(snap, &node_of, &positions, &chips, &frames);
-    InfraLayout { positions, waypoints, view: InfraView { frames, chips, badges, links } }
+    InfraLayout { positions, waypoints, external, view: InfraView { frames, chips, badges, links } }
 }
 
 fn display_name<'a>(snap: &'a InfrastructureSnapshot, service_id: &str) -> Option<&'a str> {
@@ -274,7 +297,7 @@ fn noisy_links(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{HostDto, InstanceDto, InstanceMatch, NoisyNeighborHint};
+    use crate::types::{HostDto, InstanceDto, InstanceMatch, NoisyNeighborHint, ResourcePlacementDto};
     use proptest::prelude::*;
 
     fn host(id: &str, cpu: Option<f64>) -> HostDto {
@@ -434,6 +457,12 @@ mod tests {
                     .iter()
                     .filter(|i| i.service_id == IDS[n as usize])
                     .filter_map(|i| i.host_id.as_deref())
+                    .chain(
+                        snap.resources
+                            .iter()
+                            .filter(|r| r.node_id == IDS[n as usize] && r.location == ResourceLocation::Internal)
+                            .filter_map(|r| r.host_id.as_deref()),
+                    )
                     .any(|h| h == f.host_id);
                 if inside(f, p) {
                     assert!(primary, "node {n} drawn inside {} where it does not run", f.host_id);
@@ -565,6 +594,55 @@ mod tests {
         }
     }
 
+    fn db_on(location: ResourceLocation, host: Option<&str>) -> ResourcePlacementDto {
+        ResourcePlacementDto {
+            node_id: "res_db".into(),
+            name: "postgresql: orders".into(),
+            kind: "database".into(),
+            location,
+            host_id: host.map(str::to_owned),
+            ..ResourcePlacementDto::default()
+        }
+    }
+
+    #[test]
+    fn an_internal_database_sits_inside_its_machine_frame() {
+        let mut s = demo();
+        s.resources = vec![db_on(ResourceLocation::Internal, Some("vps-app"))];
+        let l = compute(&nodes(), &EDGES, &s);
+        let app = l.view.frames.iter().find(|f| f.host_id == "vps-app").unwrap();
+        assert!(inside(app, l.positions[&5]), "database inside vps-app");
+        assert!(l.external.is_empty());
+        assert_clean(&l, &s);
+        assert_frames_apart(&l);
+    }
+
+    #[test]
+    fn an_external_database_stays_outside_and_is_marked() {
+        let mut s = demo();
+        s.resources = vec![db_on(ResourceLocation::External, None)];
+        let l = compute(&nodes(), &EDGES, &s);
+        for f in &l.view.frames {
+            assert!(!inside(f, l.positions[&5]), "external database is not on {}", f.host_id);
+        }
+        assert_eq!(l.external, HashSet::from([5]));
+    }
+
+    #[test]
+    fn unknown_or_unmatched_resources_change_nothing() {
+        let base = compute(&nodes(), &EDGES, &demo());
+        for r in [
+            db_on(ResourceLocation::Unknown, None),
+            db_on(ResourceLocation::Internal, Some("nowhere")),
+            ResourcePlacementDto { node_id: "res_ghost".into(), ..db_on(ResourceLocation::Internal, Some("vps-app")) },
+            ResourcePlacementDto { node_id: "svc_payments".into(), ..db_on(ResourceLocation::External, None) },
+        ] {
+            let mut s = demo();
+            s.resources = vec![r.clone()];
+            assert_eq!(compute(&nodes(), &EDGES, &s), base, "{r:?}");
+        }
+    }
+
     #[test]
     fn instances_of_unknown_services_or_hosts_are_ignored() {
         let mut s = demo();
@@ -581,10 +659,12 @@ mod tests {
         fn layout_is_deterministic_and_every_node_is_placed(
             placements in prop::collection::vec((0usize..5, 0usize..4), 0..30),
             cpus in prop::collection::vec(prop::option::of(0.0f64..1.0), 4),
+            db_host in prop::option::of(0usize..4),
         ) {
             let hosts = ["h0", "h1", "h2", "h3"];
             let mut snap = InfrastructureSnapshot {
                 hosts: hosts.iter().zip(&cpus).map(|(h, c)| host(h, *c)).collect(),
+                resources: db_host.map(|h| db_on(ResourceLocation::Internal, Some(hosts[h]))).into_iter().collect(),
                 ..InfrastructureSnapshot::default()
             };
             let services = ["gateway", "orders", "inventory", "catalog", "payments"];

@@ -64,6 +64,35 @@ and containers are resource gauges; spans cannot provide them.
   a "Machines" group with one row per machine (CPU bars on a fixed 0–100 % scale, red from 90 %,
   memory as a line; a value holds up to 90 s between exports) and a marker per event that moves the
   cursor there.
+- **Databases and queues on our machines** (automatic, no manual binding, no LLM). The agent
+  also reports each container's image (`container.image.name`) and its Docker Compose service
+  (label `com.docker.compose.service` → `docker.compose.service`); no other labels and no
+  environment. They are configuration names, not user data, and stored in `metrics`
+  (`container_image`, `container_service`, ClickHouse migration `0004`). For every database or
+  queue that client spans of the last 5 minutes call, the API reads the address the caller
+  connected to (`server.address`, else `net.peer.name`, plus the port; never the statement) and
+  where the caller runs (`host.name`, `host.id`, `container.id`, matched like instances). The
+  address is lowercased, its trailing dot and IPv6 brackets dropped; addresses over 253
+  characters are ignored. Per address, first match wins:
+  1. `localhost`, `*.localhost`, `127.0.0.0/8`, `::1`, `host.docker.internal` → the caller's
+     machine (only if the agent reports it), and on it the one container whose image runs that
+     system (`postgresql`: postgres, postgis, timescale, pgvector; `mysql`: mysql, mariadb,
+     percona; `redis`: redis, valkey, keydb, dragonfly; `mongodb`: mongo; `kafka`: kafka,
+     redpanda; `elasticsearch`: elasticsearch, opensearch; `cassandra`: cassandra, scylla;
+     otherwise the system's own name in the image's repository name);
+  2. the Compose service of a container, then a container name, then a container hostname or
+     short ID — on the caller's machine first, else unique across all machines;
+  3. a machine's name or ID (with agent metrics) → that machine, container by image as in 1.
+
+  Over all addresses of a resource: none matched but some exist → **external** (a managed or
+  foreign database: Yandex Managed, Supabase, RDS, another network); matches on one machine →
+  **internal** on it, with the container all matches agree on (two different containers or
+  several of the same image → the machine only, never a guess); matches on several machines or
+  no address at all → **unknown**. `GET …/infrastructure` returns this as `resources`
+  (location, machine, container, rule, up to 5 addresses, a reason) and links the container
+  (`resource_id`). The map puts internal resources into their machine's frame and draws external
+  ones as external while the Infrastructure layer is on; the inspector shows "Runs on" for them.
+  Matching by IP of the machine is not done: the agent does not report machine addresses.
 - **Map.** The engine lays out the Infrastructure layer itself (machine frames around the service
   cards, a chip per instance of multi-instance services, `×N` badges, links from the slowed
   service to the noisy neighbour), so picking, culling and edges keep working. The UI shows the
@@ -71,6 +100,12 @@ and containers are resource gauges; spans cannot provide them.
 
 ## Consequences
 - Machines without the agent still appear (from span `host.name`) but without numbers.
+- To have its own databases shown as internal, a client runs the agent (`deploy/agent/`) on
+  every machine that hosts them and lets services connect by Compose service name, container
+  name or `localhost`. A database reached by a public IP or DNS name of the same machine stays
+  external until IP matching exists.
+- The demo agent adds a synthetic `postgres:16-alpine` container on `vps-app`; orders and
+  inventory reach the demo Postgres over `127.0.0.1`, so the loopback rule places it there.
 - `just demo` runs a demo agent that reports the demo services as containers on two virtual
   machines from their real process CPU time and memory; `fault.mjs inventory --cpu-hog 0.95`
   reproduces a noisy neighbour.

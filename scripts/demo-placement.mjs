@@ -24,6 +24,15 @@ export function demoPlacement() {
       containers: [
         ...["gateway", "auth", "orders", "inventory"].map((n) => container(n, PORTS[n])),
         container("catalog-1", CATALOG_PORTS[0]),
+        // orders and inventory reach the demo Postgres over 127.0.0.1, so the API places the
+        // database in this container by its image (ADR-0018).
+        {
+          name: "postgres",
+          id: demoContainerId("postgres"),
+          image: "postgres:16-alpine",
+          service: "postgres",
+          synthetic: { cores: 0.03, rssMb: 96 },
+        },
       ],
     },
     {
