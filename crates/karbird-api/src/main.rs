@@ -247,6 +247,7 @@ fn router(state: state::AppState) -> Router {
         .route(&format!("{scoped}/events"), get(telemetry::events))
         .route(&format!("{scoped}/timeline"), get(telemetry::timeline))
         .route(&format!("{scoped}/coverage"), get(telemetry::coverage))
+        .route(&format!("{scoped}/edges/traffic"), get(routes::edge_traffic::edge_traffic))
         .route(&format!("{scoped}/infrastructure"), get(routes::infrastructure::infrastructure))
         .route(&format!("{scoped}/infrastructure/timeline"), get(routes::infra_timeline::infra_timeline))
         .route(&format!("{scoped}/live"), get(routes::live::live))
@@ -407,6 +408,7 @@ mod tests {
             "/events",
             "/timeline",
             "/coverage",
+            "/edges/traffic",
             "/infrastructure",
             "/infrastructure/timeline",
             "/live",
@@ -848,6 +850,7 @@ mod tests {
             ("/events", "get"),
             ("/timeline", "get"),
             ("/coverage", "get"),
+            ("/edges/traffic", "get"),
             ("/infrastructure", "get"),
             ("/infrastructure/timeline", "get"),
             ("/live", "get"),

@@ -2,6 +2,8 @@
 export type { Batch } from "./Batch";
 export type { ContainerDto } from "./ContainerDto";
 export type { Diagnostics } from "./Diagnostics";
+export type { EdgeLatency } from "./EdgeLatency";
+export type { EdgeMetrics } from "./EdgeMetrics";
 export type { EngineConfig } from "./EngineConfig";
 export type { EntityKindDto } from "./EntityKindDto";
 export type { EventItem } from "./EventItem";

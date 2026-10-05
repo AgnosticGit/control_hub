@@ -564,6 +564,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/edges/traffic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["edge_traffic"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/environments/{environment_id}/events": {
         parameters: {
             query?: never;
@@ -1246,6 +1262,53 @@ export interface components {
         DecisionRequest: {
             /** @description Required when rejecting. */
             comment?: string | null;
+        };
+        /** @enum {string} */
+        EdgeRelation: "calls" | "depends_on";
+        /** @description Calls and bytes over one edge. Byte rates are `null` when no call in the range declared a size. */
+        EdgeTraffic: {
+            /**
+             * Format: double
+             * @description Bytes per second averaged over the whole range.
+             */
+            avg_request_bps?: number | null;
+            /** Format: double */
+            avg_response_bps?: number | null;
+            /** @description Bucket `i` covers `[from + i * bucket_ns, from + (i + 1) * bucket_ns)`, by call start. */
+            bucket_ns: string;
+            /** Format: int32 */
+            buckets: number;
+            calls: number[];
+            from_ns: string;
+            peak_request_at_ns?: string | null;
+            /**
+             * Format: double
+             * @description Bytes per second in the busiest bucket and where it starts.
+             */
+            peak_request_bps?: number | null;
+            peak_response_at_ns?: string | null;
+            /** Format: double */
+            peak_response_bps?: number | null;
+            relation: components["schemas"]["EdgeRelation"];
+            request_bytes: number[];
+            response_bytes: number[];
+            /**
+             * Format: double
+             * @description `total_sized_calls / total_calls`; `null` without calls.
+             */
+            size_coverage?: number | null;
+            sized_calls: number[];
+            source: string;
+            target: string;
+            to_ns: string;
+            /** Format: int64 */
+            total_calls: number;
+            /** Format: int64 */
+            total_request_bytes: number;
+            /** Format: int64 */
+            total_response_bytes: number;
+            /** Format: int64 */
+            total_sized_calls: number;
         };
         EndedSessions: {
             /** Format: int64 */
@@ -3880,6 +3943,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CoverageResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edge_traffic: {
+        parameters: {
+            query?: {
+                /** @description Required. Node ID the edge leaves (a service, or the environment's external-clients node). */
+                source?: string;
+                /** @description Required. Node ID the edge enters (a service, database, queue or external host). */
+                target?: string;
+                /** @description Required. `calls` or `depends_on`. */
+                relation?: string;
+                /** @description Start, unix epoch nanoseconds as a decimal string. Default: `to - 15m`. */
+                from?: string;
+                /** @description End (exclusive), unix epoch nanoseconds as a decimal string. Default: now. */
+                to?: string;
+                /** @description Number of buckets (default 60, max 600). */
+                buckets?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EdgeTraffic"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             404: {

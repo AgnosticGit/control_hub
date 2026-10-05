@@ -270,6 +270,10 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       return undefined;
     case "nodeMetrics":
       return requireEngine().getNodeMetrics(msg.nodeId, msg.atNs ? BigInt(msg.atNs) : undefined) ?? null;
+    case "edgeMetrics":
+      return (
+        requireEngine().getEdgeMetrics(msg.sourceId, msg.targetId, msg.atNs ? BigInt(msg.atNs) : undefined) ?? null
+      );
     case "compare":
       return requireEngine().compare(BigInt(msg.aNs), BigInt(msg.bNs));
     case "nextEvent":

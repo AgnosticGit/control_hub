@@ -9,6 +9,7 @@ import { useSession } from "@/lib/session";
 import { NS_PER_MS, formatClock, formatDateTime, nowNs, parseNs } from "@/lib/time";
 import { Splitter } from "@/components/ui/Splitter";
 import { usePersisted, writePersisted } from "@/lib/persisted";
+import type { SelectedEdge } from "./edge-traffic";
 import { Inspector } from "./Inspector";
 import type { OpenSignals } from "./InfraInspector";
 import { InfraOverlay } from "./InfraOverlay";
@@ -66,6 +67,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const [tableView, setTableView] = useState(false);
   const [infraOn, setInfraOn] = useState(false);
   const [selectedHost, setSelectedHost] = useState<string | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<SelectedEdge | null>(null);
   const [overlayBottom, setOverlayBottom] = useState(0);
   const [markA, setMarkA] = useState<bigint | null>(null);
   const [compare, setCompare] = useState<{ a: bigint; b: bigint; diffs: NodeDiff[] } | null>(null);
@@ -81,12 +83,22 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const select = (id: string | null) => {
     setSelectedId(id);
     setSelectedHost(null);
+    setSelectedEdge(null);
     if (id !== null) setSide("details");
   };
   const selectHost = (id: string | null) => {
     setSelectedHost(id);
     if (id !== null) {
       setSelectedId(null);
+      setSelectedEdge(null);
+      setSide("details");
+    }
+  };
+  const selectEdge = (edge: SelectedEdge | null) => {
+    setSelectedEdge(edge);
+    if (edge !== null) {
+      setSelectedId(null);
+      setSelectedHost(null);
       setSide("details");
     }
   };
@@ -247,6 +259,8 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                   memory={memory}
                   onSelectHost={selectHost}
                   selectedHost={infraOn ? selectedHost : null}
+                  onSelectEdge={selectEdge}
+                  selectedEdge={selectedEdge}
                   topInset={infraOn ? overlayBottom : 0}
                 />
               )}
@@ -319,9 +333,13 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
             {side === "details" ? (
               <aside className="min-h-0 flex-1 overflow-auto" aria-label="Inspector">
                 <Inspector
+                  projectId={projectId}
+                  environmentId={environmentId}
                   state={state}
                   actions={actions}
                   selectedId={selectedId}
+                  selectedEdge={selectedEdge}
+                  onSelectEdge={selectEdge}
                   onSelect={select}
                   compare={compare}
                   onCloseCompare={() => setCompare(null)}

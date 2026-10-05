@@ -225,6 +225,30 @@ pub struct ResourceAddressRow {
     pub calls: u64,
 }
 
+/// Which spans make up one map edge (mirrors how the topology derives it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EdgeSpans {
+    /// Service → service: server/consumer spans of `target` whose parent span is in `source`.
+    Call { source: String, target: String },
+    /// Service → database, queue or external host: client spans of `source` to `target`.
+    Dependency { source: String, target: String },
+    /// Outside world → service: root server spans of `target`.
+    ExternalClients { target: String },
+}
+
+/// Calls over one edge in one time bucket and the HTTP body bytes they declared
+/// (`http.request.body.size` / `http.response.body.size`).
+#[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
+pub struct EdgeTrafficRow {
+    /// Bucket index counted from the query's `from`, by call start time.
+    pub bucket: i64,
+    pub calls: u64,
+    /// Calls that declared at least one of the two sizes.
+    pub sized_calls: u64,
+    pub request_bytes: u64,
+    pub response_bytes: u64,
+}
+
 /// Request latency of one service instance now and in the baseline before it.
 #[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
 pub struct InstanceLatencyRow {
@@ -551,6 +575,44 @@ fn resource_addresses_sql() -> String {
     )
 }
 
+const REQUEST_SIZE: &str = "toUInt64OrNull(attributes['http.request.body.size'])";
+const RESPONSE_SIZE: &str = "toUInt64OrNull(attributes['http.response.body.size'])";
+
+/// Per bucket of `bucket_ns` from `from`: calls over the edge and their declared body bytes.
+/// Binds: from, bucket size, the edge's inner binds (see [`ChStore::edge_traffic`]), limit.
+/// For a service call the callee's sizes win and the caller's fill in what it did not report.
+fn edge_traffic_sql(edge: &EdgeSpans) -> String {
+    let window = "start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)";
+    let inner = match edge {
+        EdgeSpans::Call { .. } => format!(
+            "SELECT c.start_time AS t, coalesce(c.c_req, p.p_req) AS req, coalesce(c.c_resp, p.p_resp) AS resp
+             FROM
+               (SELECT trace_id, span_id, {REQUEST_SIZE} AS p_req, {RESPONSE_SIZE} AS p_resp FROM spans FINAL
+                WHERE {SCOPE_WHERE} AND {window} AND service_id = ?) AS p
+             INNER JOIN
+               (SELECT trace_id, parent_span_id, start_time, {REQUEST_SIZE} AS c_req, {RESPONSE_SIZE} AS c_resp
+                FROM spans FINAL
+                WHERE {SCOPE_WHERE} AND {window} AND service_id = ? AND kind IN (2, 5) AND parent_span_id != '') AS c
+             ON p.trace_id = c.trace_id AND p.span_id = c.parent_span_id"
+        ),
+        EdgeSpans::Dependency { .. } => format!(
+            "SELECT start_time AS t, {REQUEST_SIZE} AS req, {RESPONSE_SIZE} AS resp FROM spans FINAL
+             WHERE {SCOPE_WHERE} AND {window} AND service_id = ? AND target_entity_id = ?"
+        ),
+        EdgeSpans::ExternalClients { .. } => format!(
+            "SELECT start_time AS t, {REQUEST_SIZE} AS req, {RESPONSE_SIZE} AS resp FROM spans FINAL
+             WHERE {SCOPE_WHERE} AND {window} AND service_id = ? AND kind = 2 AND parent_span_id = ''"
+        ),
+    };
+    format!(
+        "SELECT intDiv(toUnixTimestamp64Nano(t) - ?, ?) AS bucket, count() AS calls,
+                countIf(isNotNull(req) OR isNotNull(resp)) AS sized_calls,
+                toUInt64(sum(ifNull(req, 0))) AS request_bytes, toUInt64(sum(ifNull(resp, 0))) AS response_bytes
+         FROM ({inner})
+         GROUP BY bucket ORDER BY bucket LIMIT ?"
+    )
+}
+
 fn bind_scope(q: clickhouse::query::Query, s: &Scope) -> clickhouse::query::Query {
     q.bind(s.tenant_id.as_str()).bind(s.project_id.as_str()).bind(s.environment_id.as_str())
 }
@@ -732,6 +794,30 @@ impl ChStore {
     ) -> Result<Vec<ResourceAddressRow>> {
         let q = self.client.query(&resource_addresses_sql());
         Ok(bind_scope(q, s).bind(from).bind(to).bind(limit).fetch_all().await?)
+    }
+
+    /// Calls over one edge per bucket of `bucket_ns` in `[from, to)` (see [`EdgeTrafficRow`]).
+    pub async fn edge_traffic(
+        &self,
+        s: &Scope,
+        edge: &EdgeSpans,
+        from: i64,
+        to: i64,
+        bucket_ns: i64,
+        limit: u32,
+    ) -> Result<Vec<EdgeTrafficRow>> {
+        let q = self.client.query(&edge_traffic_sql(edge)).bind(from).bind(bucket_ns);
+        let q = match edge {
+            EdgeSpans::Call { source, target } => {
+                let q = bind_scope(q, s).bind(from.saturating_sub(SPAN_LOOKBACK_NS)).bind(to).bind(source.as_str());
+                bind_scope(q, s).bind(from).bind(to).bind(target.as_str())
+            }
+            EdgeSpans::Dependency { source, target } => {
+                bind_scope(q, s).bind(from).bind(to).bind(source.as_str()).bind(target.as_str())
+            }
+            EdgeSpans::ExternalClients { target } => bind_scope(q, s).bind(from).bind(to).bind(target.as_str()),
+        };
+        Ok(q.bind(limit).fetch_all().await?)
     }
 
     // ------------------------------------------------------------ reads
@@ -1201,6 +1287,34 @@ mod tests {
         for column in ["target_kind", "target_name", "target_entity_id"] {
             assert!(!sql.contains(&format!("AS {column}")), "{column} is aliased: {sql}");
         }
+    }
+
+    #[test]
+    fn edge_traffic_sql_is_scoped_reads_only_sizes_and_binds_match() {
+        let (s, t) = ("a".to_owned(), "b".to_owned());
+        // from + bucket size, then per edge kind (as bound in `edge_traffic`), then limit.
+        let cases = [
+            (EdgeSpans::Call { source: s.clone(), target: t.clone() }, 2 * (3 + 2 + 1), 2),
+            (EdgeSpans::Dependency { source: s.clone(), target: t.clone() }, 3 + 2 + 2, 1),
+            (EdgeSpans::ExternalClients { target: t.clone() }, 3 + 2 + 1, 1),
+        ];
+        for (edge, inner, scopes) in cases {
+            let sql = edge_traffic_sql(&edge);
+            assert_eq!(placeholders(&sql), 2 + inner + 1, "{edge:?}: {sql}");
+            assert_eq!(scoped_where_count(&sql), scopes, "{edge:?}: {sql}");
+            assert!(sql.contains("FROM spans FINAL"), "{sql}");
+            assert!(sql.contains("http.request.body.size") && sql.contains("http.response.body.size"), "{sql}");
+            // Only declared sizes: never payloads or statements.
+            for forbidden in ["'http.request.body'", "'http.response.body'", "db.statement", "db.query.text"] {
+                assert!(!sql.contains(forbidden), "{forbidden}: {sql}");
+            }
+            // Edge ends are bound, never formatted in.
+            assert!(!sql.contains("'a'") && !sql.contains("'b'"), "{sql}");
+        }
+        let call = edge_traffic_sql(&EdgeSpans::Call { source: s, target: t });
+        assert!(call.contains("kind IN (2, 5)") && call.contains("p.span_id = c.parent_span_id"), "{call}");
+        let clients = edge_traffic_sql(&EdgeSpans::ExternalClients { target: "x".into() });
+        assert!(clients.contains("kind = 2 AND parent_span_id = ''"), "{clients}");
     }
 
     #[test]

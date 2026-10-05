@@ -7,6 +7,8 @@ import { Icon } from "@/components/ui/Icon";
 import { formatClock } from "@/lib/time";
 import { externalExplanation, externalLabel } from "@/renderer/external";
 import { HostCard, ResourceRunsOn, RunsOn, SignalLinks, type OpenSignals } from "./InfraInspector";
+import { EdgeInspector } from "./EdgeInspector";
+import type { SelectedEdge } from "./edge-traffic";
 
 const STATUS_CLASS: Record<string, string> = {
   healthy: "text-accent",
@@ -16,9 +18,14 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 interface Props {
+  projectId: string;
+  environmentId: string;
   state: EngineState;
   actions: WorkspaceActions;
   selectedId: string | null;
+  /** Map line open in the inspector. */
+  selectedEdge: SelectedEdge | null;
+  onSelectEdge: (edge: SelectedEdge | null) => void;
   onSelect: (id: string | null) => void;
   compare: { a: bigint; b: bigint; diffs: NodeDiff[] } | null;
   onCloseCompare: () => void;
@@ -30,9 +37,13 @@ interface Props {
 }
 
 export function Inspector({
+  projectId,
+  environmentId,
   state,
   actions,
   selectedId,
+  selectedEdge,
+  onSelectEdge,
   onSelect,
   compare,
   onCloseCompare,
@@ -58,6 +69,22 @@ export function Inspector({
   }, [actions, selectedId, summaryKey]);
 
   if (compare) return <CompareView compare={compare} onClose={onCloseCompare} onSelect={onSelect} />;
+
+  if (selectedEdge) {
+    return (
+      <EdgeInspector
+        key={`${selectedEdge.source}>${selectedEdge.target}`}
+        projectId={projectId}
+        environmentId={environmentId}
+        state={state}
+        actions={actions}
+        edge={selectedEdge}
+        onClose={() => onSelectEdge(null)}
+        onSelect={onSelect}
+        onSignals={onSignals}
+      />
+    );
+  }
 
   const host = selectedHost ? infra?.hosts.find((h) => h.id === selectedHost) : undefined;
   if (host && infra) {
@@ -158,6 +185,17 @@ export function Inspector({
                   <span className="ml-auto text-muted">
                     {e.relation} · <span className={e.provenance === "inferred" ? "text-warn" : ""}>{e.provenance}</span>
                   </span>
+                  <button
+                    type="button"
+                    className="btn btn-icon btn-sm"
+                    aria-label={`Open link ${e.dir === "out" ? `${node.name} → ${e.other.name}` : `${e.other.name} → ${node.name}`}`}
+                    title="Calls and data flow over this link"
+                    onClick={() =>
+                      onSelectEdge(e.dir === "out" ? { source: node.id, target: e.other.id } : { source: e.other.id, target: node.id })
+                    }
+                  >
+                    <Icon name="activity" className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 {e.reasons.length > 0 ? (
                   <ul className="mt-1 text-muted">

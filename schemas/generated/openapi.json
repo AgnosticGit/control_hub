@@ -2646,6 +2646,120 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/edges/traffic": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "operationId": "edge_traffic",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Required. Node ID the edge leaves (a service, or the environment's external-clients node).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "description": "Required. Node ID the edge enters (a service, database, queue or external host).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "relation",
+            "in": "query",
+            "description": "Required. `calls` or `depends_on`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Start, unix epoch nanoseconds as a decimal string. Default: `to - 15m`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "End (exclusive), unix epoch nanoseconds as a decimal string. Default: now.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "buckets",
+            "in": "query",
+            "description": "Number of buckets (default 60, max 600).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EdgeTraffic"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/environments/{environment_id}/events": {
       "get": {
         "tags": [
@@ -5514,6 +5628,162 @@
               "null"
             ],
             "description": "Required when rejecting."
+          }
+        }
+      },
+      "EdgeRelation": {
+        "type": "string",
+        "enum": [
+          "calls",
+          "depends_on"
+        ]
+      },
+      "EdgeTraffic": {
+        "type": "object",
+        "description": "Calls and bytes over one edge. Byte rates are `null` when no call in the range declared a size.",
+        "required": [
+          "source",
+          "target",
+          "relation",
+          "from_ns",
+          "to_ns",
+          "buckets",
+          "bucket_ns",
+          "calls",
+          "sized_calls",
+          "request_bytes",
+          "response_bytes",
+          "total_calls",
+          "total_sized_calls",
+          "total_request_bytes",
+          "total_response_bytes"
+        ],
+        "properties": {
+          "avg_request_bps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Bytes per second averaged over the whole range."
+          },
+          "avg_response_bps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "bucket_ns": {
+            "type": "string",
+            "description": "Bucket `i` covers `[from + i * bucket_ns, from + (i + 1) * bucket_ns)`, by call start."
+          },
+          "buckets": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "calls": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          "from_ns": {
+            "type": "string"
+          },
+          "peak_request_at_ns": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "peak_request_bps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Bytes per second in the busiest bucket and where it starts."
+          },
+          "peak_response_at_ns": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "peak_response_bps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "relation": {
+            "$ref": "#/components/schemas/EdgeRelation"
+          },
+          "request_bytes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          "response_bytes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          "size_coverage": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "`total_sized_calls / total_calls`; `null` without calls."
+          },
+          "sized_calls": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "to_ns": {
+            "type": "string"
+          },
+          "total_calls": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_request_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_response_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_sized_calls": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },

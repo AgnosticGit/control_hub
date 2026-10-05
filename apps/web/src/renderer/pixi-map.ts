@@ -27,6 +27,7 @@ import {
 } from "@karbird/web-engine";
 import { CHIP_H, CHIP_W, FRAME_HEADER, NOISY_LINK, badgeText, chipAt, frameAt, frameLook, linkArc, linkLabelAt } from "./infra-layer";
 import { DEFAULT_EDGE_STYLE, build, dashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
+import { edgeAt, midpoint } from "./edge-hit";
 import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
 import { dashedRect, nodeSubLabel } from "./external";
 import { ACCENT, CARD_BG, EDGE_ERROR, EDGE_INFERRED, EDGE_OK, EDGE_WARN, EXTERNAL_COLOR, STATUS_COLORS } from "./map-colors";
@@ -48,7 +49,13 @@ export interface MapCallbacks {
   onPick(worldX: number, worldY: number): void;
   /** A click on a machine frame (infrastructure layer) outside any card or chip. */
   onPickHost?(hostId: string): void;
+  /** A click on a line between two cards (engine edge index). */
+  onPickEdge?(index: number): void;
 }
+
+/** How close (screen px) a click must land to a line to select it. */
+const EDGE_HIT_PX = 7;
+const EDGE_SELECTED = 0x22d3ee;
 
 const MIN_SCALE = 0.15;
 const MAX_SCALE = 4;
@@ -142,6 +149,8 @@ export class PixiMap {
   private kinds: EntityKindDto[] = [];
   private colors = new Map<number, number>();
   private selectedIndex: number | null = null;
+  private selectedEdge: number | null = null;
+  private edgeAnchors = "";
   private fitted = false;
   /** The camera is where `fit` put it (no pan or zoom since). */
   private cameraIsFit = false;
@@ -235,6 +244,14 @@ export class PixiMap {
 
   setSelected(index: number | null) {
     this.selectedIndex = index;
+    if (this.frame) this.draw(this.frame);
+  }
+
+  /** Highlights the line open in the inspector (engine edge index). */
+  setSelectedEdge(index: number | null) {
+    if (index === this.selectedEdge) return;
+    this.selectedEdge = index;
+    this.host?.setAttribute("data-selected-edge", index === null ? "" : String(index));
     if (this.frame) this.draw(this.frame);
   }
 
@@ -395,6 +412,24 @@ export class PixiMap {
     const s = this.world.scale.x;
     const r = cullRect({ x: -this.world.x / s, y: -this.world.y / s, width: app.screen.width / s, height: app.screen.height / s }, CARD_W / 2 + 8);
     this.callbacks.onViewport(r.x, r.y, r.width, r.height, s);
+    this.publishEdgeAnchors();
+  }
+
+  /**
+   * Midpoints of the drawn lines in canvas pixels (`index:x,y;…`), for tests and debugging:
+   * the canvas itself is opaque to the accessibility tree.
+   */
+  private publishEdgeAnchors() {
+    const s = this.world.scale.x;
+    const parts: string[] = [];
+    for (const [index, g] of this.edgeGeom) {
+      const m = midpoint(g.path.pts);
+      if (m) parts.push(`${index}:${Math.round(m[0] * s + this.world.x)},${Math.round(m[1] * s + this.world.y)}`);
+    }
+    const next = parts.join(";");
+    if (next === this.edgeAnchors) return;
+    this.edgeAnchors = next;
+    this.host?.setAttribute("data-edge-anchors", next);
   }
 
   /** Clicks anywhere on a card select it; the engine picks by the node centre. */
@@ -414,6 +449,14 @@ export class PixiMap {
     if (chip) {
       this.callbacks.onPick(chip.x, chip.y);
       return;
+    }
+    if (this.callbacks.onPickEdge) {
+      const paths = Array.from(this.edgeGeom, ([i, g]) => [i, g.path] as const);
+      const edge = edgeAt(paths, wx, wy, EDGE_HIT_PX / this.world.scale.x);
+      if (edge !== null) {
+        this.callbacks.onPickEdge(edge);
+        return;
+      }
     }
     const machine = frameAt(this.infraView, wx, wy);
     if (machine && this.callbacks.onPickHost) {
@@ -595,6 +638,7 @@ export class PixiMap {
       if (!path) continue;
       this.edgeGeom.set(index, { path, color });
       const e = (flags & FLAG_DIMMED) !== 0 ? this.edgesDim : this.edges;
+      if (index === this.selectedEdge) line(e, path.pts).stroke({ color: EDGE_SELECTED, width: 10, alpha: 0.35, ...LINE_STYLE });
       const width = highlight ? 2.5 : 1.25 + Math.min(1.5, Math.log10(1 + calls) * 0.6);
       if (inferred) {
         for (const dash of dashes(path, 6, 5)) line(e, dash);
@@ -605,6 +649,7 @@ export class PixiMap {
       }
       arrow(e, path, color);
     }
+    this.publishEdgeAnchors();
   }
 
   private drawNodes(f: Frame) {

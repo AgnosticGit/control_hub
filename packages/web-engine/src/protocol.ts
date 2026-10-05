@@ -6,6 +6,7 @@
 
 import type {
   Diagnostics,
+  EdgeMetrics,
   EngineConfig,
   Filters,
   FrameSummary,
@@ -29,6 +30,8 @@ export type WorkerRequest =
   /** Frames carry request hops overlapping `[time - beforeNs, time + afterNs]`. */
   | { kind: "setHopWindow"; beforeNs: string; afterNs: string }
   | { kind: "nodeMetrics"; id: number; nodeId: string; atNs?: string }
+  /** Traffic over the edge `sourceId → targetId` in the rolling window (`EdgeMetrics`). */
+  | { kind: "edgeMetrics"; id: number; sourceId: string; targetId: string; atNs?: string }
   | { kind: "compare"; id: number; aNs: string; bNs: string }
   /** Time of the first recorded item strictly after `afterNs`, or null. */
   | { kind: "nextEvent"; id: number; afterNs: string }
@@ -81,6 +84,7 @@ export interface ResultMap {
   loadInfrastructure: InfrastructureSnapshot;
   evictBefore: null;
   nodeMetrics: NodeMetrics | null;
+  edgeMetrics: EdgeMetrics | null;
   compare: NodeDiff[];
   nextEvent: string | null;
   prevEvent: string | null;

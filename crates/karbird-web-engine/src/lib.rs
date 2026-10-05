@@ -129,6 +129,20 @@ impl WebEngine {
         }
     }
 
+    /// Traffic over the edge `source_id → target_id`; `null` when there is no such edge.
+    #[wasm_bindgen(js_name = getEdgeMetrics)]
+    pub fn get_edge_metrics(
+        &mut self,
+        source_id: &str,
+        target_id: &str,
+        at_ns: Option<i64>,
+    ) -> Result<JsValue, JsValue> {
+        match self.inner.edge_metrics(source_id, target_id, at_ns) {
+            Some(m) => to_js(&m),
+            None => Ok(JsValue::NULL),
+        }
+    }
+
     pub fn compare(&mut self, a_ns: i64, b_ns: i64) -> Result<JsValue, JsValue> {
         to_js(&self.inner.compare(a_ns, b_ns))
     }

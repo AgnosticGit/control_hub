@@ -5,6 +5,7 @@ import type { Frame, FrameSummary, TopologyView } from "@karbird/web-engine";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import type { EdgeStyle } from "@/renderer/edge-path";
 import type { PixiMap } from "@/renderer/pixi-map";
+import { edgeEnds, edgeIndex, type SelectedEdge } from "./edge-traffic";
 import { setEdgeStyle, useEdgeStyle } from "./edgeStyleStore";
 import { LIVE_ANIM_DELAY_MS, animClockFor, type Mode, type Speed, type WorkspaceActions } from "./useWorkspaceEngine";
 import { MapKey } from "./MapKey";
@@ -39,11 +40,30 @@ interface Props {
   onSelectHost: (hostId: string) => void;
   /** Machine open in the inspector; its frame is highlighted. */
   selectedHost?: string | null;
+  /** A click on a line between two cards. */
+  onSelectEdge?: (edge: SelectedEdge) => void;
+  /** Line open in the inspector; it is highlighted. */
+  selectedEdge?: SelectedEdge | null;
   /** Screen pixels at the top of the map covered by an overlay. */
   topInset?: number;
 }
 
-export function MapView({ actions, topology, selectedId, onSelect, forceTable, mode, speed, summary, memory, onSelectHost, selectedHost = null, topInset = 0 }: Props) {
+export function MapView({
+  actions,
+  topology,
+  selectedId,
+  onSelect,
+  forceTable,
+  mode,
+  speed,
+  summary,
+  memory,
+  onSelectHost,
+  selectedHost = null,
+  onSelectEdge,
+  selectedEdge = null,
+  topInset = 0,
+}: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<PixiMap | null>(null);
   const [webglError, setWebglError] = useState<string | null>(null);
@@ -62,6 +82,16 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable, m
     selectedHostRef.current = selectedHost;
     mapRef.current?.setSelectedHost(selectedHost);
   }, [selectedHost]);
+  const onSelectEdgeRef = useRef(onSelectEdge);
+  const selectedEdgeIndex = edgeIndex(topology, selectedEdge);
+  const selectedEdgeRef = useRef(selectedEdgeIndex);
+  useEffect(() => {
+    onSelectEdgeRef.current = onSelectEdge;
+  }, [onSelectEdge]);
+  useEffect(() => {
+    selectedEdgeRef.current = selectedEdgeIndex;
+    mapRef.current?.setSelectedEdge(selectedEdgeIndex);
+  }, [selectedEdgeIndex]);
   useEffect(() => {
     topInsetRef.current = topInset;
     mapRef.current?.setTopInset(topInset);
@@ -99,6 +129,10 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable, m
             void actions.pick(x, y).then((id) => onSelectRef.current(id));
           },
           onPickHost: (hostId) => onSelectHostRef.current(hostId),
+          onPickEdge: (index) => {
+            const edge = edgeEnds(topologyRef.current, index);
+            if (edge) onSelectEdgeRef.current?.(edge);
+          },
         });
         await map.mount(host);
         if (disposed) {
@@ -113,6 +147,7 @@ export function MapView({ actions, topology, selectedId, onSelect, forceTable, m
         map.setEdgeStyle(edgeStyleRef.current);
         map.setTopInset(topInsetRef.current);
         map.setSelectedHost(selectedHostRef.current);
+        map.setSelectedEdge(selectedEdgeRef.current);
         map.setTopology(topo);
         const sel = selectedRef.current;
         map.setSelected(sel ? (topo?.nodes.find((n) => n.id === sel)?.index ?? null) : null);

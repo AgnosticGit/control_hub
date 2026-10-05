@@ -3,7 +3,8 @@
 // Thin, explicit wrapper over the official OpenTelemetry SDK:
 // - traces and logs are exported with standard OTLP/HTTP protobuf;
 // - HTTP server/client and `pg` are auto-instrumented;
-// - request/response headers and bodies are never recorded;
+// - request/response headers and bodies are never recorded; only the declared
+//   Content-Length becomes `http.{request,response}.body.size` (see `body-size.js`);
 // - process command-line arguments are not attached to the resource
 //   (automatic resource detection is disabled on purpose); only host.name,
 //   container.id and process.pid are added (see `resource.js`);
@@ -21,6 +22,7 @@ import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
 import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
+import { bodySizeAttributes } from './body-size.js';
 import { EventsClient } from './events.js';
 import { PreciseStartSpanProcessor } from './precise-start.js';
 import { infraAttributes } from './resource.js';
@@ -117,6 +119,9 @@ export function startKarbird(options = {}) {
         spanId: ctx.spanId,
         attributes: { 'http.response.status_code': String(res.statusCode) },
       });
+    },
+    applyCustomAttributesOnSpan: (span, req, res) => {
+      span.setAttributes(bodySizeAttributes(req, res));
     },
   });
 

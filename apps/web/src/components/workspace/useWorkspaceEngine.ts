@@ -464,6 +464,8 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     pick: async (x: number, y: number) => (await clientRef.current?.call({ kind: "pick", x, y })) ?? null,
     nodeMetrics: async (nodeId: string, at?: bigint) =>
       (await clientRef.current?.call({ kind: "nodeMetrics", nodeId, atNs: at?.toString() })) ?? null,
+    edgeMetrics: async (sourceId: string, targetId: string, at?: bigint) =>
+      (await clientRef.current?.call({ kind: "edgeMetrics", sourceId, targetId, atNs: at?.toString() })) ?? null,
     compare: async (a: bigint, b: bigint) =>
       (await clientRef.current?.call({ kind: "compare", aNs: a.toString(), bNs: b.toString() })) ?? [],
     diagnostics: async () => (await clientRef.current?.call({ kind: "diagnostics" })) ?? null,

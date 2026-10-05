@@ -20,3 +20,4 @@
 | [0016](0016-retention-config.md) | ClickHouse retention from one setting per signal, applied by bootstrap, checked at startup | Accepted |
 | [0017](0017-two-host-deploy.md) | Prebuilt GHCR images, two-host Compose deploy from GitHub Actions, `migrate` instead of `bootstrap` | Accepted |
 | [0018](0018-infrastructure-metrics.md) | Machine and container metrics (gauges/sums) from the Karbird agent; Infrastructure layer and noisy-neighbour rule | Accepted |
+| [0019](0019-edge-traffic.md) | Link statistics from the engine; data flow from declared HTTP body sizes (unknown is not zero) | Accepted |

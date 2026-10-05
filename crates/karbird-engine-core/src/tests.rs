@@ -1238,3 +1238,89 @@ fn nodes_discovered_later_are_placed_after_relayout() {
         assert!(!inside, "a service on no known machine stays outside {}", f.host_id);
     }
 }
+
+// ------------------------------------------------------------------ edge metrics
+
+/// gateway calls orders `n` times, one call per second starting at t=1 s; call `i` lasts
+/// `(i + 1) * 10` ms and every third call fails.
+fn edge_calls(n: i64) -> Vec<TimelineItem> {
+    let mut items = Vec::new();
+    for i in 0..n {
+        let (t, start, dur) = (format!("e{i}"), (i + 1) * SEC, (i + 1) * 10 * MS);
+        items.push(TimelineItem::Span(span(&t, "g", None, "gateway", 3, start, start + dur + 2 * MS, false)));
+        items.push(TimelineItem::Span(span(&t, "o", Some("g"), "orders", 2, start + MS, start + MS + dur, i % 3 == 0)));
+    }
+    items
+}
+
+#[test]
+fn edge_metrics_count_calls_errors_and_latency_of_the_edge() {
+    let mut e = engine_with(edge_calls(10));
+    e.seek(BASE + 20 * SEC, 1);
+    let m = e.edge_metrics("svc_gateway", "svc_orders", None).unwrap();
+    assert_eq!((m.source_name.as_str(), m.target_name.as_str()), ("gateway", "orders"));
+    assert_eq!((m.relation, m.provenance), (RelationKindDto::Calls, ProvenanceDto::Observed));
+    assert_eq!((m.window_calls, m.window_errors, m.active), (10, 4, 0));
+    assert_eq!(m.window_ns, 30 * SEC);
+    assert!((m.calls_per_min - 20.0).abs() < 1e-9, "{}", m.calls_per_min);
+    assert!((m.error_ratio.unwrap() - 0.4).abs() < 1e-9);
+    assert_eq!(m.status, HealthStatusDto::Degraded);
+    assert_eq!(m.status_reason, "4/10 failed (40.0%)");
+    let l = m.latency.unwrap();
+    assert_eq!(l.samples, 10);
+    assert!((l.avg_ms - 55.0).abs() < 1e-9, "{}", l.avg_ms);
+    assert_eq!((l.p50_ms, l.p95_ms, l.max_ms), (50.0, 100.0, 100.0));
+    assert_eq!(m.calls_series.len(), EDGE_SERIES_BUCKETS);
+    assert_eq!(m.calls_series.iter().sum::<u32>(), 10);
+    assert_eq!(m.errors_series.iter().sum::<u32>(), 4);
+}
+
+#[test]
+fn edge_metrics_reflect_the_requested_moment() {
+    let mut e = engine_with(edge_calls(10));
+    e.seek(BASE + 20 * SEC, 1);
+    // At t = 3.005 s two calls have started; the second is still in flight.
+    let m = e.edge_metrics("svc_gateway", "svc_orders", Some(BASE + 2 * SEC + 5 * MS)).unwrap();
+    assert_eq!((m.window_calls, m.active), (2, 1));
+    assert_eq!(m.latency.unwrap().samples, 1);
+    // Long before any data the edge exists but carries nothing.
+    let quiet = e.edge_metrics("svc_gateway", "svc_orders", Some(BASE - 100 * SEC)).unwrap();
+    assert_eq!((quiet.window_calls, quiet.status, quiet.latency), (0, HealthStatusDto::Unknown, None));
+    assert_eq!(quiet.error_ratio, None);
+    assert_eq!(quiet.status_reason, "no calls in window");
+}
+
+#[test]
+fn edge_metrics_unknown_edge_or_reversed_direction_is_none() {
+    let mut e = engine_with(edge_calls(3));
+    assert!(e.edge_metrics("svc_orders", "svc_gateway", None).is_none());
+    assert!(e.edge_metrics("svc_gateway", "svc_nope", None).is_none());
+}
+
+#[test]
+fn edge_metrics_cover_resource_and_external_edges() {
+    let mut e = external_engine();
+    e.seek(BASE + 20 * MS, 1);
+    let out = e.edge_metrics("svc_api", "ext_pay", None).unwrap();
+    assert_eq!((out.relation, out.window_calls, out.window_errors), (RelationKindDto::DependsOn, 1, 1));
+    assert_eq!(out.latency.unwrap().max_ms, 4.0);
+    let inb = e.edge_metrics("ext_clients", "svc_api", None).unwrap();
+    assert_eq!((inb.relation, inb.window_calls, inb.window_errors), (RelationKindDto::Calls, 1, 0));
+    assert_eq!(inb.latency.unwrap().max_ms, 10.0);
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(48))]
+    /// The sparkline and the counters describe the same calls, and percentiles are ordered.
+    #[test]
+    fn edge_metrics_series_match_counters(n in 1i64..25, at in 0i64..40) {
+        let mut e = engine_with(edge_calls(n));
+        let m = e.edge_metrics("svc_gateway", "svc_orders", Some(BASE + at * SEC)).unwrap();
+        prop_assert_eq!(m.calls_series.iter().sum::<u32>(), m.window_calls);
+        prop_assert_eq!(m.errors_series.iter().sum::<u32>(), m.window_errors);
+        if let Some(l) = m.latency {
+            prop_assert!(l.p50_ms <= l.p95_ms && l.p95_ms <= l.max_ms);
+            prop_assert!(l.avg_ms <= l.max_ms + 1e-9);
+        }
+    }
+}

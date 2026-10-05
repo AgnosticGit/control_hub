@@ -216,6 +216,7 @@ mod tests {
             "db.system",
             "db.name",
             "http.request.body.size",
+            "http.response.body.size",
             "",
             "ключ",
         ] {

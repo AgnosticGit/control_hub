@@ -44,6 +44,7 @@ use crate::routes;
         routes::telemetry::events,
         routes::telemetry::timeline,
         routes::telemetry::coverage,
+        routes::edge_traffic::edge_traffic,
         routes::infrastructure::infrastructure,
         routes::infra_timeline::infra_timeline,
         routes::live::live,

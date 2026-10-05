@@ -42,6 +42,8 @@ pub const FLAG_DIMMED: u32 = 32;
 /// Node outside the project's architecture (external dependency or external client), or an
 /// edge touching one.
 pub const FLAG_EXTERNAL: u32 = 64;
+/// Slices of the rolling window in [`EdgeMetrics::calls_series`].
+pub const EDGE_SERIES_BUCKETS: usize = 15;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
@@ -817,6 +819,87 @@ impl Engine {
         Some(m.to_metrics(n))
     }
 
+    /// Traffic over the edge `source_id → target_id` in the rolling window ending at `at`
+    /// (defaults to the current time). `None` when no such edge exists.
+    pub fn edge_metrics(&mut self, source_id: &str, target_id: &str, at: Option<i64>) -> Option<EdgeMetrics> {
+        self.ensure_timeline();
+        let s = *self.node_index.get(source_id)?;
+        let t = *self.node_index.get(target_id)?;
+        let (idx, rec) = self.edges.iter().enumerate().find(|(_, e)| e.source == s && e.target == t)?;
+        let time = at.or(self.current_time).unwrap_or(0);
+        let window = self.config.rolling_window_ns.max(1);
+        let (now, past) = self.states_at(Some(time));
+        let calls = (now.edge(idx, E_CALLS) - past.edge(idx, E_CALLS)).max(0);
+        let errors = (now.edge(idx, E_ERRORS) - past.edge(idx, E_ERRORS)).max(0);
+        let active = now.edge(idx, E_ACTIVE).max(0);
+
+        let from = time.saturating_sub(window);
+        let slice = |ts: i64| -> Option<usize> {
+            (ts > from && ts <= time).then(|| {
+                let off = i128::from(ts - from - 1) * EDGE_SERIES_BUCKETS as i128 / i128::from(window);
+                (off.max(0) as usize).min(EDGE_SERIES_BUCKETS - 1)
+            })
+        };
+        let mut calls_series = vec![0u32; EDGE_SERIES_BUCKETS];
+        let mut errors_series = vec![0u32; EDGE_SERIES_BUCKETS];
+        let mut durations: Vec<i64> = Vec::new();
+        for span in self.spans.values() {
+            let in_start = slice(span.start_ns);
+            let in_end = slice(span.end_ns);
+            if in_start.is_none() && in_end.is_none() {
+                continue;
+            }
+            let Some(&node) = self.node_index.get(&span.service_id) else { continue };
+            if !matches!(self.span_edge(span, node), EdgeLookup::Existing(e) if e as usize == idx) {
+                continue;
+            }
+            if let Some(b) = in_start
+                && let Some(c) = calls_series.get_mut(b)
+            {
+                *c += 1;
+            }
+            if let Some(b) = in_end {
+                durations.push(span.end_ns.saturating_sub(span.start_ns).max(0));
+                if span.is_error
+                    && let Some(c) = errors_series.get_mut(b)
+                {
+                    *c += 1;
+                }
+            }
+        }
+
+        let (status, status_reason) = match classify(calls, errors, &self.config) {
+            (HealthStatus::Unknown, _) if active > 0 => {
+                (HealthStatus::Healthy, format!("{active} call(s) in flight, none started in window"))
+            }
+            (HealthStatus::Unknown, _) => (HealthStatus::Unknown, "no calls in window".into()),
+            other => other,
+        };
+        let source = self.nodes.get(s as usize)?;
+        let target = self.nodes.get(t as usize)?;
+        Some(EdgeMetrics {
+            source: source.id.clone(),
+            source_name: source.name.clone(),
+            target: target.id.clone(),
+            target_name: target.name.clone(),
+            relation: rec.relation.into(),
+            provenance: rec.provenance.into(),
+            reasons: rec.reasons.clone(),
+            status: status.into(),
+            status_reason,
+            time_ns: time,
+            window_ns: window,
+            active: u32::try_from(active).unwrap_or(u32::MAX),
+            window_calls: u32::try_from(calls).unwrap_or(u32::MAX),
+            window_errors: u32::try_from(errors).unwrap_or(u32::MAX),
+            calls_per_min: calls as f64 * 60e9 / window as f64,
+            error_ratio: (calls > 0).then(|| errors as f64 / calls as f64),
+            latency: latency_stats(&mut durations),
+            calls_series,
+            errors_series,
+        })
+    }
+
     /// Compare node state at two moments.
     pub fn compare(&mut self, a_ns: i64, b_ns: i64) -> Vec<NodeDiff> {
         self.ensure_timeline();
@@ -1334,6 +1417,27 @@ impl WindowMetrics {
             window_events: self.events.max(0) as u32,
         }
     }
+}
+
+/// Nearest-rank percentiles over call durations (ns); `None` for an empty set.
+fn latency_stats(durations: &mut [i64]) -> Option<EdgeLatency> {
+    if durations.is_empty() {
+        return None;
+    }
+    durations.sort_unstable();
+    let n = durations.len();
+    let rank = |p: f64| -> f64 {
+        let i = ((p * n as f64).ceil() as usize).clamp(1, n) - 1;
+        durations.get(i).copied().unwrap_or(0) as f64 / 1e6
+    };
+    let sum: i128 = durations.iter().map(|&d| i128::from(d)).sum();
+    Some(EdgeLatency {
+        samples: u32::try_from(n).unwrap_or(u32::MAX),
+        avg_ms: sum as f64 / n as f64 / 1e6,
+        p50_ms: rank(0.5),
+        p95_ms: rank(0.95),
+        max_ms: durations.last().copied().unwrap_or(0) as f64 / 1e6,
+    })
 }
 
 fn classify(completed: i64, errors: i64, cfg: &EngineConfig) -> (HealthStatus, String) {

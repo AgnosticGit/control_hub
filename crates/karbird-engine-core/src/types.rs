@@ -259,6 +259,56 @@ pub struct NodeMetrics {
     pub window_events: u32,
 }
 
+/// Traffic over one map edge in the rolling window ending at `time_ns`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EdgeMetrics {
+    pub source: String,
+    pub source_name: String,
+    pub target: String,
+    pub target_name: String,
+    pub relation: RelationKindDto,
+    pub provenance: ProvenanceDto,
+    pub reasons: Vec<String>,
+    pub status: HealthStatusDto,
+    pub status_reason: String,
+    #[serde(with = "nanos_string")]
+    #[cfg_attr(feature = "ts", ts(type = "string"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub time_ns: i64,
+    #[serde(with = "nanos_string")]
+    #[cfg_attr(feature = "ts", ts(type = "string"))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub window_ns: i64,
+    /// Calls in flight at `time_ns`.
+    pub active: u32,
+    /// Calls started in the window (the same counter that colours the edge).
+    pub window_calls: u32,
+    /// Failed calls that ended in the window.
+    pub window_errors: u32,
+    pub calls_per_min: f64,
+    /// `window_errors / window_calls`; `null` without calls.
+    pub error_ratio: Option<f64>,
+    /// Durations of calls that ended in the window; `null` when none did.
+    pub latency: Option<EdgeLatency>,
+    /// Calls by start time in `EDGE_SERIES_BUCKETS` equal slices of the window, oldest first.
+    pub calls_series: Vec<u32>,
+    /// Failed calls by end time, same slices as `calls_series`.
+    pub errors_series: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts", derive(TS), ts(export))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EdgeLatency {
+    pub samples: u32,
+    pub avg_ms: f64,
+    pub p50_ms: f64,
+    pub p95_ms: f64,
+    pub max_ms: f64,
+}
+
 /// Per-bucket aggregates and fine-zoom items for the layered timeline over `[from_ns, to_ns)`.
 /// Times inside are milliseconds relative to `from_ns`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

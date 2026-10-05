@@ -94,6 +94,7 @@ test('exports traces and logs over OTLP/HTTP protobuf with the ingest token', ()
     assert.ok(traces.includes(s), `${s} missing from the resource`);
   }
   assert.match(traces, /fixture-host-\d+/, 'instance ID derives from host.name');
+  assert.ok(traces.includes('http.request.body.size'), 'request body size from Content-Length missing');
 });
 
 test('never exports credentials, cookies, bodies or command-line arguments', () => {
