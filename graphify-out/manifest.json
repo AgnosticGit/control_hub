@@ -390,9 +390,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/MapView.tsx": {
-    "mtime": 1791137275.079837,
-    "seen": 1791139200.0860353,
-    "ast_hash": "b976d354cc0d545b90fc1924df2b1965",
+    "mtime": 1791164099.796407,
+    "seen": 1791164216.911596,
+    "ast_hash": "a7814f434609e7366691c5afec3dfe6c",
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/NodeTable.tsx": {
@@ -426,9 +426,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/Workspace.tsx": {
-    "mtime": 1791137283.8682857,
-    "seen": 1791139200.0871408,
-    "ast_hash": "0c924eeb6a421c5da5429c5892487f5f",
+    "mtime": 1791164104.2540324,
+    "seen": 1791164216.913074,
+    "ast_hash": "e2a7deb8fa007e6d932f3ed22c218498",
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/WorkspaceHost.tsx": {
@@ -798,9 +798,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/renderer/pixi-map.ts": {
-    "mtime": 1791137415.5759425,
-    "seen": 1791139200.0911436,
-    "ast_hash": "2a7a329cc760af09e7a8cbb7215c3c0d",
+    "mtime": 1791164090.48127,
+    "seen": 1791164216.9268837,
+    "ast_hash": "1ef414848501e7f412d9136a94c26a80",
     "semantic_hash": ""
   },
   "apps/web/src/renderer/service-colors.test.ts": {
@@ -3414,15 +3414,15 @@
     "semantic_hash": ""
   },
   "apps/web/src/renderer/infra-layer.test.ts": {
-    "mtime": 1791136936.2508473,
-    "seen": 1791139200.0911436,
-    "ast_hash": "fb35b4ffb87abd0b612b8ae9dfbc1089",
+    "mtime": 1791164076.403929,
+    "seen": 1791164216.9268837,
+    "ast_hash": "0bf7b0db47ba1b1352d73f90cfbbe884",
     "semantic_hash": ""
   },
   "apps/web/src/renderer/infra-layer.ts": {
-    "mtime": 1791136934.2112565,
-    "seen": 1791139200.0911436,
-    "ast_hash": "455b1c588ce9aed2367a44745d438b7c",
+    "mtime": 1791164073.9308558,
+    "seen": 1791164216.9268837,
+    "ast_hash": "82b00e0a03cb8129a0e2e7c75256c835",
     "semantic_hash": ""
   },
   "crates/karbird-api/src/routes/infrastructure.rs": {
@@ -3564,9 +3564,9 @@
     "semantic_hash": ""
   },
   "tests/e2e/specs/infrastructure.spec.ts": {
-    "mtime": 1791142803.0421562,
-    "seen": 1791144134.6579244,
-    "ast_hash": "e86e88d03bb3341ee547a060bfe6c36f",
+    "mtime": 1791164114.8213,
+    "seen": 1791164216.9733307,
+    "ast_hash": "8796f572e8d77260b6071007c225e295",
     "semantic_hash": ""
   },
   "tests/integration/infrastructure.test.mjs": {

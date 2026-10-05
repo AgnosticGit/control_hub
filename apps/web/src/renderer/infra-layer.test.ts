@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { InfraFrame, InfraView } from "@karbird/web-engine";
-import { CHIP_H, CHIP_W, INFRA_FRAME, INFRA_HOT, INFRA_NO_METRICS, badgeText, chipAt, frameAt, frameColor, linkArc, linkLabelAt } from "./infra-layer";
+import {
+  CHIP_H,
+  CHIP_W,
+  INFRA_FRAME,
+  INFRA_HOT,
+  INFRA_NO_METRICS,
+  INFRA_SELECTED,
+  badgeText,
+  chipAt,
+  frameAt,
+  frameColor,
+  frameLook,
+  linkArc,
+  linkLabelAt,
+} from "./infra-layer";
 
 const frame = (over: Partial<InfraFrame> = {}): InfraFrame => ({
   host_id: "vps-app",
@@ -42,6 +56,19 @@ describe("infra layer styling", () => {
     expect(frameColor(frame())).toBe(INFRA_FRAME);
     expect(frameColor(frame({ hot: true }))).toBe(INFRA_HOT);
     expect(frameColor(frame({ hot: true, has_metrics: false }))).toBe(INFRA_NO_METRICS);
+  });
+
+  it("highlights the selected machine over hot, agent-less and plain frames", () => {
+    for (const f of [frame(), frame({ hot: true }), frame({ has_metrics: false })]) {
+      const sel = frameLook(f, true);
+      const plain = frameLook(f, false);
+      expect(sel.color).toBe(INFRA_SELECTED);
+      expect(plain.color).toBe(frameColor(f));
+      expect(sel.strokeWidth).toBeGreaterThan(plain.strokeWidth);
+      expect(sel.fillAlpha).toBeGreaterThan(plain.fillAlpha);
+      expect(sel.halo).toBeGreaterThan(0);
+      expect(plain.halo).toBe(0);
+    }
   });
 
   it("labels replicas", () => {

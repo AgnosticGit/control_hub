@@ -122,6 +122,8 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   // Machine card: metrics and containers with their shares.
   await expect(inspector.getByRole("heading", { name: host, exact: true })).toBeVisible();
   await expect(machineButton).toHaveAttribute("aria-pressed", "true");
+  // The open machine's area is highlighted on the map too.
+  await expect(map).toHaveAttribute("data-infra-selected", host);
   const metrics = inspector.getByLabel("Machine metrics");
   await expect(metrics).toContainText("CPU");
   await expect(metrics).toContainText("95%");
@@ -145,9 +147,18 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   await inspector.getByRole("group", { name: `Signals for ${host}` }).getByRole("button", { name: "Logs at this moment" }).click();
   await expect(signals.getByRole("tab", { name: "Logs" })).toHaveAttribute("aria-selected", "true");
 
+  // Closing the machine card removes the highlight; picking it in the list brings it back.
+  await page.getByRole("tab", { name: "Details" }).click();
+  await inspector.getByRole("button", { name: "Close machine" }).click();
+  await expect(map).toHaveAttribute("data-infra-selected", "");
+  await expect(machineButton).toHaveAttribute("aria-pressed", "false");
+  await machineButton.click();
+  await expect(map).toHaveAttribute("data-infra-selected", host);
+
   // Switching the layer off hides machines again.
   await toggle.uncheck();
   await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
+  await expect(map).toHaveAttribute("data-infra-selected", "");
   expect(errors).toEqual([]);
 });
 

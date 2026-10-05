@@ -246,6 +246,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                   summary={state.summary}
                   memory={memory}
                   onSelectHost={selectHost}
+                  selectedHost={infraOn ? selectedHost : null}
                   topInset={infraOn ? overlayBottom : 0}
                 />
               )}

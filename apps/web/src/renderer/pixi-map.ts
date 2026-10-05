@@ -25,7 +25,7 @@ import {
   type InfraView,
   type TopologyView,
 } from "@karbird/web-engine";
-import { CHIP_H, CHIP_W, FRAME_HEADER, NOISY_LINK, badgeText, chipAt, frameAt, frameColor, linkArc, linkLabelAt } from "./infra-layer";
+import { CHIP_H, CHIP_W, FRAME_HEADER, NOISY_LINK, badgeText, chipAt, frameAt, frameLook, linkArc, linkLabelAt } from "./infra-layer";
 import { DEFAULT_EDGE_STYLE, build, dashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
 import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
 import { dashedRect, nodeSubLabel } from "./external";
@@ -103,6 +103,7 @@ export class PixiMap {
   private readonly infraFront = new Graphics();
   private readonly infraLabels = new Container();
   private infraView: InfraView | null = null;
+  private selectedHost: string | null = null;
   private readonly frameStyle = new TextStyle({
     fill: 0xc4b5fd,
     fontSize: 13,
@@ -318,6 +319,13 @@ export class PixiMap {
     this.host?.setAttribute("data-fit-top", String(Math.round(cam.y + (minY - CARD_H / 2) * cam.scale)));
   }
 
+  /** Highlights the frame of the machine open in the inspector. */
+  setSelectedHost(hostId: string | null) {
+    if (hostId === this.selectedHost) return;
+    this.selectedHost = hostId;
+    this.drawInfra();
+  }
+
   /** Keeps `fit` clear of an overlay this many screen pixels tall; refits a fitted camera. */
   setTopInset(px: number) {
     const next = Math.max(0, Math.round(px));
@@ -424,11 +432,21 @@ export class PixiMap {
     for (const t of this.infraLabels.removeChildren()) t.destroy();
     const view = this.infraView;
     this.host?.setAttribute("data-infra-frames", view ? view.frames.map((f) => f.host_id).join(",") : "");
+    const selected = view?.frames.some((f) => f.host_id === this.selectedHost) ? this.selectedHost : null;
+    this.host?.setAttribute("data-infra-selected", selected ?? "");
     if (!view) return;
     for (const f of view.frames) {
-      const color = frameColor(f);
-      back.roundRect(f.x, f.y, f.width, f.height, 18).fill({ color, alpha: 0.05 }).stroke({ color, width: 1.5, alpha: f.hot ? 0.9 : 0.55 });
-      back.roundRect(f.x, f.y, f.width, FRAME_HEADER - 8, 18).fill({ color, alpha: 0.1 });
+      const look = frameLook(f, f.host_id === selected);
+      const color = look.color;
+      if (look.halo > 0) {
+        const h = look.halo;
+        back.roundRect(f.x - h, f.y - h, f.width + 2 * h, f.height + 2 * h, 18 + h).stroke({ color, width: h, alpha: 0.18 });
+      }
+      back
+        .roundRect(f.x, f.y, f.width, f.height, 18)
+        .fill({ color, alpha: look.fillAlpha })
+        .stroke({ color, width: look.strokeWidth, alpha: look.strokeAlpha });
+      back.roundRect(f.x, f.y, f.width, FRAME_HEADER - 8, 18).fill({ color, alpha: look.headerAlpha });
       const label = new Text({ text: f.label, style: f.hot ? this.frameHotStyle : this.frameStyle });
       label.position.set(f.x + 16, f.y + 10);
       this.infraLabels.addChild(label);

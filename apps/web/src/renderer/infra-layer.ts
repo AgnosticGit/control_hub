@@ -19,6 +19,25 @@ export function frameColor(f: InfraFrame): number {
   return f.hot ? INFRA_HOT : INFRA_FRAME;
 }
 
+/** Accent of the selected machine (`--color-accent-2`). */
+export const INFRA_SELECTED = 0x22d3ee;
+
+export interface FrameLook {
+  color: number;
+  fillAlpha: number;
+  strokeWidth: number;
+  strokeAlpha: number;
+  headerAlpha: number;
+  /** Outer glow around the selected machine, in world pixels; 0 for none. */
+  halo: number;
+}
+
+/** How a machine frame is drawn; the selected one stands out from every other frame. */
+export function frameLook(f: InfraFrame, selected: boolean): FrameLook {
+  if (selected) return { color: INFRA_SELECTED, fillAlpha: 0.12, strokeWidth: 3, strokeAlpha: 1, headerAlpha: 0.22, halo: 8 };
+  return { color: frameColor(f), fillAlpha: 0.05, strokeWidth: 1.5, strokeAlpha: f.hot ? 0.9 : 0.55, headerAlpha: 0.1, halo: 0 };
+}
+
 export function chipAt(view: InfraView | null | undefined, x: number, y: number): InfraChip | null {
   return view?.chips.find((c) => Math.abs(c.x - x) <= CHIP_W / 2 && Math.abs(c.y - y) <= CHIP_H / 2) ?? null;
 }
