@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { exitCode, loadEnvFile, needsShell, parseEnv, quote, root, run, running, withFixtures } from '../lib.mjs';
+import { exitCode, loadEnvFile, needsShell, parseEnv, quote, root, run, running, supervise, withFixtures } from '../lib.mjs';
 
 test('root is the repository root', () => {
   assert.ok(existsSync(join(root, 'justfile')));
@@ -81,4 +81,47 @@ test('exitCode resolves with the exit code instead of rejecting', async () => {
 
 test('running is empty for a group without a PID file', () => {
   assert.deepEqual(running('unit-test-group-that-never-exists'), []);
+});
+
+const idle = (name) => ({ name, cmd: process.execPath, args: ['-e', 'setInterval(() => {}, 1000)'] });
+const pidsOf = (group) => JSON.parse(readFileSync(join(root, '.karbird', 'run', `${group}.json`), 'utf8'));
+
+test('supervise: stopping one process on purpose keeps the others and the PID file current', async () => {
+  const group = `unit-supervise-${process.pid}`;
+  const exits = [];
+  const sup = supervise([idle('a'), idle('b')], group, { exit: (c) => exits.push(c), signals: false, quiet: true });
+  try {
+    const firstA = sup.pid('a');
+    assert.ok(sup.running('a') && sup.running('b'));
+    assert.deepEqual(pidsOf(group).map((e) => e.name), ['a', 'b']);
+
+    assert.equal(await sup.stop('a'), true);
+    assert.equal(sup.running('a'), false);
+    assert.equal(sup.running('b'), true);
+    assert.deepEqual(pidsOf(group).map((e) => e.name), ['b']);
+    assert.equal(await sup.stop('a'), false, 'stopping a stopped process is a no-op');
+
+    sup.start(idle('a'));
+    assert.notEqual(sup.pid('a'), firstA);
+    assert.deepEqual(pidsOf(group).map((e) => e.name).sort(), ['a', 'b']);
+    assert.throws(() => sup.start(idle('a')), /already running/);
+    await new Promise((r) => setTimeout(r, 200));
+    assert.deepEqual(exits, [], 'nothing shut down');
+  } finally {
+    await sup.stop('a');
+    await sup.stop('b');
+    rmSync(join(root, '.karbird', 'run', `${group}.json`), { force: true });
+  }
+});
+
+test('supervise: a process exiting on its own still stops everything', async () => {
+  const group = `unit-supervise-crash-${process.pid}`;
+  let resolveExit;
+  const exited = new Promise((r) => (resolveExit = r));
+  const sup = supervise([idle('steady')], group, { exit: (c) => resolveExit(c), signals: false, quiet: true });
+  sup.start({ name: 'crash', cmd: process.execPath, args: ['-e', 'process.exit(3)'] });
+  assert.equal(await exited, 3);
+  assert.equal(existsSync(join(root, '.karbird', 'run', `${group}.json`)), false, 'PID file removed on shutdown');
+  assert.throws(() => sup.start(idle('late')), /shutting down/);
+  await sup.stop('steady');
 });

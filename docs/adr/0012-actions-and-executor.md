@@ -1,18 +1,26 @@
-# ADR-0012: Controlled actions — plans, policy, four-eyes approval, separate executor
+# ADR-0012: Controlled actions — plans, policy, approval by permission, separate executor
 
 ## Decision
 - **Allowlist, typed.** Actions exist only in the `karbird-actions` catalog, as a Rust `Action`
   enum with bounded numeric parameters and fixed targets. There is no free-form command, script,
   URL or container name anywhere in a plan. Telemetry never produces a plan.
-- **Plans.** An operator proposes a plan with a reason. Policy is evaluated at proposal, at approval
+- **Plans.** A user proposes a plan with a reason. Policy is evaluated at proposal, at approval
   and again by the executor right before it runs:
   - demo-only actions are allowed only in `is_demo` environments;
-  - at most one open plan per target;
-  - at most 30 plans per environment per hour.
+  - at most one open plan per target.
   Denials are audited too.
-- **Four-eyes approval.** Every plan needs approval by an admin other than the proposer. This is
-  enforced in the API and by a `CHECK (decided_by <> created_by)` constraint on approved plans.
-  Rejecting a plan requires a comment. The proposer or an admin may cancel a plan before it runs.
+- **Approval by permission** (amended 2026-10-05; originally four-eyes approval plus a plan quota
+  of 30 per hour). Who may run an action is decided by the role's permissions, not by a second
+  person:
+  - A user with `actions.approve` runs actions directly: their plan is stored as approved at once,
+    with both the `action.propose` and `action.approve` audit entries. They also approve or reject
+    other users' plans, their own included.
+  - A user with only `actions.propose` creates a proposed plan that waits for someone with
+    `actions.approve`.
+  - Rejecting a plan requires a comment. The proposer or an approver may cancel a plan before it runs.
+  - There is no plan quota. Migration `0010` drops the old `decided_by <> created_by` constraint.
+  - Plans are started from the Actions page or from the System Map: a service card or a container
+    in the right panel lists the catalog actions aimed at it (`subjects` in the catalog).
 - **Windows.** A plan must be decided within 30 min and started within 10 min of approval. After
   that the executor marks it expired and never runs it.
 - **State machine.** proposed → approved | rejected | cancelled | expired; approved → running |

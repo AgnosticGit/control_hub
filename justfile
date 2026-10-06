@@ -38,6 +38,10 @@ demo:
 demo-fault *ARGS:
     node examples/demo-system/src/fault.mjs {{ARGS}}
 
+# Demo-only release, e.g. `just demo-release orders 0.2.0` (rolling back is the demo.release.rollback action)
+demo-release *ARGS:
+    node scripts/demo-release.mjs {{ARGS}}
+
 # Build the Rust engine to WASM and publish the content-hashed artifact to the web app
 wasm:
     node scripts/build-wasm.mjs

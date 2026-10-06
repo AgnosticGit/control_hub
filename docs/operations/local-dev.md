@@ -16,6 +16,8 @@
 | 7001 / 7002 | demo gateway / orders |
 | 7003 – 7007 | demo inventory / payments / notifications / catalog / auth |
 | 7010 | demo payment provider stand-in (not instrumented) |
+| 7016 / 7026 | demo catalog replicas 2 and 3 |
+| 7090 | demo orchestrator: restart, scale and release demo services (executor only, ADR-0020) |
 
 The infrastructure ports sit outside the default ranges, so they don't clash with a local
 Postgres, ClickHouse or Kafka. See ADR-0006.
@@ -83,8 +85,7 @@ curl http://127.0.0.1:8080/api/v1/ready
   never run.
 - **An action ends as `failed` with "fault control returned 404".** The demo was started without
   fault injection. `just demo` sets `KARBIRD_DEMO_FAULTS=1`.
-- **An action is denied by "rate limit".** At most 30 plans per environment per hour. Repeated test
-  runs count too (the actions integration test creates 6, the e2e 1), so wait for the window to
-  pass. `just bootstrap` does not delete plans.
+- **An action is denied by "one open plan per target".** A plan for the same target is still
+  proposed, approved or running. Wait for it to finish, or cancel it on the Actions page.
 - **`verification_failed` after clearing faults on `gateway`.** Verification looks at the real
   error ratio, so errors propagated from `orders` still count. Clear `orders` first.

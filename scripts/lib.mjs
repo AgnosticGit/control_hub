@@ -148,49 +148,93 @@ export function assertNotRunning(group) {
   }
 }
 
-/** Run several long-lived processes with prefixed output; stop all on Ctrl+C or first failure. */
-export function supervise(procs, group) {
+function kill(child) {
+  if (process.platform === "win32") spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"]);
+  else child.kill("SIGTERM");
+}
+
+const exited = (child) => child.exitCode !== null || child.signalCode !== null;
+
+/**
+ * Run several long-lived processes with prefixed output; stop all on Ctrl+C or when one exits
+ * on its own. Returns a handle to stop and start single processes: a process stopped through
+ * the handle does not take the others down. The PID file always lists the live processes.
+ */
+export function supervise(procs, group, { exit = (code) => process.exit(code), signals = true, quiet = false } = {}) {
   const colors = [36, 33, 35, 32, 34, 31];
-  const children = procs.map((p, i) => {
+  const live = new Map();
+  let started = 0;
+  let stopping = false;
+
+  const writePids = () => {
+    if (!group || stopping) return;
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(pidFile(group), JSON.stringify([...live.values()].map((e) => ({ name: e.proc.name, pid: e.child.pid }))));
+  };
+
+  function start(p) {
+    if (stopping) throw new Error("supervisor is shutting down");
+    if (live.has(p.name)) throw new Error(`${p.name} is already running`);
     const child = spawnCmd(p.cmd, p.args, {
       cwd: p.cwd ?? root,
       env: { ...process.env, ...(p.env ?? {}) },
     });
-    const tag = `\x1b[${colors[i % colors.length]}m[${p.name}]\x1b[0m `;
+    const tag = `\x1b[${colors[started++ % colors.length]}m[${p.name}]\x1b[0m `;
     const pipe = (stream, out) => {
       let buf = "";
       stream.on("data", (d) => {
         buf += d.toString();
         const lines = buf.split(/\r?\n/);
         buf = lines.pop() ?? "";
-        for (const l of lines) out.write(tag + l + "\n");
+        if (!quiet) for (const l of lines) out.write(tag + l + "\n");
       });
     };
     pipe(child.stdout, process.stdout);
     pipe(child.stderr, process.stderr);
+    const entry = { proc: p, child, expected: false };
     child.on("exit", (code) => {
-      process.stderr.write(`${tag}exited with ${code}\n`);
-      if (!p.optional) shutdown(code ?? 1);
+      if (!quiet) process.stderr.write(`${tag}exited with ${code}${entry.expected ? " (stopped)" : ""}\n`);
+      if (live.get(p.name) === entry) live.delete(p.name);
+      writePids();
+      if (!entry.expected && !p.optional) shutdown(code ?? 1);
     });
+    live.set(p.name, entry);
+    writePids();
     return child;
-  });
-  if (group) {
-    mkdirSync(runDir, { recursive: true });
-    writeFileSync(pidFile(group), JSON.stringify(children.map((c, i) => ({ name: procs[i].name, pid: c.pid }))));
   }
-  let stopping = false;
+
+  /** Stops one process on purpose; resolves once it has exited. */
+  function stop(name) {
+    const entry = live.get(name);
+    if (!entry) return Promise.resolve(false);
+    entry.expected = true;
+    return new Promise((resolve) => {
+      if (exited(entry.child)) return resolve(true);
+      entry.child.once("exit", () => resolve(true));
+      kill(entry.child);
+    });
+  }
+
   function shutdown(code) {
     if (stopping) return;
     stopping = true;
     if (group) rmSync(pidFile(group), { force: true });
-    for (const c of children) {
-      if (c.exitCode === null) {
-        if (process.platform === "win32") spawn("taskkill", ["/pid", String(c.pid), "/T", "/F"]);
-        else c.kill("SIGTERM");
-      }
+    for (const { child } of live.values()) {
+      if (!exited(child)) kill(child);
     }
-    setTimeout(() => process.exit(code), 1500);
+    setTimeout(() => exit(code), 1500);
   }
-  process.on("SIGINT", () => shutdown(0));
-  process.on("SIGTERM", () => shutdown(0));
+
+  for (const p of procs) start(p);
+  if (signals) {
+    process.on("SIGINT", () => shutdown(0));
+    process.on("SIGTERM", () => shutdown(0));
+  }
+  return {
+    start,
+    stop,
+    shutdown,
+    running: (name) => live.has(name),
+    pid: (name) => live.get(name)?.child.pid ?? null,
+  };
 }

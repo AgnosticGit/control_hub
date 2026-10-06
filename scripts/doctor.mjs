@@ -59,7 +59,7 @@ if (existsSync(infraEnv)) {
   ports.kafka = Number(env.CH_KAFKA_PORT ?? ports.kafka);
   ports.s3 = Number(env.CH_S3_PORT ?? ports.s3);
 }
-const servicePorts = { ingestHttp: 4318, ingestGrpc: 4317, api: 8080, web: 3000, gateway: 7001, orders: 7002, inventory: 7003, payments: 7004, notifications: 7005, catalog: 7006, auth: 7007, provider: 7010 };
+const servicePorts = { ingestHttp: 4318, ingestGrpc: 4317, api: 8080, web: 3000, gateway: 7001, orders: 7002, inventory: 7003, payments: 7004, notifications: 7005, catalog: 7006, auth: 7007, provider: 7010, demoControl: 7090 };
 function portFree(port) {
   return new Promise((resolve) => {
     const s = createServer();

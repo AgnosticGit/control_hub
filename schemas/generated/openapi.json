@@ -4826,6 +4826,7 @@
         "type": "object",
         "required": [
           "environment_is_demo",
+          "can_run",
           "actions"
         ],
         "properties": {
@@ -4834,6 +4835,10 @@
             "items": {
               "$ref": "#/components/schemas/ActionSpecDto"
             }
+          },
+          "can_run": {
+            "type": "boolean",
+            "description": "The caller may approve, so plans they propose run without a separate approval."
           },
           "environment_is_demo": {
             "type": "boolean"
@@ -4979,6 +4984,7 @@
           "risk",
           "demo_only",
           "targets",
+          "subjects",
           "params",
           "verification",
           "allowed_here"
@@ -5007,6 +5013,13 @@
             "type": "string",
             "description": "`low` or `medium`."
           },
+          "subjects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionSubjectDto"
+            },
+            "description": "One per target, in the same order."
+          },
           "targets": {
             "type": "array",
             "items": {
@@ -5017,6 +5030,30 @@
             "type": "string"
           },
           "verification": {
+            "type": "string"
+          }
+        }
+      },
+      "ActionSubjectDto": {
+        "type": "object",
+        "description": "Where a target shows up on the System Map.",
+        "required": [
+          "target",
+          "service"
+        ],
+        "properties": {
+          "container": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Container name in the infrastructure layer, for container targets."
+          },
+          "service": {
+            "type": "string",
+            "description": "Name of the map card (service or resource) the target belongs to."
+          },
+          "target": {
             "type": "string"
           }
         }
@@ -6737,9 +6774,14 @@
           "description",
           "min",
           "max",
-          "integer"
+          "integer",
+          "boolean"
         ],
         "properties": {
+          "boolean": {
+            "type": "boolean",
+            "description": "An on/off switch, sent as the integer 0 or 1."
+          },
           "description": {
             "type": "string"
           },

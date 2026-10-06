@@ -26,13 +26,19 @@ export function can(project: Pick<ProjectGrant, "permissions"> | null | undefine
   return project?.permissions.includes(permission) ?? false;
 }
 
-/** Approve or reject: never your own plan. */
-export function canDecidePlan(project: Pick<ProjectGrant, "permissions"> | null | undefined, mine: boolean): boolean {
-  return !mine && can(project, "actions.approve");
+/** Approve or reject a plan, your own included. */
+export function canDecidePlan(project: Pick<ProjectGrant, "permissions"> | null | undefined): boolean {
+  return can(project, "actions.approve");
 }
 
+/** Start an action at all: run it right away, or propose it for approval. */
+export function canStartAction(project: Pick<ProjectGrant, "permissions"> | null | undefined): boolean {
+  return can(project, "actions.approve") || can(project, "actions.propose");
+}
+
+/** Your own plan: whoever could start it; someone else's: approvers only. */
 export function canCancelPlan(project: Pick<ProjectGrant, "permissions"> | null | undefined, mine: boolean): boolean {
-  return can(project, mine ? "actions.propose" : "actions.approve");
+  return mine ? canStartAction(project) : can(project, "actions.approve");
 }
 
 export function roleLabel(project: Pick<ProjectGrant, "role_name"> | null | undefined): string {

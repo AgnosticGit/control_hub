@@ -20,10 +20,10 @@ async function listen(server) {
   };
 }
 
-async function faultServer(enabled) {
+async function faultServer(enabled, opts) {
   if (enabled) process.env.KARBIRD_DEMO_FAULTS = '1';
   else delete process.env.KARBIRD_DEMO_FAULTS;
-  const faults = createFaults();
+  const faults = createFaults(opts);
   const srv = await listen(
     createServer(async (req, res) => {
       if (!(await faults.handle(req, res))) sendJson(res, 200, { passthrough: true });
@@ -120,6 +120,58 @@ test('cpu hog burns the requested share of one core and stops at 0', async () =>
     assert.equal(s.faults.hog.share, 0);
   } finally {
     s.faults.hog.set(0);
+    await s.close();
+  }
+});
+
+test('feature flags start off and only declared flags can be switched', async () => {
+  const s = await faultServer(true, { flags: ['checkout-v2'] });
+  try {
+    assert.deepEqual((await getJson(`${s.url}/__demo/flags`)).body, { flags: { 'checkout-v2': false } });
+    assert.equal(s.faults.flag('checkout-v2'), false);
+    const on = await callJson('POST', `${s.url}/__demo/flags`, { flag: 'checkout-v2', enabled: true });
+    assert.equal(on.status, 200);
+    assert.deepEqual(on.body, { flags: { 'checkout-v2': true } });
+    assert.equal(s.faults.flag('checkout-v2'), true);
+    assert.deepEqual((await getJson(`${s.url}/__demo/flags`)).body, { flags: { 'checkout-v2': true } });
+    await callJson('POST', `${s.url}/__demo/flags`, { flag: 'checkout-v2', enabled: false });
+    assert.equal(s.faults.flag('checkout-v2'), false);
+  } finally {
+    await s.close();
+  }
+});
+
+test('feature flag changes are validated and never add flags', async () => {
+  const s = await faultServer(true, { flags: ['catalog-cache'] });
+  try {
+    for (const body of [
+      { flag: 'unknown', enabled: true },
+      { flag: '__proto__', enabled: true },
+      { flag: 'toString', enabled: true },
+      { flag: 'catalog-cache', enabled: 1 },
+      { flag: 'catalog-cache', enabled: 'true' },
+      { flag: 'catalog-cache' },
+      { enabled: true },
+    ]) {
+      assert.equal((await callJson('POST', `${s.url}/__demo/flags`, body)).status, 400, JSON.stringify(body));
+    }
+    assert.equal((await fetch(`${s.url}/__demo/flags`, { method: 'POST', body: '{nope' })).status, 400);
+    assert.equal((await fetch(`${s.url}/__demo/flags`, { method: 'DELETE' })).status, 405);
+    assert.deepEqual(s.faults.flags, { 'catalog-cache': false });
+    assert.equal(s.faults.flag('unknown'), false);
+  } finally {
+    await s.close();
+  }
+});
+
+test('feature flags are hidden and always off unless faults are enabled', async () => {
+  const s = await faultServer(false, { flags: ['catalog-cache'] });
+  try {
+    assert.equal((await getJson(`${s.url}/__demo/flags`)).status, 404);
+    assert.equal((await callJson('POST', `${s.url}/__demo/flags`, { flag: 'catalog-cache', enabled: true })).status, 404);
+    s.faults.flags['catalog-cache'] = true;
+    assert.equal(s.faults.flag('catalog-cache'), false, 'a disabled demo never runs flagged code');
+  } finally {
     await s.close();
   }
 });

@@ -13,6 +13,7 @@ import type { SelectedEdge } from "./edge-traffic";
 import { Inspector } from "./Inspector";
 import type { OpenSignals } from "./InfraInspector";
 import { InfraOverlay } from "./InfraOverlay";
+import { containerOfInstance, type ContainerRef } from "./infrastructure";
 import { MapView } from "./MapView";
 import { useInfrastructure } from "./useInfrastructure";
 import { SignalsPanel, type Tab } from "./SignalsPanel";
@@ -68,6 +69,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const [infraOn, setInfraOn] = useState(false);
   const [selectedHost, setSelectedHost] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<SelectedEdge | null>(null);
+  const [selectedContainer, setSelectedContainer] = useState<ContainerRef | null>(null);
   const [overlayBottom, setOverlayBottom] = useState(0);
   const [markA, setMarkA] = useState<bigint | null>(null);
   const [compare, setCompare] = useState<{ a: bigint; b: bigint; diffs: NodeDiff[] } | null>(null);
@@ -84,10 +86,12 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
     setSelectedId(id);
     setSelectedHost(null);
     setSelectedEdge(null);
+    setSelectedContainer(null);
     if (id !== null) setSide("details");
   };
   const selectHost = (id: string | null) => {
     setSelectedHost(id);
+    setSelectedContainer(null);
     if (id !== null) {
       setSelectedId(null);
       setSelectedEdge(null);
@@ -99,8 +103,24 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
     if (edge !== null) {
       setSelectedId(null);
       setSelectedHost(null);
+      setSelectedContainer(null);
       setSide("details");
     }
+  };
+  const selectContainer = (ref: ContainerRef | null) => {
+    setSelectedContainer(ref);
+    if (ref !== null) {
+      setSelectedId(null);
+      setSelectedHost(null);
+      setSelectedEdge(null);
+      setSide("details");
+    }
+  };
+  // A service instance on the infrastructure layer opens its container, or else its service.
+  const selectInstance = (instanceId: string, hostId: string, serviceId: string) => {
+    const ref = containerOfInstance(infraSnapshot, instanceId, hostId);
+    if (ref) selectContainer(ref);
+    else select(serviceId);
   };
   // Traces or logs of the moment on screen: time stops there so the lists match the map.
   const openSignals: OpenSignals = (signal, serviceId) => {
@@ -222,7 +242,10 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                     checked={infraOn}
                     onChange={(e) => {
                       setInfraOn(e.target.checked);
-                      if (!e.target.checked) setSelectedHost(null);
+                      if (!e.target.checked) {
+                        setSelectedHost(null);
+                        setSelectedContainer(null);
+                      }
                     }}
                   />
                   Infrastructure
@@ -259,6 +282,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                   memory={memory}
                   onSelectHost={selectHost}
                   selectedHost={infraOn ? selectedHost : null}
+                  onSelectInstance={selectInstance}
                   onSelectEdge={selectEdge}
                   selectedEdge={selectedEdge}
                   topInset={infraOn ? overlayBottom : 0}
@@ -346,6 +370,8 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                   infra={infraSnapshot}
                   selectedHost={selectedHost}
                   onSelectHost={selectHost}
+                  selectedContainer={selectedContainer}
+                  onSelectContainer={selectContainer}
                   onSignals={openSignals}
                 />
               </aside>

@@ -998,6 +998,8 @@ export interface components {
         };
         ActionCatalogResponse: {
             actions: components["schemas"]["ActionSpecDto"][];
+            /** @description The caller may approve, so plans they propose run without a separate approval. */
+            can_run: boolean;
             environment_is_demo: boolean;
         };
         ActionPlanDetail: {
@@ -1039,9 +1041,19 @@ export interface components {
             params: components["schemas"]["ParamSpecDto"][];
             /** @description `low` or `medium`. */
             risk: string;
+            /** @description One per target, in the same order. */
+            subjects: components["schemas"]["ActionSubjectDto"][];
             targets: string[];
             title: string;
             verification: string;
+        };
+        /** @description Where a target shows up on the System Map. */
+        ActionSubjectDto: {
+            /** @description Container name in the infrastructure layer, for container targets. */
+            container?: string | null;
+            /** @description Name of the map card (service or resource) the target belongs to. */
+            service: string;
+            target: string;
         };
         AdminAuditEntryDto: {
             action: string;
@@ -1658,6 +1670,8 @@ export interface components {
             service_name: string;
         };
         ParamSpecDto: {
+            /** @description An on/off switch, sent as the integer 0 or 1. */
+            boolean: boolean;
             description: string;
             integer: boolean;
             /** Format: double */

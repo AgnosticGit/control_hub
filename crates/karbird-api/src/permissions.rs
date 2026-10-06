@@ -100,7 +100,7 @@ impl Permission {
             Permission::TokensManage => "Create, rotate and revoke tokens",
             Permission::ActionsView => "View action plans",
             Permission::ActionsPropose => "Propose actions",
-            Permission::ActionsApprove => "Approve and reject actions",
+            Permission::ActionsApprove => "Run actions, approve and reject plans",
             Permission::MembersView => "View members",
             Permission::MembersManage => "Manage members and their roles",
             Permission::RolesManage => "Manage role templates",

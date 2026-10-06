@@ -31,7 +31,7 @@ Required levels by change type:
 - Assert behaviour a user or client can observe, not implementation details. Cover edge cases and error paths, not only the happy path.
 - Playwright: locate by role/label/text (`getByRole`, `getByLabel`), never by CSS classes; no new fixed `waitForTimeout` — use `expect(...).toBe...` auto-waits or `expect.poll`. Integration: `eventually(...)` instead of sleeps.
 - Tests are independent and repeatable: unique data (`randomHex`, `randomUUID`), no reliance on run order or on data from other tests.
-- Actions are rate-limited (30 plans/hour per environment): create as few plans as a test needs.
+- Actions allow one open plan per target and really change the demo: create as few plans as a test needs and leave the demo in its default state.
 - Never delete, skip or weaken an existing test to get green. Fix the code, or fix the test only if it is provably wrong, and say so. `test.skip` only with a stated environmental reason in the code.
 
 ## Running

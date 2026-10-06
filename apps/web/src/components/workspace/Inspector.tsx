@@ -6,8 +6,10 @@ import type { EngineState, WorkspaceActions } from "./useWorkspaceEngine";
 import { Icon } from "@/components/ui/Icon";
 import { formatClock } from "@/lib/time";
 import { externalExplanation, externalLabel } from "@/renderer/external";
-import { HostCard, ResourceRunsOn, RunsOn, SignalLinks, type OpenSignals } from "./InfraInspector";
+import { ActionControls } from "@/components/actions/ActionControls";
+import { ContainerCard, HostCard, ResourceRunsOn, RunsOn, SignalLinks, type OpenSignals } from "./InfraInspector";
 import { EdgeInspector } from "./EdgeInspector";
+import { findContainer, type ContainerRef } from "./infrastructure";
 import type { SelectedEdge } from "./edge-traffic";
 
 const STATUS_CLASS: Record<string, string> = {
@@ -33,6 +35,9 @@ interface Props {
   infra: InfrastructureSnapshot | null;
   selectedHost: string | null;
   onSelectHost: (hostId: string | null) => void;
+  /** Container open in the inspector (infrastructure layer). */
+  selectedContainer: ContainerRef | null;
+  onSelectContainer: (ref: ContainerRef | null) => void;
   onSignals: OpenSignals;
 }
 
@@ -50,6 +55,8 @@ export function Inspector({
   infra,
   selectedHost,
   onSelectHost,
+  selectedContainer,
+  onSelectContainer,
   onSignals,
 }: Props) {
   const [metrics, setMetrics] = useState<NodeMetrics | null>(null);
@@ -86,6 +93,23 @@ export function Inspector({
     );
   }
 
+  const opened = selectedContainer && infra ? findContainer(infra, selectedContainer) : null;
+  if (opened && infra) {
+    return (
+      <ContainerCard
+        projectId={projectId}
+        environmentId={environmentId}
+        host={opened.host}
+        container={opened.container}
+        cursor={state.cursor}
+        onClose={() => onSelectContainer(null)}
+        onSelect={onSelect}
+        onSelectHost={(id) => onSelectHost(id)}
+        onSignals={onSignals}
+      />
+    );
+  }
+
   const host = selectedHost ? infra?.hosts.find((h) => h.id === selectedHost) : undefined;
   if (host && infra) {
     return (
@@ -95,6 +119,7 @@ export function Inspector({
         cursor={state.cursor}
         onClose={() => onSelectHost(null)}
         onSelect={onSelect}
+        onSelectContainer={onSelectContainer}
         onSignals={onSignals}
       />
     );
@@ -164,11 +189,21 @@ export function Inspector({
 
         <SignalLinks serviceId={node.kind === "service" ? node.id : null} onSignals={onSignals} label={node.name} />
 
+        {external ? null : (
+          <ActionControls projectId={projectId} environmentId={environmentId} subject={{ service: node.name }} label={node.name} />
+        )}
+
         {infra && node.kind === "service" ? (
-          <RunsOn serviceId={node.id} snapshot={infra} onSelect={onSelect} onSelectHost={(id) => onSelectHost(id)} />
+          <RunsOn
+            serviceId={node.id}
+            snapshot={infra}
+            onSelect={onSelect}
+            onSelectHost={(id) => onSelectHost(id)}
+            onSelectContainer={onSelectContainer}
+          />
         ) : null}
         {infra && (node.kind === "database" || node.kind === "cache" || node.kind === "queue") ? (
-          <ResourceRunsOn nodeId={node.id} snapshot={infra} onSelectHost={(id) => onSelectHost(id)} />
+          <ResourceRunsOn nodeId={node.id} snapshot={infra} onSelectHost={(id) => onSelectHost(id)} onSelectContainer={onSelectContainer} />
         ) : null}
 
         <section aria-label="Relations">

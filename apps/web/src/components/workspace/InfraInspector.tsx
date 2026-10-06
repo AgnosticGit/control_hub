@@ -1,6 +1,7 @@
 "use client";
 
-import type { HostDto, InfrastructureSnapshot, NoisyNeighborHint } from "@karbird/web-engine";
+import type { ContainerDto, HostDto, InfrastructureSnapshot, NoisyNeighborHint } from "@karbird/web-engine";
+import { ActionControls } from "@/components/actions/ActionControls";
 import { Icon } from "@/components/ui/Icon";
 import { formatClock } from "@/lib/time";
 import {
@@ -19,6 +20,7 @@ import {
   resourceWhere,
   serviceChain,
   usedShare,
+  type ContainerRef,
 } from "./infrastructure";
 
 export type SignalTab = "traces" | "logs";
@@ -97,17 +99,93 @@ function Gauge({ label, value, sub, share }: { label: string; value: string; sub
   );
 }
 
+function ContainerButton({ container, hostId, onSelect }: { container: ContainerDto; hostId: string; onSelect: (ref: ContainerRef) => void }) {
+  return (
+    <button
+      type="button"
+      className="text-accent hover:underline"
+      title={container.id}
+      aria-label={`Open container ${container.name}`}
+      onClick={() => onSelect({ hostId, containerId: container.id })}
+    >
+      container {container.name}
+    </button>
+  );
+}
+
+interface ContainerCardProps {
+  projectId: string;
+  environmentId: string;
+  host: HostDto;
+  container: ContainerDto;
+  cursor: bigint;
+  onClose: () => void;
+  onSelect: (nodeId: string) => void;
+  onSelectHost: (hostId: string) => void;
+  onSignals: OpenSignals;
+}
+
+/** One container: what runs in it, its share of the machine, and the actions aimed at it. */
+export function ContainerCard({ projectId, environmentId, host, container: c, cursor, onClose, onSelect, onSelectHost, onSignals }: ContainerCardProps) {
+  const runs = c.service_id ?? c.resource_id;
+  return (
+    <div className="text-sm" aria-label={`Container ${c.name}`}>
+      <div className="flex items-start gap-3 border-b border-border p-4">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet/15 text-violet">
+          <Icon name="box" className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold break-all">{c.name}</h2>
+          <p className="text-xs text-muted">
+            container on{" "}
+            <button type="button" className="text-accent hover:underline" onClick={() => onSelectHost(host.id)}>
+              {host.name || host.id}
+            </button>
+          </p>
+        </div>
+        <button type="button" aria-label="Close container" onClick={onClose} className="btn btn-icon btn-sm">
+          <Icon name="x" className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="space-y-4 p-4">
+        {runs ? (
+          <p className="text-xs">
+            Runs{" "}
+            <button type="button" className="font-medium text-accent hover:underline" onClick={() => onSelect(runs)}>
+              {c.service_name ?? c.resource_name ?? runs}
+            </button>
+          </p>
+        ) : null}
+        <dl className="grid grid-cols-2 gap-2" aria-label="Container metrics">
+          <Gauge label="CPU of machine" value={percent(c.cpu_share)} share={c.cpu_share} />
+          <Gauge label="RAM" value={formatBytes(c.memory_used_bytes)} sub={percent(c.memory_share)} share={c.memory_share} />
+        </dl>
+        {c.image ? (
+          <p className="truncate font-mono text-[10px] text-muted" title="container.image.name">
+            {c.image}
+          </p>
+        ) : null}
+        <ActionControls projectId={projectId} environmentId={environmentId} subject={{ container: c.name }} label={c.name} />
+        {c.service_id ? <SignalLinks serviceId={c.service_id} onSignals={onSignals} label={c.name} /> : null}
+        <p className="text-[11px] text-muted">At {formatClock(cursor)}.</p>
+        <p className="font-mono text-[10px] break-all text-muted">{c.id}</p>
+      </div>
+    </div>
+  );
+}
+
 interface HostCardProps {
   host: HostDto;
   snapshot: InfrastructureSnapshot;
   cursor: bigint;
   onClose: () => void;
   onSelect: (serviceId: string) => void;
+  onSelectContainer: (ref: ContainerRef) => void;
   onSignals: OpenSignals;
 }
 
 /** Machine card: CPU, RAM, disk, network and the containers on it with their shares. */
-export function HostCard({ host, snapshot, cursor, onClose, onSelect, onSignals }: HostCardProps) {
+export function HostCard({ host, snapshot, cursor, onClose, onSelect, onSelectContainer, onSignals }: HostCardProps) {
   const mem = usedShare(host.memory_used_bytes, host.memory_total_bytes);
   const disk = usedShare(host.disk_used_bytes, host.disk_total_bytes);
   const instances = instancesOnHost(snapshot, host.id);
@@ -162,9 +240,15 @@ export function HostCard({ host, snapshot, cursor, onClose, onSelect, onSignals 
             {containersByLoad(host).map((c) => (
               <li key={c.id} className="rounded-lg border border-border bg-bg/50 p-2.5 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="truncate font-medium" title={c.id}>
+                  <button
+                    type="button"
+                    className="truncate font-medium hover:text-accent"
+                    title={c.id}
+                    aria-label={`Open container ${c.name}`}
+                    onClick={() => onSelectContainer({ hostId: host.id, containerId: c.id })}
+                  >
                     {c.name}
-                  </span>
+                  </button>
                   {c.service_id ? (
                     <button type="button" className="text-accent hover:underline" onClick={() => onSelect(c.service_id ?? "")}>
                       {c.service_name}
@@ -231,10 +315,11 @@ interface ResourceRunsOnProps {
   nodeId: string;
   snapshot: InfrastructureSnapshot;
   onSelectHost: (hostId: string) => void;
+  onSelectContainer: (ref: ContainerRef) => void;
 }
 
 /** Database or queue → container → machine, or why it is external. */
-export function ResourceRunsOn({ nodeId, snapshot, onSelectHost }: ResourceRunsOnProps) {
+export function ResourceRunsOn({ nodeId, snapshot, onSelectHost, onSelectContainer }: ResourceRunsOnProps) {
   const where = resourceWhere(snapshot, nodeId);
   if (!where) {
     return (
@@ -261,10 +346,10 @@ export function ResourceRunsOn({ nodeId, snapshot, onSelectHost }: ResourceRunsO
               ) : (
                 <span>{placement.host_id}</span>
               )}
-              {container ? (
+              {container && host ? (
                 <>
                   <Icon name="arrowRight" className="h-3 w-3 text-muted" />
-                  <span title={container.id}>container {container.name}</span>
+                  <ContainerButton container={container} hostId={host.id} onSelect={onSelectContainer} />
                 </>
               ) : null}
             </>
@@ -295,10 +380,11 @@ interface RunsOnProps {
   snapshot: InfrastructureSnapshot;
   onSelect: (serviceId: string) => void;
   onSelectHost: (hostId: string) => void;
+  onSelectContainer: (ref: ContainerRef) => void;
 }
 
 /** Service → instances → container → machine. */
-export function RunsOn({ serviceId, snapshot, onSelect, onSelectHost }: RunsOnProps) {
+export function RunsOn({ serviceId, snapshot, onSelect, onSelectHost, onSelectContainer }: RunsOnProps) {
   const chain = serviceChain(snapshot, serviceId);
   return (
     <section aria-label="Runs on" className="space-y-2">
@@ -313,7 +399,11 @@ export function RunsOn({ serviceId, snapshot, onSelect, onSelectHost }: RunsOnPr
                 {instance.instance_id}
               </span>
               <Icon name="arrowRight" className="h-3 w-3 text-muted" />
-              <span title={container?.id ?? undefined}>{container ? `container ${container.name}` : "no container"}</span>
+              {container && host ? (
+                <ContainerButton container={container} hostId={host.id} onSelect={onSelectContainer} />
+              ) : (
+                <span>no container</span>
+              )}
               <Icon name="arrowRight" className="h-3 w-3 text-muted" />
               {host ? (
                 <button type="button" className="font-medium text-accent hover:underline" onClick={() => onSelectHost(host.id)}>

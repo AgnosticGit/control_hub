@@ -1,6 +1,7 @@
-//! Controlled actions: propose (operator), approve (admin, never the proposer), reject (admin),
-//! cancel (proposer or admin). The API never executes anything: approved plans are picked up
-//! by the separate executor process. Every state change is committed with its audit entry.
+//! Controlled actions: propose (operator), approve and reject (admin), cancel (proposer or
+//! admin). A plan proposed by someone who may approve is approved at once. The API never
+//! executes anything: approved plans are picked up by the separate executor process. Every
+//! state change is committed with its audit entry.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -28,6 +29,18 @@ pub struct ParamSpecDto {
     pub min: f64,
     pub max: f64,
     pub integer: bool,
+    /// An on/off switch, sent as the integer 0 or 1.
+    pub boolean: bool,
+}
+
+/// Where a target shows up on the System Map.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ActionSubjectDto {
+    pub target: String,
+    /// Name of the map card (service or resource) the target belongs to.
+    pub service: String,
+    /// Container name in the infrastructure layer, for container targets.
+    pub container: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -39,6 +52,8 @@ pub struct ActionSpecDto {
     pub risk: String,
     pub demo_only: bool,
     pub targets: Vec<String>,
+    /// One per target, in the same order.
+    pub subjects: Vec<ActionSubjectDto>,
     pub params: Vec<ParamSpecDto>,
     pub verification: String,
     /// Whether policy allows this type in this environment at all (demo-only check).
@@ -48,6 +63,8 @@ pub struct ActionSpecDto {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ActionCatalogResponse {
     pub environment_is_demo: bool,
+    /// The caller may approve, so plans they propose run without a separate approval.
+    pub can_run: bool,
     pub actions: Vec<ActionSpecDto>,
 }
 
@@ -171,11 +188,49 @@ async fn policy(
     scope: &Scope,
     action: &Action,
     is_demo: bool,
+    approved_by_proposer: bool,
     exclude_self: bool,
 ) -> ApiResult<PolicyDecision> {
-    let (open, recent) = state.pg.action_counts(scope, action.target()).await?;
-    let input = PolicyInput { environment_is_demo: is_demo, open_plans_for_target: open, plans_last_hour: recent };
+    let open = state.pg.open_action_plans(scope, action.target()).await?;
+    let input = PolicyInput { environment_is_demo: is_demo, open_plans_for_target: open, approved_by_proposer };
     Ok(actions::evaluate(action, &input, exclude_self))
+}
+
+/// The catalog entry as sent to clients, with the map subject of every target.
+fn spec_dto(s: &actions::ActionSpec, is_demo: bool) -> ActionSpecDto {
+    ActionSpecDto {
+        action_type: s.action_type.into(),
+        title: s.title.into(),
+        description: s.description.into(),
+        risk: risk_str(s.risk),
+        demo_only: s.demo_only,
+        targets: s.targets.iter().map(|t| (*t).to_owned()).collect(),
+        subjects: s
+            .targets
+            .iter()
+            .filter_map(|t| {
+                actions::subject(s.action_type, t).map(|x| ActionSubjectDto {
+                    target: (*t).to_owned(),
+                    service: x.service.to_owned(),
+                    container: x.container.map(str::to_owned),
+                })
+            })
+            .collect(),
+        params: s
+            .params
+            .iter()
+            .map(|p| ParamSpecDto {
+                name: p.name.into(),
+                description: p.description.into(),
+                min: p.min,
+                max: p.max,
+                integer: p.integer,
+                boolean: p.boolean,
+            })
+            .collect(),
+        verification: s.verification.into(),
+        allowed_here: !s.demo_only || is_demo,
+    }
 }
 
 fn denied_message(d: &PolicyDecision) -> String {
@@ -222,33 +277,12 @@ pub async fn catalog(
     user: CurrentUser,
     Path((project_id, environment_id)): Path<(String, String)>,
 ) -> ApiResult<Json<ActionCatalogResponse>> {
-    let (_, is_demo) = authorize(&state, &user, &project_id, &environment_id, Permission::ActionsView).await?;
+    let Authorized { is_demo, actor, .. } =
+        authorize_as(&state, &user, &project_id, &environment_id, Permission::ActionsView).await?;
     Ok(Json(ActionCatalogResponse {
         environment_is_demo: is_demo,
-        actions: actions::CATALOG
-            .iter()
-            .map(|s| ActionSpecDto {
-                action_type: s.action_type.into(),
-                title: s.title.into(),
-                description: s.description.into(),
-                risk: risk_str(s.risk),
-                demo_only: s.demo_only,
-                targets: s.targets.iter().map(|t| (*t).to_owned()).collect(),
-                params: s
-                    .params
-                    .iter()
-                    .map(|p| ParamSpecDto {
-                        name: p.name.into(),
-                        description: p.description.into(),
-                        min: p.min,
-                        max: p.max,
-                        integer: p.integer,
-                    })
-                    .collect(),
-                verification: s.verification.into(),
-                allowed_here: !s.demo_only || is_demo,
-            })
-            .collect(),
+        can_run: actor.has(Permission::ActionsApprove),
+        actions: actions::CATALOG.iter().map(|s| spec_dto(s, is_demo)).collect(),
     }))
 }
 
@@ -290,12 +324,17 @@ pub async fn propose(
     Path((project_id, environment_id)): Path<(String, String)>,
     Json(req): Json<ProposeActionRequest>,
 ) -> ApiResult<Json<ActionPlanDto>> {
-    let (scope, is_demo) = authorize(&state, &user, &project_id, &environment_id, Permission::ActionsPropose).await?;
+    let Authorized { scope, is_demo, actor } =
+        authorize_as(&state, &user, &project_id, &environment_id, Permission::ActionsView).await?;
+    let can_run = actor.has(Permission::ActionsApprove);
+    if !can_run && !actor.has(Permission::ActionsPropose) {
+        return Err(ApiError::Forbidden("insufficient permissions"));
+    }
     user.session_id()?;
     let reason = actions::validate_reason(&req.reason).map_err(ApiError::BadRequest)?;
     let action = actions::validate(&req.action_type, &req.target, &req.params)
         .map_err(|e| ApiError::BadRequest(e.join("; ")))?;
-    let decision = policy(&state, &scope, &action, is_demo, false).await?;
+    let decision = policy(&state, &scope, &action, is_demo, can_run, false).await?;
     let actor = user.user_id.to_string();
     let summary = json!({ "action_type": action.action_type(), "target": action.target(), "params": action.params() });
     if !decision.allowed {
@@ -316,6 +355,22 @@ pub async fn propose(
         return Err(ApiError::PolicyDenied(denied_message(&decision)));
     }
     let policy_json = serde_json::to_value(&decision).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut audit = vec![user_audit(
+        &scope,
+        &actor,
+        "action.propose",
+        Some(reason),
+        json!({ "proposal": summary, "policy": policy_json }),
+    )];
+    if can_run {
+        audit.push(user_audit(
+            &scope,
+            &actor,
+            "action.approve",
+            None,
+            json!({ "state": "approved", "by": "proposer" }),
+        ));
+    }
     let id = state
         .pg
         .create_action_plan(
@@ -328,14 +383,10 @@ pub async fn propose(
                 policy: policy_json.clone(),
                 created_by: user.user_id,
                 decision_window_secs: actions::DECISION_WINDOW_SECS,
+                approved_by_proposer: can_run,
+                execution_window_secs: actions::EXECUTION_WINDOW_SECS,
             },
-            user_audit(
-                &scope,
-                &actor,
-                "action.propose",
-                Some(reason),
-                json!({ "proposal": summary, "policy": policy_json }),
-            ),
+            &audit,
         )
         .await?;
     let row = state.pg.action_plan(&scope, id).await?.ok_or(ApiError::NotFound)?;
@@ -356,11 +407,8 @@ pub async fn approve(
     user.session_id()?;
     let comment = clean_comment(req.comment.as_deref())?;
     let row = state.pg.action_plan(&scope, plan_id(&id)?).await?.ok_or(ApiError::NotFound)?;
-    if row.created_by == user.user_id {
-        return Err(ApiError::Forbidden("a plan must be approved by someone other than its proposer"));
-    }
     let action = stored_action(&row)?;
-    let decision = policy(&state, &scope, &action, is_demo, true).await?;
+    let decision = policy(&state, &scope, &action, is_demo, false, true).await?;
     if !decision.allowed {
         return Err(ApiError::PolicyDenied(denied_message(&decision)));
     }
@@ -447,9 +495,8 @@ pub async fn cancel(
     user.session_id()?;
     let comment = clean_comment(req.comment.as_deref())?;
     let row = state.pg.action_plan(&scope, plan_id(&id)?).await?.ok_or(ApiError::NotFound)?;
-    // Own plans need propose; someone else's plan needs approve.
-    let need = if row.created_by == user.user_id { Permission::ActionsPropose } else { Permission::ActionsApprove };
-    if !actor.has(need) {
+    // Someone else's plan needs approve; your own needs either permission.
+    if row.created_by != user.user_id && !actor.has(Permission::ActionsApprove) {
         return Err(ApiError::Forbidden("insufficient permissions"));
     }
     let actor = user.user_id.to_string();
@@ -575,16 +622,16 @@ mod tests {
         let a = Action::DemoRestartDatabase;
         let d = actions::evaluate(
             &a,
-            &PolicyInput { environment_is_demo: false, open_plans_for_target: 1, plans_last_hour: 0 },
+            &PolicyInput { environment_is_demo: false, open_plans_for_target: 1, approved_by_proposer: true },
             false,
         );
         let m = denied_message(&d);
         assert!(m.starts_with("demo environment: demo-only action"), "{m}");
-        assert!(m.contains("; one open plan per target: 1 other open plan(s) for demo-postgres"), "{m}");
-        assert!(!m.contains("allowlisted") && !m.contains("rate limit"), "{m}");
+        assert!(m.ends_with("; one open plan per target: 1 other open plan(s) for demo-postgres"), "{m}");
+        assert!(!m.contains("allowlisted"), "{m}");
         let ok = actions::evaluate(
             &a,
-            &PolicyInput { environment_is_demo: true, open_plans_for_target: 0, plans_last_hour: 0 },
+            &PolicyInput { environment_is_demo: true, open_plans_for_target: 0, approved_by_proposer: false },
             false,
         );
         assert_eq!(denied_message(&ok), "");
@@ -608,10 +655,11 @@ mod tests {
     fn stored_policy_matches_the_documented_schema() {
         let d = actions::evaluate(
             &Action::DemoRestartDatabase,
-            &PolicyInput { environment_is_demo: true, open_plans_for_target: 0, plans_last_hour: 0 },
+            &PolicyInput { environment_is_demo: true, open_plans_for_target: 0, approved_by_proposer: true },
             false,
         );
         let v = serde_json::to_value(&d).unwrap();
+        assert_eq!(v["requires_approval"], json!(false), "the proposer may approve");
         let keys: Vec<_> = v.as_object().unwrap().keys().cloned().collect();
         assert_eq!(keys.len(), 3);
         for k in ["allowed", "requires_approval", "checks"] {
@@ -620,6 +668,55 @@ mod tests {
         for c in v["checks"].as_array().unwrap() {
             assert!(c["name"].is_string() && c["passed"].is_boolean() && c["detail"].is_string());
         }
+    }
+
+    #[test]
+    fn new_demo_actions_revalidate_and_carry_catalog_titles() {
+        for (t, target, params, title) in [
+            ("demo.container.restart", "catalog-1", json!({}), "Restart container"),
+            ("demo.replicas.scale", "catalog", json!({ "replicas": 2 }), "Scale replicas"),
+            ("demo.feature_flag.set", "checkout-v2", json!({ "enabled": 1 }), "Set feature flag"),
+            ("demo.release.rollback", "orders", json!({}), "Roll back release"),
+        ] {
+            let r = row(t, target, params);
+            assert!(stored_action(&r).is_ok(), "{t}");
+            let d = ActionPlanDto::from(r);
+            assert_eq!((d.title.as_str(), d.risk.as_str()), (title, "medium"));
+        }
+        for r in [
+            row("demo.replicas.scale", "catalog", json!({ "replicas": 9 })),
+            row("demo.feature_flag.set", "checkout-v2", json!({ "enabled": 0.5 })),
+            row("demo.container.restart", "postgres", json!({})),
+        ] {
+            assert!(matches!(stored_action(&r), Err(ApiError::Conflict(_))), "{} {}", r.action_type, r.params);
+        }
+    }
+
+    #[test]
+    fn catalog_entries_carry_one_map_subject_per_target() {
+        for s in actions::CATALOG {
+            let d = spec_dto(s, true);
+            assert_eq!(
+                d.subjects.iter().map(|x| x.target.as_str()).collect::<Vec<_>>(),
+                d.targets,
+                "{}",
+                s.action_type
+            );
+            assert!(d.allowed_here);
+            assert!(!spec_dto(s, false).allowed_here, "demo-only");
+        }
+        let restart = spec_dto(actions::spec("demo.container.restart").unwrap(), true);
+        let c2 = restart.subjects.iter().find(|x| x.target == "catalog-2").unwrap();
+        assert_eq!((c2.service.as_str(), c2.container.as_deref()), ("catalog", Some("catalog-2")));
+        let flags = spec_dto(actions::spec("demo.feature_flag.set").unwrap(), true);
+        let v = serde_json::to_value(&flags.subjects).unwrap();
+        assert_eq!(
+            v,
+            json!([
+                { "target": "catalog-cache", "service": "gateway", "container": null },
+                { "target": "checkout-v2", "service": "orders", "container": null },
+            ])
+        );
     }
 
     #[test]

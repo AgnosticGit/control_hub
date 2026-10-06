@@ -13,7 +13,9 @@ import {
   RESOURCE_MATCH_TEXT,
   resourceHeadline,
   resourceWhere,
+  containerOfInstance,
   containersByLoad,
+  findContainer,
   formatBytes,
   formatRate,
   hintText,
@@ -284,5 +286,27 @@ describe("resourceWhere", () => {
     for (const [how, text] of Object.entries(RESOURCE_MATCH_TEXT)) {
       expect(text.length > 0).toBe(how !== "none");
     }
+  });
+});
+
+describe("containers opened from the map", () => {
+  it("finds a container only on its own machine", () => {
+    expect(findContainer(snap, { hostId: "vps-worker", containerId: "c-cat2" })?.container.name).toBe("catalog-2");
+    expect(findContainer(snap, { hostId: "vps-worker", containerId: "c-cat2" })?.host.id).toBe("vps-worker");
+    expect(findContainer(snap, { hostId: "vps-app", containerId: "c-cat2" })).toBeNull();
+    expect(findContainer(snap, { hostId: "vps-gone", containerId: "c-cat2" })).toBeNull();
+    expect(findContainer(null, { hostId: "vps-worker", containerId: "c-cat2" })).toBeNull();
+  });
+
+  it("resolves an instance chip to the container it runs in", () => {
+    expect(containerOfInstance(snap, "catalog-2", "vps-worker")).toEqual({ hostId: "vps-worker", containerId: "c-cat2" });
+    expect(containerOfInstance(snap, "orders-1", "vps-app")).toEqual({ hostId: "vps-app", containerId: "c-ord" });
+  });
+
+  it("is null when the instance has no known container or sits on another machine", () => {
+    expect(containerOfInstance(snap, "ghost-1", "vps-app")).toBeNull();
+    expect(containerOfInstance(snap, "catalog-2", "vps-app")).toBeNull();
+    expect(containerOfInstance(snap, "missing", "vps-worker")).toBeNull();
+    expect(containerOfInstance(null, "catalog-2", "vps-worker")).toBeNull();
   });
 });

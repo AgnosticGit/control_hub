@@ -49,6 +49,8 @@ export interface MapCallbacks {
   onPick(worldX: number, worldY: number): void;
   /** A click on a machine frame (infrastructure layer) outside any card or chip. */
   onPickHost?(hostId: string): void;
+  /** A click on a service instance chip inside a machine frame. */
+  onPickInstance?(instanceId: string, hostId: string, serviceId: string): void;
   /** A click on a line between two cards (engine edge index). */
   onPickEdge?(index: number): void;
 }
@@ -447,7 +449,8 @@ export class PixiMap {
     }
     const chip = chipAt(this.infraView, wx, wy);
     if (chip) {
-      this.callbacks.onPick(chip.x, chip.y);
+      if (this.callbacks.onPickInstance) this.callbacks.onPickInstance(chip.instance_id, chip.host_id, chip.service_id);
+      else this.callbacks.onPick(chip.x, chip.y);
       return;
     }
     if (this.callbacks.onPickEdge) {
@@ -655,7 +658,6 @@ export class PixiMap {
   private drawNodes(f: Frame) {
     this.nodes.clear();
     this.nodesDim.clear();
-    const lod = f.summary.lod;
     const seen = new Set<number>();
     const hw = CARD_W / 2;
     const hh = CARD_H / 2;
@@ -701,28 +703,27 @@ export class PixiMap {
       drawKindIcon(n, this.kinds[idx], resource, ix + 15, iy + 15, color);
       n.circle(left + CARD_W - 12, top + 12, 3.5).fill({ color: statusColor, alpha: status > 0 ? 1 : 0.6 });
 
-      if (lod >= 1) {
-        seen.add(idx);
-        let t = this.textPool.get(idx);
-        if (!t) {
-          const name = new Text({ text: truncate(this.names[idx] ?? `#${idx}`, 17), style: this.nameStyle });
-          const sub = new Text({ text: "", style: this.subStyle });
-          t = { name, sub, subValue: "" };
-          this.textPool.set(idx, t);
-          this.labels.addChild(name, sub);
-        }
-        const subValue = nodeSubLabel(external, active, requests);
-        if (subValue !== t.subValue) {
-          t.sub.text = subValue;
-          t.subValue = subValue;
-        }
-        t.name.visible = true;
-        t.sub.visible = true;
-        t.name.alpha = dimmed ? DIM_ALPHA + 0.1 : 1;
-        t.sub.alpha = dimmed ? DIM_ALPHA + 0.1 : 1;
-        t.name.position.set(left + 52, y - 17);
-        t.sub.position.set(left + 52, y + 2);
+      // Labels live in world space: zooming out shrinks them with their card instead of hiding them.
+      seen.add(idx);
+      let t = this.textPool.get(idx);
+      if (!t) {
+        const name = new Text({ text: truncate(this.names[idx] ?? `#${idx}`, 17), style: this.nameStyle });
+        const sub = new Text({ text: "", style: this.subStyle });
+        t = { name, sub, subValue: "" };
+        this.textPool.set(idx, t);
+        this.labels.addChild(name, sub);
       }
+      const subValue = nodeSubLabel(external, active, requests);
+      if (subValue !== t.subValue) {
+        t.sub.text = subValue;
+        t.subValue = subValue;
+      }
+      t.name.visible = true;
+      t.sub.visible = true;
+      t.name.alpha = dimmed ? DIM_ALPHA + 0.1 : 1;
+      t.sub.alpha = dimmed ? DIM_ALPHA + 0.1 : 1;
+      t.name.position.set(left + 52, y - 17);
+      t.sub.position.set(left + 52, y + 2);
     }
     for (const [idx, t] of this.textPool) {
       if (!seen.has(idx)) {
@@ -730,6 +731,8 @@ export class PixiMap {
         t.sub.visible = false;
       }
     }
+    // Which cards carry a visible label, for tests (node indices).
+    this.host?.setAttribute("data-labelled-nodes", Array.from(seen).join(","));
   }
 
   /**

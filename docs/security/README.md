@@ -45,10 +45,11 @@
 
 - Only allowlisted, typed actions with bounded parameters exist. Nothing in a plan is a command,
   path, URL or container name, and telemetry never creates a plan.
-- Policy (demo-only environments, one open plan per target, 30 plans per hour) is evaluated at
-  proposal, at approval and right before execution. Denials are audited.
-- Four-eyes approval: approver ≠ proposer, enforced in the API and by a database CHECK. Operators
-  propose, admins approve or reject (rejecting requires a comment). API tokens can do neither.
+- Policy (demo-only environments, one open plan per target) is evaluated at proposal, at approval
+  and right before execution. Denials are audited.
+- Approval by permission: users with `actions.approve` run actions directly (the plan is approved
+  as it is proposed, both steps audited) and approve or reject others' plans; users with only
+  `actions.propose` wait for such a user. Rejecting requires a comment. API tokens can do neither.
 - Every state change commits together with its audit row. If the audit write fails, the change
   fails.
 - Only `karbird-executor` touches the observed system. Its demo adapter calls a loopback-only

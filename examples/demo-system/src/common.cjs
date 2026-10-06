@@ -50,16 +50,23 @@ function readJson(req, limit = 64 * 1024) {
 
 /**
  * Demo-only fault injection state. Enabled only when KARBIRD_DEMO_FAULTS=1
- * and only reachable from loopback.
+ * and only reachable from loopback. `flags` names the feature flags this service knows;
+ * they all start off and only those names can be switched.
  */
-function createFaults() {
+function createFaults({ flags = [] } = {}) {
   const enabled = process.env.KARBIRD_DEMO_FAULTS === '1';
   const state = { latencyMs: 0, errorRate: 0 };
+  const flagState = Object.fromEntries(flags.map((f) => [f, false]));
   const hog = createCpuHog();
   return {
     enabled,
     state,
     hog,
+    flags: flagState,
+    /** Whether a feature flag is on (always off when fault control is disabled). */
+    flag(name) {
+      return enabled && flagState[name] === true;
+    },
     async apply() {
       if (!enabled) return false;
       if (state.latencyMs > 0) await new Promise((r) => setTimeout(r, state.latencyMs));
@@ -69,6 +76,7 @@ function createFaults() {
     async handle(req, res) {
       if (req.url === '/__demo/resources') return handleResources(req, res, hog);
       if (req.url === '/__demo/cpu-hog') return handleCpuHog(req, res, enabled, hog);
+      if (req.url === '/__demo/flags') return handleFlags(req, res, enabled, flagState);
       if (!req.url || !req.url.startsWith('/__demo/faults')) return false;
       if (!enabled || !LOOPBACK.has(req.socket.remoteAddress ?? '')) {
         sendJson(res, 404, { error: 'not found' });
@@ -175,6 +183,35 @@ async function handleCpuHog(req, res, enabled, hog) {
   return true;
 }
 
+async function handleFlags(req, res, enabled, flagState) {
+  if (!enabled || !isLoopback(req)) {
+    sendJson(res, 404, { error: 'not found' });
+    return true;
+  }
+  if (req.method === 'GET') {
+    sendJson(res, 200, { flags: flagState });
+    return true;
+  }
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'method not allowed' });
+    return true;
+  }
+  let body;
+  try {
+    body = await readJson(req);
+  } catch (e) {
+    sendJson(res, 400, { error: String(e.message) });
+    return true;
+  }
+  if (typeof body.flag !== 'string' || !Object.hasOwn(flagState, body.flag) || typeof body.enabled !== 'boolean') {
+    sendJson(res, 400, { error: `flag must be one of [${Object.keys(flagState).join(', ')}] and enabled a boolean` });
+    return true;
+  }
+  flagState[body.flag] = body.enabled;
+  sendJson(res, 200, { flags: flagState });
+  return true;
+}
+
 function getJson(url, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
     const req = http.get(url, { timeout: timeoutMs }, (res) => {
@@ -259,4 +296,4 @@ function serve(name, port, route) {
   return server;
 }
 
-module.exports = { logger, sendJson, readJson, createFaults, getJson, callJson, work, listen, serve };
+module.exports = { logger, sendJson, readJson, createFaults, getJson, callJson, work, listen, serve, isLoopback };

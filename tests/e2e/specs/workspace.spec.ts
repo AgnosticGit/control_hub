@@ -141,6 +141,25 @@ test.describe("workspace on demo data", () => {
     await page.mouse.up();
   });
 
+  test("zooming the map all the way out keeps every card's name, just smaller", async ({ page }) => {
+    const canvas = page.locator("main canvas");
+    await expect(canvas.or(page.getByText(/WebGL is unavailable/))).toBeVisible();
+    test.skip((await page.getByText(/WebGL is unavailable/).count()) > 0, "no WebGL in this browser");
+    const map = page.getByRole("application", { name: /Service map/ });
+    await expect(map).toHaveAttribute("data-drawn-nodes", /\d/);
+    const systemMap = page.getByRole("main", { name: "System map" });
+    await systemMap.getByRole("button", { name: "Fit to screen" }).click();
+    // Far past the minimum zoom; the old level of detail hid all names below 0.45×.
+    for (let i = 0; i < 15; i++) await systemMap.getByRole("button", { name: "Zoom out" }).click();
+    const ids = (attr: string | null) => (attr ?? "").split(",").filter(Boolean).sort().join(",");
+    await expect
+      .poll(async () => {
+        const [drawn, labelled] = await Promise.all([map.getAttribute("data-drawn-nodes"), map.getAttribute("data-labelled-nodes")]);
+        return ids(drawn) !== "" && ids(drawn) === ids(labelled);
+      })
+      .toBe(true);
+  });
+
   test("returning to the overview from other pages shows it at once with its state kept", async ({ page }) => {
     const timeline = page.getByLabel("Timeline");
     await expect(page.getByText("Starting engine…")).toBeHidden();

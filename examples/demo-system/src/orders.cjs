@@ -9,8 +9,13 @@ const port = Number(process.env.DEMO_ORDERS_PORT ?? 7002);
 const inventoryUrl = process.env.DEMO_INVENTORY_URL ?? 'http://127.0.0.1:7003';
 const paymentsUrl = process.env.DEMO_PAYMENTS_URL ?? 'http://127.0.0.1:7004';
 const notificationsUrl = process.env.DEMO_NOTIFICATIONS_URL ?? 'http://127.0.0.1:7005';
+// Release 0.2.0 of the demo ships a regression in order reads, so a rollback has something to fix.
+const version = process.env.KARBIRD_SERVICE_VERSION ?? '0.1.0';
+const REGRESSED_VERSION = '0.2.0';
+const REGRESSION_ERROR_RATE = 0.4;
 const log = logger();
-const faults = createFaults();
+// `checkout-v2` sends charges to an endpoint payments does not have yet: every order write fails.
+const faults = createFaults({ flags: ['checkout-v2'] });
 
 const pool = new Pool({
   host: '127.0.0.1',
@@ -54,6 +59,10 @@ const server = http.createServer(async (req, res) => {
     const match = url.pathname.match(/^\/orders\/(\d{1,9})$/);
     if (req.method === 'GET' && match) {
       const id = Number(match[1]);
+      if (version === REGRESSED_VERSION && Math.random() < REGRESSION_ERROR_RATE) {
+        log.error('order lookup failed', { 'order.id': id, 'service.version': version });
+        return sendJson(res, 500, { error: 'internal error' });
+      }
       const { rows } = await pool.query('SELECT id, item, quantity FROM orders WHERE id = $1', [id]);
       if (rows.length === 0) {
         log.warn('order not found', { 'order.id': id });
@@ -68,7 +77,7 @@ const server = http.createServer(async (req, res) => {
         log.error('stock reservation failed', { 'http.response.status_code': reserved.status });
         return sendJson(res, 502, { error: 'inventory failure' });
       }
-      const charge = await callJson('POST', `${paymentsUrl}/charge`);
+      const charge = await callJson('POST', `${paymentsUrl}${faults.flag('checkout-v2') ? '/v2/charge' : '/charge'}`);
       if (charge.status === 402) {
         log.warn('order rejected: payment declined');
         return sendJson(res, 402, { error: 'payment declined' });

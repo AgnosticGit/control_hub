@@ -15,7 +15,7 @@ mod adapter;
 use std::time::Duration;
 
 use clap::Parser;
-use karbird_actions::{self as actions, Action, PolicyInput};
+use karbird_actions::{self as actions, Action, Observed, PolicyInput, Verification};
 use karbird_domain::{EnvironmentId, ProjectId, Scope, TenantId};
 use karbird_runtime::{init_tracing, load_local_env, shutdown_signal};
 use karbird_storage::actions::ActionPlanRow;
@@ -58,6 +58,22 @@ fn now_ns() -> i64 {
     (time::OffsetDateTime::now_utc().unix_timestamp_nanos()) as i64
 }
 
+/// The judgement and the stored verification record. Fields a check does not use are null.
+fn verification_record(v: &Verification, o: &Observed, from_ns: i64, to_ns: i64) -> (bool, Value) {
+    let (passed, detail) = v.judge(o);
+    (
+        passed,
+        json!({
+            "service": v.service, "instance": v.instance, "expected_version": v.expect_version,
+            "window_from_ns": from_ns.to_string(), "window_to_ns": to_ns.to_string(),
+            "requests": o.requests, "errors": o.errors, "max_error_ratio": v.max_error_ratio,
+            "instances": o.instances, "expected_instances": v.expect_instances,
+            "other_version_requests": o.other_version_requests,
+            "passed": passed, "detail": detail,
+        }),
+    )
+}
+
 struct Executor {
     id: String,
     pg: PgStore,
@@ -87,32 +103,36 @@ impl Executor {
     async fn policy_allows(&self, scope: &Scope, action: &Action) -> anyhow::Result<Result<(), Value>> {
         let env = self.pg.environment(scope.project_id.as_str(), scope.environment_id.as_str()).await?;
         let is_demo = env.as_ref().is_some_and(|e| e.is_demo && e.tenant_id == scope.tenant_id.as_str());
-        let (open, recent) = self.pg.action_counts(scope, action.target()).await?;
+        let open = self.pg.open_action_plans(scope, action.target()).await?;
         let d = actions::evaluate(
             action,
-            &PolicyInput { environment_is_demo: is_demo, open_plans_for_target: open, plans_last_hour: recent },
+            &PolicyInput { environment_is_demo: is_demo, open_plans_for_target: open, approved_by_proposer: false },
             true,
         );
         Ok(if d.allowed { Ok(()) } else { Err(serde_json::to_value(d)?) })
     }
 
-    async fn verify(&self, scope: &Scope, action: &Action, from_ns: i64) -> anyhow::Result<(bool, Value)> {
-        let v = action.verification();
+    async fn verify(
+        &self,
+        scope: &Scope,
+        action: &Action,
+        result: &Value,
+        from_ns: i64,
+    ) -> anyhow::Result<(bool, Value)> {
+        let v = match action.verification_after(result) {
+            Ok(v) => v,
+            Err(e) => return Ok((false, json!({ "passed": false, "detail": e }))),
+        };
         tokio::time::sleep(Duration::from_secs(v.observe_secs) + INGEST_SETTLE).await;
         let to_ns = from_ns + (v.observe_secs as i64) * 1_000_000_000;
-        let rows = self.ch.service_summaries(scope, from_ns, to_ns).await?;
-        let (requests, errors) = rows
-            .iter()
-            .filter(|r| r.service_name == v.service)
-            .fold((0, 0), |(rq, er), r| (rq + r.requests, er + r.errors));
-        let (passed, detail) = v.judge(requests, errors);
-        Ok((
-            passed,
-            json!({
-                "service": v.service, "window_from_ns": from_ns.to_string(), "window_to_ns": to_ns.to_string(),
-                "requests": requests, "errors": errors, "max_error_ratio": v.max_error_ratio, "passed": passed, "detail": detail,
-            }),
-        ))
+        let row = self.ch.verification_window(scope, v.service, v.instance, v.expect_version, from_ns, to_ns).await?;
+        let observed = Observed {
+            requests: row.requests,
+            errors: row.errors,
+            instances: row.instances,
+            other_version_requests: row.other_version_requests,
+        };
+        Ok(verification_record(&v, &observed, from_ns, to_ns))
     }
 
     async fn execute(&self, row: &ActionPlanRow) -> Outcome {
@@ -137,7 +157,7 @@ impl Executor {
             Err(e) => return Outcome::Failed(json!({ "error": format!("{e:#}") })),
         };
         let done = now_ns();
-        match self.verify(&scope, &action, done).await {
+        match self.verify(&scope, &action, &result, done).await {
             Ok((true, v)) => Outcome::Succeeded(result, v),
             Ok((false, v)) => Outcome::VerificationFailed(result, v),
             Err(e) => Outcome::VerificationFailed(
@@ -278,6 +298,7 @@ mod tests {
             demo: adapter::Demo::new(adapter::DemoConfig {
                 gateway_url: "http://127.0.0.1:1".into(),
                 orders_url: "http://127.0.0.1:1".into(),
+                control_url: "http://127.0.0.1:1".into(),
                 db_container: "karbird-demo-postgres-1".into(),
                 docker_bin: "karbird-test-no-such-docker".into(),
             })
@@ -321,6 +342,11 @@ mod tests {
             row("demo.faults.clear", "postgres", json!({})),
             row("demo.faults.inject", "orders", json!({ "latency_ms": 1e9, "error_rate": 0.1 })),
             row("demo.restart_database", "--privileged", json!({})),
+            row("demo.container.restart", "demo-postgres", json!({})),
+            row("demo.container.restart", "catalog-1; docker rm -f x", json!({})),
+            row("demo.replicas.scale", "catalog", json!({ "replicas": 50 })),
+            row("demo.feature_flag.set", "kill-switch", json!({ "enabled": 1 })),
+            row("demo.release.rollback", "orders", json!({ "version": "../../etc" })),
         ] {
             match ex.execute(&r).await {
                 Outcome::Failed(v) => assert_eq!(v["error"], "plan failed re-validation", "{v}"),
@@ -346,6 +372,49 @@ mod tests {
             Outcome::Failed(v) => assert!(v["error"].as_str().unwrap().starts_with("policy check failed"), "{v}"),
             other => panic!("{other:?}"),
         }
+    }
+
+    fn demo_scope() -> Scope {
+        scope_of(&row("demo.faults.clear", "orders", json!({}))).unwrap()
+    }
+
+    #[tokio::test]
+    async fn rollback_without_an_allowlisted_release_fails_verification_without_querying() {
+        // ClickHouse is unreachable here: an answer proves no query was attempted.
+        let rollback = Action::DemoReleaseRollback { service: actions::DemoReleaseService::Orders };
+        for result in [json!({}), json!({ "to_version": "7.7.7" })] {
+            let (passed, v) = executor().verify(&demo_scope(), &rollback, &result, 0).await.unwrap();
+            assert!(!passed);
+            assert_eq!(v["passed"], false);
+            assert!(v["detail"].as_str().unwrap().contains("allowlisted release"), "{v}");
+        }
+    }
+
+    #[test]
+    fn verification_records_carry_what_was_checked() {
+        let scale = Action::DemoReplicasScale { service: actions::DemoScalable::Catalog, replicas: 2 }.verification();
+        let o = Observed { requests: 30, errors: 0, instances: 2, other_version_requests: 0 };
+        let (passed, v) = verification_record(&scale, &o, 1, 15_000_000_001);
+        assert!(passed);
+        assert_eq!(
+            (v["service"].as_str(), v["expected_instances"].as_u64(), v["instances"].as_u64()),
+            (Some("catalog"), Some(2), Some(2))
+        );
+        assert_eq!((v["window_from_ns"].as_str(), v["window_to_ns"].as_str()), (Some("1"), Some("15000000001")));
+        assert_eq!(v["instance"], Value::Null);
+
+        let restart = Action::DemoContainerRestart { container: actions::DemoContainer::Catalog1 }.verification();
+        let (passed, v) = verification_record(&restart, &Observed::default(), 0, 1);
+        assert!(!passed);
+        assert_eq!(v["instance"], "catalog-1");
+        assert!(v["detail"].as_str().unwrap().contains("received 0 requests"));
+
+        let rollback = Action::DemoReleaseRollback { service: actions::DemoReleaseService::Orders }
+            .verification_after(&json!({ "to_version": "0.1.0" }))
+            .unwrap();
+        let (passed, v) = verification_record(&rollback, &Observed { other_version_requests: 1, ..o }, 0, 1);
+        assert!(!passed);
+        assert_eq!((v["expected_version"].as_str(), v["other_version_requests"].as_u64()), (Some("0.1.0"), Some(1)));
     }
 
     #[test]

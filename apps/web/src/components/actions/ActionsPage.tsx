@@ -1,33 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { api, ApiRequestError, scopedPath, unwrap, type Schemas } from "@/lib/api";
-import { can, canCancelPlan, canDecidePlan } from "@/lib/permissions";
+import { api, scopedPath, unwrap, type Schemas } from "@/lib/api";
+import { canCancelPlan, canDecidePlan, canStartAction } from "@/lib/permissions";
 import { useSession } from "@/lib/session";
 import { AppShell } from "@/components/shell/AppShell";
 import { Icon } from "@/components/ui/Icon";
+import { paramValues } from "./params";
+import { OPEN_STATES, stateClass } from "./controls";
+import { ParamFields } from "./ParamFields";
+import { ACTIONS_BASE as BASE, errorMessage as message, useActions } from "./api";
 
-type Plan = Schemas["ActionPlanDto"];
 type Spec = Schemas["ActionSpecDto"];
-
-const BASE = "/api/v1/projects/{project_id}/environments/{environment_id}/actions" as const;
-const OPEN_STATES = new Set(["proposed", "approved", "running"]);
-
-function message(e: unknown) {
-  return e instanceof ApiRequestError ? e.message : e instanceof Error ? e.message : String(e);
-}
 
 function when(iso: string | null | undefined) {
   return iso ? new Date(iso).toLocaleString() : "—";
-}
-
-function stateClass(state: string) {
-  if (state === "succeeded") return "text-ok";
-  if (state === "failed" || state === "verification_failed") return "text-error";
-  if (OPEN_STATES.has(state)) return "text-warn";
-  return "text-muted";
 }
 
 /** Plan fields come from the API and may echo telemetry-derived text: shown as text only. */
@@ -39,7 +28,17 @@ function Json({ value, label }: { value: unknown; label: string }) {
   );
 }
 
-function ProposeForm({ specs, onPropose, pending }: { specs: Spec[]; onPropose: (b: Schemas["ProposeActionRequest"]) => void; pending: boolean }) {
+function ProposeForm({
+  specs,
+  canRun,
+  onPropose,
+  pending,
+}: {
+  specs: Spec[];
+  canRun: boolean;
+  onPropose: (b: Schemas["ProposeActionRequest"]) => void;
+  pending: boolean;
+}) {
   const allowed = specs.filter((s) => s.allowed_here);
   const [type, setType] = useState(allowed[0]?.action_type ?? "");
   const spec = allowed.find((s) => s.action_type === type);
@@ -59,13 +58,11 @@ function ProposeForm({ specs, onPropose, pending }: { specs: Spec[]; onPropose: 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!spec) return;
-    const values: Record<string, number> = {};
-    for (const p of spec.params) values[p.name] = Number(params[p.name] ?? p.min);
-    onPropose({ action_type: spec.action_type, target, params: values, reason });
+    onPropose({ action_type: spec.action_type, target, params: paramValues(spec.params, params), reason });
   };
 
   return (
-    <form onSubmit={onSubmit} aria-label="Propose action" className="card space-y-4 p-5 text-sm">
+    <form onSubmit={onSubmit} aria-label={canRun ? "Run action" : "Propose action"} className="card space-y-4 p-5 text-sm">
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1.5">
           <span className="label">Action</span>
@@ -87,23 +84,11 @@ function ProposeForm({ specs, onPropose, pending }: { specs: Spec[]; onPropose: 
             ))}
           </select>
         </label>
-        {(spec?.params ?? []).map((p) => (
-          <label key={p.name} className="flex flex-col gap-1.5" title={p.description}>
-            <span className="label">
-              {p.name} ({p.min}–{p.max})
-            </span>
-            <input
-              type="number"
-              required
-              min={p.min}
-              max={p.max}
-              step={p.integer ? 1 : 0.01}
-              value={params[p.name] ?? String(p.min)}
-              onChange={(e) => setParams((cur) => ({ ...cur, [p.name]: e.target.value }))}
-              className="input h-9 w-28"
-            />
-          </label>
-        ))}
+        <ParamFields
+          params={spec?.params ?? []}
+          values={params}
+          onChange={(name, value) => setParams((cur) => ({ ...cur, [name]: value }))}
+        />
       </div>
       {spec ? <p className="text-xs text-muted">{spec.description} Verification: {spec.verification}</p> : null}
       <label className="flex flex-col gap-1.5">
@@ -118,10 +103,14 @@ function ProposeForm({ specs, onPropose, pending }: { specs: Spec[]; onPropose: 
         />
       </label>
       <button type="submit" disabled={pending} className="btn btn-primary h-9 px-4">
-        <Icon name="check" className="h-4 w-4" />
-        Propose plan
+        <Icon name={canRun ? "bolt" : "check"} className="h-4 w-4" />
+        {canRun ? "Run" : "Propose plan"}
       </button>
-      <p className="text-xs text-muted">Every plan needs approval by an admin other than the proposer before the executor runs it.</p>
+      <p className="text-xs text-muted">
+        {canRun
+          ? "Your role may run actions: the executor starts it right away."
+          : "Your role may only propose: someone allowed to run actions has to approve the plan first."}
+      </p>
     </form>
   );
 }
@@ -184,43 +173,13 @@ function PlanDetail({ projectId, environmentId, id }: { projectId: string; envir
 
 export function ActionsPage({ projectId, environmentId }: { projectId: string; environmentId: string }) {
   const session = useSession();
-  const qc = useQueryClient();
-  const path = scopedPath(projectId, environmentId);
   const [selected, setSelected] = useState<string | null>(null);
 
   const project = session.data?.projects.find((p) => p.id === projectId);
   const env = project?.environments.find((e) => e.id === environmentId);
-  const canPropose = can(project, "actions.propose");
+  const canPropose = canStartAction(project);
   const me = session.data?.user.email;
-
-  const catalog = useQuery({
-    queryKey: ["action-catalog", projectId, environmentId],
-    enabled: env !== undefined,
-    queryFn: async () => unwrap(await api.GET(`${BASE}/catalog`, { params: { path } })),
-  });
-  const plans = useQuery({
-    queryKey: ["actions", projectId, environmentId],
-    enabled: env !== undefined,
-    queryFn: async () => unwrap(await api.GET(BASE, { params: { path } })),
-    refetchInterval: (q) => ((q.state.data ?? []).some((p) => OPEN_STATES.has(p.state)) ? 2000 : 15_000),
-  });
-  const refresh = () => {
-    void qc.invalidateQueries({ queryKey: ["actions", projectId, environmentId] });
-    void qc.invalidateQueries({ queryKey: ["action", projectId, environmentId] });
-  };
-
-  const propose = useMutation({
-    mutationFn: async (body: Schemas["ProposeActionRequest"]) => unwrap(await api.POST(BASE, { params: { path }, body })),
-    onSuccess: (p) => {
-      setSelected(p.id);
-      refresh();
-    },
-  });
-  const decide = useMutation({
-    mutationFn: async ({ plan, verb, comment }: { plan: Plan; verb: "approve" | "reject" | "cancel"; comment: string | null }) =>
-      unwrap(await api.POST(`${BASE}/{plan_id}/${verb}`, { params: { path: { ...path, plan_id: plan.id } }, body: { comment } })),
-    onSuccess: () => refresh(),
-  });
+  const { catalog, plans, propose, decide } = useActions(projectId, environmentId, env !== undefined);
 
   if (session.isPending) return <p className="p-8 text-sm text-muted">Loading…</p>;
   if (!env) {
@@ -260,13 +219,19 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Actions</h1>
             <p className="mt-1 max-w-3xl text-sm text-muted">
-              Controlled changes to the observed system. Only allowlisted actions exist; each plan is checked by policy, needs
-              approval by a different admin, runs in the separate executor, is verified from telemetry and is fully audited.
+              Controlled changes to the observed system. Only allowlisted actions exist; each plan is checked by policy, runs
+              in the separate executor once someone allowed to run actions starts or approves it, is verified from telemetry
+              and is fully audited. Services and containers can also be controlled from the System Map.
             </p>
           </div>
 
           {canPropose && catalog.data ? (
-            <ProposeForm specs={catalog.data.actions} onPropose={(b) => propose.mutate(b)} pending={propose.isPending} />
+            <ProposeForm
+              specs={catalog.data.actions}
+              canRun={catalog.data.can_run}
+              onPropose={(b) => propose.mutate(b, { onSuccess: (p) => setSelected(p.id) })}
+              pending={propose.isPending}
+            />
           ) : (
             <p className="card p-4 text-sm text-muted">{canPropose ? "Loading catalog…" : "Your role in this project does not include proposing actions."}</p>
           )}
@@ -313,7 +278,7 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
                   <td className="px-2 text-xs text-muted">{p.created_by}</td>
                   <td className="px-2 text-xs text-muted">{when(p.created_at)}</td>
                   <td className="space-x-1 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    {p.state === "proposed" && canDecidePlan(project, mine) ? (
+                    {p.state === "proposed" && canDecidePlan(project) ? (
                       <>
                         <button
                           type="button"

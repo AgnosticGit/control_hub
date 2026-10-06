@@ -3,7 +3,7 @@ import { login } from "./helpers";
 
 const WORKSPACE = "/app/demo/local-demo";
 
-test("operator proposes, a different admin approves, the executor runs and verifies", async ({ browser }) => {
+test("operator proposes, an admin approves, the executor runs and verifies", async ({ browser }) => {
   test.setTimeout(150_000);
   const reason = `e2e ${Date.now()}`;
 
@@ -56,8 +56,8 @@ test("admin rejects an operator's plan with a required comment; the operator see
   const detail = op.getByRole("region", { name: "Plan detail" });
   const denied = op.locator("main").getByRole("alert");
   await expect(detail.getByRole("heading", { level: 2 }).or(denied)).toBeVisible();
-  // The policy allows a limited number of plans per hour; other suites may have used them up.
-  test.skip((await denied.count()) > 0 && /policy|limit|per hour|open plan/i.test((await denied.textContent()) ?? ""), "action policy quota reached");
+  // One open plan per target: an interrupted run may have left one behind.
+  test.skip((await denied.count()) > 0 && /open plan/i.test((await denied.textContent()) ?? ""), "an open plan for this target is left over");
   await expect(detail.getByRole("heading", { level: 2 })).toContainText("proposed");
 
   const adminCtx = await browser.newContext();
@@ -87,6 +87,72 @@ test("admin rejects an operator's plan with a required comment; the operator see
   await expect(detail.getByLabel("Audit trail")).toContainText("action.reject");
   await opCtx.close();
   await adminCtx.close();
+});
+
+test("a feature flag is switched on with the checkbox, approved, run and verified", async ({ browser }) => {
+  test.setTimeout(150_000);
+  const reason = `e2e flag ${Date.now()}`;
+  const opCtx = await browser.newContext();
+  const adminCtx = await browser.newContext();
+  try {
+    const op = await opCtx.newPage();
+    await login(op, "operator@karbird.local", `${WORKSPACE}/actions`);
+    const form = op.getByRole("form", { name: "Propose action" });
+    await form.getByLabel("Action").selectOption("demo.feature_flag.set");
+    await form.getByLabel("Target").selectOption("catalog-cache");
+    const enabled = form.getByRole("checkbox", { name: "enabled" });
+    await expect(enabled).not.toBeChecked();
+    await enabled.check();
+    await expect(form).toContainText("Verification: The flag reads back as requested");
+    await form.getByLabel(/Reason/).fill(reason);
+    await form.getByRole("button", { name: "Propose plan" }).click();
+
+    const detail = op.getByRole("region", { name: "Plan detail" });
+    const denied = op.locator("main").getByRole("alert");
+    await expect(detail.getByRole("heading", { level: 2 }).or(denied)).toBeVisible();
+    test.skip((await denied.count()) > 0 && /open plan/i.test((await denied.textContent()) ?? ""), "an open plan for this target is left over");
+    await expect(detail.getByRole("heading", { level: 2 })).toContainText("Set feature flag · catalog-cache");
+
+    const admin = await adminCtx.newPage();
+    await login(admin, "admin@karbird.local", `${WORKSPACE}/actions`);
+    const row = admin.getByRole("table", { name: "Action plans" }).getByRole("row").filter({ hasText: "proposed" }).filter({ hasText: "catalog-cache" });
+    await expect(row).toHaveCount(1);
+    admin.once("dialog", (d) => void d.accept());
+    await row.getByRole("button", { name: "Approve" }).click();
+
+    await expect(detail.getByRole("heading", { level: 2 })).toContainText("succeeded", { timeout: 120_000 });
+    await expect(detail.getByLabel("Result")).toContainText('"catalog-cache": true');
+    const verification = detail.getByLabel("Verification");
+    await expect(verification).toContainText('"service": "gateway"');
+    await expect(verification).toContainText('"passed": true');
+  } finally {
+    // Put the demo back for other suites; the flag only exists in the local demo gateway.
+    await fetch("http://127.0.0.1:7001/__demo/flags", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ flag: "catalog-cache", enabled: false }),
+    }).catch(() => undefined);
+    await opCtx.close();
+    await adminCtx.close();
+  }
+});
+
+test("an admin runs an action from the Actions page without a second approval", async ({ page }) => {
+  test.setTimeout(150_000);
+  await login(page, "admin@karbird.local", `${WORKSPACE}/actions`);
+  const form = page.getByRole("form", { name: "Run action" });
+  await expect(form).toContainText("Your role may run actions");
+  await form.getByLabel("Action").selectOption("demo.faults.clear");
+  await form.getByLabel("Target").selectOption("orders");
+  await form.getByLabel(/Reason/).fill(`e2e run ${Date.now()}`);
+  await expect(form.getByRole("button", { name: "Propose plan" })).toHaveCount(0);
+  await form.getByRole("button", { name: "Run" }).click();
+
+  const detail = page.getByRole("region", { name: "Plan detail" });
+  await expect(detail.getByRole("heading", { level: 2 })).toContainText(/approved|running|succeeded/);
+  await expect(detail.getByRole("heading", { level: 2 })).toContainText("succeeded", { timeout: 120_000 });
+  const trail = detail.getByLabel("Audit trail");
+  for (const a of ["action.propose", "action.approve", "action.start", "action.finish"]) await expect(trail).toContainText(a);
 });
 
 test("viewer sees plans but cannot propose", async ({ page }) => {

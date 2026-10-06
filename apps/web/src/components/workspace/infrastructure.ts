@@ -84,6 +84,29 @@ export interface ChainLink {
   host: HostDto | null;
 }
 
+/** A container of the infrastructure layer: container IDs are only unique per machine. */
+export interface ContainerRef {
+  hostId: string;
+  containerId: string;
+}
+
+export function findContainer(
+  snap: InfrastructureSnapshot | null,
+  ref: ContainerRef,
+): { host: HostDto; container: ContainerDto } | null {
+  const host = snap?.hosts.find((h) => h.id === ref.hostId);
+  const container = host?.containers.find((c) => c.id === ref.containerId);
+  return host && container ? { host, container } : null;
+}
+
+/** The container a service instance runs in, when the snapshot knows it. */
+export function containerOfInstance(snap: InfrastructureSnapshot | null, instanceId: string, hostId: string): ContainerRef | null {
+  const instance = snap?.instances.find((i) => i.instance_id === instanceId && i.host_id === hostId);
+  if (!instance?.container_id || !instance.host_id) return null;
+  const ref = { hostId: instance.host_id, containerId: instance.container_id };
+  return findContainer(snap ?? null, ref) ? ref : null;
+}
+
 /** Service → instances → container → machine, for the inspector. */
 export function serviceChain(snap: InfrastructureSnapshot | null, serviceId: string): ChainLink[] {
   if (!snap) return [];

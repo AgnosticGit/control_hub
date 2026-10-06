@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 
 export const CATALOG_PORTS = [7006, 7016, 7026];
 
-const PORTS = { gateway: 7001, orders: 7002, inventory: 7003, payments: 7004, notifications: 7005, auth: 7007 };
+export const PORTS = { gateway: 7001, orders: 7002, inventory: 7003, payments: 7004, notifications: 7005, auth: 7007 };
 
 /** 64-hex container ID for a demo instance name. */
 export function demoContainerId(name) {

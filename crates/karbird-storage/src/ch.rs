@@ -277,6 +277,14 @@ pub struct ServiceSummaryRow {
     pub version: String,
 }
 
+#[derive(Debug, Clone, Copy, Row, Serialize, Deserialize)]
+pub struct VerificationRow {
+    pub requests: u64,
+    pub errors: u64,
+    pub instances: u64,
+    pub other_version_requests: u64,
+}
+
 #[derive(Debug, Clone, Row, Serialize, Deserialize)]
 pub struct LogServiceRow {
     pub service_id: String,
@@ -613,6 +621,24 @@ fn edge_traffic_sql(edge: &EdgeSpans) -> String {
     )
 }
 
+/// Server spans of one service in the window after an action (see `karbird_actions::Observed`).
+/// Binds: instance and release filters ('' = any), scope, service name, from, to.
+fn verification_sql() -> String {
+    format!(
+        "WITH ? AS want_instance, ? AS want_version,
+              (kind IN (2, 5) OR parent_span_id = '') AS req,
+              (want_instance = '' OR service_instance_id = want_instance) AS inst,
+              (want_version = '' OR service_version = want_version) AS ver
+         SELECT countIf(req AND inst AND ver) AS requests,
+                countIf(req AND inst AND ver AND status_code = 2) AS errors,
+                uniqExactIf(service_instance_id, req AND ver) AS instances,
+                countIf(req AND NOT ver) AS other_version_requests
+         FROM spans FINAL
+         WHERE {SCOPE_WHERE} AND service_name = ?
+           AND start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)"
+    )
+}
+
 fn bind_scope(q: clickhouse::query::Query, s: &Scope) -> clickhouse::query::Query {
     q.bind(s.tenant_id.as_str()).bind(s.project_id.as_str()).bind(s.environment_id.as_str())
 }
@@ -836,6 +862,21 @@ impl ChStore {
              GROUP BY service_id ORDER BY service_name"
         ));
         Ok(bind_scope(q, s).bind(from).bind(to).fetch_all().await?)
+    }
+
+    /// What an action's verification judges: requests of `service` (optionally only one
+    /// instance and one release) in `[from, to)`.
+    pub async fn verification_window(
+        &self,
+        s: &Scope,
+        service: &str,
+        instance: Option<&str>,
+        version: Option<&str>,
+        from: i64,
+        to: i64,
+    ) -> Result<VerificationRow> {
+        let q = self.client.query(&verification_sql()).bind(instance.unwrap_or("")).bind(version.unwrap_or(""));
+        Ok(bind_scope(q, s).bind(service).bind(from).bind(to).fetch_one().await?)
     }
 
     pub async fn log_services(&self, s: &Scope, from: i64, to: i64) -> Result<Vec<LogServiceRow>> {
@@ -1315,6 +1356,24 @@ mod tests {
         assert!(call.contains("kind IN (2, 5)") && call.contains("p.span_id = c.parent_span_id"), "{call}");
         let clients = edge_traffic_sql(&EdgeSpans::ExternalClients { target: "x".into() });
         assert!(clients.contains("kind = 2 AND parent_span_id = ''"), "{clients}");
+    }
+
+    #[test]
+    fn verification_sql_is_scoped_and_binds_every_filter() {
+        let sql = verification_sql();
+        // instance + release, scope, service, from + to (as bound in `verification_window`).
+        assert_eq!(placeholders(&sql), 2 + 3 + 1 + 2, "{sql}");
+        assert_eq!(scoped_where_count(&sql), 1, "{sql}");
+        assert!(
+            sql.trim_start().starts_with("WITH ? AS want_instance, ? AS want_version"),
+            "binds precede the scope: {sql}"
+        );
+        assert!(sql.contains("FROM spans FINAL") && sql.contains("service_name = ?"), "{sql}");
+        // Requests are server/consumer spans or roots, as in `service_summaries`.
+        assert!(sql.contains("(kind IN (2, 5) OR parent_span_id = '') AS req"), "{sql}");
+        // Requests from another release are counted apart, never mixed into the judged ones.
+        assert!(sql.contains("countIf(req AND NOT ver) AS other_version_requests"), "{sql}");
+        assert!(!sql.contains("INSERT") && !sql.contains("ALTER"), "{sql}");
     }
 
     #[test]

@@ -40,6 +40,8 @@ interface Props {
   onSelectHost: (hostId: string) => void;
   /** Machine open in the inspector; its frame is highlighted. */
   selectedHost?: string | null;
+  /** A click on a service instance chip of the infrastructure layer. */
+  onSelectInstance?: (instanceId: string, hostId: string, serviceId: string) => void;
   /** A click on a line between two cards. */
   onSelectEdge?: (edge: SelectedEdge) => void;
   /** Line open in the inspector; it is highlighted. */
@@ -60,6 +62,7 @@ export function MapView({
   memory,
   onSelectHost,
   selectedHost = null,
+  onSelectInstance,
   onSelectEdge,
   selectedEdge = null,
   topInset = 0,
@@ -83,6 +86,10 @@ export function MapView({
     mapRef.current?.setSelectedHost(selectedHost);
   }, [selectedHost]);
   const onSelectEdgeRef = useRef(onSelectEdge);
+  const onSelectInstanceRef = useRef(onSelectInstance);
+  useEffect(() => {
+    onSelectInstanceRef.current = onSelectInstance;
+  }, [onSelectInstance]);
   const selectedEdgeIndex = edgeIndex(topology, selectedEdge);
   const selectedEdgeRef = useRef(selectedEdgeIndex);
   useEffect(() => {
@@ -129,6 +136,11 @@ export function MapView({
             void actions.pick(x, y).then((id) => onSelectRef.current(id));
           },
           onPickHost: (hostId) => onSelectHostRef.current(hostId),
+          onPickInstance: (instanceId, hostId, serviceId) => {
+            const pickInstance = onSelectInstanceRef.current;
+            if (pickInstance) pickInstance(instanceId, hostId, serviceId);
+            else onSelectRef.current(serviceId);
+          },
           onPickEdge: (index) => {
             const edge = edgeEnds(topologyRef.current, index);
             if (edge) onSelectEdgeRef.current?.(edge);

@@ -56,6 +56,9 @@ pub struct NewActionPlan<'a> {
     pub policy: Value,
     pub created_by: Uuid,
     pub decision_window_secs: i64,
+    /// The proposer may approve: the plan starts approved, with `execution_window_secs` to run.
+    pub approved_by_proposer: bool,
+    pub execution_window_secs: i64,
 }
 
 /// A state change requested through the API.
@@ -110,13 +113,12 @@ fn system_audit<'a>(row: &'a ActionPlanRow, actor: &'a str, action: &'a str, aft
 }
 
 impl PgStore {
-    /// Open plans for the target and plans created in the last hour, for the policy.
-    pub async fn action_counts(&self, scope: &Scope, target: &str) -> Result<(i64, i64)> {
-        let row: (i64, i64) = sqlx::query_as(
-            "SELECT
-               count(*) FILTER (WHERE target = $4 AND state IN ('proposed', 'approved', 'running')),
-               count(*) FILTER (WHERE created_at > now() - interval '1 hour')
-             FROM action_plans WHERE tenant_id = $1 AND project_id = $2 AND environment_id = $3",
+    /// Open plans (proposed, approved or running) for the target, for the policy.
+    pub async fn open_action_plans(&self, scope: &Scope, target: &str) -> Result<i64> {
+        let (open,): (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM action_plans
+             WHERE tenant_id = $1 AND project_id = $2 AND environment_id = $3 AND target = $4
+               AND state IN ('proposed', 'approved', 'running')",
         )
         .bind(scope.tenant_id.as_str())
         .bind(scope.project_id.as_str())
@@ -124,16 +126,24 @@ impl PgStore {
         .bind(target)
         .fetch_one(self.pool())
         .await?;
-        Ok(row)
+        Ok(open)
     }
 
-    pub async fn create_action_plan(&self, p: NewActionPlan<'_>, audit: NewAuditEntry<'_>) -> Result<Uuid> {
+    /// Stores a new plan with its audit entries (proposal, and approval when the proposer
+    /// approved it) in one transaction.
+    pub async fn create_action_plan(&self, p: NewActionPlan<'_>, audit: &[NewAuditEntry<'_>]) -> Result<Uuid> {
         let id = Uuid::now_v7();
         let mut tx = self.pool().begin().await?;
+        let (state, window) = if p.approved_by_proposer {
+            ("approved", p.execution_window_secs)
+        } else {
+            ("proposed", p.decision_window_secs)
+        };
         sqlx::query(
             "INSERT INTO action_plans (id, tenant_id, project_id, environment_id, action_type, target, params, reason, state, policy,
-                                       created_by, expires_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'proposed', $9, $10, now() + make_interval(secs => $11))",
+                                       created_by, expires_at, decided_by, decided_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $12, $9, $10, now() + make_interval(secs => $11),
+                     CASE WHEN $12 = 'approved' THEN $10 END, CASE WHEN $12 = 'approved' THEN now() END)",
         )
         .bind(id)
         .bind(p.scope.tenant_id.as_str())
@@ -145,11 +155,14 @@ impl PgStore {
         .bind(p.reason)
         .bind(&p.policy)
         .bind(p.created_by)
-        .bind(p.decision_window_secs as f64)
+        .bind(window as f64)
+        .bind(state)
         .execute(&mut *tx)
         .await?;
         let target = id.to_string();
-        audit_tx(&mut tx, &NewAuditEntry { target: Some(&target), ..audit }).await?;
+        for e in audit {
+            audit_tx(&mut tx, &NewAuditEntry { target: Some(&target), ..e.clone() }).await?;
+        }
         tx.commit().await?;
         Ok(id)
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PERMISSIONS, can, canCancelPlan, canDecidePlan, roleLabel } from "./permissions";
+import { PERMISSIONS, can, canCancelPlan, canDecidePlan, canStartAction, roleLabel } from "./permissions";
 
 const project = (permissions: string[], role = "custom", role_name = "Manager") => ({ permissions, role, role_name });
 
@@ -41,17 +41,27 @@ describe("plan decisions", () => {
   const approver = project(["actions.view", "actions.approve"]);
   const proposer = project(["actions.view", "actions.propose"]);
 
-  it("never lets a proposer decide their own plan", () => {
-    expect(canDecidePlan(approver, true)).toBe(false);
-    expect(canDecidePlan(approver, false)).toBe(true);
-    expect(canDecidePlan(proposer, false)).toBe(false);
+  const viewer = project(["actions.view"]);
+
+  it("decisions depend only on the approve permission", () => {
+    expect(canDecidePlan(approver)).toBe(true);
+    expect(canDecidePlan(proposer)).toBe(false);
+    expect(canDecidePlan(viewer)).toBe(false);
+    expect(canDecidePlan(undefined)).toBe(false);
   });
 
-  it("cancelling your own plan needs propose, someone else's needs approve", () => {
+  it("approvers and proposers can start actions, viewers cannot", () => {
+    expect(canStartAction(approver)).toBe(true);
+    expect(canStartAction(proposer)).toBe(true);
+    expect(canStartAction(viewer)).toBe(false);
+  });
+
+  it("your own plan can be cancelled by whoever could start it, someone else's only by approvers", () => {
     expect(canCancelPlan(proposer, true)).toBe(true);
     expect(canCancelPlan(proposer, false)).toBe(false);
     expect(canCancelPlan(approver, false)).toBe(true);
-    expect(canCancelPlan(approver, true)).toBe(false);
+    expect(canCancelPlan(approver, true)).toBe(true);
+    expect(canCancelPlan(viewer, true)).toBe(false);
   });
 });
 
