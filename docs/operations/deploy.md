@@ -69,7 +69,7 @@ Hosts deployed before the rename to karbird keep the old directory, Compose proj
 images and GitHub settings; the new workflow does not touch them. The data on them is not kept
 (fresh databases), so the move is a clean redeploy:
 
-1. GitHub settings: create the secrets and variables of step 6 under their `KARBIRD_*` names with
+1. GitHub settings: create the secrets and variables of step 6 under their current names with
    the same values (keep the secret seed), then delete the old ones.
 2. On both hosts, with `OLD` set to the previous directory name under `/opt`:
    ```
