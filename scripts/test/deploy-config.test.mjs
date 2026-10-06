@@ -9,11 +9,11 @@ import { derive, render } from '../deploy-config.mjs';
 const deployDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'deploy');
 
 const input = {
-  KARBIRD_SECRET_SEED: 's'.repeat(40),
-  KARBIRD_DOMAIN: 'karbird.example.com',
+  SECRET_SEED: 's'.repeat(40),
+  DOMAIN: 'karbird.example.com',
   STORAGE_PRIVATE_IP: '10.0.0.12',
-  KARBIRD_OWNER_EMAIL: 'me@example.com',
-  KARBIRD_OWNER_PASSWORD: 'correct $horse "battery" staple',
+  OWNER_EMAIL: 'me@example.com',
+  OWNER_PASSWORD: 'correct $horse "battery" staple',
   IMAGE_PREFIX: 'ghcr.io/acme',
   KARBIRD_VERSION: 'v1.2.3',
 };
@@ -24,7 +24,7 @@ const app = parseEnv(files['app/.env']);
 
 test('renders the same files on every deploy and different ones for another seed', () => {
   assert.deepEqual(render(input), files);
-  const other = render({ ...input, KARBIRD_SECRET_SEED: 't'.repeat(40) });
+  const other = render({ ...input, SECRET_SEED: 't'.repeat(40) });
   assert.notEqual(parseEnv(other['storage/.env']).CH_PG_API_PASSWORD, storage.CH_PG_API_PASSWORD);
 });
 
@@ -37,13 +37,13 @@ test('every derived secret is distinct, long and safe for URLs, SQL and env file
 });
 
 test('the app host gets service credentials but never the admin passwords or the seed', () => {
-  for (const k of ['CH_PG_ADMIN_PASSWORD', 'CH_CH_ADMIN_PASSWORD', 'CH_S3_ADMIN_SECRET_KEY', 'KARBIRD_SECRET_SEED']) {
+  for (const k of ['CH_PG_ADMIN_PASSWORD', 'CH_CH_ADMIN_PASSWORD', 'CH_S3_ADMIN_SECRET_KEY', 'SECRET_SEED', 'KARBIRD_SECRET_SEED']) {
     assert.equal(app[k], undefined, k);
   }
   for (const text of Object.values(files)) {
-    assert.ok(!text.includes(input.KARBIRD_SECRET_SEED), 'the seed never leaves the runner');
+    assert.ok(!text.includes(input.SECRET_SEED), 'the seed never leaves the runner');
   }
-  assert.ok(!files['app/.env'].includes(input.KARBIRD_OWNER_PASSWORD), 'only migrate on the storage host needs it');
+  assert.ok(!files['app/.env'].includes(input.OWNER_PASSWORD), 'only migrate on the storage host needs it');
   assert.equal(app.CH_PG_API_PASSWORD, storage.CH_PG_API_PASSWORD, 'both hosts agree');
   assert.equal(app.CH_S3_API_SECRET_KEY, storage.CH_S3_API_SECRET_KEY);
   assert.equal(app.STORAGE_ADDR, '10.0.0.12');
@@ -51,15 +51,37 @@ test('the app host gets service credentials but never the admin passwords or the
 });
 
 test('the owner password is written literally, single-quoted', () => {
-  assert.ok(files['storage/owner.env'].includes(`KARBIRD_OWNER_PASSWORD='${input.KARBIRD_OWNER_PASSWORD}'`));
-  assert.throws(() => render({ ...input, KARBIRD_OWNER_PASSWORD: "it's" }), /single quotes/);
-  assert.throws(() => render({ ...input, KARBIRD_OWNER_PASSWORD: 'a\nb' }), /line breaks/);
+  assert.ok(files['storage/owner.env'].includes(`KARBIRD_OWNER_PASSWORD='${input.OWNER_PASSWORD}'`));
+  assert.throws(() => render({ ...input, OWNER_PASSWORD: "it's" }), /single quotes/);
+  assert.throws(() => render({ ...input, OWNER_PASSWORD: 'a\nb' }), /line breaks/);
+});
+
+test('unprefixed inputs become the KARBIRD_* names the services and Caddy read', () => {
+  const owner = parseEnv(files['storage/owner.env']);
+  assert.equal(owner.KARBIRD_OWNER_EMAIL, 'me@example.com');
+  assert.equal(app.KARBIRD_DOMAIN, 'karbird.example.com');
+  for (const k of ['DOMAIN', 'OWNER_EMAIL', 'OWNER_PASSWORD']) {
+    assert.equal(app[k], undefined, k);
+    assert.equal(owner[k], undefined, k);
+  }
+});
+
+test('the old prefixed input names are not accepted in place of the new ones', () => {
+  const { SECRET_SEED, DOMAIN, OWNER_EMAIL, OWNER_PASSWORD, ...rest } = input;
+  const old = {
+    ...rest,
+    KARBIRD_SECRET_SEED: SECRET_SEED,
+    KARBIRD_DOMAIN: DOMAIN,
+    KARBIRD_OWNER_EMAIL: OWNER_EMAIL,
+    KARBIRD_OWNER_PASSWORD: OWNER_PASSWORD,
+  };
+  assert.throws(() => render(old), /missing: SECRET_SEED, DOMAIN, OWNER_EMAIL, OWNER_PASSWORD/);
 });
 
 test('a short owner password fails before anything reaches the servers', () => {
-  assert.throws(() => render({ ...input, KARBIRD_OWNER_PASSWORD: 'elevenchars' }), /at least 12 characters/);
-  assert.throws(() => render({ ...input, KARBIRD_OWNER_PASSWORD: 'пароль-ёжик' }), /at least 12 characters/);
-  assert.doesNotThrow(() => render({ ...input, KARBIRD_OWNER_PASSWORD: 'twelve chars' }));
+  assert.throws(() => render({ ...input, OWNER_PASSWORD: 'elevenchars' }), /at least 12 characters/);
+  assert.throws(() => render({ ...input, OWNER_PASSWORD: 'пароль-ёжик' }), /at least 12 characters/);
+  assert.doesNotThrow(() => render({ ...input, OWNER_PASSWORD: 'twelve chars' }));
 });
 
 test('S3 identities match the derived keys and stay scoped to the archive bucket', () => {
@@ -117,10 +139,10 @@ test('every variable a production compose file reads is rendered for its host or
 });
 
 test('rejects missing or malformed inputs with the variable name', () => {
-  assert.throws(() => render({ ...input, KARBIRD_SECRET_SEED: '' }), /missing: KARBIRD_SECRET_SEED/);
-  assert.throws(() => render({ ...input, KARBIRD_SECRET_SEED: 'short' }), /at least 32/);
+  assert.throws(() => render({ ...input, SECRET_SEED: '' }), /missing: SECRET_SEED/);
+  assert.throws(() => render({ ...input, SECRET_SEED: 'short' }), /SECRET_SEED must be at least 32/);
   for (const domain of ['https://karbird.example.com', 'karbird.example.com/app', 'localhost', 'a b.com']) {
-    assert.throws(() => render({ ...input, KARBIRD_DOMAIN: domain }), /KARBIRD_DOMAIN/, domain);
+    assert.throws(() => render({ ...input, DOMAIN: domain }), /^Error: DOMAIN must be a host name/, domain);
   }
   for (const ip of ['10.0.0', '10.0.0.256', 'storage.internal']) {
     assert.throws(() => render({ ...input, STORAGE_PRIVATE_IP: ip }), /STORAGE_PRIVATE_IP/, ip);

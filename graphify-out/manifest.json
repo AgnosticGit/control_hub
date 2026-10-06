@@ -1727,36 +1727,6 @@
     "ast_hash": "4a10bafe73b0dd63c2216a535fdf8559",
     "semantic_hash": ""
   },
-  "docs/superpowers/plans/2026-09-30-permissions-roles.md": {
-    "mtime": 1791123299.9447114,
-    "seen": 1791124506.024323,
-    "ast_hash": "4fa2983e1e90c561e6932f8af33a2e9b",
-    "semantic_hash": ""
-  },
-  "docs/superpowers/specs/2026-09-29-layered-timeline-design.md": {
-    "mtime": 1791123299.9447114,
-    "seen": 1791124506.024323,
-    "ast_hash": "83cc6747430e0fa0b5af6696209e1517",
-    "semantic_hash": ""
-  },
-  "docs/superpowers/specs/2026-09-29-map-focus-range-design.md": {
-    "mtime": 1791123299.9447114,
-    "seen": 1791124506.024323,
-    "ast_hash": "13599360de875c8e78fa4acd6c7b4ff5",
-    "semantic_hash": ""
-  },
-  "docs/superpowers/specs/2026-09-30-invites-account-onboarding-design.md": {
-    "mtime": 1790791999.1381078,
-    "seen": 1790864569.1666539,
-    "ast_hash": "ef307c84561a8dbdd0f0b331c4c81af0",
-    "semantic_hash": ""
-  },
-  "docs/superpowers/specs/2026-09-30-permissions-roles-design.md": {
-    "mtime": 1791123299.9447114,
-    "seen": 1791124506.024323,
-    "ast_hash": "4c25a14b4008e6470f084aa6bf7b6e6f",
-    "semantic_hash": ""
-  },
   "infra/compose/compose.yaml": {
     "mtime": 1791123299.948226,
     "seen": 1791124506.024323,
@@ -2682,15 +2652,15 @@
     "semantic_hash": ""
   },
   "scripts/deploy-config.mjs": {
-    "mtime": 1791127356.944302,
-    "seen": 1791131286.3207655,
-    "ast_hash": "f7f32297b22673f6b80ba0fe11859d9e",
+    "mtime": 1791251921.6015863,
+    "seen": 1791252132.4686687,
+    "ast_hash": "5e6ce7fb8c77ac43248b587079f002bc",
     "semantic_hash": ""
   },
   "scripts/test/deploy-config.test.mjs": {
-    "mtime": 1791127367.476481,
-    "seen": 1791131286.3207655,
-    "ast_hash": "aae704813b81d812cdab0827de06e3a2",
+    "mtime": 1791251953.9792638,
+    "seen": 1791252132.4696646,
+    "ast_hash": "72a2d35dc8b3492b923439d7d0d25f0f",
     "semantic_hash": ""
   },
   "tests/integration/migrate.test.mjs": {
@@ -2700,9 +2670,9 @@
     "semantic_hash": ""
   },
   ".github/workflows/deploy.yml": {
-    "mtime": 1791127368.7126355,
-    "seen": 1791131286.3306572,
-    "ast_hash": "a30cbfe99f29ac60c775b4bbd863037f",
+    "mtime": 1791251932.7305572,
+    "seen": 1791252132.4787579,
+    "ast_hash": "b7eac5e532a5ad4c3c2769591a4c3e32",
     "semantic_hash": ""
   },
   "deploy/compose.app.yaml": {
@@ -2718,15 +2688,15 @@
     "semantic_hash": ""
   },
   "docs/adr/0017-two-host-deploy.md": {
-    "mtime": 1791123299.9416218,
-    "seen": 1791124506.024323,
-    "ast_hash": "ac6863683b30edbad879dc9c30afb077",
+    "mtime": 1791251967.685033,
+    "seen": 1791252132.480194,
+    "ast_hash": "372fd749e0c2ef0c8b0ff351bbcf1c5c",
     "semantic_hash": ""
   },
   "docs/operations/deploy.md": {
-    "mtime": 1791127556.8007617,
-    "seen": 1791131286.3321602,
-    "ast_hash": "b1f4c7b115d58048cfc319f0217ab6ca",
+    "mtime": 1791251965.6275356,
+    "seen": 1791252132.4807255,
+    "ast_hash": "fdcc2e708e550466cd7d0c1b4a1aa27d",
     "semantic_hash": ""
   },
   "docs/brand/karbird/render.mjs": {

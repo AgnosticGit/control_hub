@@ -2,8 +2,10 @@
 // Renders the files the two production hosts need (docs/operations/deploy.md):
 //   <out>/storage/.env, owner.env, seaweedfs-s3.json   -> VPS "storage" (PostgreSQL, ClickHouse, SeaweedFS)
 //   <out>/app/.env                                     -> VPS "app" (Kafka, services, web, Caddy)
-// Every service password and S3 key is derived from KARBIRD_SECRET_SEED (HMAC-SHA256 per
-// purpose), so GitHub holds one secret instead of fifteen and every deploy renders the same values.
+// Every service password and S3 key is derived from SECRET_SEED (HMAC-SHA256 per purpose), so
+// GitHub holds one secret instead of fifteen and every deploy renders the same values.
+// Inputs carry no product prefix (SECRET_SEED, DOMAIN, OWNER_*); the rendered host files keep the
+// KARBIRD_* names the services read.
 // Usage: node scripts/deploy-config.mjs <out-dir>   (inputs from the environment, see INPUTS)
 import { createHmac } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -13,11 +15,11 @@ import { ARCHIVE_BUCKET, s3Identities } from "./archive-storage.mjs";
 
 export const INPUTS = {
   required: [
-    "KARBIRD_SECRET_SEED",
-    "KARBIRD_DOMAIN",
+    "SECRET_SEED",
+    "DOMAIN",
     "STORAGE_PRIVATE_IP",
-    "KARBIRD_OWNER_EMAIL",
-    "KARBIRD_OWNER_PASSWORD",
+    "OWNER_EMAIL",
+    "OWNER_PASSWORD",
     "IMAGE_PREFIX",
     "KARBIRD_VERSION",
   ],
@@ -52,18 +54,18 @@ const hexKey = (seed, purpose) => createHmac("sha256", seed).update(`karbird/v1/
 function validate(env) {
   const missing = INPUTS.required.filter((k) => !env[k]?.trim());
   if (missing.length) throw new Error(`missing: ${missing.join(", ")}`);
-  if (env.KARBIRD_SECRET_SEED.length < 32) throw new Error("KARBIRD_SECRET_SEED must be at least 32 characters");
-  if (!/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(env.KARBIRD_DOMAIN)) {
-    throw new Error("KARBIRD_DOMAIN must be a host name such as karbird.example.com (no scheme, no path)");
+  if (env.SECRET_SEED.length < 32) throw new Error("SECRET_SEED must be at least 32 characters");
+  if (!/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(env.DOMAIN)) {
+    throw new Error("DOMAIN must be a host name such as karbird.example.com (no scheme, no path)");
   }
   if (!/^(\d{1,3})(\.\d{1,3}){3}$/.test(env.STORAGE_PRIVATE_IP) || env.STORAGE_PRIVATE_IP.split(".").some((o) => Number(o) > 255)) {
     throw new Error("STORAGE_PRIVATE_IP must be an IPv4 address (the storage VPS's private address)");
   }
-  if (/['\r\n]/.test(env.KARBIRD_OWNER_PASSWORD)) {
-    throw new Error("KARBIRD_OWNER_PASSWORD must not contain single quotes or line breaks");
+  if (/['\r\n]/.test(env.OWNER_PASSWORD)) {
+    throw new Error("OWNER_PASSWORD must not contain single quotes or line breaks");
   }
-  if ([...env.KARBIRD_OWNER_PASSWORD].length < 12) {
-    throw new Error("KARBIRD_OWNER_PASSWORD must have at least 12 characters");
+  if ([...env.OWNER_PASSWORD].length < 12) {
+    throw new Error("OWNER_PASSWORD must have at least 12 characters");
   }
   if (!/^[a-z0-9._/-]+$/.test(env.IMAGE_PREFIX)) throw new Error("IMAGE_PREFIX must be a lowercase registry path");
   if (!/^[A-Za-z0-9._-]{1,128}$/.test(env.KARBIRD_VERSION)) throw new Error("KARBIRD_VERSION is not a valid image tag");
@@ -84,7 +86,7 @@ const envFile = (header, vars) =>
 /** The files for both hosts as { "storage/.env": text, ... }. Pure: no I/O. */
 export function render(env) {
   validate(env);
-  const seed = env.KARBIRD_SECRET_SEED;
+  const seed = env.SECRET_SEED;
   const pw = (purpose) => derive(seed, purpose);
   const s3 = {
     CH_S3_ADMIN_ACCESS_KEY: `admin${hexKey(seed, "s3-admin-key")}`,
@@ -122,13 +124,13 @@ export function render(env) {
       ...s3,
     }),
     // Single quotes: the password is taken literally (no `$` interpolation by Compose).
-    "storage/owner.env": `# The owner account created by \`karbird-api migrate\` (never reset afterwards).\nKARBIRD_OWNER_EMAIL=${env.KARBIRD_OWNER_EMAIL.trim()}\nKARBIRD_OWNER_PASSWORD='${env.KARBIRD_OWNER_PASSWORD}'\n`,
+    "storage/owner.env": `# The owner account created by \`karbird-api migrate\` (never reset afterwards).\nKARBIRD_OWNER_EMAIL=${env.OWNER_EMAIL.trim()}\nKARBIRD_OWNER_PASSWORD='${env.OWNER_PASSWORD}'\n`,
     "storage/seaweedfs-s3.json": `${JSON.stringify(s3Identities(s3), null, 2)}\n`,
     "app/.env": envFile("karbird app host (Kafka, services, web, Caddy).", {
       ...common,
-      KARBIRD_DOMAIN: env.KARBIRD_DOMAIN,
+      KARBIRD_DOMAIN: env.DOMAIN,
       ...Object.fromEntries(Object.entries(SIGNUP_DEFAULTS).map(([k, d]) => [k, env[k]?.trim() || d])),
-      ACME_EMAIL: env.ACME_EMAIL?.trim() || env.KARBIRD_OWNER_EMAIL.trim(),
+      ACME_EMAIL: env.ACME_EMAIL?.trim() || env.OWNER_EMAIL.trim(),
       STORAGE_ADDR: env.STORAGE_PRIVATE_IP,
       ARCHIVE_BUCKET,
       ...serviceDb,

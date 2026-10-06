@@ -18,7 +18,7 @@ happen on a production deploy.
   archiver, web and Caddy; only Caddy (80/443) is public. Caddy terminates TLS (ACME) and routes
   `/api/v1/*` to the API, `/otlp/*` to ingest (prefix stripped), everything else to web.
 - **One deploy secret.** Every service password and S3 key is derived from
-  `KARBIRD_SECRET_SEED` with HMAC-SHA256 per purpose (`scripts/deploy-config.mjs`), so GitHub
+  `SECRET_SEED` with HMAC-SHA256 per purpose (`scripts/deploy-config.mjs`), so GitHub
   holds one secret and every deploy renders identical values. The rendered files exist only on
   the runner and in `/opt/karbird` on the hosts (mode 600).
 - **`karbird-api migrate` replaces `bootstrap` on servers**: migrations, built-in roles,
@@ -33,7 +33,7 @@ happen on a production deploy.
 ## Consequences
 - A release is `git tag vX.Y.Z && git push --tags`; a rollback is a manual run on the older tag
   (migrations must stay backward compatible for one release).
-- Changing `KARBIRD_SECRET_SEED` after the first deploy breaks the PostgreSQL admin login
+- Changing the value of `SECRET_SEED` after the first deploy breaks the PostgreSQL admin login
   (set once when the volume is created); rotating it needs a manual password change.
 - Memory is not tuned yet: with defaults each host idles around 0.5 GB, so `deploy/host-setup.sh`
   adds 2 GB of swap. Limits for 1 GB hosts are a separate task.

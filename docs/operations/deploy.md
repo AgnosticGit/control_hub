@@ -29,15 +29,15 @@ Public URLs: `https://<domain>/` (site and `/app`), `https://<domain>/api/v1/…
 
    | Secret | Value |
    |---|---|
-   | `KARBIRD_SECRET_SEED` | 48+ random characters (`openssl rand -base64 48`). All service passwords derive from it. Never change it after the first deploy. |
-   | `KARBIRD_OWNER_EMAIL` | the owner account, created on the first deploy |
-   | `KARBIRD_OWNER_PASSWORD` | 12+ characters, no `'` and no line breaks. Only used to create the account; later changes are ignored (change it in `/app/account`). |
+   | `SECRET_SEED` | 48+ random characters (`openssl rand -base64 48`). All service passwords derive from it. Never change its value after the first deploy (renaming the secret is fine if the value stays the same). |
+   | `OWNER_EMAIL` | the owner account, created on the first deploy |
+   | `OWNER_PASSWORD` | 12+ characters, no `'` and no line breaks. Only used to create the account; later changes are ignored (change it in `/app/account`). |
    | `DEPLOY_SSH_KEY` | private key from step 4 (the whole file) |
    | `DEPLOY_KNOWN_HOSTS` | output of step 5 |
 
    | Variable | Value |
    |---|---|
-   | `KARBIRD_DOMAIN` | e.g. `karbird.example.com` (no scheme) |
+   | `DOMAIN` | e.g. `karbird.example.com` (no scheme) |
    | `APP_HOST` | public IP or name of the app host |
    | `STORAGE_HOST` | public IP or name of the storage host (SSH only) |
    | `STORAGE_PRIVATE_IP` | private IP of the storage host |
