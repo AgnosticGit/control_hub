@@ -21,6 +21,20 @@ env:
   WASM_BINDGEN_VERSION: "0.2.129"
 
 jobs:
+  php-sdk:
+    name: PHP SDK
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: opentelemetry
+          tools: composer:v2
+      - run: composer validate --no-check-publish packages/sdk-php/composer.json
+      - run: composer install --working-dir=packages/sdk-php --no-interaction --no-progress --prefer-dist
+      - run: composer --working-dir=packages/sdk-php test
+
   rust:
     name: Rust (fmt, clippy, tests, wasm32 check)
     runs-on: ubuntu-24.04

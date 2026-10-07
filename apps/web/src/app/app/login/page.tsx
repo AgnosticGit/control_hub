@@ -1,8 +1,7 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { AuthFrame } from "@/components/auth/AuthFrame";
 import { api, ApiRequestError, unwrap } from "@/lib/api";
@@ -10,9 +9,7 @@ import { useHydrated } from "@/lib/hydrated";
 import { formText, safeNext } from "@/lib/signup";
 
 function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
-  const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const hydrated = useHydrated();
@@ -25,12 +22,19 @@ function LoginForm() {
     const password = formText(form, "password");
     setBusy(true);
     setError(null);
+    let checkingSession = false;
     try {
-      const session = unwrap(await api.POST("/api/v1/session/login", { body: { email, password } }));
-      qc.setQueryData(["session"], session);
-      router.replace(safeNext(params.get("next")) ?? "/app");
+      unwrap(await api.POST("/api/v1/session/login", { body: { email, password } }));
+      // Confirm the browser accepted the HttpOnly cookie before leaving this page. A successful
+      // login response alone does not prove that a Secure cookie was stored (for example on HTTP).
+      checkingSession = true;
+      unwrap(await api.GET("/api/v1/session"));
+      window.location.replace(safeNext(params.get("next")) ?? "/app");
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 429) setError("Too many attempts. Try again later.");
+      else if (checkingSession && err instanceof ApiRequestError && err.status === 401) {
+        setError("Login succeeded, but the browser did not keep the session. Open karbird over HTTPS and try again.");
+      }
       else if (err instanceof ApiRequestError && err.status === 401) setError("Invalid email or password.");
       else setError("Cannot reach the karbird API.");
     } finally {

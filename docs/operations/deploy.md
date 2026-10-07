@@ -120,3 +120,7 @@ The agent (pinned `otel/opentelemetry-collector-contrib`, ≤ 128 MB) reads the 
 the Docker socket read-only and exports only the metrics the API reads. Give the services' SDK the
 same `KARBIRD_HOST_NAME`; in containers the SDK reads `container.id` from cgroups, so instances are
 matched to their container automatically. Metrics are kept `KARBIRD_METRICS_RETENTION_DAYS` (14).
+
+The Collector is language-agnostic: it reports PHP-FPM and other containers through Docker stats,
+without PHP-specific instrumentation. Instrument the PHP application with `karbird/sdk-php` for
+traces/logs and matching host/container identity; see [PHP integration](../integration/php.md).

@@ -14,7 +14,7 @@ Code here is written mostly by AI agents, so tests are the spec. A change withou
 | Rust unit / property | `#[cfg(test)] mod tests` in the changed file; `proptest` for invariants | `cargo test -p <crate>` |
 | Rust HTTP handlers | same file, axum router via `tower::ServiceExt::oneshot` (fakes: `karbird-ingest/src/testing.rs`) | `cargo test -p <crate>` |
 | Web / engine TS | `*.test.ts` next to the file in `apps/web/src` (vitest) | `pnpm --filter @karbird/web test` |
-| SDK, demo system, scripts | `packages/sdk-node/test/`, `examples/demo-system/test/`, `scripts/test/` (`node --test`) | `just test` |
+| SDK, demo system, scripts | `packages/sdk-node/test/`, `packages/sdk-php/test/`, `examples/demo-system/test/`, `scripts/test/` (`node --test` / `composer test`) | `just test` / `just test-php-sdk` |
 | Integration (real binaries, Kafka, ClickHouse, Postgres) | `tests/integration/<area>.test.mjs`, helpers from `tests/integration/lib.mjs` | `just test-integration` |
 | E2E (browser) | `tests/e2e/specs/<area>.spec.ts`, helpers from `specs/helpers.ts` (`login`, `ingestLog`, `collectErrors`) | `just test-e2e` |
 

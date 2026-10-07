@@ -42,14 +42,13 @@ pub struct Conn {
 
 #[derive(Debug, Clone, Args)]
 pub struct PlanArgs {
-    /// Service name reported by the SDK (default: derived from package.json `name`).
+    /// Service name reported by the SDK (default: derived from package.json `name` or composer.json `name`).
     #[arg(long)]
     pub service_name: Option<String>,
     /// Deployment environment label written to `.env.example`.
     #[arg(long, default_value = "local")]
     pub environment: String,
-    /// Version spec for `@karbird/sdk-node` (it is not published to a registry yet; use a
-    /// `file:` path to `packages/sdk-node` of a karbird checkout).
+    /// SDK version constraint. For a local PHP SDK checkout, use `path:../karbird/packages/sdk-php`.
     #[arg(long, default_value = "^0.1.0")]
     pub sdk_spec: String,
 }

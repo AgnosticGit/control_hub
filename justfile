@@ -67,6 +67,7 @@ check:
 test:
     cargo test --workspace
     pnpm --filter @karbird/sdk-node test
+    just test-php-sdk
     pnpm --filter @karbird/web test
     node --test "examples/demo-system/test/*.test.mjs" "scripts/test/*.test.mjs"
 
@@ -89,6 +90,12 @@ cli *ARGS:
 # Test accounts exist only for the duration of the run.
 test-e2e:
     node scripts/test-with-fixtures.mjs pnpm --filter @karbird/e2e test
+
+# PHP SDK bootstrap tests (requires PHP CLI; CI runs these in its PHP job)
+test-php-sdk:
+    composer install --working-dir=packages/sdk-php --no-interaction --no-progress --prefer-dist
+    php packages/sdk-php/test/bootstrap_test.php
+    php packages/sdk-php/test/autoload_test.php
 
 # Reproducible engine benchmark on synthetic data
 bench:

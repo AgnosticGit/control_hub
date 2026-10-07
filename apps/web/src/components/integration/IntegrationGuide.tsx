@@ -5,7 +5,20 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { api, ApiRequestError, scopedPath, unwrap } from "@/lib/api";
-import { curlCheck, otlpEndpoint, safeServiceName, SDK_MIN_NODE, SDK_PACKAGE, sdkCode, sdkEnv, sdkInstall, sdkStart } from "./snippets";
+import {
+  curlCheck,
+  otlpEndpoint,
+  phpSdkBootstrap,
+  phpSdkEnv,
+  phpSdkInstall,
+  safeServiceName,
+  SDK_MIN_NODE,
+  SDK_PACKAGE,
+  sdkCode,
+  sdkEnv,
+  sdkInstall,
+  sdkStart,
+} from "./snippets";
 
 const TOKENS = "/api/v1/projects/{project_id}/environments/{environment_id}/tokens" as const;
 const SERVICES = "/api/v1/projects/{project_id}/environments/{environment_id}/services" as const;
@@ -68,6 +81,7 @@ export function IntegrationGuide({
   const path = scopedPath(projectId, environmentId);
   const origin = useSyncExternalStore(noSubscribe, () => window.location.origin, () => "");
   const [service, setService] = useState("my-service");
+  const [language, setLanguage] = useState<"node" | "php">("node");
   const [secret, setSecret] = useState<string | null>(null);
   const base = `/app/${encodeURIComponent(projectId)}/${encodeURIComponent(environmentId)}`;
 
@@ -85,14 +99,32 @@ export function IntegrationGuide({
   const services = useSeenServices(projectId, environmentId);
 
   const input = { endpoint: origin ? otlpEndpoint(origin) : "", token: secret, serviceName: service };
+  const isPhp = language === "php";
   const seen = services.data?.services ?? [];
 
   return (
     <>
       <div className="text-sm text-muted">
+        <div role="group" aria-label="Choose service language" className="mb-4 inline-flex rounded-lg border border-border bg-surface-2 p-1">
+          {([ ["node", "Node.js"], ["php", "PHP"] ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={language === id}
+              onClick={() => setLanguage(id)}
+              className={`rounded-md px-3 py-1.5 text-sm ${language === id ? "bg-accent text-white" : "text-muted hover:text-text"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <p>
-          Services connect with the karbird SDK <code className="font-mono text-text">{SDK_PACKAGE}</code> (Node.js {SDK_MIN_NODE} or
-          newer). It traces incoming and outgoing HTTP requests and PostgreSQL queries, and sends logs and events linked to them.
+          {isPhp ? (
+            <>Connect PHP services with <code className="font-mono text-text">karbird/sdk-php</code>. The host agent remains language-independent and collects machine and container metrics.</>
+          ) : (
+            <>Connect Node.js services with the karbird SDK <code className="font-mono text-text">{SDK_PACKAGE}</code> (Node.js {SDK_MIN_NODE} or
+            newer). It traces incoming and outgoing HTTP requests and PostgreSQL queries, and sends logs and events linked to them.</>
+          )}{" "}
           Telemetry for this environment goes to:
         </p>
         <p className="mt-2">
@@ -149,22 +181,52 @@ export function IntegrationGuide({
       </Step>
 
       <Step n={2} title="Install the SDK">
-        <p className="text-muted">In the directory of your service:</p>
-        <Snippet label="Install command" text={sdkInstall()} />
+        {isPhp ? (
+          <>
+            <p className="text-muted">From your PHP service directory, while the Karbird monorepo is checked out alongside it:</p>
+            <Snippet label="Install PHP SDK" text={phpSdkInstall()} />
+            <p className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-muted">
+              The PHP package is currently installed from the local monorepo path. Automatic framework and database spans also need
+              the <code className="font-mono">ext-opentelemetry</code> PHP extension and matching OpenTelemetry instrumentation package
+              for your framework/client.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-muted">In the directory of your service:</p>
+            <Snippet label="Install command" text={sdkInstall()} />
+          </>
+        )}
       </Step>
 
       <Step n={3} title="Start your service with the SDK">
         <p className="text-muted">
           Put these variables into your <code className="font-mono">.env</code>, process manager or container environment:
         </p>
-        <Snippet label="SDK environment variables" text={sdkEnv(input)} />
-        <p className="text-muted">
-          Start the service with the SDK loaded first, so it sees every request from the start. Replace{" "}
-          <code className="font-mono">server.js</code> with your entry file; no code changes are needed.
-        </p>
-        <Snippet label="Start command" text={sdkStart()} />
-        <h3 className="pt-2 font-medium">Logs and events from your code (optional)</h3>
-        <Snippet label="Logs and events from code" text={sdkCode()} />
+        <Snippet label="SDK environment variables" text={isPhp ? phpSdkEnv(input) : sdkEnv(input)} />
+        {isPhp ? (
+          <>
+            <p className="text-muted">
+              Make these variables available to PHP-FPM or the container. Load Karbird before Composer&apos;s autoloader so OpenTelemetry
+              starts with the correct endpoint and token:
+            </p>
+            <Snippet label="PHP bootstrap" text={phpSdkBootstrap()} />
+            <p className="text-xs text-muted">
+              For Laravel, install its OpenTelemetry auto-instrumentation package as well. Other frameworks and database clients need
+              their corresponding instrumentation package.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-muted">
+              Start the service with the SDK loaded first, so it sees every request from the start. Replace{" "}
+              <code className="font-mono">server.js</code> with your entry file; no code changes are needed.
+            </p>
+            <Snippet label="Start command" text={sdkStart()} />
+            <h3 className="pt-2 font-medium">Logs and events from your code (optional)</h3>
+            <Snippet label="Logs and events from code" text={sdkCode()} />
+          </>
+        )}
       </Step>
 
       <Step n={4} title="Check the connection">

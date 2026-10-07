@@ -9,12 +9,14 @@ use serde_json::Value;
 
 pub const SDK_PACKAGE: &str = "@karbird/sdk-node";
 pub const SDK_REGISTER: &str = "@karbird/sdk-node/register";
+pub const SDK_PHP_PACKAGE: &str = "karbird/sdk-php";
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Ecosystem {
     Node,
+    Php,
     Unsupported,
 }
 
@@ -163,9 +165,40 @@ pub fn discover(root: &Path) -> anyhow::Result<Discovery> {
     if d.env_ignored_by_git == Some(false) && d.env_files.iter().any(|f| f == ".env") {
         d.warnings.push(".env exists but is not ignored by .gitignore".into());
     }
+    if has("composer.json") {
+        let composer: Value = serde_json::from_str(&read_limited(&root.join("composer.json"))?)
+            .context("composer.json is not valid JSON")?;
+        d.ecosystem = Ecosystem::Php;
+        d.package_name = composer.pointer("/name").and_then(Value::as_str).map(str::to_owned);
+        let mut deps = serde_json::Map::new();
+        for key in ["require", "require-dev"] {
+            if let Some(obj) = composer.get(key).and_then(Value::as_object) {
+                deps.extend(obj.clone());
+            }
+        }
+        d.frameworks = names(&deps, &["laravel/framework", "symfony/framework-bundle", "slim/slim"]);
+        d.datastores = names(
+            &deps,
+            &["doctrine/dbal", "ext-pgsql", "ext-mysqli", "mongodb/mongodb", "predis/predis", "ext-redis"],
+        );
+        d.existing_telemetry =
+            names(&deps, &["open-telemetry/sdk", "ddtrace/dd-trace", "sentry/sentry", "newrelic/newrelic"]);
+        d.karbird_sdk_installed = deps.contains_key(SDK_PHP_PACKAGE);
+        if !deps.contains_key("ext-opentelemetry") {
+            d.warnings.push("the PHP extension ext-opentelemetry is required for automatic instrumentation".into());
+        }
+        if !d.existing_telemetry.is_empty() && !d.karbird_sdk_installed {
+            d.warnings.push(format!(
+                "existing telemetry packages ({}): check for duplicate OpenTelemetry providers before enabling Karbird",
+                d.existing_telemetry.join(", ")
+            ));
+        }
+        return Ok(d);
+    }
     if !has("package.json") {
-        d.warnings
-            .push("no package.json: only Node.js projects can be instrumented automatically; use OTLP manually".into());
+        d.warnings.push(
+            "no supported package manifest found (package.json or composer.json); configure OTLP manually".into(),
+        );
         return Ok(d);
     }
 
@@ -270,5 +303,24 @@ mod tests {
         let d = discover(dir.path()).unwrap();
         assert_eq!(d.ecosystem, Ecosystem::Unsupported);
         assert_eq!(d.other_ecosystems, vec!["go"]);
+    }
+
+    #[test]
+    fn discovers_php_project_without_reading_env_values() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("composer.json"),
+            r#"{"name":"acme/shop","require":{"laravel/framework":"^11","ext-pdo":"*","karbird/sdk-php":"^0.1"}}"#,
+        )
+        .unwrap();
+        std::fs::write(dir.path().join(".env"), "KARBIRD_INGEST_TOKEN=do-not-read").unwrap();
+        let d = discover(dir.path()).unwrap();
+        assert_eq!(d.ecosystem, Ecosystem::Php);
+        assert_eq!(d.package_name.as_deref(), Some("acme/shop"));
+        assert_eq!(d.frameworks, vec!["laravel/framework"]);
+        assert!(d.datastores.is_empty(), "generic PDO is not a specific database client");
+        assert!(d.karbird_sdk_installed);
+        assert!(!serde_json::to_string(&d).unwrap().contains("do-not-read"));
+        assert!(d.warnings.iter().any(|w| w.contains("ext-opentelemetry")));
     }
 }

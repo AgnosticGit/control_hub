@@ -9,12 +9,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::discover::{self, Discovery, Ecosystem, SDK_PACKAGE, SDK_REGISTER, read_limited};
+use crate::discover::{self, Discovery, Ecosystem, SDK_PACKAGE, SDK_PHP_PACKAGE, SDK_REGISTER, read_limited};
 use crate::{Outcome, PlanArgs};
 
 pub const PLAN_FORMAT: u32 = 1;
 /// The only files `apply` may create or modify.
-const ALLOWED_FILES: &[&str] = &["package.json", ".env.example", ".gitignore"];
+const ALLOWED_FILES: &[&str] = &["package.json", "composer.json", ".env.example", ".gitignore"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Step {
@@ -132,6 +132,63 @@ fn package_json_step(
     }))
 }
 
+fn composer_json_step(root: &Path, args: &PlanArgs) -> anyhow::Result<Option<Step>> {
+    let before = read_limited(&root.join("composer.json"))?;
+    let mut composer: Value = serde_json::from_str(&before).context("composer.json is not valid JSON")?;
+    let obj = composer.as_object_mut().ok_or_else(|| anyhow!("composer.json is not an object"))?;
+    let (constraint, local_path) = if let Some(path) = args.sdk_spec.strip_prefix("path:") {
+        if path.trim().is_empty() {
+            bail!("empty local PHP SDK path; use --sdk-spec path:<path>");
+        }
+        ("^0.1.0".to_owned(), Some(path.to_owned()))
+    } else {
+        (args.sdk_spec.clone(), None)
+    };
+    let mut description = Vec::new();
+    let require = obj.entry("require").or_insert_with(|| json!({}));
+    let require = require.as_object_mut().ok_or_else(|| anyhow!("composer.json require is not an object"))?;
+    if require.get(SDK_PHP_PACKAGE).and_then(Value::as_str) != Some(constraint.as_str()) {
+        require.insert(SDK_PHP_PACKAGE.into(), Value::String(constraint.clone()));
+        description.push(format!("add dependency {SDK_PHP_PACKAGE}@{constraint}"));
+    }
+    if let Some(url) = local_path {
+        let repositories = obj.entry("repositories").or_insert_with(|| json!([]));
+        let path_repository = json!({ "type": "path", "url": url, "options": { "symlink": true } });
+        match repositories {
+            Value::Array(repositories) => {
+                let already_present = repositories.iter().any(|repository| {
+                    repository.get("type").and_then(Value::as_str) == Some("path")
+                        && repository.get("url").and_then(Value::as_str) == Some(url.as_str())
+                });
+                if !already_present {
+                    repositories.push(path_repository);
+                    description.push(format!("add local Composer path repository {url}"));
+                }
+            }
+            Value::Object(repositories) => {
+                if !repositories.values().any(|repository| {
+                    repository.get("type").and_then(Value::as_str) == Some("path")
+                        && repository.get("url").and_then(Value::as_str) == Some(url.as_str())
+                }) {
+                    repositories.insert("karbird-local-sdk".into(), path_repository);
+                    description.push(format!("add local Composer path repository {url}"));
+                }
+            }
+            _ => bail!("composer.json repositories must be an array or object"),
+        }
+    }
+    if description.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(Step {
+        id: "composer-json".into(),
+        file: "composer.json".into(),
+        description,
+        before_sha256: Some(sha256(&before)),
+        after: to_pretty(&composer, &indent_of(&before))?,
+    }))
+}
+
 fn env_example_step(root: &Path, service: &str, environment: &str) -> anyhow::Result<Option<Step>> {
     let path = root.join(".env.example");
     let before = if path.exists() { Some(read_limited(&path)?) } else { None };
@@ -197,7 +254,7 @@ pub fn build(root: &Path, args: &PlanArgs) -> anyhow::Result<Plan> {
         next_commands: vec![],
         notes: d.warnings.clone(),
     };
-    if d.ecosystem != Ecosystem::Node {
+    if d.ecosystem == Ecosystem::Unsupported {
         plan.manual_steps.push(
             "Configure your OpenTelemetry SDK to export OTLP/HTTP (protobuf) to KARBIRD_OTLP_ENDPOINT \
              (/v1/traces, /v1/logs) or OTLP/gRPC to port 4317, with header `authorization: Bearer <ingestion token>`."
@@ -210,31 +267,61 @@ pub fn build(root: &Path, args: &PlanArgs) -> anyhow::Result<Plan> {
         (None, Some(n)) => {
             sanitize_service_name(n).ok_or_else(|| anyhow!("cannot derive a service name; pass --service-name"))?
         }
-        (None, None) => bail!("package.json has no name; pass --service-name"),
+        (None, None) => bail!("project manifest has no name; pass --service-name"),
     };
     plan.service_name = Some(service.clone());
     let mut manual = Vec::new();
-    plan.steps.extend(package_json_step(root, &d, args, &mut manual)?);
+    if d.ecosystem == Ecosystem::Node {
+        plan.steps.extend(package_json_step(root, &d, args, &mut manual)?);
+    } else {
+        plan.steps.extend(composer_json_step(root, args)?);
+        manual.push(
+            "Enable the PHP extension ext-opentelemetry and install auto-instrumentation Composer packages for the framework and clients in use (for example open-telemetry/opentelemetry-auto-laravel). The Karbird agent collects machine/container metrics independently of the PHP runtime.".into(),
+        );
+        manual.push(
+            "Load vendor/karbird/sdk-php/src/Bootstrap.php and call Karbird\\Sdk\\Bootstrap::configure() before vendor/autoload.php in the PHP entry point (or use an application-owned auto_prepend_file); this configures the standard OpenTelemetry OTLP exporter and host/container resource attributes.".into(),
+        );
+    }
     plan.steps.extend(env_example_step(root, &service, &args.environment)?);
     plan.steps.extend(gitignore_step(root, &d)?);
-    manual.push(
-        "Create an ingestion token for the target environment (web UI → Tokens) and put it in an untracked .env \
-         or your secret store as KARBIRD_INGEST_TOKEN. Node does not load .env automatically: \
-         use `node --env-file=.env` (Node ≥ 20.6) or your process manager."
-            .into(),
-    );
+    if d.ecosystem == Ecosystem::Node {
+        manual.push(
+            "Create an ingestion token for the target environment (web UI → Tokens) and put it in an untracked .env \
+             or your secret store as KARBIRD_INGEST_TOKEN. Node does not load .env automatically: \
+             use `node --env-file=.env` (Node ≥ 20.6) or your process manager."
+                .into(),
+        );
+    } else {
+        manual.push(
+            "Create an ingestion token for the target environment (web UI → Tokens) and provide KARBIRD_INGEST_TOKEN and the other KARBIRD_* settings to PHP-FPM/your process manager; PHP does not load .env automatically.".into(),
+        );
+    }
     plan.manual_steps = manual;
-    let pm = d.package_manager.as_deref().unwrap_or("npm");
-    plan.next_commands = vec![format!("{pm} install"), "karbird verify".into()];
-    if args.sdk_spec.starts_with('^') || args.sdk_spec.starts_with('~') {
+    if d.ecosystem == Ecosystem::Node {
+        let pm = d.package_manager.as_deref().unwrap_or("npm");
+        plan.next_commands = vec![format!("{pm} install"), "karbird verify".into()];
+    } else {
+        plan.next_commands = vec!["composer update karbird/sdk-php".into(), "karbird verify".into()];
+    }
+    if d.ecosystem == Ecosystem::Node && (args.sdk_spec.starts_with('^') || args.sdk_spec.starts_with('~')) {
         plan.notes.push(format!(
             "{SDK_PACKAGE} is not published to a registry yet; install it with --sdk-spec file:<karbird checkout>/packages/sdk-node"
         ));
+    } else if d.ecosystem == Ecosystem::Php
+        && !args.sdk_spec.starts_with("path:")
+        && (args.sdk_spec.starts_with('^') || args.sdk_spec.starts_with('~'))
+    {
+        plan.notes.push(format!(
+            "{SDK_PHP_PACKAGE} is not published to Packagist yet; for a local checkout pass --sdk-spec path:<karbird checkout>/packages/sdk-php"
+        ));
     }
-    plan.notes.push(
-        "The SDK needs Node.js ≥ 20.6 for `--import` and captures HTTP and pg spans, logs via its logger, and events."
-            .into(),
-    );
+    if d.ecosystem == Ecosystem::Node {
+        plan.notes.push(
+            "The SDK needs Node.js ≥ 20.6 for `--import` and captures HTTP and pg spans, logs via its logger, and events.".into(),
+        );
+    } else {
+        plan.notes.push("PHP framework/client spans require the matching OpenTelemetry PHP auto-instrumentation library; install only the integrations used by this application.".into());
+    }
     Ok(plan)
 }
 
@@ -364,6 +451,46 @@ mod tests {
         std::fs::write(dir.path().join(".gitignore"), "node_modules").unwrap();
         std::fs::write(dir.path().join(".env"), "KARBIRD_INGEST_TOKEN=chi_secret").unwrap();
         dir
+    }
+
+    #[test]
+    fn php_plan_adds_local_sdk_repository_and_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("composer.json"),
+            "{\n  \"name\": \"acme/orders\",\n  \"require\": {\n    \"php\": \"^8.2\"\n  }\n}\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join(".gitignore"), ".env\n").unwrap();
+        let args = PlanArgs {
+            service_name: None,
+            environment: "prod".into(),
+            sdk_spec: "path:../karbird/packages/sdk-php".into(),
+        };
+        let plan = build(dir.path(), &args).unwrap();
+        assert_eq!(plan.service_name.as_deref(), Some("orders"));
+        assert_eq!(plan.steps.iter().map(|s| s.file.as_str()).collect::<Vec<_>>(), ["composer.json", ".env.example"]);
+        assert!(plan.manual_steps.iter().any(|s| s.contains("ext-opentelemetry")));
+        assert_eq!(plan.next_commands[0], "composer update karbird/sdk-php");
+        let dry = apply(dir.path(), &plan, false).unwrap();
+        assert_eq!(dry.code, 2);
+        assert_eq!(apply(dir.path(), &plan, true).unwrap().code, 0);
+        let composer: Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join("composer.json")).unwrap()).unwrap();
+        assert_eq!(composer.pointer("/require/karbird~1sdk-php").and_then(Value::as_str), Some("^0.1.0"));
+        assert_eq!(composer.pointer("/repositories/0/type").and_then(Value::as_str), Some("path"));
+        assert!(build(dir.path(), &args).unwrap().steps.is_empty());
+
+        let object_repositories = tempfile::tempdir().unwrap();
+        std::fs::write(
+            object_repositories.path().join("composer.json"),
+            r#"{"name":"acme/orders","repositories":{"private":{"type":"composer","url":"https://packages.example"}}}"#,
+        )
+        .unwrap();
+        let object_plan = build(object_repositories.path(), &args).unwrap();
+        let after: Value = serde_json::from_str(&object_plan.steps[0].after).unwrap();
+        assert_eq!(after.pointer("/repositories/private/type").and_then(Value::as_str), Some("composer"));
+        assert_eq!(after.pointer("/repositories/karbird-local-sdk/type").and_then(Value::as_str), Some("path"));
     }
 
     #[test]

@@ -4,6 +4,8 @@
 
 # Node / Next.js
 node_modules/
+/packages/sdk-php/vendor/
+/packages/sdk-php/composer.lock
 .next/
 out/
 *.tsbuildinfo

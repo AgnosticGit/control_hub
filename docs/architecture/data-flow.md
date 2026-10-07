@@ -1,7 +1,7 @@
 # Data flow
 
 ```
-app + @karbird/sdk-node ──OTLP/HTTP protobuf──┐
+app + @karbird/sdk-node or karbird/sdk-php ──OTLP/HTTP protobuf──┐
 OTel Collector ──────────────OTLP/gRPC───────────┤
 SDK events client ──────POST /api/v1/events/batch┘
                                                  ▼

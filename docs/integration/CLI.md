@@ -1,7 +1,7 @@
 # `karbird` CLI
 
-Integrates a Node.js service with karbird and gives coding assistants a bounded, read-only view
-of an environment. Build it from this repository (it is not published):
+Integrates a Node.js or PHP service with karbird and gives coding assistants a bounded, read-only
+view of an environment. Build it from this repository (it is not published):
 
 ```
 cargo build --release -p karbird-cli      # target/release/karbird(.exe)
@@ -42,6 +42,10 @@ Looks only at the project root. Reports package name, module type, package manag
 script and entry file, frameworks, datastore clients, other telemetry agents, container files and
 `.env` files **by name** (their contents are never read), and whether `.env` is git-ignored.
 
+Projects with `composer.json` are identified as PHP. For those, discovery reads only the manifest
+and reports Composer frameworks, clients, existing telemetry dependencies and whether
+`ext-opentelemetry` is declared. It never reads PHP source or `.env` values.
+
 ### plan / apply
 A plan is a list of whole-file edits, each with the SHA-256 of the file it was computed from:
 
@@ -53,13 +57,20 @@ A plan is a list of whole-file edits, each with the SHA-256 of the file it was c
    `KARBIRD_OTLP_ENDPOINT` and an **empty** `KARBIRD_INGEST_TOKEN=`.
 3. `.gitignore`: adds `.env` when it is not ignored yet.
 
-`apply` only ever writes `package.json`, `.env.example` and `.gitignore` in the project root
+`apply` only ever writes `package.json`, `composer.json`, `.env.example` and `.gitignore` in the project root
 (a tampered plan that names any other path is rejected), refuses symlinks, checks every file
 against the plan before writing anything, writes atomically, and is idempotent. It never runs a
 package manager: run the printed `next_commands` yourself.
 
-`@karbird/sdk-node` is not on a registry yet: pass
+For Node, `@karbird/sdk-node` is not on a registry yet: pass
 `--sdk-spec file:<karbird checkout>/packages/sdk-node`.
+
+For PHP, `karbird/sdk-php` is not on Packagist yet: pass
+`--sdk-spec path:<karbird checkout>/packages/sdk-php`. The plan adds the Composer path repository
+and dependency, but leaves PHP runtime setup for review: install `ext-opentelemetry`, choose
+framework/client instrumentation packages, load the Karbird bootstrap before Composer autoload,
+and provide token settings to PHP-FPM or its container. The existing Collector agent is
+language-agnostic and gathers machine/container metrics for PHP containers as it does for Node.
 
 Projects without `package.json` get a plan with no file edits and a manual step describing the
 OTLP endpoint (OTLP/HTTP protobuf on `/v1/traces` and `/v1/logs`, or OTLP/gRPC on port 4317,

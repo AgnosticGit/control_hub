@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { SDK_PACKAGE, TOKEN_PLACEHOLDER, curlCheck, otlpEndpoint, safeServiceName, sdkCode, sdkEnv, sdkInstall, sdkStart } from "./snippets";
+import {
+  PHP_SDK_PACKAGE,
+  SDK_PACKAGE,
+  TOKEN_PLACEHOLDER,
+  curlCheck,
+  otlpEndpoint,
+  phpSdkBootstrap,
+  phpSdkEnv,
+  phpSdkInstall,
+  safeServiceName,
+  sdkCode,
+  sdkEnv,
+  sdkInstall,
+  sdkStart,
+} from "./snippets";
 
 const input = { endpoint: "https://ch.example/otlp", token: "chi_secret", serviceName: "Orders API" };
 
@@ -34,6 +48,21 @@ describe("integration snippets", () => {
     for (const text of [sdkInstall(), sdkStart(), sdkCode(), sdkEnv(input)]) {
       expect(text).not.toMatch(/@opentelemetry|OTEL_/);
     }
+  });
+
+  it("shows PHP Composer installation, environment and early bootstrap instructions", () => {
+    expect(phpSdkInstall()).toContain(`composer require ${PHP_SDK_PACKAGE}:^0.1.0`);
+    expect(phpSdkInstall()).toContain("../karbird/packages/sdk-php");
+    expect(envMap(phpSdkEnv(input))).toEqual({
+      KARBIRD_SERVICE_NAME: "orders-api",
+      KARBIRD_ENVIRONMENT: "<environment-name>",
+      KARBIRD_HOST_NAME: "<same-host-name-as-karbird-agent>",
+      KARBIRD_OTLP_ENDPOINT: "https://ch.example/otlp",
+      KARBIRD_INGEST_TOKEN: "chi_secret",
+    });
+    expect(phpSdkBootstrap()).toContain("Karbird\\Sdk\\Bootstrap::configure();");
+    expect(phpSdkBootstrap().indexOf("Bootstrap::configure")).toBeLessThan(phpSdkBootstrap().indexOf("vendor/autoload.php"));
+    expect(phpSdkEnv({ ...input, token: null })).toContain(TOKEN_PLACEHOLDER);
   });
 
   it("uses a placeholder until a token has been created", () => {
