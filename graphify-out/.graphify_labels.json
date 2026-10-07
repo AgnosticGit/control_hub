@@ -58,8 +58,8 @@
   "56": ".github/skills/impeccable/scripts/live-browser.js",
   "57": "pipeline.rs",
   "58": "reducer.rs",
-  "59": "Icon",
-  "60": "react",
+  "59": "InfraInspector.tsx",
+  "60": "Icon",
   "61": "tracks.rs",
   "62": "Design System: karbird",
   "63": "resumeSession",
@@ -372,5 +372,6 @@
   "370": ".github/skills/impeccable/reference/doctor.md",
   "371": ".github/skills/impeccable/SKILL.md",
   "372": "trace-focus.spec.ts",
-  "373": "ADR-0020: Container restart, scaling, feature flags and rollback as typed demo actions, run through a demo orchestrator"
+  "373": "ADR-0020: Container restart, scaling, feature flags and rollback as typed demo actions, run through a demo orchestrator",
+  "374": "TopologyView"
 }

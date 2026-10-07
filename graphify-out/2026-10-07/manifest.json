@@ -150,9 +150,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/app/app/login/page.tsx": {
-    "mtime": 1791331620.1807125,
-    "seen": 1791333025.7719676,
-    "ast_hash": "3730cf1533c35c8181958febefd33c49",
+    "mtime": 1791333798.0289547,
+    "seen": 1791333896.2891757,
+    "ast_hash": "c22c0cba8be238b71089dc54bf2cb825",
     "semantic_hash": ""
   },
   "apps/web/src/app/app/onboarding/page.tsx": {
@@ -1350,8 +1350,8 @@
     "semantic_hash": ""
   },
   "tests/e2e/specs/auth.spec.ts": {
-    "mtime": 1791123299.9666667,
-    "seen": 1791124506.0175807,
+    "mtime": 1791333834.7610083,
+    "seen": 1791333896.347219,
     "ast_hash": "00f169b6fae95558ca021921fdd19159",
     "semantic_hash": ""
   },
@@ -3819,6 +3819,12 @@
     "mtime": 1791332993.0635197,
     "seen": 1791333025.8103583,
     "ast_hash": "956bc4f284d21cbf1e6615dd626d71ae",
+    "semantic_hash": ""
+  },
+  "tests/e2e/specs/login-cookie.spec.ts": {
+    "mtime": 1791333854.9384425,
+    "seen": 1791333896.3482053,
+    "ast_hash": "8662e2f81b5a4e0cdcc33f05ad32c22d",
     "semantic_hash": ""
   }
 }

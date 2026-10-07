@@ -413,11 +413,25 @@ export function RunsOn({ serviceId, snapshot, onSelect, onSelectHost, onSelectCo
                 <span className="text-muted">unknown machine</span>
               )}
             </div>
-            <p className="mt-1 text-[11px] text-muted">
-              {MATCH_TEXT[instance.match_reason]}
-              {instance.p95_ms !== null ? ` · p95 ${Math.round(instance.p95_ms)} ms` : ""}
-              {container?.cpu_share !== null && container?.cpu_share !== undefined ? ` · CPU ${percent(container.cpu_share)} of machine` : ""}
-            </p>
+            <p className="mt-1 text-[11px] text-muted">{MATCH_TEXT[instance.match_reason]}</p>
+            <dl className="mt-2 grid grid-cols-2 gap-2">
+              <div className="rounded-md bg-surface-2 px-2 py-1.5">
+                <dt className="text-[10px] text-muted">Requests</dt>
+                <dd className="font-medium tabular-nums">{instance.requests}</dd>
+              </div>
+              <div className="rounded-md bg-surface-2 px-2 py-1.5">
+                <dt className="text-[10px] text-muted">p95 latency</dt>
+                <dd className="font-medium tabular-nums">{instance.p95_ms === null ? "—" : `${Math.round(instance.p95_ms)} ms`}</dd>
+              </div>
+              <div className="rounded-md bg-surface-2 px-2 py-1.5">
+                <dt className="text-[10px] text-muted">Container CPU</dt>
+                <dd className="font-medium tabular-nums">{percent(container?.cpu_share)}</dd>
+              </div>
+              <div className="rounded-md bg-surface-2 px-2 py-1.5">
+                <dt className="text-[10px] text-muted">Container RAM</dt>
+                <dd className="font-medium tabular-nums">{formatBytes(container?.memory_used_bytes)}</dd>
+              </div>
+            </dl>
           </li>
         ))}
       </ol>

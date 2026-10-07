@@ -69,7 +69,7 @@ pub fn frame_label(h: &crate::types::HostDto) -> String {
 struct Placement<'a> {
     host: &'a str,
     cards: Vec<u32>,
-    chips: Vec<(u32, &'a str, &'a str, usize)>,
+    chips: Vec<(u32, &'a str, Vec<&'a str>)>,
 }
 
 /// `edges` are `(source, target)` node indices, like the engine's edge list.
@@ -99,23 +99,25 @@ pub fn compute(nodes: &[LayoutNode<'_>], edges: &[(u32, u32)], snap: &Infrastruc
     let mut primary_of: HashMap<u32, &str> = HashMap::new();
     for (service_id, instances) in &by_service {
         let Some(&node) = node_of.get(service_id) else { continue };
-        let mut per_host: BTreeMap<&str, usize> = BTreeMap::new();
-        for (_, h) in instances {
+        let mut per_host: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+        for (instance_id, h) in instances {
             if let Some(h) = h.filter(|h| known.contains(h)) {
-                *per_host.entry(h).or_default() += 1;
+                per_host.entry(h).or_default().push(instance_id);
             }
         }
         // Most instances wins; ties go to the first host by ID.
-        let Some((&primary, _)) = per_host.iter().max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0))) else { continue };
+        let Some((&primary, _)) = per_host.iter().max_by(|a, b| a.1.len().cmp(&b.1.len()).then(b.0.cmp(a.0))) else {
+            continue;
+        };
         primary_of.insert(node, primary);
         if let Some(&s) = slot.get(primary) {
             placements[s].cards.push(node);
         }
         if instances.len() > 1 {
             badges.push(InfraBadge { node, count: instances.len() as u32, hosts: per_host.len() as u32 });
-            for (n, (instance, host)) in instances.iter().enumerate() {
-                if let Some(&s) = host.and_then(|h| slot.get(h)) {
-                    placements[s].chips.push((node, service_id, instance, n + 1));
+            for (host, instance_ids) in per_host {
+                if let Some(&s) = slot.get(host) {
+                    placements[s].chips.push((node, service_id, instance_ids));
                 }
             }
         }
@@ -200,17 +202,20 @@ pub fn compute(nodes: &[LayoutNode<'_>], edges: &[(u32, u32)], snap: &Infrastruc
         let band = layout.band(s).unwrap_or_default();
         let mut xs: Vec<(f32, f32)> =
             p.cards.iter().filter_map(|n| positions.get(n)).map(|&(x, _)| (x - CARD_HALF_W, x + CARD_HALF_W)).collect();
-        for ((node, service_id, instance, n), &r) in p.chips.iter().zip(&chip_row[s]) {
+        for ((node, service_id, instance_ids), &r) in p.chips.iter().zip(&chip_row[s]) {
             let service = name_of.get(node).copied().unwrap_or(service_id);
             let x = depth_of(*node) as f32 * COLUMN_SPACING;
             xs.push((x - CHIP_W / 2.0, x + CHIP_W / 2.0));
+            let count = instance_ids.len();
             chips.push(InfraChip {
                 node: *node,
                 service_id: (*service_id).to_owned(),
-                instance_id: (*instance).to_owned(),
+                instance_id: instance_ids.first().copied().unwrap_or_default().to_owned(),
+                instance_ids: instance_ids.iter().map(|id| (*id).to_owned()).collect(),
                 label: format!(
-                    "{} #{n}",
-                    if service.is_empty() { display_name(snap, service_id).unwrap_or(service_id) } else { service }
+                    "{}{suffix}",
+                    if service.is_empty() { display_name(snap, service_id).unwrap_or(service_id) } else { service },
+                    suffix = if count > 1 { format!(" ×{count}") } else { String::new() }
                 ),
                 host_id: p.host.to_owned(),
                 x,
@@ -256,7 +261,7 @@ fn point_on_host(
     chips
         .iter()
         .filter(on_host)
-        .find(|c| instance.is_none_or(|i| c.instance_id == i))
+        .find(|c| instance.is_none_or(|i| c.instance_ids.iter().any(|id| id == i)))
         .or_else(|| chips.iter().find(on_host))
         .map(|c| [c.x, c.y])
         .or_else(|| positions.get(&node).map(|&(x, y)| [x, y]))
@@ -400,14 +405,17 @@ mod tests {
     }
 
     #[test]
-    fn replicas_get_a_badge_and_a_chip_per_instance_on_their_machine() {
+    fn replicas_are_grouped_per_machine_with_a_local_replica_count() {
         let l = compute(&nodes(), &EDGES, &demo());
         assert_eq!(l.view.badges, vec![InfraBadge { node: 3, count: 3, hosts: 2 }]);
         let chips: Vec<_> = l.view.chips.iter().map(|c| (c.label.as_str(), c.host_id.as_str())).collect();
-        assert_eq!(chips.len(), 3);
-        assert!(chips.contains(&("catalog #1", "vps-app")));
-        assert!(chips.contains(&("catalog #2", "vps-worker")));
-        assert!(chips.contains(&("catalog #3", "vps-worker")));
+        assert_eq!(chips.len(), 2);
+        assert!(chips.contains(&("catalog", "vps-app")));
+        assert!(chips.contains(&("catalog ×2", "vps-worker")));
+        assert_eq!(
+            l.view.chips.iter().find(|c| c.host_id == "vps-worker").unwrap().instance_ids,
+            ["catalog-2", "catalog-3"]
+        );
         for c in &l.view.chips {
             let f = l.view.frames.iter().find(|f| f.host_id == c.host_id).unwrap();
             assert!(inside(f, (c.x, c.y)), "{} inside {}", c.label, f.host_id);
@@ -564,7 +572,7 @@ mod tests {
         s.hints[0].service_id = "svc_catalog".into();
         s.hints[0].instance_id = "catalog-1".into();
         let l = compute(&nodes(), &EDGES, &s);
-        let chip = l.view.chips.iter().find(|c| c.instance_id == "catalog-1").unwrap();
+        let chip = l.view.chips.iter().find(|c| c.instance_ids.iter().any(|id| id == "catalog-1")).unwrap();
         assert_eq!(l.view.links[0].from, [chip.x, chip.y]);
     }
 

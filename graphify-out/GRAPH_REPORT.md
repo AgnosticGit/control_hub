@@ -1,17 +1,17 @@
 # Graph Report - control_hub  (2026-10-07)
 
 ## Corpus Check
-- 623 files · ~704,819 words
+- 623 files · ~704,902 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 23 file(s) not represented in the graph (top: (none) 9, .mdc 4, .toml 3)
 
 ## Summary
-- 8593 nodes · 21189 edges · 374 communities (340 shown, 34 thin omitted)
+- 8593 nodes · 21189 edges · 375 communities (340 shown, 35 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 451 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a63612eb`
+- Built from commit: `d6ee4faf`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -75,8 +75,8 @@
 - .github/skills/impeccable/scripts/live-browser.js
 - pipeline.rs
 - reducer.rs
+- InfraInspector.tsx
 - Icon
-- react
 - tracks.rs
 - Design System: karbird
 - resumeSession
@@ -372,6 +372,7 @@
 - .github/skills/impeccable/reference/doctor.md
 - .github/skills/impeccable/SKILL.md
 - ADR-0020: Container restart, scaling, feature flags and rollback as typed demo actions, run through a demo orchestrator
+- TopologyView
 
 ## God Nodes (most connected - your core abstractions)
 1. `State` - 97 edges
@@ -401,7 +402,7 @@
 - 1-file cycle: `crates/karbird-api/src/system_permissions.rs -> crates/karbird-api/src/system_permissions.rs`
 - 1-file cycle: `crates/karbird-api/src/permissions.rs -> crates/karbird-api/src/permissions.rs`
 
-## Communities (374 total, 34 thin omitted)
+## Communities (375 total, 35 thin omitted)
 
 ### Community 0 - ".pool"
 Cohesion: 0.10
@@ -461,7 +462,7 @@ Nodes (67): Graphify (`.cursor/rules/graphify.mdc`), defaults, dir, infraPath, o
 
 ### Community 14 - "types.rs"
 Cohesion: 0.16
-Nodes (22): ContainerDto, Diagnostics, EdgeLatency, EventItem, EventMarker, Filters, FrameSummary, InfraBadge (+14 more)
+Nodes (21): ContainerDto, Diagnostics, EdgeLatency, EventItem, EventMarker, Filters, FrameSummary, InfraBadge (+13 more)
 
 ### Community 15 - "edge_traffic.rs"
 Cohesion: 0.10
@@ -639,13 +640,13 @@ Nodes (11): Accepted, AcceptError, Auth, Publish, AppState, batch_ids_are_unique
 Cohesion: 0.09
 Nodes (24): arb_deltas(), arb_kind(), budget(), DeltaKind, Event, Log, SpanEnd, SpanStart (+16 more)
 
-### Community 59 - "Icon"
+### Community 59 - "InfraInspector.tsx"
 Cohesion: 0.07
-Nodes (57): Icon(), EdgeInspector(), Bar(), ContainerButton(), ContainerCard(), ContainerCardProps, Gauge(), HintList() (+49 more)
+Nodes (55): Bar(), ContainerButton(), ContainerCard(), ContainerCardProps, Gauge(), HintList(), HostCard(), HostCardProps (+47 more)
 
-### Community 60 - "react"
-Cohesion: 0.07
-Nodes (53): Account(), Profile(), Projects(), OnboardingPage(), AppIndex(), Integration(), Tokens(), nav (+45 more)
+### Community 60 - "Icon"
+Cohesion: 0.08
+Nodes (54): Account(), Profile(), Projects(), OnboardingPage(), AppIndex(), Integration(), Tokens(), nav (+46 more)
 
 ### Community 61 - "tracks.rs"
 Cohesion: 0.12
@@ -757,7 +758,7 @@ Nodes (15): EDGE_SERIES_BUCKETS, EDGE_STRIDE, event_delta(), FLAG_DECLARED, FLAG
 
 ### Community 88 - "useWorkspaceEngine.ts"
 Cohesion: 0.07
-Nodes (51): areaPath(), bucketRates(), edgeEnds(), edgeIndex(), EdgeTraffic, formatBytes(), formatMs(), formatPercent() (+43 more)
+Nodes (52): areaPath(), bucketRates(), edgeEnds(), edgeIndex(), EdgeTraffic, formatBytes(), formatMs(), formatPercent() (+44 more)
 
 ### Community 89 - "proxy.ts"
 Cohesion: 0.18
@@ -1712,8 +1713,8 @@ Cohesion: 0.40
 Nodes (3): bin, ADR-0015, root
 
 ### Community 359 - "Vec"
-Cohesion: 0.18
-Nodes (5): EdgeMetrics, HostDto, ServiceTrack, TopologyView, TopologyViewEdge
+Cohesion: 0.25
+Nodes (5): EdgeMetrics, HostDto, InfraChip, ServiceTrack, TopologyViewEdge
 
 ### Community 360 - "EdgeLookup"
 Cohesion: 0.47
@@ -1766,12 +1767,12 @@ Nodes (5): ADR-0020: Container restart, scaling, feature flags and rollback as t
 ## Knowledge Gaps
 - **1998 isolated node(s):** `lockPath`, `logPath`, `require`, `{ chromium }`, `out` (+1993 more)
   These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2792 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **34 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **35 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `vitest` connect `vitest` to `SecurityPage.tsx`, `Workspace.tsx`, `scale.ts`, `TimelineTracksView.tsx`, `unwrap`, `MapDemo.tsx`, `fit.test.ts`, `web/package.json`, `IntegrationGuide.tsx`, `invite/page.tsx`, `external.ts`, `neighbours.ts`, `Icon`, `react`, `pixi-map.ts`, `draw.ts`, `View`, `useWorkspaceEngine`, `range.ts`, `useWorkspaceEngine.ts`, `proxy.ts`, `PixiMap`, `cull.ts`, `seo.test.ts`, `grid.ts`, `engine.worker.ts`, `Splitter.tsx`, `lib/api.ts`?**
+- **Why does `vitest` connect `vitest` to `SecurityPage.tsx`, `Workspace.tsx`, `scale.ts`, `TimelineTracksView.tsx`, `unwrap`, `MapDemo.tsx`, `fit.test.ts`, `web/package.json`, `IntegrationGuide.tsx`, `invite/page.tsx`, `external.ts`, `neighbours.ts`, `InfraInspector.tsx`, `Icon`, `pixi-map.ts`, `draw.ts`, `View`, `useWorkspaceEngine`, `range.ts`, `useWorkspaceEngine.ts`, `proxy.ts`, `PixiMap`, `cull.ts`, `seo.test.ts`, `grid.ts`, `engine.worker.ts`, `Splitter.tsx`, `lib/api.ts`?**
   _High betweenness centrality (0.018) - this node is a cross-community bridge._
 - **Why does `Engine` connect `Engine` to `.compute_banded`, `EntityKind`, `SeekOutcome`, `EdgeLookup`, `.apply_batch`, `Timeline`, `hops.rs`, `karbird-engine-core/src/lib.rs`, `infra.rs`?**
   _High betweenness centrality (0.015) - this node is a cross-community bridge._

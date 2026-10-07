@@ -30,7 +30,7 @@ const frame = (over: Partial<InfraFrame> = {}): InfraFrame => ({
 
 const view: InfraView = {
   frames: [frame(), frame({ host_id: "vps-worker", x: 600 })],
-  chips: [{ node: 3, service_id: "svc_catalog", instance_id: "catalog-2", label: "catalog #2", host_id: "vps-worker", x: 700, y: 250 }],
+  chips: [{ node: 3, service_id: "svc_catalog", instance_id: "catalog-2", instance_ids: ["catalog-2", "catalog-3"], label: "catalog ×2", host_id: "vps-worker", x: 700, y: 250 }],
   badges: [{ node: 3, count: 3, hosts: 2 }],
   links: [],
 };

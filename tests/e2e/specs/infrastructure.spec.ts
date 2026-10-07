@@ -116,6 +116,10 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   await expect(runsOn).toContainText("1 instance");
   await expect(runsOn).toContainText(`${orders}-1`);
   await expect(runsOn).toContainText(`container ${orders}`);
+  const replica = runsOn.locator("li").filter({ hasText: `${orders}-1` });
+  for (const metric of ["Requests", "p95 latency", "Container CPU", "Container RAM"]) {
+    await expect(replica.getByText(metric, { exact: true })).toBeVisible();
+  }
   await expect(runsOn.getByRole("list", { name: "Noisy neighbour" })).toContainText(inventory);
   await runsOn.getByRole("button", { name: host, exact: true }).click();
 

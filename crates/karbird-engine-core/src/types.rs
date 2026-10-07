@@ -628,7 +628,7 @@ pub struct InfraFrame {
     pub has_metrics: bool,
 }
 
-/// One instance of a multi-instance service, drawn inside its machine's frame (centre point).
+/// Instances of one service grouped on a machine, drawn inside its frame (centre point).
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "ts", derive(TS), ts(export))]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -636,7 +636,7 @@ pub struct InfraChip {
     pub node: u32,
     pub service_id: String,
     pub instance_id: String,
-    /// e.g. `catalog #2`.
+    pub instance_ids: Vec<String>,
     pub label: String,
     pub host_id: String,
     pub x: f32,

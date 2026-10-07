@@ -13,7 +13,7 @@ import type { SelectedEdge } from "./edge-traffic";
 import { Inspector } from "./Inspector";
 import type { OpenSignals } from "./InfraInspector";
 import { InfraOverlay } from "./InfraOverlay";
-import { containerOfInstance, type ContainerRef } from "./infrastructure";
+import type { ContainerRef } from "./infrastructure";
 import { MapView } from "./MapView";
 import { useInfrastructure } from "./useInfrastructure";
 import { SignalsPanel, type Tab } from "./SignalsPanel";
@@ -116,12 +116,8 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
       setSide("details");
     }
   };
-  // A service instance on the infrastructure layer opens its container, or else its service.
-  const selectInstance = (instanceId: string, hostId: string, serviceId: string) => {
-    const ref = containerOfInstance(infraSnapshot, instanceId, hostId);
-    if (ref) selectContainer(ref);
-    else select(serviceId);
-  };
+  // A replica chip opens the service inspector, which lists every replica and its own metrics.
+  const selectInstance = (_instanceId: string, _hostId: string, serviceId: string) => select(serviceId);
   // Traces or logs of the moment on screen: time stops there so the lists match the map.
   const openSignals: OpenSignals = (signal, serviceId) => {
     if (state.mode === "live" || state.mode === "replay") actions.pause();

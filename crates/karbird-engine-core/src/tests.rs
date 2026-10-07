@@ -1134,7 +1134,9 @@ fn infrastructure_layer_moves_cards_into_machine_frames_and_back() {
     let app = frame("vps-app");
     assert!(gateway.x > app.x && gateway.x < app.x + app.width && gateway.y > app.y && gateway.y < app.y + app.height);
     assert_eq!(view.badges, vec![InfraBadge { node: 1, count: 3, hosts: 2 }]);
-    assert_eq!(view.chips.len(), 3);
+    assert_eq!(view.chips.len(), 2);
+    assert!(view.chips.iter().any(|c| c.label == "orders" && c.host_id == "vps-app"));
+    assert!(view.chips.iter().any(|c| c.label == "orders ×2" && c.host_id == "vps-worker"));
     assert!(topo.edges.iter().all(|edge| edge.points.is_empty()), "adjacent columns need no corridors");
 
     // Frames drive the frame geometry too, not only the topology view.
