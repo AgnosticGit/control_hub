@@ -15,5 +15,4 @@ $tracer = OpenTelemetry\API\Globals::tracerProvider()->getTracer('karbird-sdk-ph
 $span = $tracer->spanBuilder('bootstrap.registered')->startSpan();
 $span->end();
 
-OpenTelemetry\API\Globals::tracerProvider()->shutdown();
 echo "PHP SDK autoload test passed\n";
