@@ -23,6 +23,17 @@ test('reads the container ID from mountinfo under cgroup v2', () => {
   assert.equal(containerIdFromMountinfo('1 0 8:1 / / rw - ext4 /dev/sda1 rw'), null);
 });
 
+test('falls back from a cgroup v2 namespace to mountinfo when Docker exposes its container directory', () => {
+  const mountinfo = `612 590 8:1 /var/lib/docker/containers/${ID}/hostname /etc/hostname rw,relatime - ext4 /dev/sda1 rw`;
+  const attrs = infraAttributes({}, {
+    env: {},
+    hostname: () => 'vps-app',
+    pid: 7,
+    read: (path) => (path.endsWith('cgroup') ? '0::/' : mountinfo),
+  });
+  assert.deepEqual(attrs, { 'host.name': 'vps-app', 'container.id': ID, 'process.pid': 7 });
+});
+
 test('options win over env, env over detection', () => {
   const deps = {
     env: { KARBIRD_HOST_NAME: 'vps-app', KARBIRD_CONTAINER_ID: 'from-env' },

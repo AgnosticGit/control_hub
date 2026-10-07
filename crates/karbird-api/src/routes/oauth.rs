@@ -220,7 +220,11 @@ mod tests {
     use super::*;
 
     fn config() -> GoogleOAuthConfig {
-        GoogleOAuthConfig { client_id: "client".into(), client_secret: "secret".into(), redirect_url: "https://karbird.com/callback".into() }
+        GoogleOAuthConfig {
+            client_id: "client".into(),
+            client_secret: "secret".into(),
+            redirect_url: "https://karbird.com/callback".into(),
+        }
     }
 
     #[test]
@@ -234,8 +238,12 @@ mod tests {
     #[test]
     fn google_oauth_requires_verified_current_claims_for_this_client() {
         let valid = TokenInfo {
-            sub: "subject".into(), email: "a@example.test".into(), email_verified: "true".into(), aud: "client".into(),
-            iss: "https://accounts.google.com".into(), exp: (OffsetDateTime::now_utc().unix_timestamp() + 60).to_string(),
+            sub: "subject".into(),
+            email: "a@example.test".into(),
+            email_verified: "true".into(),
+            aud: "client".into(),
+            iss: "https://accounts.google.com".into(),
+            exp: (OffsetDateTime::now_utc().unix_timestamp() + 60).to_string(),
         };
         assert!(verify_token_info(&valid, &config()).is_ok());
         assert!(verify_token_info(&TokenInfo { email_verified: "false".into(), ..valid }, &config()).is_err());
@@ -244,10 +252,28 @@ mod tests {
     #[tokio::test]
     async fn google_oauth_state_is_one_time_and_expires() {
         let store = OAuthStateStore::default();
-        store.insert("state", OAuthAttempt { verifier: "v".into(), next: "/app".into(), expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(1) }).await;
+        store
+            .insert(
+                "state",
+                OAuthAttempt {
+                    verifier: "v".into(),
+                    next: "/app".into(),
+                    expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(1),
+                },
+            )
+            .await;
         assert!(store.take("state").await.is_some());
         assert!(store.take("state").await.is_none());
-        store.insert("expired", OAuthAttempt { verifier: "v".into(), next: "/app".into(), expires_at: OffsetDateTime::now_utc() - time::Duration::seconds(1) }).await;
+        store
+            .insert(
+                "expired",
+                OAuthAttempt {
+                    verifier: "v".into(),
+                    next: "/app".into(),
+                    expires_at: OffsetDateTime::now_utc() - time::Duration::seconds(1),
+                },
+            )
+            .await;
         assert!(store.take("expired").await.is_none());
     }
 }

@@ -75,7 +75,10 @@ function validate(env) {
   if (!/^[a-z0-9._/-]+$/.test(env.IMAGE_PREFIX)) throw new Error("IMAGE_PREFIX must be a lowercase registry path");
   if (!/^[A-Za-z0-9._-]{1,128}$/.test(env.KARBIRD_VERSION)) throw new Error("KARBIRD_VERSION is not a valid image tag");
   for (const k of Object.keys(RETENTION_DEFAULTS)) {
-    if (env[k] !== undefined && env[k] !== "" && !/^\d{1,4}$/.test(env[k])) throw new Error(`${k} must be a whole number of days`);
+    if (env[k] === undefined || env[k] === "") continue;
+    if (!/^\d{1,4}$/.test(env[k])) throw new Error(`${k} must be a whole number of days`);
+    const days = Number(env[k]);
+    if (days < 2 || days > 3650) throw new Error(`${k} must be between 2 and 3650 days`);
   }
   const signup = env.KARBIRD_SIGNUP?.trim();
   if (signup && signup !== "open" && signup !== "closed") throw new Error("KARBIRD_SIGNUP must be open or closed");

@@ -94,6 +94,21 @@ pub struct InviteProjectAssignment {
     pub role_id: Uuid,
 }
 
+/// Inputs used to issue an organisation invite. Grouping them prevents callers
+/// from accidentally swapping security-sensitive token data with invitation
+/// metadata.
+#[derive(Debug, Clone)]
+pub struct NewOrganizationInvite<'a> {
+    pub organization_id: &'a str,
+    pub email: &'a str,
+    pub organization_role: &'a str,
+    pub assignments: &'a [InviteProjectAssignment],
+    pub token_hash: &'a [u8],
+    pub token_prefix: &'a str,
+    pub created_by: Uuid,
+    pub expires_at: OffsetDateTime,
+}
+
 #[derive(Debug, Clone, FromRow)]
 pub struct OrganizationInviteRow {
     pub id: Uuid,
@@ -500,13 +515,7 @@ impl PgStore {
         .await?)
     }
 
-    pub async fn link_oauth_identity(
-        &self,
-        provider: &str,
-        subject: &str,
-        user_id: Uuid,
-        email: &str,
-    ) -> Result<bool> {
+    pub async fn link_oauth_identity(&self, provider: &str, subject: &str, user_id: Uuid, email: &str) -> Result<bool> {
         match sqlx::query(
             "INSERT INTO oauth_identities (provider, subject, user_id, email) VALUES ($1, $2, $3, $4)
              ON CONFLICT (provider, subject) DO NOTHING",
@@ -590,18 +599,9 @@ impl PgStore {
         Ok(result.rows_affected() == 1)
     }
 
-    pub async fn create_organization_invite(
-        &self,
-        organization_id: &str,
-        email: &str,
-        organization_role: &str,
-        assignments: &[InviteProjectAssignment],
-        token_hash: &[u8],
-        token_prefix: &str,
-        created_by: Uuid,
-        expires_at: OffsetDateTime,
-    ) -> Result<Option<Uuid>> {
-        let assignments = serde_json::to_value(assignments).map_err(|error| StorageError::Other(error.to_string()))?;
+    pub async fn create_organization_invite(&self, invite: NewOrganizationInvite<'_>) -> Result<Option<Uuid>> {
+        let assignments =
+            serde_json::to_value(invite.assignments).map_err(|error| StorageError::Other(error.to_string()))?;
         Ok(sqlx::query_scalar(
             "INSERT INTO organisation_invites
                 (id, organisation_id, email, organisation_role, project_assignments,
@@ -610,14 +610,14 @@ impl PgStore {
              RETURNING id",
         )
         .bind(Uuid::now_v7())
-        .bind(organization_id)
-        .bind(email)
-        .bind(organization_role)
+        .bind(invite.organization_id)
+        .bind(invite.email)
+        .bind(invite.organization_role)
         .bind(assignments)
-        .bind(token_hash)
-        .bind(token_prefix)
-        .bind(created_by)
-        .bind(expires_at)
+        .bind(invite.token_hash)
+        .bind(invite.token_prefix)
+        .bind(invite.created_by)
+        .bind(invite.expires_at)
         .fetch_optional(&self.pool)
         .await?)
     }
@@ -632,21 +632,13 @@ impl PgStore {
             "SELECT {} FROM organisation_invites WHERE organisation_id = $1 ORDER BY created_at DESC",
             Self::ORGANIZATION_INVITE_COLUMNS
         );
-        Ok(sqlx::query_as::<_, OrganizationInviteRow>(&query)
-            .bind(organization_id)
-            .fetch_all(&self.pool)
-            .await?)
+        Ok(sqlx::query_as::<_, OrganizationInviteRow>(&query).bind(organization_id).fetch_all(&self.pool).await?)
     }
 
     pub async fn find_organization_invite(&self, token_hash: &[u8]) -> Result<Option<OrganizationInviteRow>> {
-        let query = format!(
-            "SELECT {} FROM organisation_invites WHERE token_hash = $1",
-            Self::ORGANIZATION_INVITE_COLUMNS
-        );
-        Ok(sqlx::query_as::<_, OrganizationInviteRow>(&query)
-            .bind(token_hash)
-            .fetch_optional(&self.pool)
-            .await?)
+        let query =
+            format!("SELECT {} FROM organisation_invites WHERE token_hash = $1", Self::ORGANIZATION_INVITE_COLUMNS);
+        Ok(sqlx::query_as::<_, OrganizationInviteRow>(&query).bind(token_hash).fetch_optional(&self.pool).await?)
     }
 
     pub async fn set_organization_invite_delivery(

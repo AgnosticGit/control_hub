@@ -29,6 +29,15 @@ describe("onboardingTarget", () => {
     expect(onboardingTarget([mine, demo], "not-mine")?.project.id).toBe("p-1");
   });
 
+  it("keeps an owned demo project ahead of a real environment owned by someone else", () => {
+    const ownedDemo = { id: "owned-demo", role: "owner", permissions: [], environments: [{ id: "e-owned", is_demo: true }] };
+    const sharedProduction = { id: "shared-production", role: "viewer", permissions: [], environments: [{ id: "e-shared", is_demo: false }] };
+    expect(onboardingTarget([sharedProduction, ownedDemo])).toMatchObject({
+      project: { id: "owned-demo" },
+      environment: { id: "e-owned" },
+    });
+  });
+
   it("skips projects without environments and handles having none", () => {
     expect(onboardingTarget([empty, demo])?.project.id).toBe("demo");
     expect(onboardingTarget([empty])).toBeNull();

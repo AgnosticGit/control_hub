@@ -17,7 +17,15 @@ async function signup(label) {
     body: JSON.stringify({ email, password: PASSWORD, project_name: `Invites ${label} ${hex(3)}` }),
   });
   assert.equal(r.status, 201, JSON.stringify(r.body));
-  const project = r.body.projects[0];
+  assert.deepEqual(r.body.organizations, []);
+  assert.deepEqual(r.body.projects, []);
+  const configured = await s.mutate('/api/v1/onboarding/first-project', {
+    organization_name: `Invites organization ${hex(3)}`,
+    project_name: `Invites ${label} ${hex(3)}`,
+    environments: ['Production'],
+  });
+  assert.equal(configured.status, 201, JSON.stringify(configured.body));
+  const project = configured.body;
   return { s, email, id: r.body.user.id, project, env: project.environments[0] };
 }
 

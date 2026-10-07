@@ -84,7 +84,9 @@ test('only read-only tools are offered', async () => {
   const r = await mcp.request('tools/list', {});
   const names = r.result.tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
-    'get_context', 'get_topology', 'get_trace', 'list_action_plans', 'list_events', 'list_services', 'search_logs', 'search_traces',
+    'get_context', 'get_coverage', 'get_edge_traffic', 'get_incident_snapshot', 'get_infrastructure',
+    'get_infrastructure_timeline', 'get_timeline', 'get_topology', 'get_trace', 'list_action_plans', 'list_events', 'list_services',
+    'search_logs', 'search_traces',
   ]);
   assert.ok(r.result.tools.every((t) => t.annotations.readOnlyHint === true && t.annotations.destructiveHint === false));
 });
@@ -124,6 +126,84 @@ test('tools return scoped, bounded data with the untrusted-data notice', async (
   const plans = await mcp.call('list_action_plans');
   assert.equal(plans.isError, false);
   assert.ok(Array.isArray(plans.structuredContent.data.plans));
+});
+
+test('infrastructure and edge traffic stay read-only and environment-bound', async () => {
+  const at = String(BigInt(Date.now()) * 1_000_000n);
+  const infrastructure = await eventually(async () => {
+    const result = await mcp.call('get_infrastructure', { at_ns: at });
+    assert.equal(result.isError, false, JSON.stringify(result));
+    assert.ok(Array.isArray(result.structuredContent.data.hosts));
+    return result;
+  });
+  assert.equal(infrastructure.structuredContent.at_ns, at);
+  assert.match(infrastructure.structuredContent.ui_path, /^\/app\?project=demo&environment=local-demo&at_ns=/);
+
+  const topology = await mcp.call('get_topology', { minutes: 15 });
+  assert.equal(topology.isError, false, JSON.stringify(topology));
+  const edge = topology.structuredContent.data.edges.find((candidate) => candidate.source && candidate.target && candidate.relation);
+  assert.ok(edge, 'a demo edge is available');
+  const traffic = await mcp.call('get_edge_traffic', {
+    source: edge.source,
+    target: edge.target,
+    relation: edge.relation,
+    from_ns: String(BigInt(at) - 60_000_000_000n),
+    to_ns: at,
+    buckets: 6,
+  });
+  assert.equal(traffic.isError, false, JSON.stringify(traffic));
+  assert.ok(Object.hasOwn(traffic.structuredContent.data, 'avg_request_bps'));
+  assert.ok(Object.hasOwn(traffic.structuredContent.data, 'size_coverage'));
+
+  const iso = new Session();
+  await iso.login('isolation@karbird.local');
+  const isoTok = await iso.mutate(`${ISO}/tokens`, { kind: 'api', name: `mcp-infra-${randomUUID().slice(0, 8)}`, expires_in_days: 1 });
+  assert.equal(isoTok.status, 200);
+  const other = new McpClient(isoTok.body.secret);
+  await other.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
+  const isolatedTraffic = await other.call('get_edge_traffic', {
+    source: edge.source,
+    target: edge.target,
+    relation: edge.relation,
+    from_ns: String(BigInt(at) - 60_000_000_000n),
+    to_ns: at,
+  });
+  assert.equal(isolatedTraffic.isError, false, JSON.stringify(isolatedTraffic));
+  assert.equal(isolatedTraffic.structuredContent.data.total_calls, 0, 'demo edge IDs have no calls in another environment');
+  await other.close();
+});
+
+test('timeline, coverage and incident snapshots preserve exact time ranges', async () => {
+  const toNs = BigInt(Date.now()) * 1_000_000n;
+  const fromNs = toNs - 60_000_000_000n;
+  const time = { from_ns: String(fromNs), to_ns: String(toNs) };
+
+  const timeline = await mcp.call('get_timeline', { ...time, limit: 20 });
+  assert.equal(timeline.isError, false, JSON.stringify(timeline));
+  assert.deepEqual([timeline.structuredContent.from_ns, timeline.structuredContent.to_ns], [time.from_ns, time.to_ns]);
+  assert.ok(Array.isArray(timeline.structuredContent.data.items));
+  assert.ok(timeline.structuredContent.data.completeness);
+
+  const coverage = await mcp.call('get_coverage', time);
+  assert.equal(coverage.isError, false, JSON.stringify(coverage));
+  assert.ok(Array.isArray(coverage.structuredContent.data.services));
+  assert.match(coverage.structuredContent.ui_path, /from_ns=/);
+
+  const services = await mcp.call('list_services', time);
+  assert.equal(services.isError, false, JSON.stringify(services));
+  const orders = services.structuredContent.data.services.find((service) => service.name === 'orders');
+  assert.ok(orders?.service_id, 'orders is present with an opaque service ID');
+  const snapshot = await mcp.call('get_incident_snapshot', { ...time, service_id: orders.service_id });
+  assert.equal(snapshot.isError, false, JSON.stringify(snapshot));
+  assert.match(snapshot.structuredContent.notice, /untrusted/);
+  for (const key of ['services', 'topology', 'traces', 'logs', 'events', 'coverage', 'infrastructure']) {
+    assert.ok(snapshot.structuredContent.data[key], `snapshot includes ${key}`);
+  }
+
+  const inverted = await mcp.call('get_coverage', { from_ns: time.to_ns, to_ns: time.from_ns });
+  assert.equal(inverted.isError, true);
+  const incomplete = await mcp.call('get_timeline', { from_ns: time.from_ns });
+  assert.equal(incomplete.isError, true);
 });
 
 test('invalid arguments and unknown tools are refused', async () => {

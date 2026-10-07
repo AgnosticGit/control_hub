@@ -113,6 +113,18 @@ test('defaults: retention 14/14/30/14, ACME email = owner email; overrides are k
   assert.equal(storage.KARBIRD_LOGS_RETENTION_DAYS, '14', 'migrate applies the same retention the services check');
 });
 
+test('retention overrides stay within the documented 2..3650 day range', () => {
+  for (const value of ['0', '1', '3651', '9999']) {
+    assert.throws(
+      () => render({ ...input, KARBIRD_LOGS_RETENTION_DAYS: value }),
+      /KARBIRD_LOGS_RETENTION_DAYS must be between 2 and 3650 days/,
+      value,
+    );
+  }
+  assert.doesNotThrow(() => render({ ...input, KARBIRD_LOGS_RETENTION_DAYS: '2' }));
+  assert.doesNotThrow(() => render({ ...input, KARBIRD_LOGS_RETENTION_DAYS: '3650' }));
+});
+
 test('sign-up is open by default on a deployment, can be closed, and only reaches the app host', () => {
   assert.equal(app.KARBIRD_SIGNUP, 'open');
   assert.equal(app.KARBIRD_SIGNUP_PER_HOUR, '20');

@@ -15,11 +15,13 @@ clients** of the same APIs that humans use, with less privilege than humans.
 1. **`karbird context`** prints a bounded, sanitized JSON summary of one environment (services,
    dependencies, recent error traces, error logs, events, completeness). See
    [CLI.md](CLI.md#context).
-2. **`karbird mcp`** exposes the same queries as tools (`get_context`, `list_services`,
-   `get_topology`, `search_traces`, `get_trace`, `search_logs`, `list_events`,
-   `list_action_plans`). It has no mutation tools. See [CLI.md](CLI.md#mcp) and ADR-0013.
-3. **Actions** exist for humans (operator proposes, a different admin approves, the separate
-   executor runs and verifies; see ADR-0012). API tokens, and therefore assistants, cannot
+2. **`karbird mcp`** exposes context, services, topology, traces, logs, events and action-plan
+   listing, plus `get_infrastructure`, `get_infrastructure_timeline`, `get_edge_traffic`,
+   `get_timeline`, `get_coverage` and `get_incident_snapshot`. Its range tools support exact
+   decimal-nanosecond intervals, and their results include a relative UI path for the same scope
+   and moment. It has no mutation or archive-specific MCP tools. See [CLI.md](CLI.md#mcp) and ADR-0013.
+3. **Actions** exist for authorized humans in the web app; the separate executor runs and
+   verifies them (see ADR-0012). API tokens, and therefore assistants, cannot
    propose, approve or cancel plans. If assistant proposals are ever added, they will go through
    the same policy check and human approval, and an assistant will never be able to approve.
 

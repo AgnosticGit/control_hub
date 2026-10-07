@@ -203,7 +203,8 @@ mod tests {
             };
             (200, body.to_string())
         });
-        let client = Client::new(&Conn { api_url: url.clone(), ingest_url: url }).unwrap_or_else(|e| panic!("{e}"));
+        let client = Client::new(&Conn { api_url: url.clone(), web_url: None, ingest_url: url })
+            .unwrap_or_else(|e| panic!("{e}"));
         let scope = client::Scope { project_id: "demo".into(), environment_id: "local-demo".into() };
         let v = build(&client, &client::Secret::for_test("cha_ctx"), &scope, 30).unwrap_or_else(|e| panic!("{e}"));
 
@@ -231,7 +232,8 @@ mod tests {
     #[test]
     fn build_propagates_api_errors() {
         let (url, _) = crate::test_http::serve(|_| (401, "{}".into()));
-        let client = Client::new(&Conn { api_url: url.clone(), ingest_url: url }).unwrap_or_else(|e| panic!("{e}"));
+        let client = Client::new(&Conn { api_url: url.clone(), web_url: None, ingest_url: url })
+            .unwrap_or_else(|e| panic!("{e}"));
         let scope = client::Scope { project_id: "p".into(), environment_id: "e".into() };
         let e = build(&client, &client::Secret::for_test("cha_x"), &scope, 15).err().map(|e| e.to_string());
         assert!(e.unwrap_or_default().contains("API token rejected"));

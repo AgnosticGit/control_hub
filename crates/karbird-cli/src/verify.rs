@@ -185,7 +185,7 @@ mod tests {
                 _ => (404, "{}".into()),
             }
         });
-        (Conn { api_url: url.clone(), ingest_url: url }, log)
+        (Conn { api_url: url.clone(), web_url: None, ingest_url: url }, log)
     }
 
     fn verify(f: Fake, timeout: u64, require_app: bool) -> anyhow::Result<Outcome> {
@@ -308,7 +308,11 @@ mod tests {
 
     #[test]
     fn plain_http_to_a_remote_host_is_refused() {
-        let conn = Conn { api_url: "http://hub.example.com".into(), ingest_url: "http://hub.example.com".into() };
+        let conn = Conn {
+            api_url: "http://hub.example.com".into(),
+            web_url: None,
+            ingest_url: "http://hub.example.com".into(),
+        };
         let r = run_with(
             Path::new("."),
             Some("s".into()),

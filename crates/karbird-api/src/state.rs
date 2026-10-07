@@ -6,9 +6,9 @@ use karbird_storage::pg::PgStore;
 use tokio::sync::Semaphore;
 
 use crate::auth::LoginThrottle;
-use crate::routes::signup::SignupThrottle;
 use crate::mail::Mailer;
 use crate::routes::oauth::{GoogleOAuthConfig, OAuthStateStore};
+use crate::routes::signup::SignupThrottle;
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {

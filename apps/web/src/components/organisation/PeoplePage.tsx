@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { api, apiSentence, unwrap, unwrapEmpty } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { AccountShell } from "@/components/account/AccountShell";
@@ -16,58 +16,50 @@ export function PeoplePage() {
   const [organizationRole, setOrganizationRole] = useState("member");
   const [projectId, setProjectId] = useState("");
   const [roleId, setRoleId] = useState("");
-
-  useEffect(() => {
-    if (!organizationId && organizations[0]) setOrganizationId(organizations[0].id);
-  }, [organizationId, organizations]);
+  const selectedOrganizationId = organizations.some((organization) => organization.id === organizationId)
+    ? organizationId
+    : (organizations[0]?.id ?? "");
 
   const projects = useMemo(
-    () => projectsForOrganization(session.data?.projects ?? [], organizationId),
-    [organizationId, session.data?.projects],
+    () => projectsForOrganization(session.data?.projects ?? [], selectedOrganizationId),
+    [selectedOrganizationId, session.data?.projects],
   );
-  useEffect(() => {
-    if (!projects.some((project) => project.id === projectId)) {
-      setProjectId(projects[0]?.id ?? "");
-      setRoleId("");
-    }
-  }, [projectId, projects]);
+  const selectedProjectId = projects.some((project) => project.id === projectId) ? projectId : (projects[0]?.id ?? "");
 
   const members = useQuery({
-    queryKey: ["organization-members", organizationId],
-    enabled: Boolean(organizationId),
+    queryKey: ["organization-members", selectedOrganizationId],
+    enabled: Boolean(selectedOrganizationId),
     queryFn: async () =>
-      unwrap(await api.GET("/api/v1/organizations/{organization_id}/members", { params: { path: { organization_id: organizationId } } })),
+      unwrap(await api.GET("/api/v1/organizations/{organization_id}/members", { params: { path: { organization_id: selectedOrganizationId } } })),
   });
   const invites = useQuery({
-    queryKey: ["organization-invites", organizationId],
-    enabled: Boolean(organizationId),
+    queryKey: ["organization-invites", selectedOrganizationId],
+    enabled: Boolean(selectedOrganizationId),
     queryFn: async () =>
-      unwrap(await api.GET("/api/v1/organizations/{organization_id}/invites", { params: { path: { organization_id: organizationId } } })),
+      unwrap(await api.GET("/api/v1/organizations/{organization_id}/invites", { params: { path: { organization_id: selectedOrganizationId } } })),
   });
   const roles = useQuery({
-    queryKey: ["roles", projectId],
-    enabled: Boolean(projectId),
-    queryFn: async () => unwrap(await api.GET("/api/v1/projects/{project_id}/roles", { params: { path: { project_id: projectId } } })),
+    queryKey: ["roles", selectedProjectId],
+    enabled: Boolean(selectedProjectId),
+    queryFn: async () => unwrap(await api.GET("/api/v1/projects/{project_id}/roles", { params: { path: { project_id: selectedProjectId } } })),
   });
-  useEffect(() => {
-    if (!roleId && roles.data?.[0]) setRoleId(roles.data[0].id);
-  }, [roleId, roles.data]);
+  const selectedRoleId = roles.data?.some((role) => role.id === roleId) ? roleId : (roles.data?.[0]?.id ?? "");
 
   const refresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["organization-members", organizationId] }),
-      queryClient.invalidateQueries({ queryKey: ["organization-invites", organizationId] }),
+      queryClient.invalidateQueries({ queryKey: ["organization-members", selectedOrganizationId] }),
+      queryClient.invalidateQueries({ queryKey: ["organization-invites", selectedOrganizationId] }),
     ]);
   };
   const invite = useMutation({
     mutationFn: async () =>
       unwrap(
         await api.POST("/api/v1/organizations/{organization_id}/invites", {
-          params: { path: { organization_id: organizationId } },
+          params: { path: { organization_id: selectedOrganizationId } },
           body: {
             email,
             organization_role: organizationRole,
-            assignments: projectId && roleId ? [{ project_id: projectId, role_id: roleId }] : [],
+            assignments: selectedProjectId && selectedRoleId ? [{ project_id: selectedProjectId, role_id: selectedRoleId }] : [],
             expires_in_days: 7,
           },
         }),
@@ -81,7 +73,7 @@ export function PeoplePage() {
     mutationFn: async (inviteId: string) =>
       unwrapEmpty(
         await api.DELETE("/api/v1/organizations/{organization_id}/invites/{invite_id}", {
-          params: { path: { organization_id: organizationId, invite_id: inviteId } },
+          params: { path: { organization_id: selectedOrganizationId, invite_id: inviteId } },
         }),
       ),
     onSuccess: refresh,
@@ -96,7 +88,15 @@ export function PeoplePage() {
     <AccountShell active="people" title="People" description="Organization membership and project access are managed separately.">
       <label className="grid max-w-sm gap-1.5 text-sm font-medium">
         Organization
-        <select className="input h-10" value={organizationId} onChange={(event) => setOrganizationId(event.target.value)}>
+        <select
+          className="input h-10"
+          value={selectedOrganizationId}
+          onChange={(event) => {
+            setOrganizationId(event.target.value);
+            setProjectId("");
+            setRoleId("");
+          }}
+        >
           {organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}
         </select>
       </label>
@@ -115,21 +115,28 @@ export function PeoplePage() {
         </label>
         <label className="grid gap-1.5 text-sm font-medium">
           Project
-          <select className="input h-10" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+          <select
+            className="input h-10"
+            value={selectedProjectId}
+            onChange={(event) => {
+              setProjectId(event.target.value);
+              setRoleId("");
+            }}
+          >
             <option value="">No project yet</option>
             {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
           </select>
         </label>
-        {projectId ? (
+        {selectedProjectId ? (
           <label className="grid gap-1.5 text-sm font-medium">
             Project role
-            <select className="input h-10" value={roleId} onChange={(event) => setRoleId(event.target.value)} required>
+            <select className="input h-10" value={selectedRoleId} onChange={(event) => setRoleId(event.target.value)} required>
               {(roles.data ?? []).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
             </select>
           </label>
         ) : null}
         <div className="flex items-end">
-          <button className="btn btn-primary h-10 px-4" disabled={invite.isPending || !email.trim() || !organizationId}>Send invitation</button>
+          <button className="btn btn-primary h-10 px-4" disabled={invite.isPending || !email.trim() || !selectedOrganizationId}>Send invitation</button>
         </div>
         {invite.error ? <p role="alert" className="text-sm text-error md:col-span-2">{apiSentence(invite.error)}</p> : null}
         {invite.data ? (
@@ -174,4 +181,3 @@ export function PeoplePage() {
     </AccountShell>
   );
 }
-

@@ -134,7 +134,7 @@ mod tests {
     }
 
     fn conn(url: &str) -> Conn {
-        Conn { api_url: url.into(), ingest_url: url.into() }
+        Conn { api_url: url.into(), web_url: None, ingest_url: url.into() }
     }
 
     fn check<'a>(o: &'a Outcome, name: &str) -> &'a Value {

@@ -28,12 +28,22 @@ before(async () => {
     body: JSON.stringify({ email: `  ${address.toUpperCase()} `, password: PASSWORD, project_name: 'Shop backend' }),
   });
   assert.equal(r.status, 201, JSON.stringify(r.body));
-  const project = r.body.projects[0];
+  assert.deepEqual(r.body.organizations, [], 'registration starts the first-run wizard');
+  assert.deepEqual(r.body.projects, [], 'the wizard creates the first project explicitly');
+  const created = await session.mutate('/api/v1/onboarding/first-project', {
+    organization_name: 'Shop organization',
+    project_name: 'Shop backend',
+    environments: ['production'],
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const configured = await session.json('/api/v1/session');
+  assert.equal(configured.status, 200, JSON.stringify(configured.body));
+  const project = configured.body.projects[0];
   const env = project.environments[0];
-  account = { email: address, session, body: r.body, project, env, scope: scoped(project.id, env.id) };
+  account = { email: address, session, body: configured.body, project, env, scope: scoped(project.id, env.id) };
 });
 
-test('sign-up creates an owner of a fresh, non-demo project and signs in', async () => {
+test('the first-run wizard creates an owner of a fresh, non-demo project and signs in', async () => {
   const { body, project, env } = account;
   assert.equal(body.user.email, account.email, 'email is normalised');
   assert.equal(body.user.display_name, account.email.split('@')[0]);
@@ -105,7 +115,6 @@ test('sign-up refuses foreign origins and invalid input without creating anythin
     { email: address, password: 'too short' },
     { email: 'not-an-email', password: PASSWORD },
     { email: address, password: address },
-    { email: address, password: PASSWORD, project_name: 'x'.repeat(101) },
   ]) {
     const r = await register(body);
     assert.equal(r.status, 400, JSON.stringify(body));
@@ -114,6 +123,22 @@ test('sign-up refuses foreign origins and invalid input without creating anythin
   // None of the refused attempts reserved the address.
   const ok = await register({ email: address, password: PASSWORD });
   assert.equal(ok.status, 201);
+});
+
+test('the first-run wizard validates initial organization and project names', async () => {
+  const session = new Session();
+  const r = await session.json('/api/v1/session/register', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: ORIGIN },
+    body: JSON.stringify({ email: email(), password: PASSWORD }),
+  });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const invalid = await session.mutate('/api/v1/onboarding/first-project', {
+    organization_name: 'Valid organization',
+    project_name: 'x'.repeat(101),
+    environments: ['Production'],
+  });
+  assert.equal(invalid.status, 400, JSON.stringify(invalid.body));
 });
 
 test('a new tenant cannot see the demo or other tenants, and they cannot see it', async () => {

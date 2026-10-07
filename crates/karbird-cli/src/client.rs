@@ -66,6 +66,23 @@ pub fn check_url(url: &str) -> anyhow::Result<String> {
     Ok(url.to_owned())
 }
 
+/// Validate an optional public web origin used only to construct user-facing MCP links.
+pub fn check_web_url(url: &str) -> anyhow::Result<String> {
+    let url = check_url(url)?;
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .ok_or_else(|| anyhow!("web URL must include http:// or https://"))?;
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.is_empty() || authority.contains('@') {
+        bail!("web URL must be an origin without credentials");
+    }
+    if authority.len() != rest.len() {
+        bail!("web URL must not include a path, query or fragment");
+    }
+    Ok(url)
+}
+
 pub fn now_ns() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as i64).unwrap_or_default()
 }
@@ -84,6 +101,7 @@ pub fn segment(s: &str) -> String {
 pub struct Client {
     agent: ureq::Agent,
     pub api_url: String,
+    pub web_url: Option<String>,
     pub ingest_url: String,
 }
 
@@ -110,7 +128,13 @@ impl Client {
             .http_status_as_error(false)
             .build()
             .into();
-        Ok(Self { agent, api_url: check_url(&conn.api_url)?, ingest_url: check_url(&conn.ingest_url)? })
+        let web_url = conn.web_url.as_deref().map(check_web_url).transpose()?;
+        Ok(Self { agent, api_url: check_url(&conn.api_url)?, web_url, ingest_url: check_url(&conn.ingest_url)? })
+    }
+
+    /// Resolves a validated Karbird-relative UI path against the explicitly configured web origin.
+    pub fn ui_url(&self, ui_path: &str) -> Option<String> {
+        self.web_url.as_ref().map(|base| format!("{base}{ui_path}"))
     }
 
     fn read(mut res: ureq::http::Response<ureq::Body>) -> anyhow::Result<(u16, Value)> {
@@ -227,14 +251,36 @@ mod tests {
 
     #[test]
     fn client_new_rejects_bad_urls() {
-        let bad = Conn { api_url: "http://hub.example.com".into(), ingest_url: "http://127.0.0.1:1".into() };
+        let bad =
+            Conn { api_url: "http://hub.example.com".into(), web_url: None, ingest_url: "http://127.0.0.1:1".into() };
         assert!(Client::new(&bad).is_err());
-        let bad = Conn { api_url: "http://127.0.0.1:1".into(), ingest_url: "ftp://x".into() };
+        let bad = Conn { api_url: "http://127.0.0.1:1".into(), web_url: None, ingest_url: "ftp://x".into() };
         assert!(Client::new(&bad).is_err());
     }
 
+    #[test]
+    fn web_url_must_be_a_token_safe_origin() {
+        let good = |web_url: &str| Conn {
+            api_url: "http://127.0.0.1:1".into(),
+            web_url: Some(web_url.into()),
+            ingest_url: "http://127.0.0.1:1".into(),
+        };
+        assert!(Client::new(&good("https://karbird.example")).is_ok());
+        assert!(Client::new(&good("http://127.0.0.1:3000")).is_ok());
+        for invalid in [
+            "http://karbird.example",
+            "https://user:pass@karbird.example",
+            "https://karbird.example/app",
+            "https://karbird.example/?q=x",
+            "https://karbird.example/#x",
+        ] {
+            assert!(Client::new(&good(invalid)).is_err(), "{invalid}");
+        }
+    }
+
     fn client(url: &str) -> Client {
-        Client::new(&Conn { api_url: url.into(), ingest_url: url.into() }).unwrap_or_else(|e| panic!("{e}"))
+        Client::new(&Conn { api_url: url.into(), web_url: None, ingest_url: url.into() })
+            .unwrap_or_else(|e| panic!("{e}"))
     }
 
     #[test]

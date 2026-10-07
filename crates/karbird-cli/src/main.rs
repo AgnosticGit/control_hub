@@ -35,6 +35,9 @@ pub struct Conn {
     /// karbird API base URL. Token: KARBIRD_API_TOKEN (read-only `cha_…`).
     #[arg(long, env = "KARBIRD_API_URL", default_value = "http://127.0.0.1:8080")]
     pub api_url: String,
+    /// Optional public Karbird web URL used only for MCP links.
+    #[arg(long, env = "KARBIRD_WEB_URL")]
+    pub web_url: Option<String>,
     /// OTLP/HTTP ingestion endpoint. Token: KARBIRD_INGEST_TOKEN (`chi_…`).
     #[arg(long, env = "KARBIRD_OTLP_ENDPOINT", default_value = "http://127.0.0.1:4318")]
     pub ingest_url: String,
@@ -246,6 +249,11 @@ mod tests {
         assert!(parse(&["verify", "--timeout-secs", "-5"]).is_err());
         assert!(parse(&[]).is_err(), "a subcommand is required");
         assert!(parse(&["shell"]).is_err());
+    }
+
+    #[test]
+    fn mcp_accepts_an_explicit_web_url() {
+        assert!(parse(&["mcp", "--web-url", "https://karbird.example"]).is_ok());
     }
 
     #[test]

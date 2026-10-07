@@ -18,6 +18,7 @@ history and process lists). Create both in the web UI: workspace → **Tokens** 
 | `KARBIRD_API_TOKEN` | `cha_…` read-only API token, bound to one environment, expires in ≤ 90 days | `verify`, `context`, `doctor`, `mcp` |
 | `KARBIRD_INGEST_TOKEN` | `chi_…` ingestion token for the same environment | the SDK, `verify`, `doctor` |
 | `KARBIRD_API_URL` | default `http://127.0.0.1:8080` | |
+| `KARBIRD_WEB_URL` | optional public web origin, such as `https://karbird.example` | `mcp` deep links only |
 | `KARBIRD_OTLP_ENDPOINT` | default `http://127.0.0.1:4318` | |
 
 The CLI refuses to send a token over plain `http://` to anything but `localhost`, `127.0.0.1` or
@@ -97,7 +98,7 @@ environment and offers only query tools:
 
 | Tool | Returns |
 |---|---|
-| `get_context` | the same summary as `karbird context` |
+| `get_context` | the same recent summary as `karbird context` (`minutes` only) |
 | `list_services` | services with RED metrics, instances, versions and completeness (`service_id` for filters) |
 | `get_topology` | dependency graph with calls/errors per edge |
 | `search_traces` | trace summaries (`service_id`, `only_errors`, `limit` ≤ 50) |
@@ -105,12 +106,21 @@ environment and offers only query tools:
 | `search_logs` | logs (`service_id`, `min_severity`, `trace_id`, `query`, `limit` ≤ 50) |
 | `list_events` | events (`limit` ≤ 50) |
 | `list_action_plans` | action plans with state, policy, result and verification |
+| `get_infrastructure` | machine, container, instance, resource and noisy-neighbour snapshot at `at_ns` |
+| `get_infrastructure_timeline` | machine CPU/RAM history and derived container events (`from_ns`, `to_ns`, `buckets` ≤ 1000) |
+| `get_edge_traffic` | calls and declared HTTP bytes for one topology edge, including average/peak B/s and size coverage |
+| `get_timeline` | bounded traces, logs and events (`from_ns`, `to_ns`, `limit` ≤ 1000) |
+| `get_coverage` | completeness and unsupported telemetry capabilities for an exact interval |
+| `get_incident_snapshot` | bounded RED, topology, error evidence, events, coverage and infrastructure in one response |
 
-Every tool has `readOnlyHint: true`. There are no tools that propose, approve or run actions,
-and the API rejects any mutation authenticated with an API token anyway. Arguments are validated
-(unknown arguments are errors, so the scope cannot be chosen by the caller). Results are
-sanitized recursively (strings ≤ 300 characters without control characters, arrays ≤ 50 items)
-and carry the untrusted-data notice. Configure it in Cursor (`.cursor/mcp.json` in your project):
+Every tool has `readOnlyHint: true`. Range tools use either `minutes` or an exact `from_ns` and
+`to_ns` pair, never both. There are no tools that propose, approve or run actions, or select an
+archive source or catalog; existing log queries retain their API-defined source behaviour. The API
+rejects any mutation authenticated with an API token anyway. Arguments are validated (unknown arguments are errors, so the scope cannot
+be chosen by the caller). Results are sanitized recursively (strings ≤ 300 characters without
+control characters, arrays ≤ 50 items), carry the untrusted-data notice and include `ui_path`.
+Set `KARBIRD_WEB_URL` to add an absolute `ui_url`; it must be HTTPS outside loopback and contain
+only the origin. Configure it in Cursor (`.cursor/mcp.json` in your project):
 
 ```json
 {
@@ -118,7 +128,7 @@ and carry the untrusted-data notice. Configure it in Cursor (`.cursor/mcp.json` 
     "karbird": {
       "command": "karbird",
       "args": ["mcp"],
-      "env": { "KARBIRD_API_URL": "http://127.0.0.1:8080", "KARBIRD_API_TOKEN": "${env:KARBIRD_API_TOKEN}" }
+      "env": { "KARBIRD_API_URL": "http://127.0.0.1:8080", "KARBIRD_WEB_URL": "http://localhost:3000", "KARBIRD_API_TOKEN": "${env:KARBIRD_API_TOKEN}" }
     }
   }
 }

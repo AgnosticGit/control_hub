@@ -37,6 +37,20 @@ struct Tool {
 fn minutes_prop() -> Value {
     json!({ "type": "integer", "minimum": 1, "maximum": 1440, "default": 15, "description": "Look-back window in minutes" })
 }
+fn timestamp_prop() -> Value {
+    json!({
+        "type": "string",
+        "pattern": "^[1-9][0-9]{0,18}$",
+        "description": "Unix epoch nanoseconds as a positive decimal string"
+    })
+}
+fn point_timestamp_prop() -> Value {
+    json!({
+        "type": "string",
+        "pattern": "^[1-9][0-9]{0,18}$",
+        "description": "Unix epoch nanoseconds as a positive decimal string; defaults to now"
+    })
+}
 fn limit_prop(max: u32) -> Value {
     json!({ "type": "integer", "minimum": 1, "maximum": max, "default": 20 })
 }
@@ -45,6 +59,12 @@ fn service_prop() -> Value {
 }
 fn object(props: Value, required: &[&str]) -> Value {
     json!({ "type": "object", "properties": props, "required": required, "additionalProperties": false })
+}
+fn range_object(mut props: Map<String, Value>, required: &[&str]) -> Value {
+    props.insert("minutes".into(), minutes_prop());
+    props.insert("from_ns".into(), timestamp_prop());
+    props.insert("to_ns".into(), timestamp_prop());
+    object(Value::Object(props), required)
 }
 
 const TOOLS: &[Tool] = &[
@@ -58,23 +78,24 @@ const TOOLS: &[Tool] = &[
         name: "list_services",
         title: "Services",
         description: "Services seen in the window with RED metrics, instances, versions and data completeness.",
-        schema: || object(json!({ "minutes": minutes_prop() }), &[]),
+        schema: || range_object(Map::new(), &[]),
     },
     Tool {
         name: "get_topology",
         title: "Dependency graph",
         description: "Service dependency graph (observed from traces) with call and error counts per edge.",
-        schema: || object(json!({ "minutes": minutes_prop() }), &[]),
+        schema: || range_object(Map::new(), &[]),
     },
     Tool {
         name: "search_traces",
         title: "Search traces",
         description: "Recent trace summaries, newest first. Optionally only traces with errors or touching one service.",
         schema: || {
-            object(
-                json!({ "minutes": minutes_prop(), "service_id": service_prop(), "only_errors": { "type": "boolean", "default": false }, "limit": limit_prop(50) }),
-                &[],
-            )
+            let mut props = Map::new();
+            props.insert("service_id".into(), service_prop());
+            props.insert("only_errors".into(), json!({ "type": "boolean", "default": false }));
+            props.insert("limit".into(), limit_prop(50));
+            range_object(props, &[])
         },
     },
     Tool {
@@ -93,22 +114,24 @@ const TOOLS: &[Tool] = &[
         title: "Search logs",
         description: "Recent log records, newest first. Filter by service, minimum severity (17 = ERROR), trace or body substring.",
         schema: || {
-            object(
-                json!({
-                    "minutes": minutes_prop(), "service_id": service_prop(), "limit": limit_prop(50),
-                    "min_severity": { "type": "integer", "minimum": 1, "maximum": 24 },
-                    "trace_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
-                    "query": { "type": "string", "maxLength": 200, "description": "Case-insensitive substring of the log body" }
-                }),
-                &[],
-            )
+            let mut props = Map::new();
+            props.insert("service_id".into(), service_prop());
+            props.insert("limit".into(), limit_prop(50));
+            props.insert("min_severity".into(), json!({ "type": "integer", "minimum": 1, "maximum": 24 }));
+            props.insert("trace_id".into(), json!({ "type": "string", "pattern": "^[0-9a-f]{32}$" }));
+            props.insert("query".into(), json!({ "type": "string", "maxLength": 200, "description": "Case-insensitive substring of the log body" }));
+            range_object(props, &[])
         },
     },
     Tool {
         name: "list_events",
         title: "Events",
         description: "Recent structured events (deployments, verification events, custom events), newest first.",
-        schema: || object(json!({ "minutes": minutes_prop(), "limit": limit_prop(50) }), &[]),
+        schema: || {
+            let mut props = Map::new();
+            props.insert("limit".into(), limit_prop(50));
+            range_object(props, &[])
+        },
     },
     Tool {
         name: "list_action_plans",
@@ -116,10 +139,71 @@ const TOOLS: &[Tool] = &[
         description: "Controlled-action plans in this environment with their state, policy checks, result and verification. Read-only: plans are proposed and approved by humans in the web app.",
         schema: || object(json!({}), &[]),
     },
+    Tool {
+        name: "get_infrastructure",
+        title: "Infrastructure snapshot",
+        description: "Machines, containers, service instances, resources and deterministic noisy-neighbour hints at one moment.",
+        schema: || object(json!({ "at_ns": point_timestamp_prop() }), &[]),
+    },
+    Tool {
+        name: "get_infrastructure_timeline",
+        title: "Infrastructure history",
+        description: "CPU and memory tracks by machine plus derived container lifecycle events for an exact time range.",
+        schema: || {
+            let mut props = Map::new();
+            props.insert("buckets".into(), json!({ "type": "integer", "minimum": 1, "maximum": 1000, "default": 200 }));
+            range_object(props, &["from_ns", "to_ns"])
+        },
+    },
+    Tool {
+        name: "get_edge_traffic",
+        title: "Dependency traffic",
+        description: "Calls, errors, latency-related coverage and declared HTTP request/response byte flow for one topology edge.",
+        schema: || {
+            let mut props = Map::new();
+            props.insert("source".into(), json!({ "type": "string", "minLength": 1, "maxLength": 256 }));
+            props.insert("target".into(), json!({ "type": "string", "minLength": 1, "maxLength": 256 }));
+            props.insert("relation".into(), json!({ "type": "string", "enum": ["calls", "depends_on"] }));
+            props.insert("buckets".into(), json!({ "type": "integer", "minimum": 1, "maximum": 600, "default": 120 }));
+            range_object(props, &["source", "target", "relation", "from_ns", "to_ns"])
+        },
+    },
+    Tool {
+        name: "get_timeline",
+        title: "Telemetry timeline",
+        description: "Traces, logs and events in one exact incident range, with a bounded item limit per signal.",
+        schema: || {
+            let mut props = Map::new();
+            props.insert("limit".into(), json!({ "type": "integer", "minimum": 1, "maximum": 1000, "default": 200 }));
+            range_object(props, &["from_ns", "to_ns"])
+        },
+    },
+    Tool {
+        name: "get_coverage",
+        title: "Telemetry coverage",
+        description: "Data completeness and unsupported telemetry capabilities for an exact time range.",
+        schema: || range_object(Map::new(), &["from_ns", "to_ns"]),
+    },
+    Tool {
+        name: "get_incident_snapshot",
+        title: "Incident snapshot",
+        description: "Bounded evidence for an incident: RED metrics, topology, errors, events, coverage and infrastructure at the end of the selected range.",
+        schema: || {
+            let mut props = Map::new();
+            props.insert("service_id".into(), service_prop());
+            range_object(props, &[])
+        },
+    },
 ];
 
 /// Validated tool arguments.
 struct ToolArgs<'a>(&'a Map<String, Value>);
+
+struct TimeSelection {
+    from_ns: String,
+    to_ns: String,
+    window_minutes: Option<i64>,
+}
 
 impl ToolArgs<'_> {
     fn int(&self, name: &str, min: i64, max: i64, default: Option<i64>) -> anyhow::Result<Option<i64>> {
@@ -145,6 +229,54 @@ impl ToolArgs<'_> {
             _ => bail!("{name} must be a boolean"),
         }
     }
+
+    fn time_selection(&self) -> anyhow::Result<TimeSelection> {
+        let from = self.0.get("from_ns");
+        let to = self.0.get("to_ns");
+        if from.is_some() || to.is_some() {
+            if self.0.contains_key("minutes") {
+                bail!("minutes cannot be combined with from_ns or to_ns");
+            }
+            let parse = |name: &str, value: Option<&Value>| -> anyhow::Result<(i64, String)> {
+                let Some(Value::String(raw)) = value else {
+                    bail!("{name} is required with the other absolute time boundary");
+                };
+                let parsed = raw
+                    .parse::<i64>()
+                    .map_err(|_| anyhow!("{name} must be a positive decimal nanosecond timestamp"))?;
+                if parsed <= 0 || raw.starts_with('0') || !raw.bytes().all(|b| b.is_ascii_digit()) {
+                    bail!("{name} must be a positive decimal nanosecond timestamp");
+                }
+                Ok((parsed, raw.clone()))
+            };
+            let (from_value, from_ns) = parse("from_ns", from)?;
+            let (to_value, to_ns) = parse("to_ns", to)?;
+            if from_value >= to_value {
+                bail!("from_ns must be before to_ns");
+            }
+            return Ok(TimeSelection { from_ns, to_ns, window_minutes: None });
+        }
+
+        let minutes = self.int("minutes", 1, 1440, Some(15))?.unwrap_or(15);
+        let to = now_ns();
+        let from = to.saturating_sub(minutes.saturating_mul(60 * 1_000_000_000));
+        Ok(TimeSelection { from_ns: from.to_string(), to_ns: to.to_string(), window_minutes: Some(minutes) })
+    }
+
+    fn timestamp(&self, name: &str) -> anyhow::Result<Option<String>> {
+        let Some(value) = self.0.get(name) else {
+            return Ok(None);
+        };
+        let Value::String(raw) = value else {
+            bail!("{name} must be a positive decimal nanosecond timestamp");
+        };
+        let parsed =
+            raw.parse::<i64>().map_err(|_| anyhow!("{name} must be a positive decimal nanosecond timestamp"))?;
+        if parsed <= 0 || raw.starts_with('0') || !raw.bytes().all(|b| b.is_ascii_digit()) {
+            bail!("{name} must be a positive decimal nanosecond timestamp");
+        }
+        Ok(Some(raw.clone()))
+    }
 }
 
 fn is_trace_id(s: &str) -> bool {
@@ -152,6 +284,40 @@ fn is_trace_id(s: &str) -> bool {
 }
 fn no_control(s: &str) -> bool {
     !s.chars().any(char::is_control)
+}
+fn is_edge_id(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 256 && no_control(s)
+}
+
+fn filter_topology_for_service(topology: &mut Value, service_id: &str) {
+    let Some(object) = topology.as_object_mut() else {
+        return;
+    };
+    let edges = object
+        .get("edges")
+        .and_then(Value::as_array)
+        .map(|edges| {
+            edges
+                .iter()
+                .filter(|edge| {
+                    edge["source"].as_str() == Some(service_id) || edge["target"].as_str() == Some(service_id)
+                })
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut node_ids = std::collections::BTreeSet::from([service_id.to_owned()]);
+    for edge in &edges {
+        for key in ["source", "target"] {
+            if let Some(id) = edge[key].as_str() {
+                node_ids.insert(id.to_owned());
+            }
+        }
+    }
+    object.insert("edges".into(), Value::Array(edges));
+    if let Some(nodes) = object.get_mut("nodes").and_then(Value::as_array_mut) {
+        nodes.retain(|node| node["id"].as_str().is_some_and(|id| node_ids.contains(id)));
+    }
 }
 
 struct Server {
@@ -170,6 +336,64 @@ impl Server {
         Ok(s)
     }
 
+    fn ui_path(scope: &Scope, selection: &TimeSelection) -> String {
+        format!(
+            "/app?project={}&environment={}&from_ns={}&to_ns={}",
+            client::segment(&scope.project_id),
+            client::segment(&scope.environment_id),
+            selection.from_ns,
+            selection.to_ns,
+        )
+    }
+
+    fn with_ui_links(&self, value: Value, scope: &Scope, selection: &TimeSelection) -> Value {
+        let ui_path = Self::ui_path(scope, selection);
+        self.with_ui_path(value, ui_path)
+    }
+
+    fn with_ui_path(&self, mut value: Value, ui_path: String) -> Value {
+        if let Some(object) = value.as_object_mut() {
+            object.insert("ui_path".into(), Value::String(ui_path.clone()));
+            if let Some(ui_url) = self.client.ui_url(&ui_path) {
+                object.insert("ui_url".into(), Value::String(ui_url));
+            }
+        }
+        value
+    }
+
+    fn point_envelope(&self, scope: &Scope, at_ns: String, data: Value) -> Value {
+        let ui_path = format!(
+            "/app?project={}&environment={}&at_ns={}",
+            client::segment(&scope.project_id),
+            client::segment(&scope.environment_id),
+            at_ns,
+        );
+        self.with_ui_path(
+            json!({
+                "notice": NOTICE,
+                "scope": { "project_id": scope.project_id, "environment_id": scope.environment_id },
+                "at_ns": at_ns,
+                "data": context::sanitize(&data, MAX_ITEMS),
+            }),
+            ui_path,
+        )
+    }
+
+    fn envelope(&self, scope: &Scope, selection: &TimeSelection, data: Value) -> Value {
+        self.with_ui_links(
+            json!({
+                "notice": NOTICE,
+                "scope": { "project_id": scope.project_id, "environment_id": scope.environment_id },
+                "window_minutes": selection.window_minutes,
+                "from_ns": selection.from_ns,
+                "to_ns": selection.to_ns,
+                "data": context::sanitize(&data, MAX_ITEMS),
+            }),
+            scope,
+            selection,
+        )
+    }
+
     fn call(&mut self, name: &str, raw: &Map<String, Value>) -> anyhow::Result<Value> {
         let tool = TOOLS.iter().find(|t| t.name == name).ok_or_else(|| anyhow!("unknown tool {name}"))?;
         let allowed = (tool.schema)();
@@ -178,15 +402,17 @@ impl Server {
         }
         // All arguments are validated before any request is made.
         let a = ToolArgs(raw);
-        let minutes = a.int("minutes", 1, 1440, Some(15))?.unwrap_or(15);
-        let to = now_ns();
-        let from = to - minutes * 60 * 1_000_000_000;
-        let mut q: Vec<(&str, String)> = vec![("from", from.to_string()), ("to", to.to_string())];
+        let selection = a.time_selection()?;
+        let mut q: Vec<(&str, String)> = vec![("from", selection.from_ns.clone()), ("to", selection.to_ns.clone())];
         let limit = a.int("limit", 1, 50, Some(20))?.unwrap_or(20).to_string();
         let path = match name {
             "get_context" => {
                 let scope = self.scope()?;
-                return context::build(&self.client, &self.token, &scope, u32::try_from(minutes).unwrap_or(15));
+                let minutes = selection
+                    .window_minutes
+                    .ok_or_else(|| anyhow!("get_context accepts minutes, not an absolute time range"))?;
+                return context::build(&self.client, &self.token, &scope, u32::try_from(minutes).unwrap_or(15))
+                    .map(|value| self.with_ui_links(value, &scope, &selection));
             }
             "list_services" => "services".to_owned(),
             "get_topology" => "topology".to_owned(),
@@ -229,17 +455,86 @@ impl Server {
                 q.clear();
                 "actions".to_owned()
             }
+            "get_infrastructure" => {
+                let at_ns = a.timestamp("at_ns")?.unwrap_or_else(|| now_ns().to_string());
+                q.clear();
+                q.push(("at", at_ns.clone()));
+                let scope = self.scope()?;
+                let data = self.client.api_json(&self.token, &scope.path("infrastructure"), &q)?;
+                return Ok(self.point_envelope(&scope, at_ns, data));
+            }
+            "get_infrastructure_timeline" => {
+                let buckets = a.int("buckets", 1, 1000, Some(200))?.unwrap_or(200);
+                q.push(("buckets", buckets.to_string()));
+                "infrastructure/timeline".to_owned()
+            }
+            "get_edge_traffic" => {
+                let source = a.string("source", 256, is_edge_id)?.ok_or_else(|| anyhow!("source is required"))?;
+                let target = a.string("target", 256, is_edge_id)?.ok_or_else(|| anyhow!("target is required"))?;
+                if source == target {
+                    bail!("source and target must differ");
+                }
+                let relation = a
+                    .string("relation", 16, |value| matches!(value, "calls" | "depends_on"))?
+                    .ok_or_else(|| anyhow!("relation is required"))?;
+                let buckets = a.int("buckets", 1, 600, Some(120))?.unwrap_or(120);
+                q.push(("source", source));
+                q.push(("target", target));
+                q.push(("relation", relation));
+                q.push(("buckets", buckets.to_string()));
+                "edges/traffic".to_owned()
+            }
+            "get_timeline" => {
+                let limit = a.int("limit", 1, 1000, Some(200))?.unwrap_or(200);
+                q.push(("limit", limit.to_string()));
+                "timeline".to_owned()
+            }
+            "get_coverage" => "coverage".to_owned(),
+            "get_incident_snapshot" => {
+                let service_id = a.string("service_id", 128, no_control)?;
+                let scope = self.scope()?;
+                let services = self.client.api_json(&self.token, &scope.path("services"), &q)?;
+                let mut topology = self.client.api_json(&self.token, &scope.path("topology"), &q)?;
+                if let Some(service_id) = &service_id {
+                    filter_topology_for_service(&mut topology, service_id);
+                }
+                let mut traces_q = q.clone();
+                if let Some(service_id) = &service_id {
+                    traces_q.push(("service_id", service_id.clone()));
+                }
+                traces_q.push(("only_errors", "true".into()));
+                traces_q.push(("limit", "20".into()));
+                let traces = self.client.api_json(&self.token, &scope.path("traces"), &traces_q)?;
+
+                let mut logs_q = q.clone();
+                if let Some(service_id) = &service_id {
+                    logs_q.push(("service_id", service_id.clone()));
+                }
+                logs_q.push(("min_severity", "17".into()));
+                logs_q.push(("limit", "50".into()));
+                let logs = self.client.api_json(&self.token, &scope.path("logs"), &logs_q)?;
+
+                let mut events_q = q.clone();
+                events_q.push(("limit", "50".into()));
+                let events = self.client.api_json(&self.token, &scope.path("events"), &events_q)?;
+                let coverage = self.client.api_json(&self.token, &scope.path("coverage"), &q)?;
+                let infrastructure = self.client.api_json(
+                    &self.token,
+                    &scope.path("infrastructure"),
+                    &[("at", selection.to_ns.clone())],
+                )?;
+                return Ok(self.envelope(
+                    &scope,
+                    &selection,
+                    json!({ "services": services, "topology": topology, "traces": traces, "logs": logs, "events": events, "coverage": coverage, "infrastructure": infrastructure }),
+                ));
+            }
             _ => bail!("unknown tool {name}"),
         };
         let scope = self.scope()?;
         let data = self.client.api_json(&self.token, &scope.path(&path), &q)?;
         let data = if name == "list_action_plans" { json!({ "plans": data }) } else { data };
-        Ok(json!({
-            "notice": NOTICE,
-            "scope": { "project_id": scope.project_id, "environment_id": scope.environment_id },
-            "window_minutes": minutes,
-            "data": context::sanitize(&data, MAX_ITEMS),
-        }))
+        Ok(self.envelope(&scope, &selection, data))
     }
 
     fn handle(&mut self, msg: &Value) -> Option<Value> {
@@ -359,7 +654,8 @@ mod tests {
     use super::*;
 
     fn server() -> Server {
-        let conn = Conn { api_url: "http://127.0.0.1:9".into(), ingest_url: "http://127.0.0.1:9".into() };
+        let conn =
+            Conn { api_url: "http://127.0.0.1:9".into(), web_url: None, ingest_url: "http://127.0.0.1:9".into() };
         Server {
             client: Client::new(&conn).unwrap_or_else(|e| panic!("{e}")),
             token: Secret::for_test("cha_x"),
@@ -526,7 +822,7 @@ mod tests {
                 _ => (404, "{}".into()),
             }
         });
-        let conn = Conn { api_url: url.clone(), ingest_url: url };
+        let conn = Conn { api_url: url.clone(), web_url: Some("https://karbird.example".into()), ingest_url: url };
         let token = Secret::for_test("cha_mcp_secret");
         (Server { client: Client::new(&conn).unwrap_or_else(|e| panic!("{e}")), token, scope: None }, log)
     }
@@ -590,12 +886,157 @@ mod tests {
     }
 
     #[test]
+    fn absolute_time_windows_are_validated_before_requests() {
+        let (mut s, log) = live_server();
+        let v = call_ok(&mut s, "list_services", json!({ "from_ns": "1000000000", "to_ns": "2000000000" }));
+        assert_eq!(v["window_minutes"], Value::Null);
+        assert_eq!(v["from_ns"], "1000000000");
+        assert_eq!(v["to_ns"], "2000000000");
+        assert_eq!(v["ui_path"], "/app?project=demo&environment=local-demo&from_ns=1000000000&to_ns=2000000000");
+        assert_eq!(
+            v["ui_url"],
+            "https://karbird.example/app?project=demo&environment=local-demo&from_ns=1000000000&to_ns=2000000000"
+        );
+
+        for args in [
+            json!({ "from_ns": "1000000000" }),
+            json!({ "to_ns": "2000000000" }),
+            json!({ "minutes": 5, "from_ns": "1000000000", "to_ns": "2000000000" }),
+            json!({ "from_ns": "0", "to_ns": "2000000000" }),
+            json!({ "from_ns": "-1", "to_ns": "2000000000" }),
+            json!({ "from_ns": "01000000000", "to_ns": "2000000000" }),
+            json!({ "from_ns": "9223372036854775808", "to_ns": "9223372036854775809" }),
+            json!({ "from_ns": "2000000000", "to_ns": "1000000000" }),
+        ] {
+            let r = request(&mut s, json!(1), "tools/call", json!({ "name": "list_services", "arguments": args }));
+            assert_eq!(r["result"]["isError"], true, "{r}");
+        }
+
+        let log = log.lock().map(|l| l.clone()).unwrap_or_default();
+        let service_requests = log
+            .iter()
+            .filter(|r| r.target.starts_with("/api/v1/projects/demo/environments/local-demo/services"))
+            .collect::<Vec<_>>();
+        assert_eq!(service_requests.len(), 1, "only the valid range reaches the API: {service_requests:?}");
+        assert!(service_requests[0].target.contains("from=1000000000"));
+        assert!(service_requests[0].target.contains("to=2000000000"));
+    }
+
+    #[test]
+    fn infrastructure_point_timestamps_follow_the_same_canonical_decimal_contract() {
+        let (mut s, log) = live_server();
+        let r = request(
+            &mut s,
+            json!(1),
+            "tools/call",
+            json!({ "name": "get_infrastructure", "arguments": { "at_ns": "02000000000" } }),
+        );
+        assert_eq!(r["result"]["isError"], true, "{r}");
+        assert!(
+            log.lock()
+                .map(|requests| requests.iter().all(|request| !request.target.contains("/infrastructure?")))
+                .unwrap_or(false)
+        );
+    }
+
+    #[test]
+    fn infrastructure_and_edge_traffic_use_typed_routes() {
+        let (mut s, log) = live_server();
+        call_ok(&mut s, "get_infrastructure", json!({ "at_ns": "2000000000" }));
+        call_ok(
+            &mut s,
+            "get_infrastructure_timeline",
+            json!({ "from_ns": "1000000000", "to_ns": "2000000000", "buckets": 7 }),
+        );
+        let traffic = call_ok(
+            &mut s,
+            "get_edge_traffic",
+            json!({
+                "source": "gateway", "target": "orders", "relation": "calls",
+                "from_ns": "1000000000", "to_ns": "2000000000", "buckets": 9
+            }),
+        );
+        assert_eq!(traffic["data"]["avg_request_bps"], Value::Null, "unknown throughput stays unknown");
+
+        for args in [
+            json!({ "source": "", "target": "orders", "relation": "calls", "from_ns": "1000000000", "to_ns": "2000000000" }),
+            json!({ "source": "orders", "target": "orders", "relation": "calls", "from_ns": "1000000000", "to_ns": "2000000000" }),
+            json!({ "source": "gateway\n", "target": "orders", "relation": "calls", "from_ns": "1000000000", "to_ns": "2000000000" }),
+            json!({ "source": "gateway", "target": "orders", "relation": "invalid", "from_ns": "1000000000", "to_ns": "2000000000" }),
+        ] {
+            let r = request(&mut s, json!(1), "tools/call", json!({ "name": "get_edge_traffic", "arguments": args }));
+            assert_eq!(r["result"]["isError"], true, "{r}");
+        }
+
+        let log = log.lock().map(|l| l.clone()).unwrap_or_default();
+        let find =
+            |path: &str| log.iter().find(|r| r.target.contains(path)).map(|r| r.target.clone()).unwrap_or_default();
+        assert_eq!(
+            find("/infrastructure?"),
+            "/api/v1/projects/demo/environments/local-demo/infrastructure?at=2000000000"
+        );
+        let timeline = find("/infrastructure/timeline?");
+        assert!(
+            timeline.contains("from=1000000000")
+                && timeline.contains("to=2000000000")
+                && timeline.contains("buckets=7"),
+            "{timeline}"
+        );
+        let edge = find("/edges/traffic?");
+        assert!(
+            edge.contains("source=gateway")
+                && edge.contains("target=orders")
+                && edge.contains("relation=calls")
+                && edge.contains("from=1000000000")
+                && edge.contains("to=2000000000")
+                && edge.contains("buckets=9"),
+            "{edge}"
+        );
+    }
+
+    #[test]
+    fn incident_snapshot_composes_only_the_selected_service_context() {
+        let (mut s, log) = live_server();
+        let snapshot = call_ok(
+            &mut s,
+            "get_incident_snapshot",
+            json!({ "from_ns": "1000000000", "to_ns": "2000000000", "service_id": "orders" }),
+        );
+        assert!(snapshot["data"]["services"].is_object());
+        assert!(snapshot["data"]["topology"].is_object());
+        assert!(snapshot["data"]["traces"].is_object());
+        assert!(snapshot["data"]["logs"].is_object());
+        assert!(snapshot["data"]["events"].is_object());
+        assert!(snapshot["data"]["coverage"].is_object());
+        assert!(snapshot["data"]["infrastructure"].is_object());
+
+        let log = log.lock().map(|l| l.clone()).unwrap_or_default();
+        let find =
+            |path: &str| log.iter().find(|r| r.target.contains(path)).map(|r| r.target.clone()).unwrap_or_default();
+        let traces = find("/traces?");
+        assert!(
+            traces.contains("service_id=orders") && traces.contains("only_errors=true") && traces.contains("limit=20"),
+            "{traces}"
+        );
+        let logs = find("/logs?");
+        assert!(
+            logs.contains("service_id=orders") && logs.contains("min_severity=17") && logs.contains("limit=50"),
+            "{logs}"
+        );
+        assert!(find("/coverage?").contains("from=1000000000"));
+        assert_eq!(
+            find("/infrastructure?"),
+            "/api/v1/projects/demo/environments/local-demo/infrastructure?at=2000000000"
+        );
+    }
+
+    #[test]
     fn api_failures_become_tool_errors_without_the_token() {
         let (url, _) = crate::test_http::serve(|r| match r.target.as_str() {
             "/api/v1/session" => (200, crate::test_http::session_json()),
             _ => (500, r#"{"message":"storage unavailable"}"#.into()),
         });
-        let conn = Conn { api_url: url.clone(), ingest_url: url };
+        let conn = Conn { api_url: url.clone(), web_url: None, ingest_url: url };
         let mut s = Server {
             client: Client::new(&conn).unwrap_or_else(|e| panic!("{e}")),
             token: Secret::for_test("cha_hidden"),

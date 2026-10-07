@@ -252,8 +252,7 @@ fn router(state: state::AppState) -> Router {
         )
         .route(
             "/api/v1/organizations/{organization_id}/projects/{project_id}/members/{user_id}",
-            axum::routing::put(organisations::put_project_assignment)
-                .delete(organisations::delete_project_assignment),
+            axum::routing::put(organisations::put_project_assignment).delete(organisations::delete_project_assignment),
         )
         .route(
             "/api/v1/organizations/{organization_id}/invites",
@@ -367,7 +366,9 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
             redirect_url: redirect_url.to_owned(),
         }),
         (None, None, None) => None,
-        _ => anyhow::bail!("Google OAuth needs KARBIRD_GOOGLE_CLIENT_ID, KARBIRD_GOOGLE_CLIENT_SECRET and KARBIRD_GOOGLE_REDIRECT_URL"),
+        _ => anyhow::bail!(
+            "Google OAuth needs KARBIRD_GOOGLE_CLIENT_ID, KARBIRD_GOOGLE_CLIENT_SECRET and KARBIRD_GOOGLE_REDIRECT_URL"
+        ),
     };
     let state = state::AppState {
         pg,
