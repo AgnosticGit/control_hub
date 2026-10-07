@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login } from "./helpers";
+import { mapLayer, login } from "./helpers";
 
 // Demo-only: uses the loopback fault-injection endpoint of the demo orders
 // service (enabled by `just demo`). Always clears the fault afterwards.
@@ -19,13 +19,13 @@ test("injected errors in orders show up as a failing component and error traces"
   await setFault(150, 0.6);
   try {
     await login(page, "admin@karbird.local", "/app/demo/local-demo");
-    await page.getByRole("checkbox", { name: "Table view" }).check();
+    await (await mapLayer(page, "Table view")).check();
     const ordersRow = page.getByRole("row").filter({ has: page.getByRole("button", { name: "orders", exact: true }) });
     await expect(ordersRow).toContainText(/Degraded|Failing/, { timeout: 60_000 });
 
-    await page.getByRole("checkbox", { name: "Table view" }).uncheck();
-    await page.getByRole("checkbox", { name: "Only problems" }).check();
-    await page.getByRole("checkbox", { name: "Only problems" }).uncheck();
+    await (await mapLayer(page, "Table view")).uncheck();
+    await (await mapLayer(page, "Only problems")).check();
+    await (await mapLayer(page, "Only problems")).uncheck();
     await page.getByPlaceholder("Find component…").fill("");
 
     const panel = page.getByRole("region", { name: "Signals" });

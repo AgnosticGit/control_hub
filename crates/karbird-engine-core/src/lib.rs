@@ -377,9 +377,12 @@ impl Engine {
 
     pub fn set_filters(&mut self, filters: Filters) {
         let toggled = filters.infrastructure != self.filters.infrastructure;
+        let problems_toggled = filters.only_problems != self.filters.only_problems;
         self.filters = filters;
         if toggled {
             self.refresh_infra();
+        }
+        if toggled || problems_toggled {
             self.topology_revision += 1;
         }
     }
@@ -427,6 +430,50 @@ impl Engine {
     /// A database or queue the infrastructure layer found outside every machine with the agent.
     fn infra_external(&self, index: usize) -> bool {
         self.infra_layout.as_ref().is_some_and(|l| l.external.contains(&(index as u32)))
+    }
+
+    /// Infrastructure decorations follow the same time-dependent problem filter as service cards.
+    fn filtered_infra(&self) -> Option<InfraView> {
+        let layout = self.infra_layout.as_ref()?;
+        let mut view = layout.view.clone();
+        if !self.filters.only_problems {
+            return Some(view);
+        }
+
+        let (now, past) = self.states_at(self.current_time);
+        let window = self.window_for(&now, &past);
+        let problem_nodes: HashSet<u32> = self
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(i, node)| {
+                node.kind == EntityKind::Service
+                    && matches!(window[*i].status, HealthStatus::Degraded | HealthStatus::Failing)
+            })
+            .map(|(i, _)| i as u32)
+            .collect();
+        let problem_hosts: HashSet<String> = layout
+            .view
+            .frames
+            .iter()
+            .filter(|frame| {
+                problem_nodes.iter().any(|node| {
+                    layout.positions.get(node).is_some_and(|&(x, y)| {
+                        x >= frame.x && x <= frame.x + frame.width && y >= frame.y && y <= frame.y + frame.height
+                    })
+                }) || layout
+                    .view
+                    .chips
+                    .iter()
+                    .any(|chip| problem_nodes.contains(&chip.node) && chip.host_id == frame.host_id)
+            })
+            .map(|frame| frame.host_id.clone())
+            .collect();
+        view.frames.retain(|frame| problem_hosts.contains(&frame.host_id));
+        view.chips.retain(|chip| problem_nodes.contains(&chip.node) && problem_hosts.contains(&chip.host_id));
+        view.badges.retain(|badge| problem_nodes.contains(&badge.node));
+        view.links.retain(|link| problem_nodes.contains(&link.victim_node) && problem_hosts.contains(&link.host_id));
+        Some(view)
     }
 
     /// Node position in the current layout (machine frames when the infrastructure layer is on).
@@ -515,7 +562,7 @@ impl Engine {
                     .collect(),
                 })
                 .collect(),
-            infra: self.infra_layout.as_ref().map(|l| l.view.clone()),
+            infra: self.filtered_infra(),
         }
     }
 
@@ -662,6 +709,16 @@ impl Engine {
         };
 
         if self.last_status.len() == statuses.len() {
+            if self.filters.only_problems {
+                let is_problem =
+                    |status: u8| status == HealthStatus::Degraded.as_u8() || status == HealthStatus::Failing.as_u8();
+                let changed_problem_set = self.nodes.iter().enumerate().any(|(i, node)| {
+                    node.kind == EntityKind::Service && is_problem(self.last_status[i]) != is_problem(statuses[i])
+                });
+                if changed_problem_set {
+                    self.topology_revision += 1;
+                }
+            }
             for (i, (a, b)) in self.last_status.iter().zip(statuses.iter()).enumerate() {
                 if a != b {
                     out.changed_nodes.push(i as u32);

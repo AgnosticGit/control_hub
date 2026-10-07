@@ -25,7 +25,7 @@ import {
   type InfraView,
   type TopologyView,
 } from "@karbird/web-engine";
-import { CHIP_H, CHIP_W, FRAME_HEADER, NOISY_LINK, badgeText, chipAt, frameAt, frameLook, linkArc, linkLabelAt } from "./infra-layer";
+import { FRAME_HEADER, NOISY_LINK, chipAt, frameAt, frameLook, linkArc, linkLabelAt } from "./infra-layer";
 import { DEFAULT_EDGE_STYLE, build, dashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
 import { edgeAt, midpoint } from "./edge-hit";
 import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
@@ -36,6 +36,7 @@ import { fitCamera } from "./fit";
 import { gridLines } from "./grid";
 import { animTimeMs, hopPhase, type AnimClock } from "./hops";
 import { serviceColors } from "./service-colors";
+import { frameFocused, nodeFocused, SELECTION_DIM_ALPHA, selectionAlpha, type MapSelection } from "./selection-style";
 
 /** Pan (screen px) and zoom of the map. */
 export interface MapCamera {
@@ -47,9 +48,9 @@ export interface MapCamera {
 export interface MapCallbacks {
   onViewport(x: number, y: number, width: number, height: number, scale: number): void;
   onPick(worldX: number, worldY: number): void;
-  /** A click on a machine frame (infrastructure layer) outside any card or chip. */
+  /** A click on a machine frame (infrastructure layer) outside any service card. */
   onPickHost?(hostId: string): void;
-  /** A click on a service instance chip inside a machine frame. */
+  /** A click on a service instance's replica card inside a machine frame. */
   onPickInstance?(instanceId: string, hostId: string, serviceId: string): void;
   /** A click on a line between two cards (engine edge index). */
   onPickEdge?(index: number): void;
@@ -94,6 +95,10 @@ interface NodeText {
   subValue: string;
 }
 
+interface ReplicaText extends NodeText {
+  count: Text;
+}
+
 export class PixiMap {
   private app: Application | null = null;
   private host: HTMLElement | null = null;
@@ -105,9 +110,12 @@ export class PixiMap {
   private readonly hops = new Graphics();
   private readonly nodes = new Graphics();
   private readonly nodesDim = new Graphics({ alpha: DIM_ALPHA });
+  private readonly replicaCards = new Graphics();
+  private readonly replicaLabels = new Container();
+  private readonly replicaTextPool = new Map<string, ReplicaText>();
   private readonly labels = new Container();
   private readonly textPool = new Map<number, NodeText>();
-  /** Infrastructure layer: frames and chips under the cards, links and badges above them. */
+  /** Infrastructure layer: machine frames below the cards, links and badges above them. */
   private readonly infraBack = new Graphics();
   private readonly infraFront = new Graphics();
   private readonly infraLabels = new Container();
@@ -146,12 +154,14 @@ export class PixiMap {
   private edgeStyle: EdgeStyle = DEFAULT_EDGE_STYLE;
   private routeNodes: RouteNode[] = [];
   private routeEdges: RouteEdge[] = [];
+  private readonly hostByNode = new Map<number, string>();
   private routes = new Map<number, Route>();
   private names: string[] = [];
   private kinds: EntityKindDto[] = [];
   private colors = new Map<number, number>();
   private selectedIndex: number | null = null;
   private selectedEdge: number | null = null;
+  private selectedEdgeNodes: readonly [number, number] | null = null;
   private edgeAnchors = "";
   private fitted = false;
   /** The camera is where `fit` put it (no pan or zoom since). */
@@ -190,9 +200,11 @@ export class PixiMap {
       this.nodesDim,
       this.edges,
       this.nodes,
+      this.replicaCards,
       this.infraFront,
       this.hops,
       this.labels,
+      this.replicaLabels,
       this.infraLabels,
     );
     this.drawInfra();
@@ -219,11 +231,18 @@ export class PixiMap {
     this.colors = serviceColors(nodes);
     this.routeNodes = nodes.map((n) => ({ index: n.index, x: n.x, y: n.y }));
     this.routeEdges = (topology?.edges ?? []).map((e) => ({ index: e.index, source: e.source, target: e.target, points: e.points }));
+    const selectedRoute = this.routeEdges.find((edge) => edge.index === this.selectedEdge);
+    this.selectedEdgeNodes = selectedRoute ? [selectedRoute.source, selectedRoute.target] : null;
     this.reroute();
     const infra = topology?.infra ?? null;
     // Switching the layer moves every card: fit again on the next frame.
     const refit = (infra === null) !== (this.infraView === null);
     this.infraView = infra;
+    this.hostByNode.clear();
+    for (const node of this.routeNodes) {
+      const frame = infra?.frames.find((candidate) => node.x >= candidate.x && node.x <= candidate.x + candidate.width && node.y >= candidate.y && node.y <= candidate.y + candidate.height);
+      if (frame) this.hostByNode.set(node.index, frame.host_id);
+    }
     this.drawInfra();
     if (refit) {
       if (this.frame) this.fit();
@@ -245,7 +264,10 @@ export class PixiMap {
   }
 
   setSelected(index: number | null) {
+    if (index === this.selectedIndex) return;
     this.selectedIndex = index;
+    this.syncSelectionFade();
+    this.drawInfra();
     if (this.frame) this.draw(this.frame);
   }
 
@@ -253,7 +275,11 @@ export class PixiMap {
   setSelectedEdge(index: number | null) {
     if (index === this.selectedEdge) return;
     this.selectedEdge = index;
+    const edge = index === null ? undefined : this.routeEdges.find((candidate) => candidate.index === index);
+    this.selectedEdgeNodes = edge ? [edge.source, edge.target] : null;
+    this.syncSelectionFade();
     this.host?.setAttribute("data-selected-edge", index === null ? "" : String(index));
+    this.drawInfra();
     if (this.frame) this.draw(this.frame);
   }
 
@@ -342,6 +368,7 @@ export class PixiMap {
   setSelectedHost(hostId: string | null) {
     if (hostId === this.selectedHost) return;
     this.selectedHost = hostId;
+    this.syncSelectionFade();
     this.drawInfra();
   }
 
@@ -415,6 +442,20 @@ export class PixiMap {
     const r = cullRect({ x: -this.world.x / s, y: -this.world.y / s, width: app.screen.width / s, height: app.screen.height / s }, CARD_W / 2 + 8);
     this.callbacks.onViewport(r.x, r.y, r.width, r.height, s);
     this.publishEdgeAnchors();
+    this.publishReplicaAnchors();
+  }
+
+  /** Positions of replica cards in canvas pixels (`service@host:x,y`) for UI tests/debugging. */
+  private publishReplicaAnchors() {
+    const s = this.world.scale.x;
+    const anchors = (this.infraView?.chips ?? []).map((c) =>
+      `${encodeURIComponent(c.service_id)}@${encodeURIComponent(c.host_id)}:${Math.round(c.x * s + this.world.x)},${Math.round(c.y * s + this.world.y)}`,
+    ).join(";");
+    this.host?.setAttribute("data-replica-anchors", anchors);
+    const frames = (this.infraView?.frames ?? []).map((frame) =>
+      `${encodeURIComponent(frame.host_id)}:${Math.round((frame.x + frame.width / 2) * s + this.world.x)},${Math.round((frame.y + FRAME_HEADER / 2) * s + this.world.y)}`,
+    ).join(";");
+    this.host?.setAttribute("data-frame-anchors", frames);
   }
 
   /**
@@ -480,9 +521,19 @@ export class PixiMap {
     this.host?.setAttribute("data-infra-frames", view ? view.frames.map((f) => f.host_id).join(",") : "");
     const selected = view?.frames.some((f) => f.host_id === this.selectedHost) ? this.selectedHost : null;
     this.host?.setAttribute("data-infra-selected", selected ?? "");
+    const selection = this.selection();
+    this.host?.setAttribute("data-selection-dimmed", String(selectionAlpha(selection) < 1));
+    const selectedHosts = new Set<string>();
+    if (selection.node !== null) {
+      const primaryHost = this.hostForNode(selection.node);
+      if (primaryHost) selectedHosts.add(primaryHost);
+      for (const c of view?.chips ?? []) if (c.node === selection.node) selectedHosts.add(c.host_id);
+    }
+    this.host?.setAttribute("data-selected-replicas", Array.from(selectedHosts).sort().join(","));
     if (!view) return;
     for (const f of view.frames) {
       const look = frameLook(f, f.host_id === selected);
+      const fade = frameFocused(f.host_id, selection) ? 1 : SELECTION_DIM_ALPHA;
       const color = look.color;
       if (look.halo > 0) {
         const h = look.halo;
@@ -490,43 +541,43 @@ export class PixiMap {
       }
       back
         .roundRect(f.x, f.y, f.width, f.height, 18)
-        .fill({ color, alpha: look.fillAlpha })
-        .stroke({ color, width: look.strokeWidth, alpha: look.strokeAlpha });
-      back.roundRect(f.x, f.y, f.width, FRAME_HEADER - 8, 18).fill({ color, alpha: look.headerAlpha });
+        .fill({ color, alpha: look.fillAlpha * fade })
+        .stroke({ color, width: look.strokeWidth, alpha: look.strokeAlpha * fade });
+      back.roundRect(f.x, f.y, f.width, FRAME_HEADER - 8, 18).fill({ color, alpha: look.headerAlpha * fade });
       const label = new Text({ text: f.label, style: f.hot ? this.frameHotStyle : this.frameStyle });
       label.position.set(f.x + 16, f.y + 10);
+      label.alpha = fade;
       this.infraLabels.addChild(label);
-    }
-    for (const c of view.chips) {
-      const color = this.colors.get(c.node) ?? 0x64748b;
-      back.roundRect(c.x - CHIP_W / 2, c.y - CHIP_H / 2, CHIP_W, CHIP_H, 8).fill({ color: CARD_BG, alpha: 0.95 }).stroke({ color, width: 1.25, alpha: 0.8 });
-      back.circle(c.x - CHIP_W / 2 + 12, c.y, 3.5).fill({ color });
-      const t = new Text({ text: truncate(c.label, 20), style: this.chipStyle });
-      t.position.set(c.x - CHIP_W / 2 + 22, c.y - 7);
-      this.infraLabels.addChild(t);
     }
     const pos = new Map<number, RouteNode>();
     for (const n of this.routeNodes) pos.set(n.index, n);
     for (const b of view.badges) {
       const n = pos.get(b.node);
       if (!n) continue;
-      const text = badgeText(b.count, b.hosts);
-      const t = new Text({ text, style: this.chipStyle });
+      const secondaryCount = view.chips.filter((c) => c.node === b.node).reduce((total, c) => total + c.instance_ids.length, 0);
+      const localCount = b.count - secondaryCount;
+      if (localCount <= 1) continue;
+      const t = new Text({ text: `×${localCount}`, style: this.chipStyle });
       const w = t.width + 14;
       const x = n.x + CARD_W / 2 - w + 6;
       const y = n.y - CARD_H / 2 - 11;
-      front.roundRect(x, y, w, 20, 10).fill({ color: 0x4c1d95, alpha: 0.95 }).stroke({ color: 0xa78bfa, width: 1 });
+      const fade = nodeFocused(b.node, this.hostForNode(b.node), selection) ? 1 : SELECTION_DIM_ALPHA;
+      front.roundRect(x, y, w, 20, 10).fill({ color: 0x4c1d95, alpha: 0.95 * fade }).stroke({ color: 0xa78bfa, width: 1, alpha: fade });
+      t.alpha = fade;
       t.position.set(x + 7, y + 3);
       this.infraLabels.addChild(t);
     }
+    this.publishReplicaAnchors();
     for (const l of view.links) {
       for (const dash of dashes(build(linkArc(l.from, l.to)), 8, 6)) line(front, dash);
-      front.stroke({ color: NOISY_LINK, width: 3, alpha: 0.95, ...LINE_STYLE });
+      front.stroke({ color: NOISY_LINK, width: 3, alpha: 0.95 * selectionAlpha(selection), ...LINE_STYLE });
       front.circle(l.to[0], l.to[1], 6).stroke({ color: NOISY_LINK, width: 2 });
       const [mx, my] = linkLabelAt(l.from, l.to);
       const t = new Text({ text: l.label, style: this.linkStyle });
-      front.roundRect(mx - t.width / 2 - 6, my - 10, t.width + 12, 20, 6).fill({ color: CARD_BG, alpha: 0.95 }).stroke({ color: NOISY_LINK, width: 1 });
+      const fade = selectionAlpha(selection);
+      front.roundRect(mx - t.width / 2 - 6, my - 10, t.width + 12, 20, 6).fill({ color: CARD_BG, alpha: 0.95 * fade }).stroke({ color: NOISY_LINK, width: 1, alpha: fade });
       t.position.set(mx - t.width / 2, my - 8);
+      t.alpha = fade;
       this.infraLabels.addChild(t);
     }
   }
@@ -605,12 +656,106 @@ export class PixiMap {
   private draw(f: Frame) {
     this.drawEdges(f);
     this.drawNodes(f);
+    this.drawReplicaCards(f);
+  }
+
+  /** Secondary placements reuse the same logical node styling at full service-card size. */
+  private drawReplicaCards(f: Frame) {
+    this.replicaCards.clear();
+    const selection = this.selection();
+    const seen = new Set<string>();
+    const dataByNode = new Map<number, number>();
+    for (let i = 0; i < f.nodeIndices.length; i++) dataByNode.set(f.nodeIndices[i] ?? 0, i * NODE_STRIDE);
+    for (const c of this.infraView?.chips ?? []) {
+      const offset = dataByNode.get(c.node);
+      if (offset === undefined) continue;
+      const data = f.nodeData;
+      const status = data[offset + 3] ?? 0;
+      const active = data[offset + 4] ?? 0;
+      const requests = data[offset + 5] ?? 0;
+      const flags = data[offset + 6] ?? 0;
+      const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS[0] ?? 0x64748b;
+      const external = (flags & FLAG_EXTERNAL) !== 0;
+      const color = status >= 2 ? statusColor : external ? EXTERNAL_COLOR : (this.colors.get(c.node) ?? statusColor);
+      const focused = nodeFocused(c.node, c.host_id, selection);
+      const fade = focused ? 1 : SELECTION_DIM_ALPHA;
+      const key = `${c.service_id}@${c.host_id}`;
+      seen.add(key);
+      const left = c.x - CARD_W / 2;
+      const top = c.y - CARD_H / 2;
+      const g = this.replicaCards;
+      if (status > 0) g.roundRect(left - 3, top - 3, CARD_W + 6, CARD_H + 6, 15).stroke({ color, width: 6, alpha: (status >= 2 ? 0.22 : 0.1) * fade });
+      g.roundRect(left, top, CARD_W, CARD_H, 12).fill({ color: CARD_BG, alpha: 0.96 * fade }).stroke({ color, width: 1.5, alpha: 0.85 * fade });
+      if ((flags & FLAG_HIGHLIGHT) !== 0) g.roundRect(left - 5, top - 5, CARD_W + 10, CARD_H + 10, 16).stroke({ color: ACCENT, width: 2 });
+      if (c.node === this.selectedIndex) g.roundRect(left - 8, top - 8, CARD_W + 16, CARD_H + 16, 18).stroke({ color: 0xffffff, width: 2, alpha: 0.9 });
+      g.roundRect(left + 12, c.y - 15, 30, 30, 9).fill({ color, alpha: 0.14 });
+      drawKindIcon(g, this.kinds[c.node], (flags & FLAG_RESOURCE) !== 0, left + 27, c.y, color);
+      g.circle(left + CARD_W - 12, top + 12, 3.5).fill({ color: statusColor, alpha: status > 0 ? 1 : 0.6 });
+      let pooled = this.replicaTextPool.get(key);
+      if (!pooled) {
+        pooled = {
+          name: new Text({ text: truncate(this.names[c.node] ?? c.label, 17), style: this.nameStyle }),
+          sub: new Text({ text: "", style: this.subStyle }),
+          subValue: "",
+          count: new Text({ text: "", style: this.chipStyle }),
+        };
+        this.replicaTextPool.set(key, pooled);
+        this.replicaLabels.addChild(pooled.name, pooled.sub, pooled.count);
+      }
+      const subValue = nodeSubLabel(external, active, requests);
+      if (subValue !== pooled.subValue) {
+        pooled.sub.text = subValue;
+        pooled.subValue = subValue;
+      }
+      const nameValue = truncate(this.names[c.node] ?? c.label, 17);
+      if (pooled.name.text !== nameValue) pooled.name.text = nameValue;
+      pooled.name.position.set(left + 52, c.y - 17);
+      pooled.sub.position.set(left + 52, c.y + 2);
+      pooled.name.alpha = fade;
+      pooled.sub.alpha = fade;
+      if (c.instance_ids.length > 1) {
+        pooled.count.text = `×${c.instance_ids.length}`;
+        pooled.count.visible = true;
+        const width = pooled.count.width + 12;
+        const x = left + CARD_W - width - 6;
+        const y = top + 5;
+        g.roundRect(x, y, width, 18, 9).fill({ color: 0x4c1d95, alpha: 0.95 * fade }).stroke({ color: 0xa78bfa, width: 1, alpha: fade });
+        pooled.count.position.set(x + 6, y + 2);
+        pooled.count.alpha = fade;
+      } else {
+        pooled.count.visible = false;
+      }
+    }
+    for (const [key, text] of this.replicaTextPool) {
+      if (!seen.has(key)) {
+        text.name.visible = false;
+        text.sub.visible = false;
+        text.count.visible = false;
+      } else {
+        text.name.visible = true;
+        text.sub.visible = true;
+      }
+    }
+  }
+
+  private selection(): MapSelection {
+    return { node: this.selectedIndex, edge: this.selectedEdge, edgeNodes: this.selectedEdgeNodes, host: this.selectedHost };
+  }
+
+  private syncSelectionFade() {
+    this.hops.alpha = selectionAlpha(this.selection());
+  }
+
+  /** Logical service cards belong to exactly one machine frame in infrastructure mode. */
+  private hostForNode(node: number): string | null {
+    return this.hostByNode.get(node) ?? null;
   }
 
   private drawEdges(f: Frame) {
     this.edges.clear();
     this.edgesDim.clear();
     this.edgeGeom.clear();
+    const selection = this.selection();
     for (let i = 0; i < f.edgeIndices.length; i++) {
       const o = i * EDGE_STRIDE;
       const sx = f.edgeData[o] ?? 0;
@@ -634,6 +779,7 @@ export class PixiMap {
               ? EDGE_INFERRED
               : EDGE_OK;
       const index = f.edgeIndices[i] ?? 0;
+      const fade = this.selectedEdge === index || selectionAlpha(selection) === 1 ? 1 : SELECTION_DIM_ALPHA;
       const route = this.routes.get(index);
       // A route is only valid for the positions it was computed for (topology may lag a frame).
       const fresh = route && near(route.sx, sx) && near(route.sy, sy) && near(route.tx, tx) && near(route.ty, ty);
@@ -641,16 +787,16 @@ export class PixiMap {
       if (!path) continue;
       this.edgeGeom.set(index, { path, color });
       const e = (flags & FLAG_DIMMED) !== 0 ? this.edgesDim : this.edges;
-      if (index === this.selectedEdge) line(e, path.pts).stroke({ color: EDGE_SELECTED, width: 10, alpha: 0.35, ...LINE_STYLE });
+      if (index === this.selectedEdge) line(this.edges, path.pts).stroke({ color: EDGE_SELECTED, width: 10, alpha: 0.35, ...LINE_STYLE });
       const width = highlight ? 2.5 : 1.25 + Math.min(1.5, Math.log10(1 + calls) * 0.6);
       if (inferred) {
         for (const dash of dashes(path, 6, 5)) line(e, dash);
-        e.stroke({ color, width, alpha: 0.8, ...LINE_STYLE });
+        e.stroke({ color, width, alpha: 0.8 * fade, ...LINE_STYLE });
       } else {
-        line(e, path.pts).stroke({ color, width: width + 6, alpha: calls > 0 ? 0.1 : 0.05, ...LINE_STYLE });
-        line(e, path.pts).stroke({ color, width, alpha: calls > 0 ? 0.9 : 0.5, ...LINE_STYLE });
+        line(e, path.pts).stroke({ color, width: width + 6, alpha: (calls > 0 ? 0.1 : 0.05) * fade, ...LINE_STYLE });
+        line(e, path.pts).stroke({ color, width, alpha: (calls > 0 ? 0.9 : 0.5) * fade, ...LINE_STYLE });
       }
-      arrow(e, path, color);
+      arrow(e, path, color, fade);
     }
     this.publishEdgeAnchors();
   }
@@ -661,6 +807,7 @@ export class PixiMap {
     const seen = new Set<number>();
     const hw = CARD_W / 2;
     const hh = CARD_H / 2;
+    const selection = this.selection();
     for (let i = 0; i < f.nodeIndices.length; i++) {
       const o = i * NODE_STRIDE;
       const x = f.nodeData[o] ?? 0;
@@ -677,21 +824,23 @@ export class PixiMap {
       const inferred = (flags & FLAG_INFERRED) !== 0;
       const dimmed = (flags & FLAG_DIMMED) !== 0;
       const n = dimmed ? this.nodesDim : this.nodes;
+      const focused = nodeFocused(idx, this.hostForNode(idx), selection);
+      const fade = focused ? 1 : SELECTION_DIM_ALPHA;
       const left = x - hw;
       const top = y - hh;
 
       if (status > 0) {
-        n.roundRect(left - 3, top - 3, CARD_W + 6, CARD_H + 6, 15).stroke({ color, width: 6, alpha: status >= 2 ? 0.22 : 0.1 });
+        n.roundRect(left - 3, top - 3, CARD_W + 6, CARD_H + 6, 15).stroke({ color, width: 6, alpha: (status >= 2 ? 0.22 : 0.1) * fade });
       }
       if (external) {
         // Outside the project: dashed border, no solid frame, so it never reads as one of our services.
-        n.roundRect(left, top, CARD_W, CARD_H, 4).fill({ color: CARD_BG, alpha: 0.9 });
+        n.roundRect(left, top, CARD_W, CARD_H, 4).fill({ color: CARD_BG, alpha: 0.9 * fade });
         for (const dash of dashedRect(left, top, CARD_W, CARD_H)) line(n, dash);
-        n.stroke({ color, width: 1.75, alpha: 0.9, ...LINE_STYLE });
+        n.stroke({ color, width: 1.75, alpha: 0.9 * fade, ...LINE_STYLE });
       } else {
         n.roundRect(left, top, CARD_W, CARD_H, 12)
-          .fill({ color: CARD_BG, alpha: 0.96 })
-          .stroke({ color, width: 1.5, alpha: inferred ? 0.45 : 0.85 });
+          .fill({ color: CARD_BG, alpha: 0.96 * fade })
+          .stroke({ color, width: 1.5, alpha: (inferred ? 0.45 : 0.85) * fade });
       }
       if ((flags & FLAG_HIGHLIGHT) !== 0) n.roundRect(left - 5, top - 5, CARD_W + 10, CARD_H + 10, 16).stroke({ color: ACCENT, width: 2 });
       if (idx === this.selectedIndex) n.roundRect(left - 8, top - 8, CARD_W + 16, CARD_H + 16, 18).stroke({ color: 0xffffff, width: 2, alpha: 0.9 });
@@ -720,8 +869,8 @@ export class PixiMap {
       }
       t.name.visible = true;
       t.sub.visible = true;
-      t.name.alpha = dimmed ? DIM_ALPHA + 0.1 : 1;
-      t.sub.alpha = dimmed ? DIM_ALPHA + 0.1 : 1;
+      t.name.alpha = (dimmed ? DIM_ALPHA + 0.1 : 1) * fade;
+      t.sub.alpha = (dimmed ? DIM_ALPHA + 0.1 : 1) * fade;
       t.name.position.set(left + 52, y - 17);
       t.sub.position.set(left + 52, y + 2);
     }
@@ -794,7 +943,7 @@ function line(gr: Graphics, pts: number[]) {
   return gr;
 }
 
-function arrow(gr: Graphics, path: EdgePath, color: number) {
+function arrow(gr: Graphics, path: EdgePath, color: number, alpha = 1) {
   const [bx, by] = pointAt(path, 1);
   const [ux, uy] = endDirection(path);
   const size = 8;
@@ -805,7 +954,7 @@ function arrow(gr: Graphics, path: EdgePath, color: number) {
     by - uy * size + ux * size * 0.55,
     bx - ux * size + uy * size * 0.55,
     by - uy * size - ux * size * 0.55,
-  ]).fill({ color });
+  ]).fill({ color, alpha });
 }
 
 function drawKindIcon(g: Graphics, kind: EntityKindDto | undefined, resource: boolean, cx: number, cy: number, color: number) {

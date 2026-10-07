@@ -1,12 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
-import { collectErrors, login } from "./helpers";
+import { mapLayer, collectErrors, login } from "./helpers";
 
 const WORKSPACE = "/app/demo/local-demo";
 
 /** Opens a service in the right panel the way a user does without a pointer: from the table view. */
 async function openService(page: Page, name: string) {
   await expect(page.getByText("Starting engine…")).toBeHidden();
-  await page.getByRole("checkbox", { name: "Table view" }).check();
+  await (await mapLayer(page, "Table view")).check();
   await page.getByRole("table").getByRole("button", { name, exact: true }).click();
   const inspector = page.getByRole("complementary", { name: "Inspector" });
   await expect(inspector.getByRole("heading", { name, exact: true })).toBeVisible();
@@ -41,7 +41,7 @@ test("an operator opens a container from its machine and can only request approv
   const errors = collectErrors(page);
   await login(page, "operator@karbird.local", WORKSPACE);
   await expect(page.getByText("Starting engine…")).toBeHidden();
-  await page.getByRole("checkbox", { name: "Infrastructure" }).check();
+  await (await mapLayer(page, "Infrastructure")).check();
   await page.getByRole("region", { name: "Machines" }).getByRole("button", { name: /^vps-worker/ }).click();
 
   const inspector = page.getByRole("complementary", { name: "Inspector" });

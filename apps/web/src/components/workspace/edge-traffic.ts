@@ -72,15 +72,24 @@ export function sizeState(t: Pick<EdgeTraffic, "total_calls" | "total_sized_call
   return { kind: "full", calls: t.total_calls };
 }
 
-export function sizeNote(s: SizeState): string {
+export function sizeNote(
+  s: SizeState,
+  directions?: { calls: number; requestSizedCalls: number; responseSizedCalls: number },
+): string {
   switch (s.kind) {
     case "no-calls":
       return "No calls over this link in the loaded range.";
     case "unknown":
       return "The services on this link do not report request or response sizes, so data volume is unknown.";
     case "partial":
+      if (directions) {
+        return `Request size known for ${directions.requestSizedCalls} of ${directions.calls} calls; response size known for ${directions.responseSizedCalls} of ${directions.calls} calls. Rates include only calls with a reported size for that direction.`;
+      }
       return `Size known for ${s.sized} of ${s.calls} calls (${formatPercent(s.sized / s.calls)}); rates count only those.`;
     case "full":
+      if (directions) {
+        return `Request size known for ${directions.requestSizedCalls} of ${directions.calls} calls; response size known for ${directions.responseSizedCalls} of ${directions.calls} calls. Rates include only calls with a reported size for that direction.`;
+      }
       return `Size known for all ${s.calls} calls.`;
   }
 }

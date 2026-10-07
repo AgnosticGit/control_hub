@@ -32,19 +32,19 @@ test.describe("service colours and request focus on demo data", () => {
     await expect(page.getByText("Response", { exact: true })).toBeVisible();
     // The map carries only the key icon; what the dots show is explained inside the key.
     await expect(page.getByText(/Requests from recorded spans/)).toHaveCount(0);
-    await page.getByRole("button", { name: "Show map key" }).hover();
+    await page.getByRole("button", { name: "Show map key" }).click();
     const key = page.getByRole("dialog", { name: "Map key" });
     await expect(key).toContainText("Requests from recorded spans, 8 s behind live");
     await expect(key).toContainText("Its colour is the service where the request started.");
     expect(errors).toEqual([]);
   });
 
-  test("the map key icon explains every dot, line and card on hover, focus and click", async ({ page }) => {
+  test("the map key icon explains every dot, line and card on click", async ({ page }) => {
     const button = page.getByRole("button", { name: "Show map key" });
     const key = page.getByRole("dialog", { name: "Map key" });
     await expect(key).toHaveCount(0);
 
-    await button.hover();
+    await button.click();
     await expect(key).toBeVisible();
     await expect(button).toHaveAttribute("aria-expanded", "true");
     for (const title of ["Moving dots: recorded requests", "Lines: calls between components", "Cards: services and dependencies"]) {
@@ -67,11 +67,8 @@ test.describe("service colours and request focus on demo data", () => {
     await page.screenshot({ path: "../../test-results/e2e/map-key.png" });
 
     await page.mouse.move(0, 0);
-    await expect(key).toHaveCount(0);
-
-    await button.click();
-    await page.mouse.move(0, 0);
     await expect(key).toBeVisible();
+
     await page.keyboard.press("Escape");
     await expect(key).toHaveCount(0);
     await expect(button).toHaveAttribute("aria-expanded", "false");

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { collectErrors, ingestMetrics, ingestSpans, login, randomHex, type SpanInput } from "./helpers";
+import { mapLayer, collectErrors, ingestMetrics, ingestSpans, login, randomHex, type SpanInput } from "./helpers";
 
 const WORKSPACE = "/app/isolation/isolation-test";
 const MIB = 1024 * 1024;
@@ -63,7 +63,7 @@ test("a database in a container on our machine runs there; a managed one is exte
   const errors = collectErrors(page);
   await login(page, "isolation@karbird.local", WORKSPACE);
   await expect(page.getByText("Starting engine…")).toBeHidden();
-  await page.getByRole("checkbox", { name: "Infrastructure" }).check();
+  await (await mapLayer(page, "Infrastructure")).check();
   const machines = page.getByRole("region", { name: "Machines" });
   const machine = machines.getByRole("button", { name: new RegExp(`^${host}`) });
   const inspector = page.getByRole("complementary", { name: "Inspector" });
@@ -79,7 +79,7 @@ test("a database in a container on our machine runs there; a managed one is exte
         }
         await page.reload();
         await expect(page.getByText("Starting engine…")).toBeHidden();
-        await page.getByRole("checkbox", { name: "Infrastructure" }).check();
+        await (await mapLayer(page, "Infrastructure")).check();
         return false;
       },
       { timeout: 60_000, intervals: [3_000] },

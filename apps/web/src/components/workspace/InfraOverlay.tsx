@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { InfrastructureSnapshot } from "@karbird/web-engine";
 import { Icon } from "@/components/ui/Icon";
 import { hintText, hostLabel } from "./infrastructure";
@@ -9,6 +9,8 @@ interface Props {
   snapshot: InfrastructureSnapshot | null;
   error: string | null;
   selectedHost: string | null;
+  visibleHostIds: string[];
+  onlyProblems: boolean;
   onSelectHost: (hostId: string) => void;
   onSelect: (serviceId: string) => void;
   /** How far down the map the overlay reaches, in pixels (0 once it is gone). */
@@ -16,8 +18,11 @@ interface Props {
 }
 
 /** Machines of the infrastructure layer and its noisy-neighbour hints, above the map canvas. */
-export function InfraOverlay({ snapshot, error, selectedHost, onSelectHost, onSelect, onBottom }: Props) {
-  const hosts = snapshot?.hosts ?? [];
+export function InfraOverlay({ snapshot, error, selectedHost, visibleHostIds, onlyProblems, onSelectHost, onSelect, onBottom }: Props) {
+  const [collapsed, setCollapsed] = useState(false);
+  const visible = new Set(visibleHostIds);
+  const hosts = (snapshot?.hosts ?? []).filter((host) => visible.has(host.id));
+  const hints = (snapshot?.hints ?? []).filter((hint) => visible.has(hint.host_id));
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = rootRef.current;
@@ -34,7 +39,7 @@ export function InfraOverlay({ snapshot, error, selectedHost, onSelectHost, onSe
   // Fit gives up at most half the map to the overlay, so it never grows past that: the machine list scrolls.
   return (
     <div ref={rootRef} className="pointer-events-none absolute top-3 left-3 z-10 flex max-h-[45%] max-w-[min(28rem,60%)] flex-col gap-2">
-      {snapshot?.hints.map((h) => (
+      {hints.map((h) => (
         <div
           key={`${h.instance_id}-${h.neighbor_container_id}`}
           role="status"
@@ -52,7 +57,20 @@ export function InfraOverlay({ snapshot, error, selectedHost, onSelectHost, onSe
         aria-label="Machines"
         className="pointer-events-auto flex min-h-0 flex-col rounded-lg border border-border bg-surface/90 px-2 py-1.5 text-xs backdrop-blur"
       >
-        <h2 className="shrink-0 px-1 pb-1 text-[11px] text-muted">Machines</h2>
+        <header className="flex shrink-0 items-center gap-2 px-1 pb-1">
+          <h2 className="flex-1 text-[11px] text-muted">Machines</h2>
+          <button
+            type="button"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-surface-2 hover:text-text"
+            aria-label={collapsed ? "Expand machine list" : "Collapse machine list"}
+            aria-expanded={!collapsed}
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            <Icon name={collapsed ? "plus" : "minus"} className="h-3 w-3" />
+          </button>
+        </header>
+        {!collapsed ? (
+          <>
         {error ? (
           <p role="alert" className="px-1 text-error">
             Infrastructure unavailable: {error}
@@ -60,7 +78,9 @@ export function InfraOverlay({ snapshot, error, selectedHost, onSelectHost, onSe
         ) : null}
         {!snapshot && !error ? <p className="px-1 text-muted">Loading…</p> : null}
         {snapshot && hosts.length === 0 ? (
-          <p className="px-1 text-muted">No machines yet: run the Karbird agent on your hosts.</p>
+          <p className="px-1 text-muted">
+            {onlyProblems ? "No machines with problem services." : "No machines yet: run the Karbird agent on your hosts."}
+          </p>
         ) : null}
         <ul className="min-h-0 space-y-0.5 overflow-y-auto">
           {hosts.map((h) => (
@@ -84,6 +104,8 @@ export function InfraOverlay({ snapshot, error, selectedHost, onSelectHost, onSe
             {n}
           </p>
         ))}
+          </>
+        ) : null}
       </section>
     </div>
   );

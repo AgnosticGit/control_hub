@@ -222,7 +222,13 @@ function TrafficSection({ traffic: t, loading, failed }: { traffic: EdgeTraffic 
           </figure>
         </>
       ) : null}
-      <p className="text-xs text-muted">{sizeNote(s)}</p>
+      <p className="text-xs text-muted">
+        {sizeNote(s, {
+          calls: t.total_calls,
+          requestSizedCalls: t.total_request_sized_calls,
+          responseSizedCalls: t.total_response_sized_calls,
+        })}
+      </p>
     </section>
   );
 }

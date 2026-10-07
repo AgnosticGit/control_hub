@@ -245,6 +245,10 @@ pub struct EdgeTrafficRow {
     pub calls: u64,
     /// Calls that declared at least one of the two sizes.
     pub sized_calls: u64,
+    /// Calls that declared a request body size.
+    pub request_sized_calls: u64,
+    /// Calls that declared a response body size.
+    pub response_sized_calls: u64,
     pub request_bytes: u64,
     pub response_bytes: u64,
 }
@@ -615,6 +619,8 @@ fn edge_traffic_sql(edge: &EdgeSpans) -> String {
     format!(
         "SELECT intDiv(toUnixTimestamp64Nano(t) - ?, ?) AS bucket, count() AS calls,
                 countIf(isNotNull(req) OR isNotNull(resp)) AS sized_calls,
+                countIf(isNotNull(req)) AS request_sized_calls,
+                countIf(isNotNull(resp)) AS response_sized_calls,
                 toUInt64(sum(ifNull(req, 0))) AS request_bytes, toUInt64(sum(ifNull(resp, 0))) AS response_bytes
          FROM ({inner})
          GROUP BY bucket ORDER BY bucket LIMIT ?"
@@ -1345,6 +1351,7 @@ mod tests {
             assert_eq!(scoped_where_count(&sql), scopes, "{edge:?}: {sql}");
             assert!(sql.contains("FROM spans FINAL"), "{sql}");
             assert!(sql.contains("http.request.body.size") && sql.contains("http.response.body.size"), "{sql}");
+            assert!(sql.contains("AS request_sized_calls") && sql.contains("AS response_sized_calls"), "{sql}");
             // Only declared sizes: never payloads or statements.
             for forbidden in ["'http.request.body'", "'http.response.body'", "db.statement", "db.query.text"] {
                 assert!(!sql.contains(forbidden), "{forbidden}: {sql}");

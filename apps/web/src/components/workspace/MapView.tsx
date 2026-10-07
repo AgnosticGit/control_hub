@@ -11,6 +11,7 @@ import { LIVE_ANIM_DELAY_MS, animClockFor, type Mode, type Speed, type Workspace
 import { MapKey } from "./MapKey";
 import { NodeTable } from "./NodeTable";
 import type { WorkspaceMemory } from "./workspace-memory";
+import { toggleSelection } from "@/renderer/selection-style";
 
 type ZoomAction = "in" | "out" | "fit";
 const ZOOM_BUTTONS: Array<{ label: string; icon: IconName; action: ZoomAction }> = [
@@ -37,17 +38,25 @@ interface Props {
   summary: FrameSummary | null;
   memory: WorkspaceMemory;
   /** A click on a machine frame of the infrastructure layer. */
-  onSelectHost: (hostId: string) => void;
+  onSelectHost: (hostId: string | null) => void;
   /** Machine open in the inspector; its frame is highlighted. */
   selectedHost?: string | null;
   /** A click on a service instance chip of the infrastructure layer. */
   onSelectInstance?: (instanceId: string, hostId: string, serviceId: string) => void;
   /** A click on a line between two cards. */
-  onSelectEdge?: (edge: SelectedEdge) => void;
+  onSelectEdge?: (edge: SelectedEdge | null) => void;
   /** Line open in the inspector; it is highlighted. */
   selectedEdge?: SelectedEdge | null;
   /** Screen pixels at the top of the map covered by an overlay. */
   topInset?: number;
+  infrastructure: boolean;
+  onInfrastructureChange: (enabled: boolean) => void;
+  onlyProblems: boolean;
+  onOnlyProblemsChange: (enabled: boolean) => void;
+  hideInferred: boolean;
+  onHideInferredChange: (enabled: boolean) => void;
+  tableView: boolean;
+  onTableViewChange: (enabled: boolean) => void;
 }
 
 export function MapView({
@@ -66,6 +75,14 @@ export function MapView({
   onSelectEdge,
   selectedEdge = null,
   topInset = 0,
+  infrastructure,
+  onInfrastructureChange,
+  onlyProblems,
+  onOnlyProblemsChange,
+  hideInferred,
+  onHideInferredChange,
+  tableView,
+  onTableViewChange,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<PixiMap | null>(null);
@@ -133,17 +150,21 @@ export function MapView({
         const map = new PixiMap({
           onViewport: (x, y, w, h, s) => actions.setViewport(x, y, w, h, s),
           onPick: (x, y) => {
-            void actions.pick(x, y).then((id) => onSelectRef.current(id));
+            void actions.pick(x, y).then((id) => onSelectRef.current(toggleSelection(selectedRef.current, id)));
           },
-          onPickHost: (hostId) => onSelectHostRef.current(hostId),
+          onPickHost: (hostId) => onSelectHostRef.current(toggleSelection(selectedHostRef.current, hostId)),
           onPickInstance: (instanceId, hostId, serviceId) => {
+            if (toggleSelection(selectedRef.current, serviceId) === null) {
+              onSelectRef.current(null);
+              return;
+            }
             const pickInstance = onSelectInstanceRef.current;
             if (pickInstance) pickInstance(instanceId, hostId, serviceId);
             else onSelectRef.current(serviceId);
           },
           onPickEdge: (index) => {
             const edge = edgeEnds(topologyRef.current, index);
-            if (edge) onSelectEdgeRef.current?.(edge);
+            if (edge) onSelectEdgeRef.current?.(toggleSelection(selectedEdgeRef.current, index) === null ? null : edge);
           },
         });
         await map.mount(host);
@@ -231,19 +252,35 @@ export function MapView({
 
   if (showTable) {
     return (
-      <div className="h-full overflow-auto">
-        {webglError ? (
-          <p role="status" className="border-b border-border bg-surface px-4 py-2 text-xs text-warn">
-            WebGL is unavailable ({webglError}). Showing the table view.
-          </p>
-        ) : null}
-        <NodeTable frame={lastFrame} topology={topology} selectedId={selectedId} onSelect={onSelect} />
+      <div className="relative h-full w-full">
+        <div className="absolute inset-0 overflow-auto">
+          {webglError ? (
+            <p role="status" className="border-b border-border bg-surface px-4 py-2 text-xs text-warn">
+              WebGL is unavailable ({webglError}). Showing the table view.
+            </p>
+          ) : null}
+          <NodeTable frame={lastFrame} topology={topology} selectedId={selectedId} onSelect={onSelect} />
+        </div>
+        <AnimationNote
+          mode={mode}
+          speed={speed}
+          summary={summary}
+          infrastructure={infrastructure}
+          onInfrastructureChange={onInfrastructureChange}
+          onlyProblems={onlyProblems}
+          onOnlyProblemsChange={onOnlyProblemsChange}
+          hideInferred={hideInferred}
+          onHideInferredChange={onHideInferredChange}
+          tableView={tableView}
+          onTableViewChange={onTableViewChange}
+        />
       </div>
     );
   }
 
   return (
     <div className="relative h-full w-full">
+      <div className="absolute inset-0">
       <div
         ref={hostRef}
         tabIndex={0}
@@ -291,7 +328,20 @@ export function MapView({
         </div>
         <Legend />
       </div>
-      <AnimationNote mode={mode} speed={speed} summary={summary} />
+      </div>
+      <AnimationNote
+        mode={mode}
+        speed={speed}
+        summary={summary}
+        infrastructure={infrastructure}
+        onInfrastructureChange={onInfrastructureChange}
+        onlyProblems={onlyProblems}
+        onOnlyProblemsChange={onOnlyProblemsChange}
+        hideInferred={hideInferred}
+        onHideInferredChange={onHideInferredChange}
+        tableView={tableView}
+        onTableViewChange={onTableViewChange}
+      />
     </div>
   );
 }
@@ -329,7 +379,31 @@ function Legend() {
 }
 
 /** States exactly what the moving dots show, so nobody mistakes them for decoration. */
-function AnimationNote({ mode, speed, summary }: { mode: Mode; speed: Speed; summary: FrameSummary | null }) {
+function AnimationNote({
+  mode,
+  speed,
+  summary,
+  infrastructure,
+  onInfrastructureChange,
+  onlyProblems,
+  onOnlyProblemsChange,
+  hideInferred,
+  onHideInferredChange,
+  tableView,
+  onTableViewChange,
+}: {
+  mode: Mode;
+  speed: Speed;
+  summary: FrameSummary | null;
+  infrastructure: boolean;
+  onInfrastructureChange: (enabled: boolean) => void;
+  onlyProblems: boolean;
+  onOnlyProblemsChange: (enabled: boolean) => void;
+  hideInferred: boolean;
+  onHideInferredChange: (enabled: boolean) => void;
+  tableView: boolean;
+  onTableViewChange: (enabled: boolean) => void;
+}) {
   const clock =
     mode === "live"
       ? `${LIVE_ANIM_DELAY_MS / 1000} s behind live (telemetry is delivered in batches)`
@@ -338,11 +412,101 @@ function AnimationNote({ mode, speed, summary }: { mode: Mode; speed: Speed; sum
         : "frozen at the selected time";
   const capped = summary && summary.hops_shown < summary.hops_in_window ? `Showing ${summary.hops_shown} of ${summary.hops_in_window} requests` : null;
   return (
-    <div className="pointer-events-none absolute top-3 right-3 flex items-center gap-2">
+    <div className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-2">
       {capped ? (
         <span className="rounded-lg border border-warn/40 bg-surface/90 px-2 py-1 text-[11px] text-warn backdrop-blur">{capped}</span>
       ) : null}
+      <MapLayers
+        infrastructure={infrastructure}
+        onInfrastructureChange={onInfrastructureChange}
+        onlyProblems={onlyProblems}
+        onOnlyProblemsChange={onOnlyProblemsChange}
+        hideInferred={hideInferred}
+        onHideInferredChange={onHideInferredChange}
+        tableView={tableView}
+        onTableViewChange={onTableViewChange}
+      />
       <MapKey animation={`Requests from recorded spans, ${clock}.`} capped={capped} />
     </div>
+  );
+}
+
+function MapLayers({
+  infrastructure,
+  onInfrastructureChange,
+  onlyProblems,
+  onOnlyProblemsChange,
+  hideInferred,
+  onHideInferredChange,
+  tableView,
+  onTableViewChange,
+}: {
+  infrastructure: boolean;
+  onInfrastructureChange: (enabled: boolean) => void;
+  onlyProblems: boolean;
+  onOnlyProblemsChange: (enabled: boolean) => void;
+  hideInferred: boolean;
+  onHideInferredChange: (enabled: boolean) => void;
+  tableView: boolean;
+  onTableViewChange: (enabled: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="pointer-events-auto relative" ref={rootRef}>
+      <button
+        type="button"
+        className={`flex h-8 w-8 items-center justify-center rounded-lg border bg-surface/90 backdrop-blur transition-colors hover:text-text ${
+          open ? "border-accent/60 text-accent" : "border-border text-muted"
+        }`}
+        aria-label="Map layers"
+        aria-expanded={open}
+        aria-controls="map-layers-panel"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Icon name="layers" className="h-4 w-4" />
+      </button>
+      {open ? (
+        <div
+          id="map-layers-panel"
+          role="group"
+          aria-label="Map layers"
+          className="absolute top-10 right-0 z-30 w-64 rounded-xl border border-border bg-surface-2 p-3 shadow-xl"
+        >
+          <p className="mb-2 px-2 text-xs font-semibold tracking-wide text-muted uppercase">Map layers</p>
+          <div className="space-y-1">
+            <LayerToggle label="Infrastructure" checked={infrastructure} onChange={onInfrastructureChange} />
+            <LayerToggle label="Only problems" checked={onlyProblems} onChange={onOnlyProblemsChange} />
+            <LayerToggle label="Hide inferred" checked={hideInferred} onChange={onHideInferredChange} />
+            <LayerToggle label="Table view" checked={tableView} onChange={onTableViewChange} />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function LayerToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (enabled: boolean) => void }) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-4 rounded-lg px-2 py-2 text-sm text-text hover:bg-bg/70">
+      {label}
+      <input type="checkbox" className="switch" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    </label>
   );
 }

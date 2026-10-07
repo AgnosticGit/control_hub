@@ -1318,7 +1318,11 @@ export interface components {
             /** Format: int64 */
             total_request_bytes: number;
             /** Format: int64 */
+            total_request_sized_calls: number;
+            /** Format: int64 */
             total_response_bytes: number;
+            /** Format: int64 */
+            total_response_sized_calls: number;
             /** Format: int64 */
             total_sized_calls: number;
         };

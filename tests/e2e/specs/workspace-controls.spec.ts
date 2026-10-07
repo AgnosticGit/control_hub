@@ -1,10 +1,10 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { collectErrors, login } from "./helpers";
+import { mapLayer, collectErrors, login } from "./helpers";
 
 const WORKSPACE = "/app/demo/local-demo";
 
 async function openTable(page: Page): Promise<Locator> {
-  await page.getByRole("checkbox", { name: "Table view" }).check();
+  await (await mapLayer(page, "Table view")).check();
   const table = page.getByRole("table");
   await expect(table.getByRole("button", { name: "gateway", exact: true })).toBeVisible();
   return table;
@@ -19,6 +19,52 @@ test.describe("workspace controls on demo data", () => {
   test.beforeEach(async ({ page }) => {
     await login(page, "admin@karbird.local", WORKSPACE);
     await expect(page.getByText("Starting engine…")).toBeHidden();
+  });
+
+  test("map layers menu exposes all display controls beside the map key", async ({ page }) => {
+    await expect(page.getByRole("button", { name: "Map layers" })).toBeVisible();
+    await page.getByRole("button", { name: "Map layers" }).click();
+
+    const layers = page.getByRole("group", { name: "Map layers" });
+    for (const name of ["Infrastructure", "Only problems", "Hide inferred", "Table view"]) {
+      await expect(layers.getByRole("checkbox", { name })).toBeVisible();
+    }
+
+    await layers.getByRole("checkbox", { name: "Table view" }).check();
+    await expect(page.getByRole("table")).toBeVisible();
+    await expect(layers).toBeVisible();
+  });
+
+  test("map layer choices are remembered after reload", async ({ page }) => {
+    await (await mapLayer(page, "Infrastructure")).check();
+    await (await mapLayer(page, "Hide inferred")).check();
+    await page.reload();
+    await expect(page.getByText("Starting engine…")).toBeHidden();
+
+    await expect(await mapLayer(page, "Infrastructure")).toBeChecked();
+    await expect(await mapLayer(page, "Hide inferred")).toBeChecked();
+  });
+
+  test("machine list can collapse and disappears in table view", async ({ page }) => {
+    await (await mapLayer(page, "Infrastructure")).check();
+    const machines = page.getByRole("region", { name: "Machines" });
+    await expect(machines.getByRole("button", { name: /^vps-/ }).first()).toBeVisible();
+    await machines.getByRole("button", { name: "Collapse machine list" }).click();
+    await expect(machines.getByRole("button", { name: /^vps-/ })).toHaveCount(0);
+    await expect(machines.getByRole("button", { name: "Expand machine list" })).toBeVisible();
+
+    await (await mapLayer(page, "Table view")).check();
+    await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
+  });
+
+  test("replay speed slider steps through the supported speeds", async ({ page }) => {
+    const speed = page.getByRole("slider", { name: "Replay speed" });
+    await expect(speed).toHaveAttribute("aria-valuetext", "1×");
+    await speed.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(speed).toHaveAttribute("aria-valuetext", "2×");
+    await page.keyboard.press("Home");
+    await expect(speed).toHaveAttribute("aria-valuetext", "0.001×");
   });
 
   test("KPI row summarises services, request rate, error rate and active requests", async ({ page }) => {
@@ -49,13 +95,13 @@ test.describe("workspace controls on demo data", () => {
   test("Hide inferred removes inferred dependencies; Only problems keeps degraded/failing only", async ({ page }) => {
     const table = await openTable(page);
     await expect.poll(async () => (await column(table, 5)).filter((p) => p === "inferred").length).toBeGreaterThan(0);
-    await page.getByRole("checkbox", { name: "Hide inferred" }).check();
+    await (await mapLayer(page, "Hide inferred")).check();
     await expect.poll(async () => (await column(table, 5)).filter((p) => p === "inferred").length).toBe(0);
     await expect(table.getByRole("button", { name: "orders", exact: true })).toBeVisible();
-    await page.getByRole("checkbox", { name: "Hide inferred" }).uncheck();
+    await (await mapLayer(page, "Hide inferred")).uncheck();
     await expect.poll(async () => (await column(table, 5)).filter((p) => p === "inferred").length).toBeGreaterThan(0);
 
-    await page.getByRole("checkbox", { name: "Only problems" }).check();
+    await (await mapLayer(page, "Only problems")).check();
     const empty = page.getByText("No components match the current filters.");
     await expect
       .poll(async () => {
@@ -64,7 +110,7 @@ test.describe("workspace controls on demo data", () => {
         return statuses.every((s) => s === "Degraded" || s === "Failing");
       })
       .toBe(true);
-    await page.getByRole("checkbox", { name: "Only problems" }).uncheck();
+    await (await mapLayer(page, "Only problems")).uncheck();
     await expect(page.getByRole("table").getByRole("button", { name: "gateway", exact: true })).toBeVisible();
   });
 

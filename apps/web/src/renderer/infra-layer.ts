@@ -2,16 +2,17 @@
 // (`TopologyView.infra`); these helpers only hit-test and place decorations.
 
 import type { InfraChip, InfraFrame, InfraView } from "@karbird/web-engine";
+import { MACHINE_FRAME_COLORS } from "./map-colors";
 
 /** Must match `CHIP_W` / `CHIP_H` in engine-core `infra.rs`. */
-export const CHIP_W = 150;
-export const CHIP_H = 28;
+export const CHIP_W = 172;
+export const CHIP_H = 56;
 /** Height of a frame's title strip (engine `HEADER`). */
 export const FRAME_HEADER = 44;
 
-export const INFRA_FRAME = 0x8b5cf6;
-export const INFRA_HOT = 0xef4444;
-export const INFRA_NO_METRICS = 0x64748b;
+export const INFRA_FRAME = MACHINE_FRAME_COLORS.normal;
+export const INFRA_HOT = MACHINE_FRAME_COLORS.hot;
+export const INFRA_NO_METRICS = MACHINE_FRAME_COLORS.noMetrics;
 export const NOISY_LINK = 0xf59e0b;
 
 export function frameColor(f: InfraFrame): number {
@@ -20,7 +21,7 @@ export function frameColor(f: InfraFrame): number {
 }
 
 /** Accent of the selected machine (`--color-accent-2`). */
-export const INFRA_SELECTED = 0x22d3ee;
+export const INFRA_SELECTED = MACHINE_FRAME_COLORS.selected;
 
 export interface FrameLook {
   color: number;
@@ -44,7 +45,7 @@ export function chipAt(view: InfraView | null | undefined, x: number, y: number)
 
 /**
  * The machine whose frame contains the point and has nothing else under it: only the
- * title strip and empty frame area select the machine, cards and chips keep their own clicks.
+ * title strip and empty frame area select the machine; service and replica cards keep their own clicks.
  */
 export function frameAt(view: InfraView | null | undefined, x: number, y: number): InfraFrame | null {
   return view?.frames.find((f) => x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + f.height) ?? null;

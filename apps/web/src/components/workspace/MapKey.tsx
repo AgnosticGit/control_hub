@@ -61,22 +61,16 @@ interface Props {
   capped: string | null;
 }
 
-/**
- * Info button that explains every mark on the map on a full-screen panel: shown while the icon
- * is hovered or focused, kept open by a click (closed by Esc, the close button or a click outside).
- */
+/** Info button for a full-screen map key, opened by click and closed by Esc, close or outside click. */
 export function MapKey({ animation, capped }: Props) {
-  const [hover, setHover] = useState(false);
-  const [pinned, setPinned] = useState(false);
+  const [open, setOpen] = useState(false);
   const id = useId();
-  const open = hover || pinned;
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      setHover(false);
-      setPinned(false);
+      setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -85,8 +79,6 @@ export function MapKey({ animation, capped }: Props) {
   return (
     <div className="pointer-events-auto">
       <button
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
         type="button"
         className={`flex h-8 w-8 items-center justify-center rounded-lg border bg-surface/90 backdrop-blur transition-colors hover:text-text ${
           open ? "border-accent/60 text-accent" : "border-border text-muted"
@@ -94,19 +86,16 @@ export function MapKey({ animation, capped }: Props) {
         aria-label="Show map key"
         aria-expanded={open}
         aria-controls={id}
-        title="What the dots, lines and cards mean"
-        onFocus={() => setHover(true)}
-        onBlur={() => setHover(false)}
-        onClick={() => setPinned((p) => !p)}
+        onClick={() => setOpen((isOpen) => !isOpen)}
       >
         <Icon name="info" className="h-4 w-4" />
       </button>
       {open
         ? createPortal(
             <div
-              className={`fixed inset-0 z-50 flex items-center justify-center bg-bg/75 p-6 backdrop-blur-sm ${pinned ? "" : "pointer-events-none"}`}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-bg/75 p-6 backdrop-blur-sm"
               onClick={(e) => {
-                if (e.target === e.currentTarget) setPinned(false);
+                if (e.target === e.currentTarget) setOpen(false);
               }}
             >
               <div
@@ -121,14 +110,10 @@ export function MapKey({ animation, capped }: Props) {
                     <p className="mt-1 text-sm text-muted">{animation}</p>
                     {capped ? <p className="mt-1 text-sm text-warn">{capped}.</p> : null}
                   </div>
-                  {pinned ? (
-                    <button type="button" className="btn btn-sm" onClick={() => setPinned(false)} aria-label="Close map key">
-                      <Icon name="x" className="h-4 w-4" />
-                      Close
-                    </button>
-                  ) : (
-                    <span className="pt-1 text-xs text-muted">Click the icon to keep this open · Esc closes</span>
-                  )}
+                  <button type="button" className="btn btn-sm" onClick={() => setOpen(false)} aria-label="Close map key">
+                    <Icon name="x" className="h-4 w-4" />
+                    Close
+                  </button>
                 </header>
                 <div className="grid min-h-0 grid-cols-1 gap-x-8 gap-y-6 overflow-y-auto md:grid-cols-3">
                   {MAP_KEY.map((section) => (

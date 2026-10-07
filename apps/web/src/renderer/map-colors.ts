@@ -10,6 +10,13 @@ export const EDGE_ERROR = 0xef4444;
 export const EDGE_WARN = 0xf59e0b;
 export const ACCENT = 0x22d3ee;
 export const CARD_BG = 0x232528;
+/** Reserved infrastructure-frame colors; service identity hues must stay perceptually separate. */
+export const MACHINE_FRAME_COLORS = {
+  normal: 0x8b5cf6,
+  hot: 0xef4444,
+  noMetrics: 0x64748b,
+  selected: ACCENT,
+} as const;
 export { EXTERNAL_COLOR };
 
 /** `#rrggbb` of a 0xRRGGBB colour. */

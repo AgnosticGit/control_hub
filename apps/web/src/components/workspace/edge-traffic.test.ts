@@ -94,6 +94,9 @@ describe("sizeState / sizeNote", () => {
   it("says plainly when services do not report sizes", () => {
     expect(sizeNote({ kind: "unknown", calls: 9 })).toMatch(/do not report request or response sizes/);
     expect(sizeNote({ kind: "partial", sized: 12, calls: 14 })).toBe("Size known for 12 of 14 calls (86%); rates count only those.");
+    expect(
+      sizeNote({ kind: "full", calls: 7 }, { calls: 7, requestSizedCalls: 0, responseSizedCalls: 7 }),
+    ).toContain("Request size known for 0 of 7 calls; response size known for 7 of 7");
   });
 });
 

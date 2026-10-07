@@ -1156,6 +1156,39 @@ fn infrastructure_layer_moves_cards_into_machine_frames_and_back() {
 }
 
 #[test]
+fn only_problems_filters_machine_frames_and_replica_markers_with_the_current_time() {
+    let mut e = engine_with(demo_items());
+    let mut snapshot: serde_json::Value = serde_json::from_str(&infra_json()).unwrap();
+    snapshot["hosts"].as_array_mut().unwrap().push(serde_json::json!({
+        "id": "vps-idle", "name": "vps-idle", "has_metrics": true, "cpu_utilization": 0.1, "containers": []
+    }));
+    e.set_infrastructure_json(&snapshot.to_string()).unwrap();
+    e.set_filters(Filters { infrastructure: true, only_problems: true, ..Filters::default() });
+
+    // Before the failure, no machine has a problem service.
+    e.seek(BASE + 5 * SEC, 1);
+    e.visible_state();
+    let healthy_topology = e.topology();
+    let healthy = healthy_topology.infra.unwrap();
+    assert!(healthy.frames.is_empty());
+    assert!(healthy.chips.is_empty());
+    assert!(healthy.badges.is_empty());
+
+    // Once orders fails, its replicas keep both occupied machines visible, but the idle host
+    // and healthy gateway's own replica marker stay filtered out.
+    e.seek(BASE + 9 * SEC, 2);
+    e.visible_state();
+    let topology = e.topology();
+    assert!(topology.revision > healthy_topology.revision, "a changed problem set must refresh map decorations");
+    let filtered = topology.infra.unwrap();
+    let hosts: std::collections::BTreeSet<_> = filtered.frames.iter().map(|f| f.host_id.as_str()).collect();
+    assert_eq!(hosts, std::collections::BTreeSet::from(["vps-app", "vps-worker"]));
+    assert_eq!(filtered.badges.len(), 1);
+    assert_eq!(filtered.badges[0].node, 1, "only orders keeps its replica badge");
+    assert!(filtered.chips.iter().all(|chip| chip.node == 1));
+}
+
+#[test]
 fn infrastructure_layer_without_a_snapshot_keeps_the_layered_layout() {
     let mut e = engine_with(demo_items());
     let before = e.topology();

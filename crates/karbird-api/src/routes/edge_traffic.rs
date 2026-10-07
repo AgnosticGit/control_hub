@@ -63,6 +63,8 @@ pub struct EdgeTraffic {
     pub response_bytes: Vec<u64>,
     pub total_calls: u64,
     pub total_sized_calls: u64,
+    pub total_request_sized_calls: u64,
+    pub total_response_sized_calls: u64,
     pub total_request_bytes: u64,
     pub total_response_bytes: u64,
     /// `total_sized_calls / total_calls`; `null` without calls.
@@ -181,10 +183,12 @@ pub fn build(q: &Edge, g: &Geometry, rows: &[EdgeTrafficRow]) -> EdgeTraffic {
     }
     let sum = |v: &[u64]| v.iter().fold(0u64, |a, &b| a.saturating_add(b));
     let (total_calls, total_sized) = (sum(&calls), sum(&sized));
+    let (total_request_sized, total_response_sized) = rows.iter().fold((0u64, 0u64), |(req, resp), row| {
+        (req.saturating_add(row.request_sized_calls), resp.saturating_add(row.response_sized_calls))
+    });
     let (total_req, total_resp) = (sum(&req), sum(&resp));
     let range_s = (g.to.saturating_sub(g.from).max(1)) as f64 / NS_PER_SEC;
-    let known = total_sized > 0;
-    let peak = |v: &[u64]| -> Option<(f64, String)> {
+    let peak = |v: &[u64], known: bool| -> Option<(f64, String)> {
         if !known {
             return None;
         }
@@ -194,7 +198,7 @@ pub fn build(q: &Edge, g: &Geometry, rows: &[EdgeTrafficRow]) -> EdgeTraffic {
             .max_by(|a, b| a.0.total_cmp(&b.0).then(b.1.cmp(&a.1)))
             .map(|(bps, i)| (bps, g.start(i).to_string()))
     };
-    let (peak_req, peak_resp) = (peak(&req), peak(&resp));
+    let (peak_req, peak_resp) = (peak(&req, total_request_sized > 0), peak(&resp, total_response_sized > 0));
     EdgeTraffic {
         source: q.source.clone(),
         target: q.target.clone(),
@@ -205,11 +209,13 @@ pub fn build(q: &Edge, g: &Geometry, rows: &[EdgeTrafficRow]) -> EdgeTraffic {
         bucket_ns: g.bucket_ns.to_string(),
         total_calls,
         total_sized_calls: total_sized,
+        total_request_sized_calls: total_request_sized,
+        total_response_sized_calls: total_response_sized,
         total_request_bytes: total_req,
         total_response_bytes: total_resp,
         size_coverage: (total_calls > 0).then(|| total_sized as f64 / total_calls as f64),
-        avg_request_bps: known.then(|| total_req as f64 / range_s),
-        avg_response_bps: known.then(|| total_resp as f64 / range_s),
+        avg_request_bps: (total_request_sized > 0).then(|| total_req as f64 / range_s),
+        avg_response_bps: (total_response_sized > 0).then(|| total_resp as f64 / range_s),
         peak_request_bps: peak_req.as_ref().map(|p| p.0),
         peak_request_at_ns: peak_req.map(|p| p.1),
         peak_response_bps: peak_resp.as_ref().map(|p| p.0),
@@ -244,7 +250,15 @@ mod tests {
     }
 
     fn row(bucket: i64, calls: u64, sized: u64, req: u64, resp: u64) -> EdgeTrafficRow {
-        EdgeTrafficRow { bucket, calls, sized_calls: sized, request_bytes: req, response_bytes: resp }
+        EdgeTrafficRow {
+            bucket,
+            calls,
+            sized_calls: sized,
+            request_sized_calls: sized,
+            response_sized_calls: sized,
+            request_bytes: req,
+            response_bytes: resp,
+        }
     }
 
     #[test]
@@ -321,6 +335,28 @@ mod tests {
         let empty = build(&params("a", "db", EdgeRelation::DependsOn), &g, &[]);
         assert_eq!((empty.total_calls, empty.size_coverage, empty.avg_response_bps), (0, None, None));
         assert_eq!(empty.calls, vec![0; 6]);
+    }
+
+    #[test]
+    fn an_unreported_request_size_is_not_reported_as_zero_when_only_response_size_is_known() {
+        let g = Geometry::new(Range { from: 0, to: 60 * SEC }, Some(6));
+        let t = build(
+            &params("a", "b", EdgeRelation::Calls),
+            &g,
+            &[EdgeTrafficRow {
+                bucket: 0,
+                calls: 7,
+                sized_calls: 7,
+                request_sized_calls: 0,
+                response_sized_calls: 7,
+                request_bytes: 0,
+                response_bytes: 350,
+            }],
+        );
+        assert_eq!((t.avg_request_bps, t.peak_request_bps, t.peak_request_at_ns), (None, None, None));
+        assert_eq!(t.total_response_sized_calls, 7);
+        assert_eq!(t.avg_response_bps, Some(350.0 / 60.0));
+        assert!(t.peak_response_bps.is_some_and(|rate| rate > 0.0));
     }
 
     #[test]

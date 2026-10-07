@@ -40,6 +40,39 @@ const SIDE_MAX = 760;
 const DOCK_MIN = 150;
 const DOCK_MAX = 640;
 
+interface MapLayers {
+  infrastructure: boolean;
+  onlyProblems: boolean;
+  hideInferred: boolean;
+  tableView: boolean;
+}
+
+const DEFAULT_MAP_LAYERS: MapLayers = { infrastructure: false, onlyProblems: false, hideInferred: false, tableView: false };
+
+function parseMapLayers(raw: string): MapLayers | null {
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null) return null;
+    const record = value as Record<string, unknown>;
+    if (
+      typeof record.infrastructure !== "boolean" ||
+      typeof record.onlyProblems !== "boolean" ||
+      typeof record.hideInferred !== "boolean" ||
+      typeof record.tableView !== "boolean"
+    ) {
+      return null;
+    }
+    return {
+      infrastructure: record.infrastructure,
+      onlyProblems: record.onlyProblems,
+      hideInferred: record.hideInferred,
+      tableView: record.tableView,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** A remembered panel size in px, clamped to [min, max]. */
 function usePersistedSize(key: string, fallback: number, min: number, max: number): [number, (v: number) => void] {
   const value = usePersisted(key, fallback, (raw) => {
@@ -52,6 +85,8 @@ function usePersistedSize(key: string, fallback: number, min: number, max: numbe
 export function Workspace({ projectId, environmentId, visible = true }: { projectId: string; environmentId: string; visible?: boolean }) {
   const session = useSession();
   const { state, actions } = useWorkspaceEngine(projectId, environmentId);
+  const layerPrefsKey = `karbird.workspace.mapLayers.${projectId}.${environmentId}`;
+  const layerPrefs = usePersisted(layerPrefsKey, DEFAULT_MAP_LAYERS, parseMapLayers);
   // Survives the map and timeline unmounting while another page is shown.
   const [memory] = useState(() => new WorkspaceMemory());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -61,12 +96,8 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const [traceOnly, setTraceOnly] = useState(true);
   const [traceFocus, setTraceFocus] = useState<View | null>(null);
   const [search, setSearch] = useState("");
-  const [hideInferred, setHideInferred] = useState(false);
-  const [onlyProblems, setOnlyProblems] = useState(false);
   // Service node IDs switched off on the timeline: dimmed on the map and left out of totals.
   const [muted, setMuted] = useState<string[]>([]);
-  const [tableView, setTableView] = useState(false);
-  const [infraOn, setInfraOn] = useState(false);
   const [selectedHost, setSelectedHost] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<SelectedEdge | null>(null);
   const [selectedContainer, setSelectedContainer] = useState<ContainerRef | null>(null);
@@ -78,8 +109,10 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const [dockHeight, setDockHeight] = usePersistedSize("karbird.workspace.timelineHeight", 220, DOCK_MIN, DOCK_MAX);
   const debouncedSearch = useDebounced(search, 150);
   const selectedNode = state.topology?.nodes.find((n) => n.id === selectedId) ?? null;
-  const infra = useInfrastructure(actions, state.phase === "ready", infraOn, state.cursor);
-  const infraSnapshot = infraOn ? infra.snapshot : null;
+  const infra = useInfrastructure(actions, state.phase === "ready", layerPrefs.infrastructure, state.cursor);
+  const infraSnapshot = layerPrefs.infrastructure ? infra.snapshot : null;
+  const changeLayer = (layer: keyof MapLayers, enabled: boolean) =>
+    writePersisted(layerPrefsKey, JSON.stringify({ ...layerPrefs, [layer]: enabled }));
 
   // Selecting something opens its details; the signals tab stays one click away.
   const select = (id: string | null) => {
@@ -133,14 +166,14 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
     if (state.phase !== "ready") return;
     actions.setFilters({
       search: debouncedSearch.trim(),
-      hide_inferred: hideInferred,
-      only_problems: onlyProblems,
+      hide_inferred: layerPrefs.hideInferred,
+      only_problems: layerPrefs.onlyProblems,
       selected_trace_id: traceId,
       trace_only: traceOnly,
       muted_services: muted,
-      infrastructure: infraOn,
+      infrastructure: layerPrefs.infrastructure,
     });
-  }, [actions, state.phase, debouncedSearch, hideInferred, onlyProblems, traceId, traceOnly, muted, infraOn]);
+  }, [actions, state.phase, debouncedSearch, layerPrefs, traceId, traceOnly, muted]);
 
   const selectTrace = (id: string | null) => {
     setTraceId(id);
@@ -230,35 +263,6 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                 <Icon name="layers" className="h-3.5 w-3.5" />
               </span>
               <h1>System Map</h1>
-              <div className="ml-auto flex items-center gap-4 font-normal">
-                <label className="toggle" title="Group services into the machines they run on">
-                  <input
-                    type="checkbox"
-                    className="switch"
-                    checked={infraOn}
-                    onChange={(e) => {
-                      setInfraOn(e.target.checked);
-                      if (!e.target.checked) {
-                        setSelectedHost(null);
-                        setSelectedContainer(null);
-                      }
-                    }}
-                  />
-                  Infrastructure
-                </label>
-                <label className="toggle">
-                  <input type="checkbox" className="switch" checked={onlyProblems} onChange={(e) => setOnlyProblems(e.target.checked)} />
-                  Only problems
-                </label>
-                <label className="toggle">
-                  <input type="checkbox" className="switch" checked={hideInferred} onChange={(e) => setHideInferred(e.target.checked)} />
-                  Hide inferred
-                </label>
-                <label className="toggle">
-                  <input type="checkbox" className="switch" checked={tableView} onChange={(e) => setTableView(e.target.checked)} />
-                  Table view
-                </label>
-              </div>
             </div>
             <div className="relative min-h-0 flex-1">
               {state.phase === "error" ? (
@@ -271,24 +275,40 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                   topology={state.topology}
                   selectedId={selectedId}
                   onSelect={select}
-                  forceTable={tableView}
+                  forceTable={layerPrefs.tableView}
                   mode={state.mode}
                   speed={state.speed}
                   summary={state.summary}
                   memory={memory}
                   onSelectHost={selectHost}
-                  selectedHost={infraOn ? selectedHost : null}
+                  selectedHost={layerPrefs.infrastructure ? selectedHost : null}
                   onSelectInstance={selectInstance}
                   onSelectEdge={selectEdge}
                   selectedEdge={selectedEdge}
-                  topInset={infraOn ? overlayBottom : 0}
+                  topInset={layerPrefs.infrastructure && !layerPrefs.tableView ? overlayBottom : 0}
+                  infrastructure={layerPrefs.infrastructure}
+                  onInfrastructureChange={(enabled) => {
+                    changeLayer("infrastructure", enabled);
+                    if (!enabled) {
+                      setSelectedHost(null);
+                      setSelectedContainer(null);
+                    }
+                  }}
+                  onlyProblems={layerPrefs.onlyProblems}
+                  onOnlyProblemsChange={(enabled) => changeLayer("onlyProblems", enabled)}
+                  hideInferred={layerPrefs.hideInferred}
+                  onHideInferredChange={(enabled) => changeLayer("hideInferred", enabled)}
+                  tableView={layerPrefs.tableView}
+                  onTableViewChange={(enabled) => changeLayer("tableView", enabled)}
                 />
               )}
-              {infraOn && state.phase === "ready" ? (
+              {layerPrefs.infrastructure && !layerPrefs.tableView && state.phase === "ready" ? (
                 <InfraOverlay
                   snapshot={infraSnapshot}
                   error={infra.error}
                   selectedHost={selectedHost}
+                  visibleHostIds={state.topology?.infra?.frames.map((frame) => frame.host_id) ?? []}
+                  onlyProblems={layerPrefs.onlyProblems}
                   onSelectHost={selectHost}
                   onSelect={select}
                   onBottom={setOverlayBottom}
@@ -391,7 +411,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
         <TimelineBar
           projectId={projectId}
           environmentId={environmentId}
-          filterKey={`${debouncedSearch.trim()}|${hideInferred}|${onlyProblems}|${muted.join(",")}|${traceId ?? ""}|${traceOnly}`}
+          filterKey={`${debouncedSearch.trim()}|${layerPrefs.hideInferred}|${layerPrefs.onlyProblems}|${muted.join(",")}|${traceId ?? ""}|${traceOnly}`}
           muted={muted}
           onMuted={setMuted}
           focus={traceFocus}

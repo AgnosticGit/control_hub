@@ -6,10 +6,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use crate::layout::{BandSpec, COLUMN_SPACING, Layout};
 use crate::types::{InfraBadge, InfraChip, InfraFrame, InfraLink, InfraView, InfrastructureSnapshot, ResourceLocation};
 
-pub const CHIP_W: f32 = 150.0;
-pub const CHIP_H: f32 = 28.0;
-const CHIP_PITCH_Y: f32 = 36.0;
-/// Space between the lowest card or corridor of a machine and its first chip row.
+pub const CHIP_W: f32 = 172.0;
+pub const CHIP_H: f32 = 56.0;
+const CHIP_PITCH_Y: f32 = 68.0;
+/// Space between the lowest card or corridor of a machine and its first replica card.
 const CHIP_GAP: f32 = 18.0;
 /// Half the width of a card in the renderer (172 px).
 const CARD_HALF_W: f32 = 86.0;
@@ -116,7 +116,11 @@ pub fn compute(nodes: &[LayoutNode<'_>], edges: &[(u32, u32)], snap: &Infrastruc
         if instances.len() > 1 {
             badges.push(InfraBadge { node, count: instances.len() as u32, hosts: per_host.len() as u32 });
             for (host, instance_ids) in per_host {
-                if let Some(&s) = slot.get(host) {
+                // The logical card already represents the primary host. Replica placements
+                // on every other host get a full-size card in the reserved lower band.
+                if host != primary
+                    && let Some(&s) = slot.get(host)
+                {
                     placements[s].chips.push((node, service_id, instance_ids));
                 }
             }
@@ -164,7 +168,7 @@ pub fn compute(nodes: &[LayoutNode<'_>], edges: &[(u32, u32)], snap: &Infrastruc
     let depth = crate::layout::layers(nodes.len(), &local);
     let depth_of = |node: u32| at.get(&node).and_then(|&i| depth.get(i)).copied().unwrap_or(0);
 
-    // Chips sit under the machine's cards, in the column of their service, stacked per column.
+    // Replica cards sit under the machine's cards, in the service column, stacked per column.
     let chip_row: Vec<Vec<usize>> = placements
         .iter()
         .map(|p| {
@@ -206,17 +210,13 @@ pub fn compute(nodes: &[LayoutNode<'_>], edges: &[(u32, u32)], snap: &Infrastruc
             let service = name_of.get(node).copied().unwrap_or(service_id);
             let x = depth_of(*node) as f32 * COLUMN_SPACING;
             xs.push((x - CHIP_W / 2.0, x + CHIP_W / 2.0));
-            let count = instance_ids.len();
             chips.push(InfraChip {
                 node: *node,
                 service_id: (*service_id).to_owned(),
                 instance_id: instance_ids.first().copied().unwrap_or_default().to_owned(),
                 instance_ids: instance_ids.iter().map(|id| (*id).to_owned()).collect(),
-                label: format!(
-                    "{}{suffix}",
-                    if service.is_empty() { display_name(snap, service_id).unwrap_or(service_id) } else { service },
-                    suffix = if count > 1 { format!(" ×{count}") } else { String::new() }
-                ),
+                label: if service.is_empty() { display_name(snap, service_id).unwrap_or(service_id) } else { service }
+                    .to_owned(),
                 host_id: p.host.to_owned(),
                 x,
                 y: band.content_bottom + CHIP_GAP + r as f32 * CHIP_PITCH_Y + CHIP_H / 2.0,
@@ -409,18 +409,21 @@ mod tests {
         let l = compute(&nodes(), &EDGES, &demo());
         assert_eq!(l.view.badges, vec![InfraBadge { node: 3, count: 3, hosts: 2 }]);
         let chips: Vec<_> = l.view.chips.iter().map(|c| (c.label.as_str(), c.host_id.as_str())).collect();
-        assert_eq!(chips.len(), 2);
+        assert_eq!(chips.len(), 1, "the primary host already has the regular service card");
         assert!(chips.contains(&("catalog", "vps-app")));
-        assert!(chips.contains(&("catalog ×2", "vps-worker")));
-        assert_eq!(
-            l.view.chips.iter().find(|c| c.host_id == "vps-worker").unwrap().instance_ids,
-            ["catalog-2", "catalog-3"]
-        );
+        assert!(!chips.iter().any(|(_, host)| *host == "vps-worker"));
+        assert_eq!(l.view.chips.iter().find(|c| c.host_id == "vps-app").unwrap().instance_ids, ["catalog-1"]);
         for c in &l.view.chips {
             let f = l.view.frames.iter().find(|f| f.host_id == c.host_id).unwrap();
             assert!(inside(f, (c.x, c.y)), "{} inside {}", c.label, f.host_id);
             assert_eq!(l.chip_at(c.x + CHIP_W / 2.0 - 1.0, c.y), Some(3));
+            assert!(c.x - CHIP_W / 2.0 >= f.x, "replica card {} left inside {}", c.label, f.host_id);
+            assert!(c.x + CHIP_W / 2.0 <= f.x + f.width, "replica card {} right inside {}", c.label, f.host_id);
+            assert!(c.y - CHIP_H / 2.0 >= f.y, "replica card {} top inside {}", c.label, f.host_id);
+            assert!(c.y + CHIP_H / 2.0 <= f.y + f.height, "replica card {} bottom inside {}", c.label, f.host_id);
         }
+        assert_eq!(CHIP_W, CARD_HALF_W * 2.0, "a replica uses the service card width");
+        assert_eq!(CHIP_H, CARD_HALF_H * 2.0, "a replica uses the service card height");
         assert_eq!(l.chip_at(-1000.0, -1000.0), None);
     }
 

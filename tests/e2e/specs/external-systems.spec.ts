@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { collectErrors, ingestSpans, login, randomHex } from "./helpers";
+import { mapLayer, collectErrors, ingestSpans, login, randomHex } from "./helpers";
 
 const WORKSPACE = "/app/isolation/isolation-test";
 
@@ -28,7 +28,7 @@ test("requests from outside the project and calls to third-party services are ma
   const errors = collectErrors(page);
   await login(page, "isolation@karbird.local", WORKSPACE);
   await expect(page.getByText("Starting engine…")).toBeHidden();
-  await page.getByRole("checkbox", { name: "Table view" }).check();
+  await (await mapLayer(page, "Table view")).check();
   const table = page.getByRole("table");
   const row = (name: string) => table.getByRole("row").filter({ has: page.getByRole("button", { name, exact: true }) });
 
@@ -38,7 +38,7 @@ test("requests from outside the project and calls to third-party services are ma
       async () => {
         if ((await row(extHost).count()) > 0) return true;
         await page.reload();
-        await page.getByRole("checkbox", { name: "Table view" }).check();
+        await (await mapLayer(page, "Table view")).check();
         return false;
       },
       { timeout: 45_000, intervals: [2_000] },

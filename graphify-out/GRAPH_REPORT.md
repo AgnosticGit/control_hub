@@ -1,17 +1,17 @@
 # Graph Report - control_hub  (2026-10-07)
 
 ## Corpus Check
-- 623 files · ~704,902 words
+- 625 files · ~708,501 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 23 file(s) not represented in the graph (top: (none) 9, .mdc 4, .toml 3)
 
 ## Summary
-- 8593 nodes · 21189 edges · 375 communities (340 shown, 35 thin omitted)
-- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 451 edges (avg confidence: 0.86)
+- 8629 nodes · 21298 edges · 359 communities (326 shown, 33 thin omitted)
+- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 453 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d6ee4faf`
+- Built from commit: `9cb199bf`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -20,13 +20,13 @@
 - http.rs
 - .cursor/skills/impeccable/scripts/live-browser.js
 - convert.rs
-- State
+- CurrentUser
 - SecurityPage.tsx
 - tests.rs
-- Workspace.tsx
+- LogsPanel.tsx
 - PgStore
 - adapter.rs
-- TimelineTracksView.tsx
+- ref_node_assert
 - infra_timeline.rs
 - broker.rs
 - scripts/lib.mjs
@@ -53,7 +53,7 @@
 - ChStore
 - Engine
 - karbird-ingest/src/auth.rs
-- account.rs
+- State
 - grpc.rs
 - robustness_tests.rs
 - sanitize.rs
@@ -64,17 +64,17 @@
 - karbird-actions/src/lib.rs
 - ActionPlanRow
 - invite/page.tsx
-- Timeline
+- reducer.rs
 - karbird-executor/src/main.rs
 - secrets.rs
 - hops.rs
 - bootstrap.rs
 - redaction.rs
 - retention.rs
-- external.ts
+- service-colors.ts
 - .github/skills/impeccable/scripts/live-browser.js
 - pipeline.rs
-- reducer.rs
+- job.rs
 - InfraInspector.tsx
 - Icon
 - tracks.rs
@@ -84,10 +84,10 @@
 - karbird-runtime/src/lib.rs
 - verify.rs
 - discover.rs
-- draw.ts
+- TimelineTracksView.tsx
 - template.rs
 - doctor.rs
-- ref_node_url
+- public-url.mjs
 - routes/actions.rs
 - Option
 - sdk-node/package.json
@@ -100,11 +100,11 @@
 - session.rs
 - setLiveState
 - .cursor/skills/impeccable/scripts/modern-screenshot.umd.js
-- useWorkspaceEngine
+- helpers.ts
 - model.rs
 - live.rs
 - karbird-engine-core/src/lib.rs
-- useWorkspaceEngine.ts
+- MapView.tsx
 - proxy.ts
 - testing.rs
 - Model
@@ -115,11 +115,11 @@
 - karbird-web-engine/src/lib.rs
 - Event
 - telemetry.rs
-- .compute_banded
+- integration/lib.mjs
 - initPageChat
 - engine.worker.ts
-- collectErrors
-- EntityKind
+- Workspace.tsx
+- archive.test.mjs
 - context.rs
 - Handle `generate`
 - api-client/package.json
@@ -128,10 +128,10 @@
 - EventsClient
 - @playwright/test
 - el
-- helpers.ts
+- randomHex
 - Dictionary
 - SystemPermission
-- Splitter.tsx
+- collectErrors
 - test_http.rs
 - skew.rs
 - index.js
@@ -139,25 +139,25 @@
 - web-engine/package.json
 - e2e/package.json
 - initPageChat
-- .cursor/skills/impeccable/reference/new-work.md
+- .cursor/skills/impeccable/SKILL.md
 - infra.rs
 - karbird-cli/src/plan.rs
 - initGlobalBar
 - prelude
 - dependencies
 - initGlobalBar
-- job.rs
+- chain_engine
 - compilerOptions
 - index.rs
-- .github/skills/impeccable/reference/new-work.md
+- .github/skills/impeccable/SKILL.md
 - mountSvelteComponentVariant
-- engine_with
+- karbird-ingest/src/main.rs
 - package.json
-- scale.ts
+- Handle `generate`
 - composer.json
 - openapi.rs
 - pg.rs
-- karbird-ingest/src/main.rs
+- String
 - adr/README.md
 - README.md
 - Commands
@@ -175,12 +175,12 @@
 - karbird-archiver/src/plan.rs
 - infrastructure.rs
 - .cursor/skills/impeccable/reference/document.md
-- actions.test.mjs
+- VisibleState
 - karbird-protocol/src/lib.rs
-- integration/lib.mjs
+- mcp.test.mjs
 - Local development and operations
 - node-http-app/package.json
-- vitest
+- edge-path.ts
 - Responsive Design
 - e2e/tsconfig.json
 - Rules
@@ -195,13 +195,13 @@
 - ADR-0012: Controlled actions — plans, policy, approval by permission, separate executor
 - ADR-0013: Read-only MCP server as a CLI subcommand over the REST API
 - ADR-0014: OTLP metrics are not ingested (yet); service metrics come from spans
-- convert_metrics
+- useWorkspaceEngine.ts
 - fault.mjs
 - loadgen.mjs
 - karbird
-- metrics.rs
+- super
 - karbird-domain
-- ingest.test.mjs
+- resource-placement.test.mjs
 - ADR-0007: Browser authentication
 - ADR-0008: TypeScript 5.9
 - api-client/tsconfig.json
@@ -221,16 +221,16 @@
 - The Toolkit
 - The Toolkit
 - gateway.cjs
-- Result
+- actions.test.mjs
 - resolveLiveInjectionAnchor
 - resolveLiveInjectionAnchor
 - createLiveBrowserSessionState
-- .github/skills/impeccable/reference/document.md
+- Scan mode (approach C: auto-extract, then confirm descriptive language)
 - createLiveBrowserSessionState
 - onAnnotDown
 - onAnnotDown
 - test_fixtures.rs
-- .cursor/skills/impeccable/SKILL.md
+- Extract Flow
 - createLiveBrowserDomHelpers
 - .github/skills/impeccable/reference/animate.md
 - createLiveBrowserDomHelpers
@@ -260,15 +260,15 @@
 - .github/skills/impeccable/reference/polish.md
 - .github/skills/impeccable/reference/quieter.md
 - Product
-- traces_env
+- .github/skills/impeccable/reference/bolder.md
 - Generate Combined Critique Report
 - Init flow
 - orders.cjs
 - Generate Combined Critique Report
 - Init flow
 - Common Cognitive Load Violations
-- iOS platform
-- lib/api.ts
+- Adaptation Strategies
+- Impeccable Documenter
 - Shape
 - Common Cognitive Load Violations
 - iOS platform
@@ -276,7 +276,7 @@
 - Shape
 - Android platform
 - Persona-Based Design Testing
-- Extract Flow
+- archive.spec.ts
 - Android platform
 - Persona-Based Design Testing
 - methods_delegate_to_the_engine
@@ -295,15 +295,15 @@
 - RoleChange
 - Cognitive Load Assessment
 - Impeccable Asset Producer
-- Impeccable Finish Reviewer
+- LogSource
 - Impeccable Manual Edit Applier
 - .github/skills/impeccable/scripts/live-browser-ignores.js
-- .github/skills/impeccable/reference/live-setup.md
-- super
-- ServeArgs
+- InviteAccept
+- serde
+- account.spec.ts
 - Operate mode depth (and Read notes)
 - Impeccable Documenter
-- .run
+- migrate.test.mjs
 - enableInlineEdit
 - Impeccable Documenter
 - enableInlineEdit
@@ -315,17 +315,14 @@
 - sanitize_metrics
 - ADR-0011: Read-only API tokens and the WebSocket live channel
 - TimelineItem
-- InviteAccept
-- ref_node_assert
+- capture2.mjs
+- EdgeLookup
 - brief.md
 - src-app-public-page-tsx.md
 - InstanceMatch
 - Data flow
 - Production deploy: two hosts from GitHub Actions
-- invites.spec.ts
-- convert
-- neighbours.ts
-- String
+- infra-timeline.spec.ts
 - ADR-0017: Prebuilt images, two-host Compose deploy from GitHub Actions
 - Generate Report
 - host-setup.sh
@@ -333,56 +330,44 @@
 - Generate Report
 - Diagnostic Scan
 - StepState
-- SeekOutcome
 - karbird-cli
-- View
 - InfraView
 - ADR-0016: ClickHouse retention configured once, applied by bootstrap, checked at startup
-- Action
+- DemoContainer
 - ADR-0019: Link statistics from the engine, data flow from declared HTTP body sizes
-- Command
+- iOS platform
 - EngineConfig
 - InfrastructureSnapshot
 - TimelineTracks
-- range.ts
-- infra-timeline.spec.ts
+- .cursor/skills/impeccable/reference/live-setup.md
 - ResourceMatch
 - mod.rs
 - sanitize_attrs
 - ADR-0006: Local ports
 - ADR-0018: Machine and container metrics over OTLP; Infrastructure layer on the map
-- cull.ts
-- seo.test.ts
-- Impeccable Documenter
+- Impeccable Finish Reviewer
 - ArchiveError
 - sanitize_traces
-- archive.test.mjs
 - repository
-- archive.spec.ts
 - Vec
-- EdgeLookup
-- anyv
-- Diagnostic Scan
+- RelationKind
 - AttributeDecision
-- Adaptation Strategies
-- .github/skills/impeccable/reference/bolder.md
 - Visualize: Direction Comps & Asset Production
+- Adaptation Strategies
 - resource.js
-- plan_apply_is_idempotent_and_detects_drift
 - .github/skills/impeccable/reference/doctor.md
-- .github/skills/impeccable/SKILL.md
 - ADR-0020: Container restart, scaling, feature flags and rollback as typed demo actions, run through a demo orchestrator
 - TopologyView
 
 ## God Nodes (most connected - your core abstractions)
 1. `State` - 97 edges
 2. `CurrentUser` - 95 edges
-3. `PgStore` - 72 edges
-4. `Icon()` - 71 edges
-5. `Engine` - 68 edges
+3. `Icon()` - 72 edges
+4. `PgStore` - 72 edges
+5. `Engine` - 69 edges
 6. `unwrap()` - 62 edges
 7. `ChStore` - 51 edges
-8. `vitest` - 49 edges
+8. `vitest` - 50 edges
 9. `send()` - 46 edges
 10. `TimelineTracksView()` - 43 edges
 
@@ -393,16 +378,16 @@
   .github/skills/impeccable/reference/live.md → apps/web/src/components/settings/matrix.ts
 - `Troubleshooting` --references--> `gateway()`  [INFERRED]
   docs/operations/local-dev.md → examples/demo-system/test/gateway.test.mjs
-- `No-argument routing: the context-aware menu` --references--> `src()`  [INFERRED]
-  .cursor/skills/impeccable/reference/routing.md → examples/demo-system/test/helpers.mjs
-- `No-argument routing: the context-aware menu` --references--> `src()`  [INFERRED]
-  .github/skills/impeccable/reference/routing.md → examples/demo-system/test/helpers.mjs
+- `Karbird core invariants (`.cursor/rules/karbird-core.mdc`)` --references--> `unwrap()`  [INFERRED]
+  AGENTS.md → packages/api-client/src/index.ts
+- `/impeccable hooks` --references--> `hook()`  [INFERRED]
+  .github/skills/impeccable/reference/hooks.md → .cursor/hooks/graphify-update.mjs
 
 ## Import Cycles
 - 1-file cycle: `crates/karbird-api/src/system_permissions.rs -> crates/karbird-api/src/system_permissions.rs`
 - 1-file cycle: `crates/karbird-api/src/permissions.rs -> crates/karbird-api/src/permissions.rs`
 
-## Communities (375 total, 35 thin omitted)
+## Communities (359 total, 33 thin omitted)
 
 ### Community 0 - ".pool"
 Cohesion: 0.10
@@ -417,36 +402,36 @@ Cohesion: 0.03
 Nodes (142): addManualContextText(), applyGlobalBarLabelState(), applyPlaceholderSizingStyles(), averageRgb01(), bindEditBadgeProxy(), bufferToBase64(), buildCollapsible(), buildColorModels() (+134 more)
 
 ### Community 3 - "convert.rs"
-Cohesion: 0.15
-Nodes (18): converted_extend_and_is_empty(), converts_spans_with_db_target(), decode_envelope_rejects_garbage(), empty_batches_convert_to_nothing(), envelope(), envelope_errors_are_classified(), host_id_wins_over_host_name(), log_envelope() (+10 more)
+Cohesion: 0.06
+Nodes (62): any_to_string(), any_values_are_stringified_deterministically(), anyv(), attr(), attributes_without_values_become_empty_strings(), clamp_ns(), convert(), convert_metrics() (+54 more)
 
-### Community 4 - "State"
-Cohesion: 0.10
-Nodes (72): State, .ALL, Approved, Cancelled, Expired, Failed, Proposed, Rejected (+64 more)
+### Community 4 - "CurrentUser"
+Cohesion: 0.11
+Nodes (61): CurrentUser, account_target(), active_user_by_email(), add_member(), AdminAuditEntryDto, AdminAuditQuery, administrator_dtos_use_system_permissions_and_mark_the_super_admin(), AdminMemberCreateRequest (+53 more)
 
 ### Community 5 - "SecurityPage.tsx"
-Cohesion: 0.17
-Nodes (21): Security(), LoginForm(), submit(), LoginPage(), errorText(), RegisterForm(), submit(), RegisterPage() (+13 more)
+Cohesion: 0.16
+Nodes (22): Security(), LoginForm(), submit(), LoginPage(), errorText(), RegisterForm(), submit(), RegisterPage() (+14 more)
 
 ### Community 6 - "tests.rs"
-Cohesion: 0.07
-Nodes (42): an_external_database_is_flagged_external_only_with_the_infrastructure_layer(), an_inbound_request_arrives_before_its_service_calls_anything(), an_internal_database_sits_in_its_machine_frame_and_is_not_external(), BASE, chain_engine(), clock_skew_is_clamped_and_flagged(), clock_skew_shifts_the_callee_and_its_subtree_for_display(), db_infra_json() (+34 more)
+Cohesion: 0.11
+Nodes (33): BASE, chain_items(), compare_reports_changes(), demo_items(), duplicates_do_not_double_count(), edge_calls(), edge_metrics_count_calls_errors_and_latency_of_the_edge(), edge_metrics_reflect_the_requested_moment() (+25 more)
 
-### Community 7 - "Workspace.tsx"
-Cohesion: 0.07
-Nodes (61): StatusRow(), EventsPanel(), infraAt(), asLogSource(), combinedSource(), flattenPages(), hasTemplate(), Log (+53 more)
+### Community 7 - "LogsPanel.tsx"
+Cohesion: 0.10
+Nodes (43): EventsPanel(), asLogSource(), combinedSource(), flattenPages(), hasTemplate(), Log, LogFilters, LogPage (+35 more)
 
 ### Community 8 - "PgStore"
 Cohesion: 0.08
 Nodes (8): Postgres, AccountRow, an_empty_role_prefix_is_refused_before_touching_the_database(), InviteRow, NewInvite, PgStore, .INVITE_COLUMNS, service_roles_refuse_injection_before_any_query()
 
 ### Community 9 - "adapter.rs"
-Cohesion: 0.12
-Nodes (21): a_readback_that_differs_is_a_failure(), a_restart_without_a_new_running_process_is_a_failure(), body(), cfg(), clear_posts_zeroes(), COMPOSE_PROJECT, COMPOSE_SERVICE, demo_at() (+13 more)
+Cohesion: 0.11
+Nodes (25): a_readback_that_differs_is_a_failure(), a_restart_without_a_new_running_process_is_a_failure(), body(), cfg(), clear_posts_zeroes(), COMPOSE_PROJECT, COMPOSE_SERVICE, count() (+17 more)
 
-### Community 10 - "TimelineTracksView.tsx"
-Cohesion: 0.13
-Nodes (29): rowTop(), ContainerEvent, ContainerEventKind, EVENT_COLOR, EVENT_LABEL, eventLabel(), EventMarker, eventMarkers() (+21 more)
+### Community 10 - "ref_node_assert"
+Cohesion: 0.11
+Nodes (22): Command guidance, No-argument routing: the context-aware menu, Workflow questions, fault, withTarget(), gateway(), captureServer(), cleanEnv() (+14 more)
 
 ### Community 11 - "infra_timeline.rs"
 Cohesion: 0.08
@@ -458,7 +443,7 @@ Nodes (30): acked_publish_returns_offset_and_releases_queue_bytes(), broker_fail
 
 ### Community 13 - "scripts/lib.mjs"
 Cohesion: 0.04
-Nodes (67): Graphify (`.cursor/rules/graphify.mdc`), defaults, dir, infraPath, owner, s3Config, s3ConfigPath, secret() (+59 more)
+Nodes (71): Graphify (`.cursor/rules/graphify.mdc`), { chromium }, here, output, require, defaults, dir, infraPath (+63 more)
 
 ### Community 14 - "types.rs"
 Cohesion: 0.16
@@ -466,7 +451,7 @@ Nodes (21): ContainerDto, Diagnostics, EdgeLatency, EventItem, EventMarker, Filt
 
 ### Community 15 - "edge_traffic.rs"
 Cohesion: 0.10
-Nodes (24): a_query_without_edge_fields_still_reaches_authorization(), averages_and_peaks_over_the_range(), build(), DEFAULT_BUCKETS, Edge, edge_kind_follows_relation_and_the_external_clients_node(), edge_traffic(), EdgeRelation (+16 more)
+Nodes (25): a_query_without_edge_fields_still_reaches_authorization(), an_unreported_request_size_is_not_reported_as_zero_when_only_response_size_is_known(), averages_and_peaks_over_the_range(), build(), DEFAULT_BUCKETS, Edge, edge_kind_follows_relation_and_the_external_clients_node(), edge_traffic() (+17 more)
 
 ### Community 16 - "permissions.rs"
 Cohesion: 0.04
@@ -477,20 +462,20 @@ Cohesion: 0.09
 Nodes (31): api_failures_become_tool_errors_without_the_token(), arguments_are_validated_before_any_request(), call_ok(), error(), every_argument_type_is_checked(), exchange(), handshake_and_tool_list_are_read_only(), INSTRUCTIONS (+23 more)
 
 ### Community 18 - "segment.rs"
-Cohesion: 0.07
+Cohesion: 0.08
 Nodes (45): a_service_dictionary_shrinks_small_segments(), arb_record(), BASE, bytes_per_line_fall_as_the_service_logs_more(), COLUMNS, corrupt_segments_are_errors_not_panics(), decode(), decoding_needs_the_right_dictionary() (+37 more)
 
 ### Community 19 - "unwrap"
-Cohesion: 0.07
-Nodes (77): Admin(), Settings(), Sessions(), accountLock(), ADMIN_TAB_LABELS, AdminTab, adminTabs(), auditActionLabel() (+69 more)
+Cohesion: 0.06
+Nodes (83): Admin(), Settings(), Sessions(), accountLock(), ADMIN_TAB_LABELS, AdminTab, adminTabs(), auditActionLabel() (+75 more)
 
 ### Community 20 - "export_logs"
 Cohesion: 0.23
 Nodes (12): accept_error_response(), accept_errors_map_to_otlp_status_codes(), auth_header(), decode_body(), events_batch(), export_logs(), export_metrics(), export_traces() (+4 more)
 
 ### Community 21 - "MapDemo.tsx"
-Cohesion: 0.07
-Nodes (61): BASE_REQUESTS, BUCKET, clampT(), Curve, curvePath(), DemoState, dotsAt(), edgeCurve() (+53 more)
+Cohesion: 0.06
+Nodes (63): BASE_REQUESTS, BUCKET, clampT(), Curve, curvePath(), DemoState, dotsAt(), edgeCurve() (+55 more)
 
 ### Community 22 - "tokens.rs"
 Cohesion: 0.12
@@ -509,8 +494,8 @@ Cohesion: 0.05
 Nodes (42): dependencies, @karbird/api-client, @karbird/web-engine, next, pixi.js, react, react-dom, @tanstack/react-query (+34 more)
 
 ### Community 26 - "generated/index.ts"
-Cohesion: 0.06
-Nodes (35): Batch, Diagnostics, EdgeLatency, EdgeMetrics, EngineConfig, EntityKindDto, EventItem, EventMarker (+27 more)
+Cohesion: 0.07
+Nodes (34): Batch, Diagnostics, EdgeLatency, EdgeMetrics, EngineConfig, EntityKindDto, EventItem, EventMarker (+26 more)
 
 ### Community 27 - "client.rs"
 Cohesion: 0.10
@@ -525,16 +510,16 @@ Cohesion: 0.13
 Nodes (23): accept(), AcceptedInvite, audit(), create(), CreatedInvite, CreateInviteRequest, DEFAULT_EXPIRY_DAYS, deny() (+15 more)
 
 ### Community 30 - "Session"
-Cohesion: 0.05
-Nodes (42): service(), login(), signup(), ALL, AUDITOR, created, createProject(), member (+34 more)
+Cohesion: 0.04
+Nodes (62): login(), signup(), ALL, AUDITOR, created, createProject(), member, plainOwner (+54 more)
 
 ### Community 31 - "karbird-api/src/main.rs"
-Cohesion: 0.08
-Nodes (32): account_mutations(), account_project_and_invite_mutations_need_a_session_and_never_accept_api_tokens(), admin_mutations(), admin_routes_need_a_session_and_never_accept_api_tokens(), api_tokens_can_never_mutate(), bearer_values_that_are_not_api_tokens_are_401(), error_responses_carry_security_headers_too(), every_protected_route_requires_a_credential() (+24 more)
+Cohesion: 0.05
+Nodes (51): account_mutations(), account_project_and_invite_mutations_need_a_session_and_never_accept_api_tokens(), admin_mutations(), admin_routes_need_a_session_and_never_accept_api_tokens(), allowed_origins_are_split_and_trimmed(), api_config(), api_tokens_can_never_mutate(), archive_config() (+43 more)
 
 ### Community 32 - "String"
-Cohesion: 0.10
-Nodes (57): authorize(), archive_cutoff(), archive_note(), Completeness, coverage(), CoverageResponse, decode_cursor(), encode_cursor() (+49 more)
+Cohesion: 0.12
+Nodes (45): authorize(), archive_cutoff(), archive_note(), Completeness, coverage(), CoverageResponse, decode_cursor(), EventDto (+37 more)
 
 ### Community 33 - "events.rs"
 Cohesion: 0.12
@@ -542,27 +527,27 @@ Nodes (30): classify_key(), attribute_limits(), base(), convert(), each_validati
 
 ### Community 34 - "ChStore"
 Cohesion: 0.14
-Nodes (3): bind_scope(), ChStore, EventRow
+Nodes (3): bind_scope(), ChStore, MetricRow
 
 ### Community 35 - "Engine"
-Cohesion: 0.09
+Cohesion: 0.08
 Nodes (3): classify(), Engine, latency_stats()
 
 ### Community 36 - "karbird-ingest/src/auth.rs"
 Cohesion: 0.08
 Nodes (32): Signal, Events, Logs, Metrics, Traces, Authenticator, AuthError, Invalid (+24 more)
 
-### Community 37 - "account.rs"
-Cohesion: 0.18
-Nodes (18): AccountUpdateRequest, audit(), change_password(), create_project(), leave_project(), MAX_OWNED_PROJECTS, NEW_PROJECT_ENVIRONMENT, PasswordChangeRequest (+10 more)
+### Community 37 - "State"
+Cohesion: 0.12
+Nodes (29): State, .ALL, Approved, Cancelled, Expired, Failed, Proposed, Rejected (+21 more)
 
 ### Community 38 - "grpc.rs"
 Cohesion: 0.09
 Nodes (16): auth_failures_map_to_grpc_codes(), auth_header(), broker_failures_are_unavailable_never_ok(), invalid_spans_are_reported_as_partial_success(), kv(), logs(), logs_are_accepted_and_partially_rejected(), metrics() (+8 more)
 
 ### Community 39 - "robustness_tests.rs"
-Cohesion: 0.09
-Nodes (31): VisibleState, BASE, changed_nodes_report_status_transitions_only(), check_frame(), compare_is_symmetric_and_empty_for_equal_times(), db_node(), evict_before_is_monotonic_and_counts(), extreme_timestamps_never_panic() (+23 more)
+Cohesion: 0.10
+Nodes (29): BASE, changed_nodes_report_status_transitions_only(), check_frame(), compare_is_symmetric_and_empty_for_equal_times(), db_node(), evict_before_is_monotonic_and_counts(), extreme_timestamps_never_panic(), filters_combine() (+21 more)
 
 ### Community 40 - "sanitize.rs"
 Cohesion: 0.08
@@ -570,23 +555,23 @@ Nodes (31): attribute_count_limit_counts_every_dropped_attribute(), attrs_after(
 
 ### Community 41 - "ch.rs"
 Cohesion: 0.05
-Nodes (56): build_topology(), external_services_and_clients_are_marked_as_outside_the_project(), log_svc(), svc(), topology_nodes_and_edges(), archive_sql_is_scoped_only_when_asked_and_binds_match(), CallEdgeRow, ChConfig (+48 more)
+Nodes (63): build_topology(), external_services_and_clients_are_marked_as_outside_the_project(), log_svc(), svc(), topology_nodes_and_edges(), TopologyEdgeDto, TopologyNodeDto, TopologyResponse (+55 more)
 
 ### Community 42 - "IntegrationGuide.tsx"
 Cohesion: 0.10
-Nodes (39): DocsPage(), metadata, FeaturesPage(), metadata, example, GettingStartedPage(), metadata, example (+31 more)
+Nodes (40): DocsPage(), metadata, FeaturesPage(), metadata, example, GettingStartedPage(), metadata, example (+32 more)
 
 ### Community 43 - "layout.rs"
-Cohesion: 0.12
-Nodes (24): adjacency(), BAND_GAP, CARD_HALF_H, CARD_TO_CORRIDOR, COLUMN_SPACING, coordinates(), CORRIDOR_SPACING, crossings() (+16 more)
+Cohesion: 0.10
+Nodes (45): a_single_band_is_the_plain_layout(), adjacency(), assert_banded_invariants(), Band, BAND_GAP, banded_layout_stacks_groups_and_keeps_columns(), BandSpec, barycenter_removes_avoidable_crossings() (+37 more)
 
 ### Community 44 - "archive.rs"
-Cohesion: 0.09
-Nodes (27): ArchiveObjects, bloom_condition_checks_every_probe_and_binds_only_numbers(), bloom_sql(), capped_listings_resume_at_the_last_complete_window(), component(), DICT_CACHE_ENTRIES, dict_key(), filters_match_the_clickhouse_query() (+19 more)
+Cohesion: 0.08
+Nodes (34): ArchiveObjects, ArchivePage, ArchiveReader, bloom_condition_checks_every_probe_and_binds_only_numbers(), bloom_sql(), capped_listings_resume_at_the_last_complete_window(), component(), DICT_CACHE_ENTRIES (+26 more)
 
 ### Community 45 - "karbird-actions/src/lib.rs"
-Cohesion: 0.06
-Nodes (37): ActionSpec, all_actions(), CATALOG, DECISION_WINDOW_SECS, DEMO_DATABASE_CONTAINER, DEMO_DATABASE_NODE, DEMO_RELEASES, evaluate() (+29 more)
+Cohesion: 0.05
+Nodes (50): Action, DemoContainerRestart, DemoFaultsClear, DemoFaultsInject, DemoFeatureFlagSet, DemoReleaseRollback, DemoReplicasScale, DemoRestartDatabase (+42 more)
 
 ### Community 46 - "ActionPlanRow"
 Cohesion: 0.17
@@ -596,17 +581,17 @@ Nodes (11): ActionPlanRow, audit_tx(), NewActionPlan, PgStore, PLAN_COLUMNS, PLA
 Cohesion: 0.11
 Nodes (28): Card(), InvitePage(), NEXT, noSubscribe(), problem(), AppLayout(), dynamic, metadata (+20 more)
 
-### Community 48 - "Timeline"
-Cohesion: 0.14
-Nodes (9): checkpoints_are_prefix_states(), empty_timeline(), growing_past_twice_the_budget_is_reported(), latency_sums_wrap_but_differences_stay_exact(), naive(), out_of_range_indices_are_ignored(), span_deltas_update_the_right_counters(), StateVec (+1 more)
+### Community 48 - "reducer.rs"
+Cohesion: 0.06
+Nodes (34): arb_deltas(), arb_kind(), budget(), checkpoints_are_prefix_states(), Delta, DeltaKind, Event, Log (+26 more)
 
 ### Community 49 - "karbird-executor/src/main.rs"
-Cohesion: 0.12
+Cohesion: 0.13
 Nodes (20): Args, demo_scope(), Executor, INGEST_SETTLE, invalid_scope_fails_before_policy_or_effect(), LEASE_SECS, now_ns(), Outcome (+12 more)
 
 ### Community 50 - "secrets.rs"
-Cohesion: 0.08
-Nodes (22): only_well_formed_invite_secrets_are_looked_up(), Error, main(), obj_err(), StorageError, ClickHouse, Migrate, Other (+14 more)
+Cohesion: 0.14
+Nodes (15): only_well_formed_invite_secrets_are_looked_up(), constant_time_eq_handles_lengths_and_single_bit_differences(), generate_password(), generate_token(), generated_passwords_are_typable(), hash_password(), hash_token(), password_hashes_are_salted_and_malformed_hashes_fail_closed() (+7 more)
 
 ### Community 51 - "hops.rs"
 Cohesion: 0.14
@@ -624,9 +609,9 @@ Nodes (14): case_mix(), DROPPED_KEYS, find_scheme(), mask_bearer(), QUERY_KEYS, 
 Cohesion: 0.08
 Nodes (23): a_mismatch_names_the_variable_both_values_and_the_fix(), check(), decide(), Decision, Apply, Keep, Refuse, DEFAULT_EVENTS_DAYS (+15 more)
 
-### Community 55 - "external.ts"
-Cohesion: 0.12
-Nodes (21): projectColor(), NodeTable(), Props, STATUS_CLASS, STATUS_LABEL, dashes(), dashedRect(), externalExplanation() (+13 more)
+### Community 55 - "service-colors.ts"
+Cohesion: 0.06
+Nodes (33): NodeTable(), Props, STATUS_CLASS, STATUS_LABEL, dashes(), rounded(), dashedRect(), externalExplanation() (+25 more)
 
 ### Community 56 - ".github/skills/impeccable/scripts/live-browser.js"
 Cohesion: 0.03
@@ -636,20 +621,20 @@ Nodes (142): addManualContextText(), applyGlobalBarLabelState(), applyPlaceholde
 Cohesion: 0.13
 Nodes (11): Accepted, AcceptError, Auth, Publish, AppState, batch_ids_are_unique(), broker_errors_are_propagated_and_counted(), envelope_scope_comes_from_the_credential() (+3 more)
 
-### Community 58 - "reducer.rs"
-Cohesion: 0.09
-Nodes (24): arb_deltas(), arb_kind(), budget(), DeltaKind, Event, Log, SpanEnd, SpanStart (+16 more)
+### Community 58 - "job.rs"
+Cohesion: 0.14
+Nodes (14): archive_service(), archive_window(), build_segment(), built_segments_are_verified_and_decode_to_the_input(), Ctx, load_dictionary(), Metrics, metrics_render_every_series() (+6 more)
 
 ### Community 59 - "InfraInspector.tsx"
-Cohesion: 0.07
-Nodes (55): Bar(), ContainerButton(), ContainerCard(), ContainerCardProps, Gauge(), HintList(), HostCard(), HostCardProps (+47 more)
+Cohesion: 0.08
+Nodes (50): Bar(), ContainerButton(), ContainerCard(), ContainerCardProps, Gauge(), HintList(), HostCard(), HostCardProps (+42 more)
 
 ### Community 60 - "Icon"
-Cohesion: 0.08
-Nodes (54): Account(), Profile(), Projects(), OnboardingPage(), AppIndex(), Integration(), Tokens(), nav (+46 more)
+Cohesion: 0.05
+Nodes (96): Account(), Profile(), Projects(), OnboardingPage(), AppIndex(), Actions(), Integration(), Tokens() (+88 more)
 
 ### Community 61 - "tracks.rs"
-Cohesion: 0.12
+Cohesion: 0.13
 Nodes (17): bucket_and_clip_limits_are_clamped(), depth_counts_same_service_ancestors_and_is_bounded(), Engine, hidden_and_muted_services_leave_logs_and_events_out(), is_request(), markers_are_capped_sorted_and_counted(), MAX_CLIP_CAP, MAX_DEPTH (+9 more)
 
 ### Community 62 - "Design System: karbird"
@@ -661,24 +646,24 @@ Cohesion: 0.06
 Nodes (86): applyParamDefaults(), applyParamValue(), applyPlaceholderDimensions(), applySavedSessionMeta(), clampVariantIndex(), clearHandled(), clearSession(), closedClipPath() (+78 more)
 
 ### Community 64 - "pixi-map.ts"
-Cohesion: 0.07
-Nodes (44): distanceToPolyline(), edgeAt(), midpoint(), arcControl(), badgeText(), CHIP_H, CHIP_W, chipAt() (+36 more)
+Cohesion: 0.05
+Nodes (49): CULL_OVERSCAN, cullRect(), WorldRect, distanceToPolyline(), edgeAt(), midpoint(), animTimeMs(), hopPhase (+41 more)
 
 ### Community 65 - "karbird-runtime/src/lib.rs"
-Cohesion: 0.11
-Nodes (15): main(), main(), backoff(), backoff_stays_within_jittered_cap(), connect_broker(), connect_broker_gives_up_after_deadline_with_context(), ensure_topic(), env_or() (+7 more)
+Cohesion: 0.12
+Nodes (16): main(), main(), main(), backoff(), backoff_stays_within_jittered_cap(), connect_broker(), connect_broker_gives_up_after_deadline_with_context(), ensure_topic() (+8 more)
 
 ### Community 66 - "verify.rs"
 Cohesion: 0.17
-Nodes (16): Conn, a_rejected_api_token_stops_before_sending_anything(), a_visible_event_and_app_traffic_pass(), an_event_that_never_becomes_visible_fails(), Fake, ingestion_must_acknowledge_with_broker_durability(), missing_app_traffic_only_fails_when_required(), OK (+8 more)
+Nodes (15): a_rejected_api_token_stops_before_sending_anything(), a_visible_event_and_app_traffic_pass(), an_event_that_never_becomes_visible_fails(), Fake, ingestion_must_acknowledge_with_broker_durability(), missing_app_traffic_only_fails_when_required(), OK, plain_http_to_a_remote_host_is_refused() (+7 more)
 
 ### Community 67 - "discover.rs"
-Cohesion: 0.12
-Nodes (16): discover(), discovers_node_project_without_reading_env_values(), discovers_php_project_without_reading_env_values(), Discovery, Ecosystem, Node, Php, Unsupported (+8 more)
+Cohesion: 0.11
+Nodes (15): discover(), discovers_node_project_without_reading_env_values(), discovers_php_project_without_reading_env_values(), Discovery, Ecosystem, Node, Php, Unsupported (+7 more)
 
-### Community 68 - "draw.ts"
-Cohesion: 0.13
-Nodes (28): actionColor(), bars(), bucketGeometry(), C, clips(), draw(), DrawInput, drawRuler() (+20 more)
+### Community 68 - "TimelineTracksView.tsx"
+Cohesion: 0.05
+Nodes (88): ActionBar, actionColor(), bars(), bucketGeometry(), C, clips(), draw(), DrawInput (+80 more)
 
 ### Community 69 - "template.rs"
 Cohesion: 0.13
@@ -688,17 +673,17 @@ Nodes (22): as_int(), bodies_containing_marker_characters_are_kept_whole(), edge
 Cohesion: 0.21
 Nodes (19): a_missing_project_directory_is_a_failed_check_not_an_error(), API_SECRET, assert_no_secrets(), check(), conn(), healthy_setup_passes_without_printing_tokens(), INGEST_SECRET, malformed_token_variables_fail_the_doctor() (+11 more)
 
-### Community 71 - "ref_node_url"
-Cohesion: 0.07
-Nodes (24): { chromium }, creds, out, require, { chromium }, out, require, shots (+16 more)
+### Community 71 - "public-url.mjs"
+Cohesion: 0.38
+Nodes (6): FLAGS, parseDevArgs(), allowedOrigins(), DEFAULT_ALLOWED_ORIGINS, DEFAULT_PUBLIC_URL, publicUrl()
 
 ### Community 72 - "routes/actions.rs"
 Cohesion: 0.11
 Nodes (35): authorize_as(), ActionCatalogResponse, ActionPlanDetail, ActionPlanDto, ActionSpecDto, ActionSubjectDto, approve(), bad_request() (+27 more)
 
 ### Community 73 - "Option"
-Cohesion: 0.08
-Nodes (15): allowed(), demo_release(), DemoFlag, .ALL, CatalogCache, CheckoutV2, DemoReleaseService, Orders (+7 more)
+Cohesion: 0.12
+Nodes (11): demo_release(), DemoFlag, .ALL, CatalogCache, CheckoutV2, DemoReleaseService, Orders, DemoService (+3 more)
 
 ### Community 74 - "sdk-node/package.json"
 Cohesion: 0.07
@@ -721,8 +706,8 @@ Cohesion: 0.08
 Nodes (13): derived_ids_have_stable_shape(), EntityId, IdError, Empty, InvalidChars, InvalidHex, TooLong, MAX_ID_LEN (+5 more)
 
 ### Community 79 - "WebEngine"
-Cohesion: 0.18
-Nodes (4): infrastructure_snapshot_text_reaches_the_engine(), set(), to_js(), WebEngine
+Cohesion: 0.20
+Nodes (3): infrastructure_snapshot_text_reaches_the_engine(), to_js(), WebEngine
 
 ### Community 80 - "common.cjs"
 Cohesion: 0.16
@@ -740,25 +725,25 @@ Nodes (71): abandonForeignSession(), abortSvelteComponentInjection(), applyEditi
 Cohesion: 0.09
 Nodes (55): ae(), be(), bt(), Ce(), s(), Ct(), de(), dt() (+47 more)
 
-### Community 84 - "useWorkspaceEngine"
-Cohesion: 0.09
-Nodes (13): useWorkspaceEngine(), EngineClient, scopedUrl(), RFC-3339, $defs, operations, paths, webhooks (+5 more)
+### Community 84 - "helpers.ts"
+Cohesion: 0.19
+Nodes (16): Creds, double(), fixed64(), fixtures, ingestLog(), ingestMetrics(), ingestSpans(), keyValue() (+8 more)
 
 ### Community 85 - "model.rs"
-Cohesion: 0.08
-Nodes (19): ACTION_AUDIT, CONFIG_CHANGED, DEPLOYMENT_COMPLETED, DEPLOYMENT_STARTED, HealthStatus, Degraded, Failing, Healthy (+11 more)
+Cohesion: 0.06
+Nodes (24): ACTION_AUDIT, CONFIG_CHANGED, DEPLOYMENT_COMPLETED, DEPLOYMENT_STARTED, EntityKind, Cache, Database, Deployment (+16 more)
 
 ### Community 86 - "live.rs"
 Cohesion: 0.07
 Nodes (19): EVENT_LOOKBACK_NS, HEARTBEAT, INITIAL_OVERLAP_NS, live(), LiveParams, MAX_QUERY_FAILURES, MAX_ROWS_PER_KIND, POLL (+11 more)
 
 ### Community 87 - "karbird-engine-core/src/lib.rs"
-Cohesion: 0.13
-Nodes (15): EDGE_SERIES_BUCKETS, EDGE_STRIDE, event_delta(), FLAG_DECLARED, FLAG_DIMMED, FLAG_EXTERNAL, FLAG_HIGHLIGHT, FLAG_INFERRED (+7 more)
+Cohesion: 0.11
+Nodes (17): EDGE_SERIES_BUCKETS, EDGE_STRIDE, event_delta(), FLAG_DECLARED, FLAG_DIMMED, FLAG_EXTERNAL, FLAG_HIGHLIGHT, FLAG_INFERRED (+9 more)
 
-### Community 88 - "useWorkspaceEngine.ts"
-Cohesion: 0.07
-Nodes (52): areaPath(), bucketRates(), edgeEnds(), edgeIndex(), EdgeTraffic, formatBytes(), formatMs(), formatPercent() (+44 more)
+### Community 88 - "MapView.tsx"
+Cohesion: 0.08
+Nodes (46): areaPath(), bucketRates(), edgeEnds(), edgeIndex(), EdgeTraffic, formatBytes(), formatMs(), formatPercent() (+38 more)
 
 ### Community 89 - "proxy.ts"
 Cohesion: 0.18
@@ -773,12 +758,12 @@ Cohesion: 0.10
 Nodes (15): applying_the_same_batch_twice_is_idempotent(), arb_ops(), arb_world(), edge_metrics(), event(), json_fragment(), log(), Model (+7 more)
 
 ### Community 92 - "karbird-cli/src/main.rs"
-Cohesion: 0.21
-Nodes (9): apply_needs_an_explicit_yes(), Cli, context_minutes_are_bounded(), discover_and_plan_run_without_the_network(), main(), Outcome, parse(), run() (+1 more)
+Cohesion: 0.10
+Nodes (19): apply_needs_an_explicit_yes(), Cli, Command, Apply, Context, Discover, Doctor, Mcp (+11 more)
 
 ### Community 93 - "PixiMap"
-Cohesion: 0.13
-Nodes (9): Legend(), MapView(), AnimClock, animTimeMs(), hopPhase, line(), PixiMap, truncate() (+1 more)
+Cohesion: 0.11
+Nodes (15): MapView(), EdgeStyle, AnimClock, drawKindIcon(), line(), PixiMap, truncate(), chipFocused() (+7 more)
 
 ### Community 94 - ".github/skills/impeccable/scripts/modern-screenshot.umd.js"
 Cohesion: 0.09
@@ -789,20 +774,20 @@ Cohesion: 0.08
 Nodes (54): actionLabel(), applyConfigureBarChrome(), bindConfigureCountPillTooltip(), bindConfigureInlineControlHover(), bindConfigureModifierPillHover(), buildConfigureActionControl(), buildConfigureCountControl(), buildConfigureRow() (+46 more)
 
 ### Community 96 - "karbird-web-engine/src/lib.rs"
-Cohesion: 0.14
-Nodes (7): BATCH, batches_from_the_worker_accumulate_and_dedupe(), config_parsing(), js_err(), parse_config(), status_encoding_matches_the_typescript_wrapper(), TS_INDEX
+Cohesion: 0.12
+Nodes (8): BATCH, batches_from_the_worker_accumulate_and_dedupe(), config_parsing(), js_err(), parse_config(), set(), status_encoding_matches_the_typescript_wrapper(), TS_INDEX
 
 ### Community 97 - "Event"
-Cohesion: 0.17
-Nodes (11): ALL_EVENTS, Event, Approve, Cancel, Claim, Expire, Fail, FailVerification (+3 more)
+Cohesion: 0.14
+Nodes (12): ALL_EVENTS, allowed(), Event, Approve, Cancel, Claim, Expire, Fail (+4 more)
 
 ### Community 98 - "telemetry.rs"
 Cohesion: 0.05
-Nodes (56): archived_logs_become_timeline_items_and_old_ranges_carry_a_note(), bad_request(), completeness_from(), completeness_reflects_processing_state(), Cursor, event_dto(), event_dtos_keep_u64_sequences_as_strings(), event_item() (+48 more)
+Nodes (63): archived_logs_become_timeline_items_and_old_ranges_carry_a_note(), bad_request(), completeness_from(), completeness_reflects_processing_state(), Cursor, encode_cursor(), event_dto(), event_dtos_keep_u64_sequences_as_strings() (+55 more)
 
-### Community 99 - ".compute_banded"
-Cohesion: 0.21
-Nodes (21): a_single_band_is_the_plain_layout(), assert_banded_invariants(), Band, banded_layout_stacks_groups_and_keeps_columns(), BandSpec, barycenter_removes_avoidable_crossings(), corridors_keep_clear_of_cards_after_snapping_to_pixels(), demo() (+13 more)
+### Community 99 - "integration/lib.mjs"
+Cohesion: 0.16
+Nodes (27): agentExport(), AT, cumulative(), gauge(), INVENTORY_CTR, ORDERS_CTR, x, anyString() (+19 more)
 
 ### Community 100 - "initPageChat"
 Cohesion: 0.07
@@ -810,23 +795,23 @@ Nodes (54): agentHasWorkInFlight(), armPageChatForTyping(), attachSteerFocusDebu
 
 ### Community 101 - "engine.worker.ts"
 Cohesion: 0.08
-Nodes (23): Pending, RpcRequest, FakeWorker, fetchText(), flush(), handle(), liveConnect(), LiveState (+15 more)
+Nodes (25): Pending, RpcRequest, FakeWorker, fetchText(), flush(), handle(), liveConnect(), LiveState (+17 more)
 
-### Community 102 - "collectErrors"
-Cohesion: 0.13
-Nodes (8): Every feature, bug fix or behaviour change ships tests in the same change, Running tests, Test quality, Testing policy (`.cursor/rules/karbird-testing.mdc`), collectErrors(), randomHex(), SpanInput, serverSpans()
-
-### Community 103 - "EntityKind"
+### Community 102 - "Workspace.tsx"
 Cohesion: 0.07
-Nodes (25): EntityKind, Cache, Database, Deployment, ExternalClient, ExternalDependency, InfrastructureResource, Instance (+17 more)
+Nodes (42): StatusRow(), clampSize(), SPLITTER_KEY_STEP, SplitterAxis, splitterDragValue(), splitterKeyValue(), Props, Splitter() (+34 more)
+
+### Community 103 - "archive.test.mjs"
+Cohesion: 0.12
+Nodes (12): service(), archiveOnce(), archiver(), bin, ADR-0015, oldRun, oldTrace, run (+4 more)
 
 ### Community 104 - "context.rs"
 Cohesion: 0.13
 Nodes (15): now_ns(), build(), build_propagates_api_errors(), build_queries_the_scoped_api_and_resolves_edge_names(), clean(), list(), MAX_ITEMS, MAX_STRING (+7 more)
 
 ### Community 105 - "Handle `generate`"
-Cohesion: 0.06
-Nodes (32): 1. Read the screenshot (if present), 2. Wrap the element, 3. Load the action's reference, 4. Plan three variants: identity first, then mode, then axes, 5. Apply the freeform prompt (if present), 6. Deliver variants, 7. Parameters (composition-sized, 0-4 per variant), 8. Signal done (+24 more)
+Cohesion: 0.12
+Nodes (16): 1. Read the screenshot (if present), 2. Wrap the element, 3. Load the action's reference, 4. Plan three variants: identity first, then mode, then axes, 5. Apply the freeform prompt (if present), 6. Deliver variants, 7. Parameters (composition-sized, 0-4 per variant), 8. Signal done (+8 more)
 
 ### Community 106 - "api-client/package.json"
 Cohesion: 0.12
@@ -837,7 +822,7 @@ Cohesion: 0.12
 Nodes (15): compilerOptions, exactOptionalPropertyTypes, forceConsistentCasingInFileNames, isolatedModules, lib, module, moduleResolution, noEmit (+7 more)
 
 ### Community 108 - ".apply_batch"
-Cohesion: 0.24
+Cohesion: 0.32
 Nodes (6): EngineError, InvalidInput, ItemKey, Event, Log, Span
 
 ### Community 109 - "EventsClient"
@@ -845,16 +830,16 @@ Cohesion: 0.23
 Nodes (5): EventsClient, isValidHex(), nowUnixNanos(), sleep(), client()
 
 ### Community 110 - "@playwright/test"
-Cohesion: 0.11
-Nodes (5): @playwright/test, PUBLIC, login(), user(), PUBLIC_PAGES
+Cohesion: 0.10
+Nodes (6): @playwright/test, PUBLIC, login(), user(), openInviteLinks(), PUBLIC_PAGES
 
 ### Community 111 - "el"
 Cohesion: 0.08
 Nodes (54): actionLabel(), applyConfigureBarChrome(), bindConfigureCountPillTooltip(), bindConfigureInlineControlHover(), bindConfigureModifierPillHover(), buildConfigureActionControl(), buildConfigureCountControl(), buildConfigureRow() (+46 more)
 
-### Community 112 - "helpers.ts"
-Cohesion: 0.21
-Nodes (15): Creds, double(), fixed64(), fixtures, ingestLog(), ingestMetrics(), ingestSpans(), keyValue() (+7 more)
+### Community 112 - "randomHex"
+Cohesion: 0.12
+Nodes (6): Every feature, bug fix or behaviour change ships tests in the same change, Running tests, Test quality, Testing policy (`.cursor/rules/karbird-testing.mdc`), randomHex(), serverSpans()
 
 ### Community 113 - "Dictionary"
 Cohesion: 0.17
@@ -864,9 +849,9 @@ Nodes (9): bytes_roundtrip_and_reject_garbage(), counts(), Dictionary, encode(),
 Cohesion: 0.07
 Nodes (19): account_changes_follow_the_same_reach_as_grants(), an_auditor_changes_nothing(), arb_set(), check_account_change(), only_super_admins_touch_super_admins_and_one_always_remains(), set(), SystemPermission, .ALL (+11 more)
 
-### Community 115 - "Splitter.tsx"
-Cohesion: 0.42
-Nodes (7): clampSize(), SPLITTER_KEY_STEP, SplitterAxis, splitterDragValue(), splitterKeyValue(), Props, Splitter()
+### Community 115 - "collectErrors"
+Cohesion: 0.23
+Nodes (6): collectErrors(), mapLayer(), setReplaySpeed(), SpanInput, openService(), openTable()
 
 ### Community 116 - "test_http.rs"
 Cohesion: 0.22
@@ -877,12 +862,12 @@ Cohesion: 0.17
 Nodes (3): Engine, fit(), MAX_WALK
 
 ### Community 118 - "index.js"
-Cohesion: 0.14
-Nodes (17): getKarbird(), GLOBAL_KEY, hasForeignOtelProvider(), isIncoming(), isServerResponse(), OTEL_API_KEY, pathOf(), SEVERITY (+9 more)
+Cohesion: 0.15
+Nodes (16): getKarbird(), GLOBAL_KEY, hasForeignOtelProvider(), isIncoming(), isServerResponse(), OTEL_API_KEY, pathOf(), SEVERITY (+8 more)
 
 ### Community 119 - "Operate mode depth (and Read notes)"
-Cohesion: 0.22
-Nodes (9): Color, Components, Layout, Motion, Operate mode depth (and Read notes), Product constraints, Product permissions, The product slop test (+1 more)
+Cohesion: 0.10
+Nodes (18): Craft floor, Refuse, Verify, Constraints, Failure modes, Flow, /impeccable hooks, Routing (+10 more)
 
 ### Community 120 - "web-engine/package.json"
 Cohesion: 0.15
@@ -896,24 +881,24 @@ Nodes (12): devDependencies, @playwright/test, @types/node, typescript, @types/n
 Cohesion: 0.07
 Nodes (54): agentHasWorkInFlight(), armPageChatForTyping(), attachSteerFocusDebug(), attachSteerFocusGuard(), buildSteerProcessingDots(), buildSteerQueueHint(), clearSteerAwaitTimer(), clearSteerFocusRecoverTimer() (+46 more)
 
-### Community 123 - ".cursor/skills/impeccable/reference/new-work.md"
-Cohesion: 0.08
-Nodes (22): Assess Adaptation Challenge, Implement & Verify, Recommended Actions, Craft (deprecated alias), Monorepo notes, Opting out of the boot check, Step 2: Act by severity, Step 3: Deprecated fields are binding (+14 more)
+### Community 123 - ".cursor/skills/impeccable/SKILL.md"
+Cohesion: 0.06
+Nodes (36): Assess Adaptation Challenge, Implement & Verify, 1. Accessibility (VoiceOver / TalkBack), 2. Performance, 3. Appearance & Theming, 4. Platform Conformance (CRITICAL), 5. Adaptivity, Diagnostic Scan (+28 more)
 
 ### Community 124 - "infra.rs"
 Cohesion: 0.07
 Nodes (46): an_external_database_stays_outside_and_is_marked(), an_internal_database_sits_inside_its_machine_frame(), assert_clean(), assert_frames_apart(), card(), CARD_HALF_H, CARD_HALF_W, CHIP_GAP (+38 more)
 
 ### Community 125 - "karbird-cli/src/plan.rs"
-Cohesion: 0.21
-Nodes (20): ALLOWED_FILES, apply(), build(), composer_json_step(), diff(), env_example_step(), gitignore_step(), indent_of() (+12 more)
+Cohesion: 0.17
+Nodes (25): read_limited(), ALLOWED_FILES, apply(), args(), build(), composer_json_step(), diff(), env_example_step() (+17 more)
 
 ### Community 126 - "initGlobalBar"
 Cohesion: 0.08
 Nodes (41): agentStatusText(), barPaletteForTheme(), brandMarkSvg(), buildDesignHeader(), buildParamsPanel(), cursorForInsertAxis(), designPanelCss(), detectPageTheme() (+33 more)
 
 ### Community 127 - "prelude"
-Cohesion: 0.14
+Cohesion: 0.13
 Nodes (3): Reader<'a>, small_values_take_one_byte(), Writer
 
 ### Community 128 - "dependencies"
@@ -924,9 +909,9 @@ Nodes (12): dependencies, @opentelemetry/api, @opentelemetry/api-logs, @opentele
 Cohesion: 0.08
 Nodes (41): agentStatusText(), barPaletteForTheme(), brandMarkSvg(), buildDesignHeader(), buildParamsPanel(), cursorForInsertAxis(), designPanelCss(), detectPageTheme() (+33 more)
 
-### Community 130 - "job.rs"
-Cohesion: 0.15
-Nodes (13): archive_service(), archive_window(), build_segment(), built_segments_are_verified_and_decode_to_the_input(), Ctx, load_dictionary(), Metrics, metrics_render_every_series() (+5 more)
+### Community 130 - "chain_engine"
+Cohesion: 0.11
+Nodes (17): an_external_database_is_flagged_external_only_with_the_infrastructure_layer(), an_internal_database_sits_in_its_machine_frame_and_is_not_external(), chain_engine(), clock_skew_shifts_the_callee_and_its_subtree_for_display(), db_infra_json(), hop_window_selects_overlapping_calls_only(), hops_follow_filters_and_trace_selection(), hops_update_when_new_spans_arrive_and_are_evicted() (+9 more)
 
 ### Community 131 - "compilerOptions"
 Cohesion: 0.18
@@ -936,25 +921,21 @@ Nodes (10): compilerOptions, allowJs, incremental, jsx, paths, plugins, exclude,
 Cohesion: 0.13
 Nodes (17): bit_layout_is_least_significant_first(), BLOOM_BITS_PER_ITEM, bloom_build(), BLOOM_HASHES, BLOOM_MAX_BITS, bloom_may_contain(), BLOOM_MIN_BITS, bloom_probe() (+9 more)
 
-### Community 133 - ".github/skills/impeccable/reference/new-work.md"
-Cohesion: 0.10
-Nodes (18): Recommended Actions, Craft (deprecated alias), Impeccable Documenter, Input Contract, Output Contract, Workflow, Apply, Live-mode signature params (+10 more)
+### Community 133 - ".github/skills/impeccable/SKILL.md"
+Cohesion: 0.09
+Nodes (24): Assess Adaptation Challenge, Implement & Verify, Recommended Actions, Craft (deprecated alias), Style guidelines, The markdown body: eight sections (canonical order), Two paths, When to run (+16 more)
 
 ### Community 134 - "mountSvelteComponentVariant"
 Cohesion: 0.08
 Nodes (33): acceptedDomAlreadyClean(), applyOriginalAttrsToSvelteAnchor(), captureAndEmit(), checkpointPayload(), clearHandledWrapperReloadStamp(), commitAcceptedSvelteComponentToDom(), compileShader(), componentModuleCandidates() (+25 more)
 
-### Community 135 - "engine_with"
-Cohesion: 0.17
-Nodes (22): compare_reports_changes(), demo_items(), duplicates_do_not_double_count(), edge_calls(), edge_metrics_count_calls_errors_and_latency_of_the_edge(), edge_metrics_reflect_the_requested_moment(), edge_metrics_unknown_edge_or_reversed_direction_is_none(), engine_with() (+14 more)
-
 ### Community 136 - "package.json"
 Cohesion: 0.18
 Nodes (10): engines, node, name, packageManager, private, scripts, build, lint (+2 more)
 
-### Community 137 - "scale.ts"
-Cohesion: 0.23
-Nodes (20): clampView(), follow(), followLive(), formatTick(), FUTURE_PX, futureShare(), hasFuture(), inside() (+12 more)
+### Community 137 - "Handle `generate`"
+Cohesion: 0.12
+Nodes (16): 1. Read the screenshot (if present), 2. Wrap the element, 3. Load the action's reference, 4. Plan three variants: identity first, then mode, then axes, 5. Apply the freeform prompt (if present), 6. Deliver variants, 7. Parameters (composition-sized, 0-4 per variant), 8. Signal done (+8 more)
 
 ### Community 138 - "composer.json"
 Cohesion: 0.13
@@ -967,6 +948,10 @@ Nodes (3): ApiDoc, BearerAuth, spec_json()
 ### Community 140 - "pg.rs"
 Cohesion: 0.08
 Nodes (28): ApiTokenPrincipal, AuditRow, ConsumerOffset, CreatedAccount, email_domain_patterns(), EnvironmentRow, IngestCredential, InviteLookup (+20 more)
+
+### Community 141 - "String"
+Cohesion: 0.20
+Nodes (7): HealthStatus, Degraded, Failing, Healthy, Unknown, NodeRec, WindowMetrics
 
 ### Community 142 - "adr/README.md"
 Cohesion: 0.29
@@ -989,8 +974,8 @@ Cohesion: 0.08
 Nodes (33): acceptedDomAlreadyClean(), applyOriginalAttrsToSvelteAnchor(), captureAndEmit(), checkpointPayload(), clearHandledWrapperReloadStamp(), commitAcceptedSvelteComponentToDom(), compileShader(), componentModuleCandidates() (+25 more)
 
 ### Community 147 - ".github/skills/impeccable/reference/live.md"
-Cohesion: 0.08
-Nodes (24): Handle `accept`, Required after accept (carbonize), The contract (read once), Apply at system scale, Audit before choosing, Choose a strategy, Contrast and perception, Live-mode signature params (+16 more)
+Cohesion: 0.06
+Nodes (28): Handle `steer`, Poll loop, Apply at system scale, Audit before choosing, Choose a strategy, Contrast and perception, Live-mode signature params, Verify (+20 more)
 
 ### Community 148 - "infra-agent.test.mjs"
 Cohesion: 0.20
@@ -1014,7 +999,7 @@ Nodes (5): Bounds, fitCamera(), FitOptions, BOUNDS, OPTS
 
 ### Community 153 - "karbird-archiver/src/main.rs"
 Cohesion: 0.10
-Nodes (23): base(), Cli, Cmd, Once, Run, Common, connect(), gc() (+15 more)
+Nodes (22): base(), Cli, Cmd, Once, Run, Common, connect(), gc() (+14 more)
 
 ### Community 154 - "Security model (current implementation)"
 Cohesion: 0.22
@@ -1030,23 +1015,23 @@ Nodes (11): align_down(), closed_until(), continues_after_the_last_window_and_re
 
 ### Community 157 - "infrastructure.rs"
 Cohesion: 0.05
-Nodes (80): a_busy_machine_with_a_dominant_consumer_is_enough(), a_database_reached_by_compose_service_name_is_internal_in_that_container(), addresses_pointing_to_different_machines_are_ambiguous(), attr(), BASELINE_NS, build_snapshot(), by_image(), by_name() (+72 more)
+Nodes (78): a_busy_machine_with_a_dominant_consumer_is_enough(), a_database_reached_by_compose_service_name_is_internal_in_that_container(), addresses_pointing_to_different_machines_are_ambiguous(), attr(), BASELINE_NS, build_snapshot(), by_image(), by_name() (+70 more)
 
 ### Community 158 - ".cursor/skills/impeccable/reference/document.md"
-Cohesion: 0.11
-Nodes (17): Component translation rules, Narrative mapping, Scan mode (approach C: auto-extract, then confirm descriptive language), Schema, Step 1: Find the design assets, Step 2: Auto-extract what can be auto-extracted, Step 2b: Stage the frontmatter, Step 3: Ask the user for qualitative language (+9 more)
+Cohesion: 0.07
+Nodes (26): Component translation rules, Narrative mapping, Scan mode (approach C: auto-extract, then confirm descriptive language), Schema, Seed mode, Step 1: Find the design assets, Step 1: Route through new-work's workshop, Step 2: Auto-extract what can be auto-extracted (+18 more)
 
-### Community 159 - "actions.test.mjs"
-Cohesion: 0.31
-Nodes (8): approvedRun(), FINAL, ISO_PROD, OPEN, postJson(), propose(), resetDemo(), waitFinal()
+### Community 159 - "VisibleState"
+Cohesion: 0.14
+Nodes (19): VisibleState, an_inbound_request_arrives_before_its_service_calls_anything(), clock_skew_is_clamped_and_flagged(), edge_between(), edge_flags(), edge_metrics_cover_resource_and_external_edges(), external_client_metrics_come_from_the_requests_it_sent(), external_clients_and_dependencies_get_edges_and_request_response_hops() (+11 more)
 
 ### Community 160 - "karbird-protocol/src/lib.rs"
 Cohesion: 0.15
 Nodes (7): envelope(), envelope_roundtrips_every_payload_variant(), ENVELOPE_SCHEMA_VERSION, malformed_bytes_are_an_error_not_a_panic(), nested_otlp_payload_survives_the_envelope(), TELEMETRY_TOPIC, unknown_fields_are_skipped_for_forward_compatibility()
 
-### Community 161 - "integration/lib.mjs"
-Cohesion: 0.15
-Nodes (27): anyString(), bytesField(), creds, doubleField(), encodeLogs(), encodeMetrics(), encodeTraces(), fixed64Field() (+19 more)
+### Community 161 - "mcp.test.mjs"
+Cohesion: 0.07
+Nodes (14): FLAGS, HOP_FLAGS, done(), hook(), lockPath, logPath, { chromium }, here (+6 more)
 
 ### Community 162 - "Local development and operations"
 Cohesion: 0.25
@@ -1056,9 +1041,9 @@ Nodes (7): Changing retention, Generated local state (`.karbird/`, gitignored), 
 Cohesion: 0.29
 Nodes (6): description, name, private, scripts, start, version
 
-### Community 164 - "vitest"
-Cohesion: 0.05
-Nodes (49): EDGE_STYLE_KEY, parseEdgeStyle(), setEdgeStyle(), useEdgeStyle(), usePersistedSize(), FLAGS, HOP_FLAGS, listeners (+41 more)
+### Community 164 - "edge-path.ts"
+Cohesion: 0.10
+Nodes (27): build(), CardBox, cardExit(), curvedPoints(), DEFAULT_EDGE_STYLE, EDGE_STYLES, edgePath, endDirection() (+19 more)
 
 ### Community 165 - "Responsive Design"
 Cohesion: 0.08
@@ -1116,9 +1101,9 @@ Nodes (4): ADR-0013: Read-only MCP server as a CLI subcommand over the REST API,
 Cohesion: 0.50
 Nodes (4): ADR-0014: OTLP metrics are not ingested (yet); service metrics come from spans, Decision, When to revisit, Why
 
-### Community 179 - "convert_metrics"
-Cohesion: 0.14
-Nodes (12): attributes_without_values_become_empty_strings(), clamp_ns(), convert_metrics(), Converted, cpu_time(), event_fields_are_mapped(), events_env(), flatten() (+4 more)
+### Community 179 - "useWorkspaceEngine.ts"
+Cohesion: 0.07
+Nodes (30): robots(), sitemap(), LogSource, firstItemStart(), MIN_LOOP_NS, placeAbove(), Placement, playStart() (+22 more)
 
 ### Community 180 - "fault.mjs"
 Cohesion: 0.40
@@ -1132,17 +1117,17 @@ Nodes (3): counts, requestedRps, rps
 Cohesion: 0.40
 Nodes (5): Checks, Documentation, karbird, Quick start (local demo), Requirements
 
-### Community 183 - "metrics.rs"
-Cohesion: 0.27
+### Community 183 - "super"
+Cohesion: 0.24
 Nodes (4): every_series_is_unique(), Metrics, renders_every_counter_with_zero_defaults(), renders_incremented_values_under_the_right_labels()
 
 ### Community 184 - "karbird-domain"
 Cohesion: 0.33
 Nodes (13): karbird-actions, karbird-api, karbird-archive, karbird-archiver, karbird-domain, karbird-engine-core, karbird-executor, karbird-ingest (+5 more)
 
-### Community 185 - "ingest.test.mjs"
-Cohesion: 0.06
-Nodes (40): logs, oldLogs, nodeIds(), sizes(), spans(), x, iso, [rootId, extCallId, intCallId, lateCallId, backId] (+32 more)
+### Community 185 - "resource-placement.test.mjs"
+Cohesion: 0.22
+Nodes (8): agentExport(), AT, cpu(), ADR-0018, ORDERS_CTR, PG_CTR, rss(), x
 
 ### Community 186 - "ADR-0007: Browser authentication"
 Cohesion: 0.50
@@ -1161,8 +1146,8 @@ Cohesion: 0.50
 Nodes (3): extends, include, ../../tsconfig.base.json
 
 ### Community 190 - ".cursor/skills/impeccable/reference/live.md"
-Cohesion: 0.06
-Nodes (28): Apply at system scale, Audit before choosing, Choose a strategy, Contrast and perception, Live-mode signature params, Verify, Visitor mode, Cleanup (+20 more)
+Cohesion: 0.08
+Nodes (24): Apply at system scale, Audit before choosing, Choose a strategy, Contrast and perception, Live-mode signature params, Verify, Visitor mode, Cleanup (+16 more)
 
 ### Community 191 - "Visualize: Direction Comps & Asset Production"
 Cohesion: 0.33
@@ -1208,9 +1193,9 @@ Nodes (20): Animate complex properties, Assess What "Extraordinary" Means Here, 
 Cohesion: 0.22
 Nodes (12): getJson(), catalogCache, catalogItem(), catalogUrl(), catalogUrls, faults, http, log (+4 more)
 
-### Community 207 - "Result"
-Cohesion: 0.19
-Nodes (10): ArchivePage, ArchiveReader, log_matches(), log_row(), PgStore, query(), SegmentRow, tenant_prefix() (+2 more)
+### Community 207 - "actions.test.mjs"
+Cohesion: 0.31
+Nodes (8): approvedRun(), FINAL, ISO_PROD, OPEN, postJson(), propose(), resetDemo(), waitFinal()
 
 ### Community 208 - "resolveLiveInjectionAnchor"
 Cohesion: 0.16
@@ -1224,9 +1209,9 @@ Nodes (19): buildSvelteExpressionTextMap(), buildSveltePropValuesFromLiveElement
 Cohesion: 0.21
 Nodes (15): createLiveBrowserSessionState(), clearHandled(), clearScrollY(), clearSession(), isHandled(), loadSession(), markHandled(), nextCheckpointRevision() (+7 more)
 
-### Community 211 - ".github/skills/impeccable/reference/document.md"
-Cohesion: 0.07
-Nodes (26): Seed mode, Step 1: Route through new-work's workshop, Step 2: Write seed DESIGN.md, Step 3: Confirm, Component translation rules, Narrative mapping, Scan mode (approach C: auto-extract, then confirm descriptive language), Schema (+18 more)
+### Community 211 - "Scan mode (approach C: auto-extract, then confirm descriptive language)"
+Cohesion: 0.15
+Nodes (13): Component translation rules, Narrative mapping, Scan mode (approach C: auto-extract, then confirm descriptive language), Schema, Step 1: Find the design assets, Step 2: Auto-extract what can be auto-extracted, Step 2b: Stage the frontmatter, Step 3: Ask the user for qualitative language (+5 more)
 
 ### Community 212 - "createLiveBrowserSessionState"
 Cohesion: 0.21
@@ -1244,9 +1229,9 @@ Nodes (17): beginEditPin(), buildAnnotationsForCapture(), buildPinElement(), can
 Cohesion: 0.10
 Nodes (12): SystemBuiltin, Admin, .ALL, Auditor, SuperAdmin, create(), CREDENTIALS_FILE, ISOLATION_TOKEN (+4 more)
 
-### Community 216 - ".cursor/skills/impeccable/SKILL.md"
-Cohesion: 0.08
-Nodes (21): Before you finish, Scope is sovereign, The amplification, The skeleton test, Why it reads flat, Craft floor, Refuse, Verify (+13 more)
+### Community 216 - "Extract Flow"
+Cohesion: 0.13
+Nodes (12): Before you finish, Scope is sovereign, The amplification, The skeleton test, Why it reads flat, Extract Flow, Step 1: Discover the Design System, Step 2: Identify Patterns (+4 more)
 
 ### Community 217 - "createLiveBrowserDomHelpers"
 Cohesion: 0.17
@@ -1265,8 +1250,8 @@ Cohesion: 0.13
 Nodes (14): 1. Accessibility (A11y), 2. Performance, 3. Theming, 4. Responsive Design, 5. Implementation Integrity (CRITICAL), Audit Health Score, Detailed Findings by Severity, Diagnostic Scan (+6 more)
 
 ### Community 221 - "karbird-processor/src/main.rs"
-Cohesion: 0.09
-Nodes (19): Args, CONSUMER, Ctx, dead_letter_payload(), IDLE_TOUCH_INTERVAL, main(), MAX_DEAD_LETTER_PAYLOAD, Metrics (+11 more)
+Cohesion: 0.08
+Nodes (18): Args, CONSUMER, Ctx, dead_letter_payload(), IDLE_TOUCH_INTERVAL, MAX_DEAD_LETTER_PAYLOAD, Metrics, metrics_render_every_series() (+10 more)
 
 ### Community 222 - "Generate Report"
 Cohesion: 0.13
@@ -1325,8 +1310,8 @@ Cohesion: 0.17
 Nodes (11): Accessibility Resilience, Assess Hardening Needs, Edge Cases & Boundary Conditions, Error Handling, Hardening Dimensions, Input Validation & Sanitization, Internationalization (i18n), Performance Resilience (+3 more)
 
 ### Community 236 - "arb_items"
-Cohesion: 0.18
-Nodes (9): arb_items(), bounded_window_evicts_oldest(), chain_items(), db_span(), dedup_last_wins(), hop_cap_is_reported(), log(), span() (+1 more)
+Cohesion: 0.25
+Nodes (7): arb_items(), bounded_window_evicts_oldest(), db_span(), dedup_last_wins(), log(), span(), tracks_p95_is_nearest_rank()
 
 ### Community 237 - ".cursor/skills/impeccable/reference/clarify.md"
 Cohesion: 0.18
@@ -1364,9 +1349,9 @@ Nodes (10): Assess Current State, Color Refinement, Composition Refinement, Moti
 Cohesion: 0.18
 Nodes (10): Brand Commitments, Capabilities and Constraints, Evidence on Hand, Operating Context, Platform, Positioning, Product, Product Principles (+2 more)
 
-### Community 246 - "traces_env"
-Cohesion: 0.25
-Nodes (6): empty_service_name_falls_back_to_unknown(), inverted_span_times_do_not_panic(), kv(), out_of_range_numbers_are_clamped_not_wrapped(), span_fields_are_mapped_one_to_one(), traces_env()
+### Community 246 - ".github/skills/impeccable/reference/bolder.md"
+Cohesion: 0.33
+Nodes (5): Before you finish, Scope is sovereign, The amplification, The skeleton test, Why it reads flat
 
 ### Community 247 - "Generate Combined Critique Report"
 Cohesion: 0.20
@@ -1392,13 +1377,13 @@ Nodes (10): Completion gate, Init flow, Step 1: Load current state, Step 2: Expl
 Cohesion: 0.22
 Nodes (9): 1. The Wall of Options, 2. The Memory Bridge, 3. The Hidden Navigation, 4. The Jargon Barrier, 5. The Visual Noise Floor, 6. The Inconsistent Pattern, 7. The Multi-Task Demand, 8. The Context Switch (+1 more)
 
-### Community 253 - "iOS platform"
-Cohesion: 0.22
-Nodes (9): Color & materials, Components & controls, iOS platform, Layout & structure, Motion, The iOS slop test, Touch targets, Typography (+1 more)
+### Community 253 - "Adaptation Strategies"
+Cohesion: 0.40
+Nodes (5): Adaptation Strategies, Orientation & foldables, Phone → Tablet (iPad / large screens), Platform → platform (iOS ↔ Android), Web → native (porting a website or web app)
 
-### Community 254 - "lib/api.ts"
-Cohesion: 0.09
-Nodes (44): Actions(), ActionControls(), ControlForm(), Props, ActionsPage(), Json(), PlanDetail(), ProposeForm() (+36 more)
+### Community 254 - "Impeccable Documenter"
+Cohesion: 0.40
+Nodes (4): Impeccable Documenter, Input Contract, Output Contract, Workflow
 
 ### Community 255 - "Shape"
 Cohesion: 0.22
@@ -1413,7 +1398,7 @@ Cohesion: 0.22
 Nodes (9): Color & materials, Components & controls, iOS platform, Layout & structure, Motion, The iOS slop test, Touch targets, Typography (+1 more)
 
 ### Community 258 - "SeriesLimiter"
-Cohesion: 0.16
+Cohesion: 0.15
 Nodes (7): DEFAULT_MAX_SERIES_PER_ENV, environments_are_isolated(), known_series_pass_and_new_ones_stop_at_the_limit(), SeriesLimiter, the_window_resets_after_it_elapses(), WINDOW, zero_limit_refuses_everything()
 
 ### Community 259 - "Shape"
@@ -1428,9 +1413,9 @@ Nodes (8): Android platform, Color & theming, Components & motion, Layout & stru
 Cohesion: 0.25
 Nodes (8): 1. Impatient Power User: "Alex", 2. Confused First-Timer: "Jordan", 3. Accessibility-Dependent User: "Sam", 4. Deliberate Stress Tester: "Riley", 5. Distracted Mobile User: "Casey", Persona-Based Design Testing, Project-Specific Personas, Selecting Personas
 
-### Community 262 - "Extract Flow"
-Cohesion: 0.25
-Nodes (7): Extract Flow, Step 1: Discover the Design System, Step 2: Identify Patterns, Step 3: Plan Extraction, Step 4: Extract & Enrich, Step 5: Migrate, Step 6: Document
+### Community 262 - "archive.spec.ts"
+Cohesion: 0.40
+Nodes (3): bin, ADR-0015, root
 
 ### Community 263 - "Android platform"
 Cohesion: 0.25
@@ -1500,9 +1485,9 @@ Nodes (7): Cognitive Load Assessment, Cognitive Load Checklist, Extraneous Load:
 Cohesion: 0.29
 Nodes (6): Core Rule, Decision Comps, Impeccable Asset Producer, Input Contract, Output Contract, The job
 
-### Community 281 - "Impeccable Finish Reviewer"
-Cohesion: 0.29
-Nodes (6): Checks, in order, Disposition, Impeccable Finish Reviewer, Input Contract, Output Contract, Verdict Pass
+### Community 281 - "LogSource"
+Cohesion: 0.50
+Nodes (4): LogSource, Archive, Hot, Mixed
 
 ### Community 282 - "Impeccable Manual Edit Applier"
 Cohesion: 0.29
@@ -1512,29 +1497,25 @@ Nodes (6): Checks, Entry Atomicity, Impeccable Manual Edit Applier, Input Contra
 Cohesion: 0.52
 Nodes (6): globToRegex(), matchesScope(), normalizeIgnoreRule(), normalizeIgnoreValue(), pageCandidates(), resolveDetectIgnores()
 
-### Community 284 - ".github/skills/impeccable/reference/live-setup.md"
-Cohesion: 0.25
-Nodes (7): append-arrays, append-string, Config drift, Consent prompt (use this phrasing), CSP detection (first-time only), Troubleshooting, Write the config
+### Community 284 - "InviteAccept"
+Cohesion: 0.50
+Nodes (4): InviteAccept, AlreadyMember, Gone, Joined
 
-### Community 285 - "super"
-Cohesion: 0.14
-Nodes (7): S, deserialize(), NANOS_PER_MILLI, NANOS_PER_SEC, O, serialize(), T
-
-### Community 287 - "ServeArgs"
-Cohesion: 0.12
-Nodes (19): allowed_origins_are_split_and_trimmed(), api_config(), archive_config(), Cli, Command, Bootstrap, Migrate, Openapi (+11 more)
+### Community 285 - "serde"
+Cohesion: 0.08
+Nodes (14): S, Error, deserialize(), NANOS_PER_MILLI, NANOS_PER_SEC, O, serialize(), T (+6 more)
 
 ### Community 289 - "Operate mode depth (and Read notes)"
-Cohesion: 0.22
-Nodes (9): Color, Components, Layout, Motion, Operate mode depth (and Read notes), Product constraints, Product permissions, The product slop test (+1 more)
+Cohesion: 0.10
+Nodes (18): Craft floor, Refuse, Verify, Constraints, Failure modes, Flow, /impeccable hooks, Routing (+10 more)
 
 ### Community 290 - "Impeccable Documenter"
 Cohesion: 0.40
 Nodes (4): Impeccable Documenter, Input Contract, Output Contract, Workflow
 
-### Community 291 - ".run"
-Cohesion: 0.37
-Nodes (4): count(), Demo, len(), request()
+### Community 291 - "migrate.test.mjs"
+Cohesion: 0.14
+Nodes (14): creds, ownerAccount(), root, credentialsPath, envFile(), exe, migrate(), owner (+6 more)
 
 ### Community 292 - "enableInlineEdit"
 Cohesion: 0.40
@@ -1580,13 +1561,13 @@ Nodes (5): ADR-0011: Read-only API tokens and the WebSocket live channel, Altern
 Cohesion: 0.25
 Nodes (5): Batch, TimelineItem, Event, Log, Span
 
-### Community 303 - "InviteAccept"
-Cohesion: 0.50
-Nodes (4): InviteAccept, AlreadyMember, Gone, Joined
+### Community 303 - "capture2.mjs"
+Cohesion: 0.15
+Nodes (9): { chromium }, creds, out, require, { chromium }, out, require, shots (+1 more)
 
-### Community 304 - "ref_node_assert"
-Cohesion: 0.12
-Nodes (19): fault, withTarget(), gateway(), captureServer(), cleanEnv(), freePort(), runNode(), src() (+11 more)
+### Community 304 - "EdgeLookup"
+Cohesion: 0.47
+Nodes (5): EdgeLookup, Existing, Missing, NoEdge, Unresolved
 
 ### Community 307 - "InstanceMatch"
 Cohesion: 0.29
@@ -1599,18 +1580,6 @@ Nodes (4): Data flow, Delivery guarantees, Timeline and time machine, Topology
 ### Community 309 - "Production deploy: two hosts from GitHub Actions"
 Cohesion: 0.12
 Nodes (15): Infrastructure agent, Install from this checkout, Instrument a PHP service, Karbird agent (machine and container metrics), Memory, Moving hosts deployed under the previous project name, On the hosts, One-time setup (+7 more)
-
-### Community 311 - "convert"
-Cohesion: 0.21
-Nodes (13): convert(), ConvertError, Decode, EmptyPayload, Scope, UnsupportedVersion, decode_envelope(), log_fields_are_mapped() (+5 more)
-
-### Community 312 - "neighbours.ts"
-Cohesion: 0.22
-Nodes (8): ActionBar, centeredOn(), nearestItems(), Neighbours, parse(), VIEW, tracksMatch(), viewIsEmpty()
-
-### Community 313 - "String"
-Cohesion: 0.29
-Nodes (10): attr(), http_client_spans_target_the_host_they_call(), http_peer_host(), log_fingerprint(), scope(), service_identity(), ServiceIdentity, span_target() (+2 more)
 
 ### Community 314 - "ADR-0017: Prebuilt images, two-host Compose deploy from GitHub Actions"
 Cohesion: 0.40
@@ -1636,33 +1605,25 @@ Nodes (6): 1. Accessibility (VoiceOver / TalkBack), 2. Performance, 3. Appearanc
 Cohesion: 0.50
 Nodes (4): StepState, AlreadyApplied, Applied, Pending
 
-### Community 328 - "SeekOutcome"
-Cohesion: 0.50
-Nodes (3): SeekOutcome, Applied, Stale
-
-### Community 334 - "View"
-Cohesion: 0.33
-Nodes (5): RulerInput, View, Props, WorkspaceMemory, MapCamera
-
 ### Community 336 - "ADR-0016: ClickHouse retention configured once, applied by bootstrap, checked at startup"
 Cohesion: 0.40
 Nodes (4): ADR-0016: ClickHouse retention configured once, applied by bootstrap, checked at startup, Consequences, Context, Decision
 
-### Community 338 - "Action"
-Cohesion: 0.10
-Nodes (17): Action, DemoContainerRestart, DemoFaultsClear, DemoFaultsInject, DemoFeatureFlagSet, DemoReleaseRollback, DemoReplicasScale, DemoRestartDatabase (+9 more)
+### Community 338 - "DemoContainer"
+Cohesion: 0.22
+Nodes (7): DemoContainer, .ALL, Catalog1, Catalog2, Catalog3, Gateway, Orders
 
 ### Community 339 - "ADR-0019: Link statistics from the engine, data flow from declared HTTP body sizes"
 Cohesion: 0.40
 Nodes (4): ADR-0019: Link statistics from the engine, data flow from declared HTTP body sizes, Consequences, Context, Decision
 
-### Community 340 - "Command"
-Cohesion: 0.20
-Nodes (9): Command, Apply, Context, Discover, Doctor, Mcp, Plan, Verify (+1 more)
+### Community 340 - "iOS platform"
+Cohesion: 0.22
+Nodes (9): Color & materials, Components & controls, iOS platform, Layout & structure, Motion, The iOS slop test, Touch targets, Typography (+1 more)
 
-### Community 344 - "range.ts"
-Cohesion: 0.29
-Nodes (9): firstItemStart(), placeAbove(), Placement, playStart(), rangeBetween(), replayStep(), bounds, viewAround() (+1 more)
+### Community 344 - ".cursor/skills/impeccable/reference/live-setup.md"
+Cohesion: 0.25
+Nodes (7): append-arrays, append-string, Config drift, Consent prompt (use this phrasing), CSP detection (first-time only), Troubleshooting, Write the config
 
 ### Community 346 - "ResourceMatch"
 Cohesion: 0.17
@@ -1684,13 +1645,9 @@ Nodes (3): ADR-0006: Local ports, Consequences, Decision
 Cohesion: 0.50
 Nodes (4): ADR-0018: Machine and container metrics over OTLP; Infrastructure layer on the map, Consequences, Context, Decision
 
-### Community 351 - "cull.ts"
-Cohesion: 0.47
-Nodes (3): CULL_OVERSCAN, cullRect(), WorldRect
-
-### Community 353 - "Impeccable Documenter"
-Cohesion: 0.40
-Nodes (4): Impeccable Documenter, Input Contract, Output Contract, Workflow
+### Community 353 - "Impeccable Finish Reviewer"
+Cohesion: 0.29
+Nodes (6): Checks, in order, Disposition, Impeccable Finish Reviewer, Input Contract, Output Contract, Verdict Pass
 
 ### Community 354 - "ArchiveError"
 Cohesion: 0.22
@@ -1700,86 +1657,58 @@ Nodes (6): ArchiveError, Compression, Corrupt, DictionaryMismatch, TemplateMisma
 Cohesion: 0.36
 Nodes (8): every_span_attribute_location_is_sanitized(), redacts_and_rejects(), sanitize_traces(), span(), span_budget_rejects_the_overflow(), span_validation_rejects_bad_ids_and_times(), traces(), valid_id()
 
-### Community 356 - "archive.test.mjs"
-Cohesion: 0.09
-Nodes (17): bindgenVersion(), archiveOnce(), archiver(), bin, ADR-0015, oldRun, oldTrace, run (+9 more)
-
 ### Community 357 - "repository"
 Cohesion: 0.50
 Nodes (4): repository, directory, type, url
-
-### Community 358 - "archive.spec.ts"
-Cohesion: 0.40
-Nodes (3): bin, ADR-0015, root
 
 ### Community 359 - "Vec"
 Cohesion: 0.25
 Nodes (5): EdgeMetrics, HostDto, InfraChip, ServiceTrack, TopologyViewEdge
 
-### Community 360 - "EdgeLookup"
-Cohesion: 0.47
-Nodes (5): EdgeLookup, Existing, Missing, NoEdge, Unresolved
-
-### Community 361 - "anyv"
-Cohesion: 0.40
-Nodes (4): any_to_string(), any_values_are_stringified_deterministically(), anyv(), structured_log_bodies_are_stringified()
-
-### Community 362 - "Diagnostic Scan"
-Cohesion: 0.33
-Nodes (6): 1. Accessibility (VoiceOver / TalkBack), 2. Performance, 3. Appearance & Theming, 4. Platform Conformance (CRITICAL), 5. Adaptivity, Diagnostic Scan
+### Community 360 - "RelationKind"
+Cohesion: 0.13
+Nodes (13): Provenance, Declared, Inferred, Observed, RelationKind, Calls, ConsumesFrom, DependsOn (+5 more)
 
 ### Community 363 - "AttributeDecision"
 Cohesion: 0.50
 Nodes (4): AttributeDecision, Drop, Keep, Redact
 
-### Community 364 - "Adaptation Strategies"
-Cohesion: 0.40
-Nodes (5): Adaptation Strategies, Orientation & foldables, Phone → Tablet (iPad / large screens), Platform → platform (iOS ↔ Android), Web → native (porting a website or web app)
-
-### Community 366 - ".github/skills/impeccable/reference/bolder.md"
-Cohesion: 0.33
-Nodes (5): Before you finish, Scope is sovereign, The amplification, The skeleton test, Why it reads flat
-
-### Community 367 - "Visualize: Direction Comps & Asset Production"
+### Community 364 - "Visualize: Direction Comps & Asset Production"
 Cohesion: 0.33
 Nodes (5): After approval: the comp becomes a spec, Generate three compositional options, One approval point, Plates and provenance, Visualize: Direction Comps & Asset Production
 
-### Community 368 - "resource.js"
-Cohesion: 0.57
-Nodes (4): containerIdFromCgroup(), containerIdFromMountinfo(), infraAttributes(), readOrEmpty()
+### Community 367 - "Adaptation Strategies"
+Cohesion: 0.40
+Nodes (5): Adaptation Strategies, Orientation & foldables, Phone → Tablet (iPad / large screens), Platform → platform (iOS ↔ Android), Web → native (porting a website or web app)
 
-### Community 369 - "plan_apply_is_idempotent_and_detects_drift"
-Cohesion: 0.50
-Nodes (4): args(), fixture(), plan_apply_is_idempotent_and_detects_drift(), tampered_plans_cannot_escape_the_allowlist()
+### Community 368 - "resource.js"
+Cohesion: 0.73
+Nodes (4): containerIdFromCgroup(), containerIdFromMountinfo(), infraAttributes(), readOrEmpty()
 
 ### Community 370 - ".github/skills/impeccable/reference/doctor.md"
 Cohesion: 0.20
 Nodes (9): summary(), Step 1: Run the pass, Monorepo notes, Opting out of the boot check, Step 1: Run the pass, Step 2: Act by severity, Step 3: Deprecated fields are binding, Step 4: Do not overclaim on truth drift (+1 more)
-
-### Community 371 - ".github/skills/impeccable/SKILL.md"
-Cohesion: 0.07
-Nodes (23): Adaptation Strategies, Assess Adaptation Challenge, Implement & Verify, Orientation & foldables, Phone → Tablet (iPad / large screens), Platform → platform (iOS ↔ Android), Web → native (porting a website or web app), Craft floor (+15 more)
 
 ### Community 373 - "ADR-0020: Container restart, scaling, feature flags and rollback as typed demo actions, run through a demo orchestrator"
 Cohesion: 0.33
 Nodes (5): ADR-0020: Container restart, scaling, feature flags and rollback as typed demo actions, run through a demo orchestrator, Alternatives rejected, Consequences, Context, Decision
 
 ## Knowledge Gaps
-- **1998 isolated node(s):** `lockPath`, `logPath`, `require`, `{ chromium }`, `out` (+1993 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2792 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **35 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **2003 isolated node(s):** `lockPath`, `logPath`, `require`, `{ chromium }`, `out` (+1998 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2799 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **33 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `vitest` connect `vitest` to `SecurityPage.tsx`, `Workspace.tsx`, `scale.ts`, `TimelineTracksView.tsx`, `unwrap`, `MapDemo.tsx`, `fit.test.ts`, `web/package.json`, `IntegrationGuide.tsx`, `invite/page.tsx`, `external.ts`, `neighbours.ts`, `InfraInspector.tsx`, `Icon`, `pixi-map.ts`, `draw.ts`, `View`, `useWorkspaceEngine`, `range.ts`, `useWorkspaceEngine.ts`, `proxy.ts`, `PixiMap`, `cull.ts`, `seo.test.ts`, `grid.ts`, `engine.worker.ts`, `Splitter.tsx`, `lib/api.ts`?**
-  _High betweenness centrality (0.018) - this node is a cross-community bridge._
-- **Why does `Engine` connect `Engine` to `.compute_banded`, `EntityKind`, `SeekOutcome`, `EdgeLookup`, `.apply_batch`, `Timeline`, `hops.rs`, `karbird-engine-core/src/lib.rs`, `infra.rs`?**
-  _High betweenness centrality (0.015) - this node is a cross-community bridge._
-- **Why does `accept()` connect `.github/skills/impeccable/reference/live.md` to `Session`?**
+- **Why does `vitest` connect `useWorkspaceEngine.ts` to `SecurityPage.tsx`, `LogsPanel.tsx`, `unwrap`, `MapDemo.tsx`, `fit.test.ts`, `web/package.json`, `mcp.test.mjs`, `edge-path.ts`, `IntegrationGuide.tsx`, `invite/page.tsx`, `service-colors.ts`, `InfraInspector.tsx`, `Icon`, `pixi-map.ts`, `TimelineTracksView.tsx`, `MapView.tsx`, `proxy.ts`, `PixiMap`, `grid.ts`, `engine.worker.ts`, `Workspace.tsx`?**
+  _High betweenness centrality (0.017) - this node is a cross-community bridge._
+- **Why does `pg` connect `demo-system/package.json` to `common.cjs`, `orders.cjs`?**
+  _High betweenness centrality (0.011) - this node is a cross-community bridge._
+- **Why does `accept()` connect `.cursor/skills/impeccable/reference/live.md` to `Session`?**
   _High betweenness centrality (0.010) - this node is a cross-community bridge._
 - **What connects `lockPath`, `logPath`, `require` to the rest of the system?**
-  _1998 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _2003 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `.pool` be split into smaller, more focused modules?**
   _Cohesion score 0.09626216077828981 - nodes in this community are weakly interconnected._
 - **Should `http.rs` be split into smaller, more focused modules?**

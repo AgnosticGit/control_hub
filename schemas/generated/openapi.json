@@ -5692,6 +5692,8 @@
           "response_bytes",
           "total_calls",
           "total_sized_calls",
+          "total_request_sized_calls",
+          "total_response_sized_calls",
           "total_request_bytes",
           "total_response_bytes"
         ],
@@ -5812,7 +5814,17 @@
             "format": "int64",
             "minimum": 0
           },
+          "total_request_sized_calls": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
           "total_response_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_response_sized_calls": {
             "type": "integer",
             "format": "int64",
             "minimum": 0

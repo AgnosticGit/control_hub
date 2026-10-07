@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { collectErrors, login } from "./helpers";
+import { mapLayer, collectErrors, login, setReplaySpeed } from "./helpers";
 
 const WORKSPACE = "/app/demo/local-demo";
 /** Outside a fixed historical range the last 72 px of the timeline are the future stretch. */
@@ -25,7 +25,7 @@ test.describe("workspace on demo data", () => {
     await page.getByRole("button", { name: "Engine" }).click();
 
     // Deterministic check through the accessible table view (same engine frames).
-    await page.getByRole("checkbox", { name: "Table view" }).check();
+    await (await mapLayer(page, "Table view")).check();
     const table = page.getByRole("table");
     await expect(table.getByRole("button", { name: "gateway", exact: true })).toBeVisible();
     await expect(table.getByRole("button", { name: "orders", exact: true })).toBeVisible();
@@ -165,7 +165,7 @@ test.describe("workspace on demo data", () => {
     await expect(page.getByText("Starting engine…")).toBeHidden();
     await timeline.getByRole("button", { name: "Pause live" }).click();
     await expect(timeline.getByText("paused", { exact: true })).toBeVisible();
-    await page.getByRole("checkbox", { name: "Table view" }).check();
+    await (await mapLayer(page, "Table view")).check();
     await expect(page.getByRole("table")).toBeVisible();
 
     let workers = 0;
@@ -177,7 +177,7 @@ test.describe("workspace on demo data", () => {
     await expect(page.getByRole("main", { name: "System map" })).toHaveCount(0);
     await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Overview" }).click();
     await expect(page).toHaveURL(new RegExp(`${WORKSPACE}$`));
-    await expect(page.getByRole("checkbox", { name: "Table view" })).toBeChecked();
+    await expect(await mapLayer(page, "Table view")).toBeChecked();
     await expect(page.getByText("Starting engine…")).toHaveCount(0);
     await expect(page.getByLabel("Timeline").getByText("paused", { exact: true })).toBeVisible();
 
@@ -186,7 +186,7 @@ test.describe("workspace on demo data", () => {
     await expect(page).toHaveURL(/\/app\/account/);
     await page.goBack();
     await expect(page).toHaveURL(new RegExp(`${WORKSPACE}$`));
-    await expect(page.getByRole("checkbox", { name: "Table view" })).toBeChecked();
+    await expect(await mapLayer(page, "Table view")).toBeChecked();
     await expect(page.getByText("Starting engine…")).toHaveCount(0);
     await expect(page.getByLabel("Timeline").getByText("paused", { exact: true })).toBeVisible();
 
@@ -212,7 +212,7 @@ test.describe("workspace on demo data", () => {
     await next.click();
     await expect(timeline.getByText("paused", { exact: true })).toBeVisible();
 
-    await timeline.getByLabel("Speed").selectOption("2");
+    await setReplaySpeed(page, "2");
     await timeline.getByRole("button", { name: "Play replay" }).click();
     await expect(timeline.getByText("replay", { exact: true })).toBeVisible();
     await timeline.getByRole("button", { name: "Pause", exact: true }).click();
@@ -319,7 +319,7 @@ test.describe("workspace on demo data", () => {
     await expect(timeline.getByRole("button", { name: "Whole range" })).toHaveAttribute("aria-pressed", "false");
 
     const ruler = timeline.getByLabel("Selected time");
-    await timeline.getByLabel("Speed").selectOption("10");
+    await setReplaySpeed(page, "10");
     await timeline.getByRole("button", { name: "Play replay" }).click();
     await expect(timeline.getByText("replay", { exact: true })).toBeVisible();
     // 2% of the screen is a bit over 2% of the 15-minute live window, about 20 s: at 10x one pass
@@ -336,7 +336,7 @@ test.describe("workspace on demo data", () => {
     await expect(chip).toHaveCount(0);
     await expect(timeline.getByRole("button", { name: "Whole range" })).toHaveAttribute("aria-pressed", "true");
     await timeline.getByRole("button", { name: "Pause", exact: true }).click();
-    await timeline.getByLabel("Speed").selectOption("1");
+    await setReplaySpeed(page, "1");
   });
 
   test("a click on the tracks moves the cursor and the tooltip sits above the pointer", async ({ page }) => {
@@ -455,7 +455,7 @@ test.describe("workspace on demo data", () => {
     };
     await expect(page.getByText("Starting engine…")).toBeHidden();
     await timeline.getByRole("button", { name: "Pause live" }).click();
-    await timeline.getByLabel("Speed").selectOption("0.001");
+    await setReplaySpeed(page, "0.001");
 
     await ruler.focus();
     await page.keyboard.press("Home");
@@ -473,7 +473,7 @@ test.describe("workspace on demo data", () => {
     await timeline.getByRole("button", { name: "Pause", exact: true }).click();
     // 0.001x: well under a millisecond of recorded time passes between Play and Pause.
     await expect.poll(async () => Math.abs((await clockMs()) - first)).toBeLessThanOrEqual(2);
-    await timeline.getByLabel("Speed").selectOption("1");
+    await setReplaySpeed(page, "1");
   });
 
   test("the paused badge is not the degraded (amber) colour", async ({ page }) => {
@@ -487,7 +487,7 @@ test.describe("workspace on demo data", () => {
 
   test("selecting a component opens its details in the side panel", async ({ page }) => {
     await expect(page.getByRole("region", { name: "Signals" })).toBeVisible();
-    await page.getByRole("checkbox", { name: "Table view" }).check();
+    await (await mapLayer(page, "Table view")).check();
     await page.getByRole("table").getByRole("button", { name: "gateway", exact: true }).click();
     const inspector = page.getByRole("complementary", { name: "Inspector" });
     await expect(inspector.getByRole("heading", { name: "gateway", exact: true })).toBeVisible();

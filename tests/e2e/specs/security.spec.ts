@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ingestLog, login, randomHex } from "./helpers";
+import { mapLayer, ingestLog, login, randomHex } from "./helpers";
 
 test.describe("security headers", () => {
   test("public pages send hardening headers and a baseline CSP", async ({ request }) => {
@@ -118,7 +118,7 @@ test.describe("untrusted telemetry", () => {
 
     // Same guarantee in the table view of the map (reload so the topology includes the new service).
     await page.reload();
-    await page.getByRole("checkbox", { name: "Table view" }).check();
+    await (await mapLayer(page, "Table view")).check();
     await expect(page.getByRole("table").getByRole("button", { name: service, exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("i", { hasText: id })).toHaveCount(0);
     expect(dialog).toBe(false);

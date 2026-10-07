@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 interface Creds {
   users: Array<{ email: string; password: string; project_id: string; role: string }>;
@@ -55,6 +55,26 @@ export async function login(page: Page, email: string, next = "/app") {
   await page.getByLabel("Password").fill(u.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).not.toHaveURL(/\/app\/login/);
+}
+
+/** Opens the map's layers popover before returning a filter checkbox. */
+export async function mapLayer(page: Page, name: string): Promise<Locator> {
+  const checkbox = page.getByRole("checkbox", { name });
+  if (!(await checkbox.isVisible())) await page.getByRole("button", { name: "Map layers" }).click();
+  return checkbox;
+}
+
+const REPLAY_SPEEDS = ["0.001", "0.01", "0.1", "0.5", "1", "2", "10"];
+
+/** Selects a supported replay speed through the slider's real keyboard interaction. */
+export async function setReplaySpeed(page: Page, value: string) {
+  const index = REPLAY_SPEEDS.indexOf(value);
+  if (index < 0) throw new Error(`unsupported replay speed ${value}`);
+  const slider = page.getByRole("slider", { name: "Replay speed" });
+  await slider.focus();
+  await page.keyboard.press("Home");
+  for (let step = 0; step < index; step++) await page.keyboard.press("ArrowRight");
+  await expect(slider).toHaveAttribute("aria-valuetext", `${value}×`);
 }
 
 /** The page's own alert; skips Next.js's empty route announcer, which also has role=alert. */
