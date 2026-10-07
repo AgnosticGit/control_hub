@@ -1,0 +1,41 @@
+<h2>Новый центр проектов</h2>
+<p class="subtitle">Выберите структуру, в которой удобно переключаться между проектами и их Dev, Stage, Release окружениями.</p>
+
+<div class="cards">
+  <div class="card" data-choice="project-hub" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">karbird · Projects <span style="float:right">＋ New project</span></div>
+        <div class="mockup-body" style="display:grid;grid-template-columns:35% 65%;min-height:230px">
+          <div class="mock-sidebar"><b>Projects</b><br><br>◆ Storefront<br><br>◇ Payments<br><br>◇ Platform</div>
+          <div class="mock-content"><span class="label">Storefront</span><h3 style="margin:8px 0">Project overview</h3><div class="placeholder">Production&nbsp;&nbsp; ● Live &nbsp; 18 services</div><div class="placeholder">Staging&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ● Receiving data</div><div class="placeholder">Development&nbsp; ○ No data yet</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>A. Project hub — рекомендую</h3><p>Сначала выбирается проект, затем окружение. Хорошо масштабируется для команд и большого числа окружений.</p></div>
+  </div>
+
+  <div class="card" data-choice="environment-first" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">karbird <span style="float:right">＋</span></div>
+        <div class="mockup-body" style="min-height:230px"><h3>All environments</h3><div class="placeholder">Storefront / Production&nbsp; ● Live</div><div class="placeholder">Payments / Stage&nbsp; ● Live</div><div class="placeholder">Storefront / Development&nbsp; ○ No data</div><div class="placeholder">Platform / Release&nbsp; ● Live</div></div>
+      </div>
+    </div>
+    <div class="card-body"><h3>B. Environment first</h3><p>Один список всего. Быстрее для оператора, но теряет контекст проекта и хуже растёт.</p></div>
+  </div>
+
+  <div class="card" data-choice="sidebar-workspace" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">karbird · System map</div>
+        <div class="mockup-body" style="display:grid;grid-template-columns:42% 58%;min-height:230px"><div class="mock-sidebar"><b>Storefront⌄</b><br><br>● Production<br>○ Staging<br>○ Development<br><br><small>Manage project</small></div><div class="mock-content"><h3>Production</h3><div class="placeholder" style="height:110px">System Map</div></div></div>
+      </div>
+    </div>
+    <div class="card-body"><h3>C. Workspace sidebar</h3><p>Проекты и окружения всегда под рукой внутри карты. Плотнее и сложнее для первого знакомства.</p></div>
+  </div>
+</div>
+
+<div class="section">
+  <p><b>Я предлагаю A:</b> отдельная стартовая страница Projects с карточками, а внутри рабочего пространства — компактный переключатель проекта и окружения. Так сочетаются ясность Firebase и скорость Sentry.</p>
+</div>

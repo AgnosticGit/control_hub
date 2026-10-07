@@ -5,7 +5,11 @@ export const INVITE_PATH = "/app/invite";
 /** Keeps the secret while the visitor signs in or signs up (per tab, cleared after joining). */
 export const INVITE_STORAGE_KEY = "karbird.invite";
 
-const SECRET = /^chv_[A-Za-z0-9_-]{16,124}$/;
+const SECRET = /^(?:chv_|koi_)[A-Za-z0-9_-]{16,124}$/;
+
+export function isOrganizationInvite(secret: string): boolean {
+  return secret.startsWith("koi_");
+}
 
 export function inviteLink(origin: string, secret: string): string {
   return `${origin}${INVITE_PATH}#${secret}`;

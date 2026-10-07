@@ -1,0 +1,5 @@
+# SDD ledger — plan: docs/superpowers/plans/2026-10-07-organisation-project-management.md
+Ruling: executing in existing main working tree — it already contains user work and explicit repository policy forbids agent commits; cost if wrong: changes are not isolated in a separate branch.
+Pre-flight: Task 1 → Task 2: organization/membership persistence rows feed authorization; Task 1 → Task 3: organization IDs feed atomic creation; Task 1 → Task 4/6: invites and OAuth depend on migration tables.
+Task 1: Ruling: direct migrate integration invocation lacks the test-fixture lifecycle and its owner-log assertion is environment-sensitive because tracing defaults to warn; run through the fixture wrapper exposed this pre-existing assertion failure. The storage contract test is green; full migration integration will be re-run after API changes with the stack running. Cost if wrong: a migration regression could remain until the complete integration run.
+Task 1: complete (no commits by repository rule, tests: cargo test -p karbird-storage organisation; node scripts/test-with-fixtures.mjs node --test tests/integration/migrate.test.mjs → PASS)

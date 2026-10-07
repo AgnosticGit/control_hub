@@ -1823,6 +1823,408 @@
         }
       }
     },
+    "/api/v1/onboarding/first-project": {
+      "post": {
+        "tags": [
+          "onboarding"
+        ],
+        "operationId": "create_first_project",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FirstRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organization-invites/accept": {
+      "post": {
+        "tags": [
+          "organizations"
+        ],
+        "operationId": "accept_organization_invite",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptOrganizationInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{organization_id}/invites": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "operationId": "list_organization_invites",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizationInviteDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "organizations"
+        ],
+        "operationId": "create_organization_invite",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrganizationInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedOrganizationInvite"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{organization_id}/invites/{invite_id}": {
+      "delete": {
+        "tags": [
+          "organizations"
+        ],
+        "operationId": "revoke_organization_invite",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "invite_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{organization_id}/members": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "operationId": "list_organization_members",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizationMemberDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "organizations"
+        ],
+        "operationId": "add_organization_member",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddOrganizationMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMemberDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{organization_id}/projects/{project_id}/members/{user_id}": {
+      "put": {
+        "tags": [
+          "organizations"
+        ],
+        "operationId": "put_organization_project_assignment",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "organizations"
+        ],
+        "operationId": "delete_organization_project_assignment",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/permissions": {
       "get": {
         "tags": [
@@ -1897,7 +2299,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ProjectRequest"
+                "$ref": "#/components/schemas/CreateProjectRequest"
               }
             }
           },
@@ -4782,6 +5184,17 @@
   },
   "components": {
     "schemas": {
+      "AcceptOrganizationInviteRequest": {
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        }
+      },
       "AcceptedInvite": {
         "type": "object",
         "required": [
@@ -5058,6 +5471,27 @@
           }
         }
       },
+      "AddOrganizationMemberRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "organization_role"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssignmentRequest"
+            }
+          },
+          "email": {
+            "type": "string"
+          },
+          "organization_role": {
+            "type": "string"
+          }
+        }
+      },
       "AdminAuditEntryDto": {
         "type": "object",
         "required": [
@@ -5290,6 +5724,21 @@
               "null"
             ],
             "description": "Name of the account's administrator role, if it has one."
+          }
+        }
+      },
+      "AssignmentRequest": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "role_id"
+        ],
+        "properties": {
+          "project_id": {
+            "type": "string"
+          },
+          "role_id": {
+            "type": "string"
           }
         }
       },
@@ -5600,6 +6049,57 @@
           }
         }
       },
+      "CreateOrganizationInviteRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "organization_role"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssignmentRequest"
+            }
+          },
+          "email": {
+            "type": "string"
+          },
+          "expires_in_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "organization_role": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateProjectRequest": {
+        "type": "object",
+        "required": [
+          "organization_id",
+          "name",
+          "environments"
+        ],
+        "properties": {
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "organization_id": {
+            "type": "string"
+          }
+        }
+      },
       "CreateTokenRequest": {
         "type": "object",
         "required": [
@@ -5637,6 +6137,22 @@
           "secret": {
             "type": "string",
             "description": "Shown once; the link is `<web app>/app/invite#<secret>`."
+          }
+        }
+      },
+      "CreatedOrganizationInvite": {
+        "type": "object",
+        "required": [
+          "invite",
+          "secret"
+        ],
+        "properties": {
+          "invite": {
+            "$ref": "#/components/schemas/OrganizationInviteDto"
+          },
+          "secret": {
+            "type": "string",
+            "description": "Returned once so local installations without email can still deliver the link safely."
           }
         }
       },
@@ -6041,6 +6557,28 @@
             "items": {
               "$ref": "#/components/schemas/EventDto"
             }
+          }
+        }
+      },
+      "FirstRunRequest": {
+        "type": "object",
+        "required": [
+          "organization_name",
+          "project_name",
+          "environments"
+        ],
+        "properties": {
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "organization_name": {
+            "type": "string"
+          },
+          "project_name": {
+            "type": "string"
           }
         }
       },
@@ -6779,6 +7317,99 @@
           }
         }
       },
+      "OrganizationDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "OrganizationInviteDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "organization_role",
+          "assignments",
+          "prefix",
+          "expires_at",
+          "status"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectAssignmentDto"
+            }
+          },
+          "delivery_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "organization_role": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "OrganizationMemberDto": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "email",
+          "display_name",
+          "organization_id",
+          "role",
+          "assignments"
+        ],
+        "properties": {
+          "assignments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectAssignmentDto"
+            }
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "organization_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          }
+        }
+      },
       "ParamSpecDto": {
         "type": "object",
         "required": [
@@ -6891,10 +7522,28 @@
           }
         }
       },
+      "ProjectAssignmentDto": {
+        "type": "object",
+        "required": [
+          "project_id"
+        ],
+        "properties": {
+          "project_id": {
+            "type": "string"
+          },
+          "role_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "ProjectDto": {
         "type": "object",
         "required": [
           "id",
+          "organization_id",
           "tenant_id",
           "name",
           "role",
@@ -6913,6 +7562,9 @@
             "type": "string"
           },
           "name": {
+            "type": "string"
+          },
+          "organization_id": {
             "type": "string"
           },
           "permissions": {
@@ -7003,13 +7655,6 @@
           "password": {
             "type": "string",
             "description": "At least 12 characters."
-          },
-          "project_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Name of the first project; defaults to \"My project\"."
           }
         }
       },
@@ -7335,9 +7980,16 @@
         "type": "object",
         "required": [
           "user",
+          "organizations",
           "projects"
         ],
         "properties": {
+          "organizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationDto"
+            }
+          },
           "projects": {
             "type": "array",
             "items": {
@@ -7959,6 +8611,17 @@
           }
         }
       },
+      "UpdateProjectAssignmentRequest": {
+        "type": "object",
+        "required": [
+          "role_id"
+        ],
+        "properties": {
+          "role_id": {
+            "type": "string"
+          }
+        }
+      },
       "UserDto": {
         "type": "object",
         "required": [
@@ -8029,6 +8692,9 @@
     },
     {
       "name": "members"
+    },
+    {
+      "name": "organizations"
     },
     {
       "name": "health"

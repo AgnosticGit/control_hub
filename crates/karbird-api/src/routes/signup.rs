@@ -1,5 +1,5 @@
-//! Self-service sign-up with email and password. Creates a user who owns a fresh
-//! tenant/project/environment and starts a browser session.
+//! Self-service sign-up with email and password. Creates an account and starts
+//! a browser session; the first-run wizard creates its organisation and project.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -9,7 +9,6 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use karbird_storage::pg::NewAccount;
 use karbird_storage::secrets::hash_password;
 use serde::Deserialize;
 use tokio::sync::Mutex;
@@ -23,6 +22,8 @@ use crate::state::AppState;
 pub const MIN_PASSWORD_CHARS: usize = 12;
 pub const MAX_PASSWORD_BYTES: usize = 1024;
 const MAX_NAME_CHARS: usize = 100;
+/// Defaults used only by the production bootstrap owner. Self-service
+/// registrations complete first-run onboarding instead.
 pub(crate) const DEFAULT_PROJECT: &str = "My project";
 pub(crate) const DEFAULT_ENVIRONMENT: &str = "production";
 
@@ -34,9 +35,6 @@ pub struct RegisterRequest {
     /// Shown in the UI; defaults to the part of the email before `@`.
     #[serde(default)]
     pub display_name: Option<String>,
-    /// Name of the first project; defaults to "My project".
-    #[serde(default)]
-    pub project_name: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -44,7 +42,6 @@ struct Registration {
     email: String,
     password: String,
     display_name: String,
-    project_name: String,
 }
 
 /// Global sliding-window limit on sign-up attempts. Global rather than per client because
@@ -132,7 +129,6 @@ fn validate(req: RegisterRequest) -> Result<Registration, ApiError> {
     let local = email.split('@').next().unwrap_or_default().to_owned();
     Ok(Registration {
         display_name: clean_name(req.display_name.as_deref(), "display name", &local)?,
-        project_name: clean_name(req.project_name.as_deref(), "project name", DEFAULT_PROJECT)?,
         password: req.password,
         email,
     })
@@ -160,26 +156,20 @@ pub async fn register(
     let hash = tokio::task::spawn_blocking(move || hash_password(&password))
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))??;
-    let created = state
+    let user_id = state
         .pg
-        .create_account(&NewAccount {
-            email: &r.email,
-            display_name: &r.display_name,
-            password_hash: &hash,
-            project_name: &r.project_name,
-            environment_name: DEFAULT_ENVIRONMENT,
-        })
+        .create_unconfigured_account(&r.email, &r.display_name, &hash)
         .await?
         .ok_or(ApiError::Conflict("an account with this email already exists"))?;
     let _ = state
         .pg
         .audit(karbird_storage::pg::NewAuditEntry {
-            tenant_id: Some(created.scope.tenant_id.as_str()),
-            project_id: Some(created.scope.project_id.as_str()),
-            actor_id: &created.user_id.to_string(),
+            tenant_id: None,
+            project_id: None,
+            actor_id: &user_id.to_string(),
             actor_kind: "user",
             action: "user.register",
-            target: Some(created.scope.environment_id.as_str()),
+            target: Some(&user_id.to_string()),
             reason: None,
             before: None,
             after: None,
@@ -187,7 +177,7 @@ pub async fn register(
             request_id: None,
         })
         .await;
-    let (headers, body) = start_session(&state, created.user_id, r.email).await?;
+    let (headers, body) = start_session(&state, user_id, r.email).await?;
     Ok((StatusCode::CREATED, headers, Json(body)).into_response())
 }
 
@@ -197,7 +187,7 @@ mod tests {
     use super::*;
 
     fn req(email: &str, password: &str) -> RegisterRequest {
-        RegisterRequest { email: email.into(), password: password.into(), display_name: None, project_name: None }
+        RegisterRequest { email: email.into(), password: password.into(), display_name: None }
     }
 
     #[test]
@@ -265,18 +255,16 @@ mod tests {
                 email: "bob@example.com".into(),
                 password: "correct horse battery".into(),
                 display_name: "bob".into(),
-                project_name: "My project".into(),
             }
         );
         let mut named = req("bob@example.com", "correct horse battery");
         named.display_name = Some("  Bob Smith ".into());
-        named.project_name = Some(" Shop backend ".into());
         let r = validate(named).unwrap();
-        assert_eq!((r.display_name.as_str(), r.project_name.as_str()), ("Bob Smith", "Shop backend"));
+        assert_eq!(r.display_name.as_str(), "Bob Smith");
 
         for bad in ["x".repeat(MAX_NAME_CHARS + 1), "evil\u{0}name".into(), "line\nbreak".into()] {
             let mut r = req("bob@example.com", "correct horse battery");
-            r.project_name = Some(bad.clone());
+            r.display_name = Some(bad.clone());
             assert!(validate(r).is_err(), "{bad:?}");
         }
     }

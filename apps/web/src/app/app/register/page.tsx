@@ -53,7 +53,6 @@ function RegisterForm() {
             email,
             password,
             display_name: formText(form, "display_name") || null,
-            project_name: formText(form, "project_name") || null,
           },
         }),
       );
@@ -72,7 +71,7 @@ function RegisterForm() {
       <form method="post" onSubmit={submit} className="w-full max-w-sm space-y-5" noValidate>
         <div>
           <h1 className="text-[1.75rem] leading-tight font-bold tracking-[-0.02em]">Create your karbird account</h1>
-          <p className="mt-2 text-sm leading-relaxed text-muted">You get your own project and a guide to connect your services.</p>
+          <p className="mt-2 text-sm leading-relaxed text-muted">After registration, create your organization, project and environments in a short setup step.</p>
         </div>
         <label className="block text-sm">
           <span className="font-medium">Email</span>
@@ -81,10 +80,6 @@ function RegisterForm() {
         <label className="block text-sm">
           <span className="font-medium">Your name (optional)</span>
           <input name="display_name" autoComplete="name" maxLength={100} className="input mt-1.5 h-10 w-full" />
-        </label>
-        <label className="block text-sm">
-          <span className="font-medium">Project name (optional)</span>
-          <input name="project_name" maxLength={100} placeholder="My project" className="input mt-1.5 h-10 w-full" />
         </label>
         <div className="text-sm">
           <label className="block">
@@ -115,6 +110,10 @@ function RegisterForm() {
         <button type="submit" disabled={busy || !hydrated} className="btn btn-primary h-10 w-full text-sm">
           {busy ? "Creating account…" : "Create account"}
         </button>
+        <div className="flex items-center gap-3 text-xs text-muted" aria-hidden><span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" /></div>
+        <a href={`/api/v1/auth/google/start?next=${encodeURIComponent(next ?? "/app")}`} className="btn h-10 w-full justify-center text-sm">
+          Continue with Google
+        </a>
         <p className="text-sm text-muted">
           Already have an account?{" "}
           <Link

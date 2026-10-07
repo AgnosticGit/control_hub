@@ -6,6 +6,8 @@ pub mod infra_timeline;
 pub mod infrastructure;
 pub mod invites;
 pub mod live;
+pub mod organisations;
+pub mod oauth;
 pub mod roles;
 pub mod session;
 pub mod signup;

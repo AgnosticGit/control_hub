@@ -34,6 +34,10 @@ Public URLs: `https://<domain>/` (site and `/app`), `https://<domain>/api/v1/…
    | `OWNER_PASSWORD` | 12+ characters, no `'` and no line breaks. Only used to create the account; later changes are ignored (change it in `/app/account`). |
    | `DEPLOY_SSH_KEY` | private key from step 4 (the whole file) |
    | `DEPLOY_KNOWN_HOSTS` | output of step 5 |
+   | `KARBIRD_GOOGLE_CLIENT_ID` | Google OAuth web client ID |
+   | `KARBIRD_GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+   | `KARBIRD_GOOGLE_REDIRECT_URL` | exactly `https://<DOMAIN>/api/v1/auth/google/callback` |
+   | `KARBIRD_RESEND_API_KEY` | Resend API key allowed to send from the verified domain |
 
    | Variable | Value |
    |---|---|
@@ -46,6 +50,7 @@ Public URLs: `https://<domain>/` (site and `/app`), `https://<domain>/api/v1/…
    | `KARBIRD_LOGS_RETENTION_DAYS`, `…_SPANS_…`, `…_EVENTS_…` | optional, defaults 14 / 14 / 30 (ADR-0016) |
    | `KARBIRD_SIGNUP` | optional, `open` (default) or `closed`: whether visitors can create an account at `/app/register` |
    | `KARBIRD_SIGNUP_PER_HOUR` | optional, default 20: sign-up attempts per hour across all clients |
+   | `KARBIRD_MAIL_FROM` | verified sender, for example `Karbird <invite@karbird.com>` |
 
    The deploy job uses the `production` environment (created automatically; add required
    reviewers there to gate deploys). Registry access uses the job's own `GITHUB_TOKEN`.

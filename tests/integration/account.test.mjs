@@ -23,10 +23,30 @@ async function signup(label) {
   const r = await s.json('/api/v1/session/register', {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: ORIGIN },
-    body: JSON.stringify({ email, password: PASSWORD, project_name: `Account ${hex(3)}` }),
+    body: JSON.stringify({ email, password: PASSWORD }),
   });
   assert.equal(r.status, 201, JSON.stringify(r.body));
-  return { s, email, body: r.body };
+  assert.deepEqual(r.body.organizations, []);
+  assert.deepEqual(r.body.projects, []);
+  const configured = await s.mutate('/api/v1/onboarding/first-project', {
+    organization_name: `Organization ${hex(3)}`,
+    project_name: `Account ${hex(3)}`,
+    environments: ['Development', 'Staging', 'Production'],
+  });
+  assert.equal(configured.status, 201, JSON.stringify(configured.body));
+  const session = await s.json('/api/v1/session');
+  assert.equal(session.status, 200, JSON.stringify(session.body));
+  assert.equal(session.body.organizations.length, 1);
+  assert.deepEqual(session.body.projects[0].environments.map((environment) => environment.name), [
+    'Development',
+    'Production',
+    'Staging',
+  ]);
+  return { s, email, body: session.body };
+}
+
+function projectRequest(account, name, environments = ['Development', 'Production']) {
+  return { organization_id: account.body.organizations[0].id, name, environments };
 }
 
 // Sign-up is rate-limited globally, so the file uses two accounts: `me` and `other`, a second
@@ -151,13 +171,16 @@ test('account mutations need a session, CSRF and Origin, never an API token', as
 
 test('a user creates projects they own, renames them, and is capped at 20', async () => {
   const name = `Side project ${hex(3)}`;
-  const created = await me.s.mutate('/api/v1/projects', { name });
+  const created = await me.s.mutate('/api/v1/projects', projectRequest(me, name, ['Preview', 'Release']));
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.deepEqual([created.body.name, created.body.role], [name, 'owner']);
-  assert.deepEqual(created.body.environments.map((e) => [e.name, e.is_demo]), [['production', false]]);
+  assert.deepEqual(created.body.environments.map((e) => [e.name, e.is_demo]), [['Preview', false], ['Release', false]]);
   const projects = (await me.s.json('/api/v1/session')).body.projects;
   assert.ok(projects.some((p) => p.id === created.body.id));
-  assert.equal((await me.s.mutate('/api/v1/projects', { name: '  ' })).status, 400);
+  assert.equal((await me.s.mutate('/api/v1/projects', projectRequest(me, '  '))).status, 400);
+  const beforeInvalid = (await me.s.json('/api/v1/session')).body.projects.length;
+  assert.equal((await me.s.mutate('/api/v1/projects', projectRequest(me, `Invalid ${hex(2)}`, ['Dev', ' dev ']))).status, 400);
+  assert.equal((await me.s.json('/api/v1/session')).body.projects.length, beforeInvalid, 'invalid environments create nothing');
 
   const path = `/api/v1/projects/${created.body.id}`;
   const renamed = `${name} renamed`;
@@ -171,10 +194,10 @@ test('a user creates projects they own, renames them, and is capped at 20', asyn
 
   const owned = (await me.s.json('/api/v1/session')).body.projects.filter((p) => p.role === 'owner').length;
   for (let i = owned; i < 20; i++) {
-    const r = await me.s.mutate('/api/v1/projects', { name: `Cap ${i} ${hex(2)}` });
+    const r = await me.s.mutate('/api/v1/projects', projectRequest(me, `Cap ${i} ${hex(2)}`, ['Production']));
     assert.equal(r.status, 201, JSON.stringify(r.body));
   }
-  const capped = await me.s.mutate('/api/v1/projects', { name: `One too many ${hex(2)}` });
+  const capped = await me.s.mutate('/api/v1/projects', projectRequest(me, `One too many ${hex(2)}`, ['Production']));
   assert.equal(capped.status, 409);
   assert.match(capped.body.message, /maximum number of projects/);
 

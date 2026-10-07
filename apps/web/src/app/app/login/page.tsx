@@ -67,6 +67,10 @@ function LoginForm() {
       <button type="submit" disabled={busy || !hydrated} className="btn btn-primary h-10 w-full text-sm">
         {busy ? "Signing in…" : "Sign in"}
       </button>
+      <div className="flex items-center gap-3 text-xs text-muted" aria-hidden><span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" /></div>
+      <a href={`/api/v1/auth/google/start?next=${encodeURIComponent(safeNext(params.get("next")) ?? "/app")}`} className="btn h-10 w-full justify-center text-sm">
+        Continue with Google
+      </a>
       <p className="text-sm text-muted">
         New to karbird?{" "}
         <Link

@@ -28,7 +28,16 @@ function migrate(email, password) {
     cwd: root,
     encoding: 'utf8',
     timeout: 120_000,
-    env: { ...process.env, ...envFile('infra.env'), KARBIRD_OWNER_EMAIL: email, KARBIRD_OWNER_PASSWORD: password },
+    env: {
+      ...process.env,
+      ...envFile('infra.env'),
+      // The assertion below observes the migration's informational outcome.
+      // A developer's inherited `RUST_LOG=warn` must not make that result
+      // disappear from the child process output.
+      RUST_LOG: 'info',
+      KARBIRD_OWNER_EMAIL: email,
+      KARBIRD_OWNER_PASSWORD: password,
+    },
   });
   assert.notEqual(r.status, null, `migrate did not exit\n${r.stderr}`);
   return { status: r.status, out: `${r.stdout}\n${r.stderr}` };

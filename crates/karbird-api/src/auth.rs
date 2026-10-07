@@ -17,6 +17,14 @@ use crate::error::ApiError;
 use crate::permissions::{self, Actor, Permission, PermissionSet};
 use crate::state::AppState;
 
+fn has_organization_access(
+    memberships: &[karbird_storage::pg::OrganizationMemberRow],
+    user_id: Uuid,
+    organization_id: &str,
+) -> bool {
+    memberships.iter().any(|m| m.user_id == user_id && m.organization_id == organization_id)
+}
+
 pub const SESSION_COOKIE: &str = "karbird_session";
 pub const CSRF_COOKIE: &str = "karbird_csrf";
 pub const CSRF_HEADER: &str = "x-csrf-token";
@@ -180,6 +188,34 @@ pub struct ProjectAccess {
     pub actor: Actor,
 }
 
+/// An organisation member eligible to administer organisation-wide settings.
+#[derive(Debug, Clone)]
+pub struct OrganizationAccess {
+    pub organization_id: TenantId,
+}
+
+/// Resolves organisation membership. Unknown and foreign organisations both
+/// return 404; ordinary members cannot administer project creation.
+pub async fn authorize_organization_admin(
+    state: &AppState,
+    user: &CurrentUser,
+    organization_id: &str,
+) -> Result<OrganizationAccess, ApiError> {
+    user.session_id()?;
+    let organization_id = TenantId::parse(organization_id).map_err(|_| ApiError::NotFound)?;
+    let membership = state
+        .pg
+        .organisation_memberships(user.user_id)
+        .await?
+        .into_iter()
+        .find(|m| m.organization_id == organization_id.as_str())
+        .ok_or(ApiError::NotFound)?;
+    if !matches!(membership.role.as_str(), "owner" | "admin") {
+        return Err(ApiError::Forbidden("organisation admin access required"));
+    }
+    Ok(OrganizationAccess { organization_id })
+}
+
 /// Resolve a project for the user and require `need` there.
 /// Unknown and foreign projects both return 404 so existence is not leaked.
 pub async fn authorize_project(
@@ -196,6 +232,12 @@ pub async fn authorize_project(
     }
     let memberships = state.pg.memberships(user.user_id).await?;
     let m = memberships.iter().find(|m| m.project_id == project.as_str()).ok_or(ApiError::NotFound)?;
+    let organization = state.pg.organisation_for_project(project.as_str()).await?.ok_or(ApiError::NotFound)?;
+    if !has_organization_access(&state.pg.organisation_memberships(user.user_id).await?, user.user_id, &organization.id)
+        || !state.pg.project_assignment_exists(user.user_id, project.as_str()).await?
+    {
+        return Err(ApiError::NotFound);
+    }
     let permissions = effective_permissions(&user.credential, &m.permissions);
     require(&permissions, need, &user.credential)?;
     let tenant_id = TenantId::parse(m.tenant_id.clone()).map_err(|e| ApiError::Internal(e.to_string()))?;
@@ -229,6 +271,12 @@ pub async fn authorize_as(
     }
     let memberships = state.pg.memberships(user.user_id).await?;
     let m = memberships.iter().find(|m| m.project_id == project.as_str()).ok_or(ApiError::NotFound)?;
+    let organization = state.pg.organisation_for_project(project.as_str()).await?.ok_or(ApiError::NotFound)?;
+    if !has_organization_access(&state.pg.organisation_memberships(user.user_id).await?, user.user_id, &organization.id)
+        || !state.pg.project_assignment_exists(user.user_id, project.as_str()).await?
+    {
+        return Err(ApiError::NotFound);
+    }
     let env_row = state.pg.environment(project.as_str(), env.as_str()).await?.ok_or(ApiError::NotFound)?;
     if env_row.tenant_id != m.tenant_id {
         return Err(ApiError::NotFound);
@@ -344,6 +392,21 @@ mod tests {
         assert_eq!(forbidden(require(&viewer, Permission::TokensManage, &token)), "API tokens are read-only");
         let none = PermissionSet::new();
         assert_eq!(forbidden(require(&none, Permission::TelemetryView, &token)), "insufficient permissions");
+    }
+
+    #[test]
+    fn organization_access_requires_membership_in_the_projects_organisation() {
+        let user_id = Uuid::from_u128(42);
+        let memberships = vec![karbird_storage::pg::OrganizationMemberRow {
+            user_id,
+            organization_id: "org-a".into(),
+            role: "member".into(),
+            created_at: time::OffsetDateTime::UNIX_EPOCH,
+        }];
+
+        assert!(has_organization_access(&memberships, user_id, "org-a"));
+        assert!(!has_organization_access(&memberships, user_id, "org-b"));
+        assert!(!has_organization_access(&memberships, Uuid::from_u128(7), "org-a"));
     }
 
     #[test]

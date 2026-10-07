@@ -19,11 +19,19 @@ export function ProjectsPage() {
   const qc = useQueryClient();
   const session = useSession();
   const projects = session.data?.projects ?? [];
+  const organizations = session.data?.organizations ?? [];
   const [name, setName] = useState("");
+  const [organizationId, setOrganizationId] = useState("");
+  const [environments, setEnvironments] = useState(["Development", "Staging", "Production"]);
   const refresh = () => qc.invalidateQueries({ queryKey: ["session"] });
 
   const create = useMutation({
-    mutationFn: async (projectName: string) => unwrap(await api.POST("/api/v1/projects", { body: { name: projectName } })),
+    mutationFn: async (projectName: string) =>
+      unwrap(
+        await api.POST("/api/v1/projects", {
+          body: { organization_id: organizationId, name: projectName, environments },
+        }),
+      ),
     onSuccess: async (p) => {
       await refresh();
       const env = p.environments[0];
@@ -50,14 +58,40 @@ export function ProjectsPage() {
     <AccountShell active="projects" title="Projects" description="Projects you belong to, with your role in each. Each project has its own members, roles and data.">
       <form onSubmit={submit} className="card flex flex-wrap items-end gap-3 p-5 text-sm" aria-label="New project">
         <label className="flex flex-col gap-1.5">
+          <span className="label">Organization</span>
+          <select value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} required className="input h-9 w-52">
+            <option value="">Choose an organization</option>
+            {organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5">
           <span className="label">Project name</span>
           <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} placeholder="e.g. Shop backend" className="input h-9 w-72" />
         </label>
-        <button type="submit" disabled={create.isPending || !name.trim()} className="btn btn-primary h-9 px-4">
+        <button type="submit" disabled={create.isPending || !name.trim() || !organizationId} className="btn btn-primary h-9 px-4">
           <Icon name="plus" className="h-4 w-4" />
           Create project
         </button>
-        <p className="basis-full text-xs text-muted">You become its owner. It starts with one environment, “production”, and a guide to connect your services.</p>
+        <fieldset className="basis-full space-y-2">
+          <legend className="label">Environments</legend>
+          <div className="flex flex-wrap gap-2">
+            {environments.map((environment, index) => (
+              <span key={index} className="flex items-center gap-1">
+                <input
+                  className="input h-9 w-40"
+                  aria-label={`Environment ${index + 1}`}
+                  value={environment}
+                  maxLength={100}
+                  required
+                  onChange={(event) => setEnvironments((items) => items.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
+                />
+                <button type="button" className="btn btn-sm" disabled={environments.length === 1} onClick={() => setEnvironments((items) => items.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>
+              </span>
+            ))}
+            <button type="button" className="btn btn-sm" onClick={() => setEnvironments((items) => [...items, ""])}>Add environment</button>
+          </div>
+        </fieldset>
+        <p className="basis-full text-xs text-muted">You become its owner. Environment names can match your delivery workflow.</p>
       </form>
 
       {error ? (

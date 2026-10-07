@@ -5,13 +5,14 @@ import type { ReactNode } from "react";
 import { Icon, Logo, type IconName } from "@/components/ui/Icon";
 import { useLogout, useSession } from "@/lib/session";
 
-export type AccountNavId = "overview" | "profile" | "security" | "projects";
+export type AccountNavId = "overview" | "profile" | "security" | "projects" | "people";
 
 const NAV: Array<{ id: AccountNavId; href: string; label: string; icon: IconName }> = [
   { id: "overview", href: "/app/account", label: "Home", icon: "home" },
   { id: "profile", href: "/app/account/profile", label: "Personal info", icon: "user" },
   { id: "security", href: "/app/account/security", label: "Security", icon: "shield" },
   { id: "projects", href: "/app/account/projects", label: "Projects", icon: "folder" },
+  { id: "people", href: "/app/account/people", label: "People", icon: "users" },
 ];
 
 /** Initials-style avatar from a display name or email. */

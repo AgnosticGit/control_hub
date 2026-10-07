@@ -4,6 +4,7 @@
 mod auth;
 mod bootstrap;
 mod error;
+mod mail;
 mod openapi;
 mod permissions;
 mod routes;
@@ -126,6 +127,20 @@ struct ServeArgs {
     /// Sign-up attempts allowed per hour across all clients.
     #[arg(long, env = "KARBIRD_SIGNUP_PER_HOUR", default_value_t = 20)]
     signup_per_hour: u32,
+    #[arg(long, env = "KARBIRD_PUBLIC_URL", default_value = "http://localhost:3000")]
+    public_url: String,
+    #[arg(long, env = "KARBIRD_MAIL_ENABLED", default_value_t = false)]
+    mail_enabled: bool,
+    #[arg(long, env = "KARBIRD_RESEND_API_KEY", requires = "mail_from")]
+    resend_api_key: Option<String>,
+    #[arg(long, env = "KARBIRD_MAIL_FROM", requires = "resend_api_key")]
+    mail_from: Option<String>,
+    #[arg(long, env = "KARBIRD_GOOGLE_CLIENT_ID", requires_all = ["google_client_secret", "google_redirect_url"])]
+    google_client_id: Option<String>,
+    #[arg(long, env = "KARBIRD_GOOGLE_CLIENT_SECRET", requires_all = ["google_client_id", "google_redirect_url"])]
+    google_client_secret: Option<String>,
+    #[arg(long, env = "KARBIRD_GOOGLE_REDIRECT_URL", requires_all = ["google_client_id", "google_client_secret"])]
+    google_redirect_url: Option<String>,
     /// S3-compatible endpoint of the log archive. Without it logs are served from ClickHouse only.
     #[arg(long, env = "KARBIRD_ARCHIVE_S3_ENDPOINT")]
     archive_s3_endpoint: Option<String>,
@@ -207,7 +222,7 @@ fn archive_config(args: &ServeArgs) -> anyhow::Result<Option<state::ArchiveConfi
 
 fn router(state: state::AppState) -> Router {
     use axum::routing::{delete, patch};
-    use routes::{account, admin, invites, roles, session, telemetry};
+    use routes::{account, admin, invites, organisations, roles, session, telemetry};
     let scoped = "/api/v1/projects/{project_id}/environments/{environment_id}";
     Router::new()
         .route("/api/v1/health", get(routes::health))
@@ -216,6 +231,9 @@ fn router(state: state::AppState) -> Router {
         .route("/api/v1/session/register", post(routes::signup::register))
         .route("/api/v1/session/logout", post(session::logout))
         .route("/api/v1/session", get(session::session))
+        .route("/api/v1/auth/google/start", get(routes::oauth::start))
+        .route("/api/v1/auth/google/callback", get(routes::oauth::callback))
+        .route("/api/v1/onboarding/first-project", post(account::create_first_project))
         .route("/api/v1/projects", get(session::projects).post(account::create_project))
         .route("/api/v1/projects/{project_id}", axum::routing::patch(account::rename_project))
         .route("/api/v1/projects/{project_id}/leave", post(account::leave_project))
@@ -228,6 +246,24 @@ fn router(state: state::AppState) -> Router {
         .route("/api/v1/projects/{project_id}/invites/{invite_id}", axum::routing::delete(invites::revoke))
         .route("/api/v1/invites/preview", post(invites::preview))
         .route("/api/v1/invites/accept", post(invites::accept))
+        .route(
+            "/api/v1/organizations/{organization_id}/members",
+            get(organisations::list_members).post(organisations::add_member),
+        )
+        .route(
+            "/api/v1/organizations/{organization_id}/projects/{project_id}/members/{user_id}",
+            axum::routing::put(organisations::put_project_assignment)
+                .delete(organisations::delete_project_assignment),
+        )
+        .route(
+            "/api/v1/organizations/{organization_id}/invites",
+            get(organisations::list_invites).post(organisations::create_invite),
+        )
+        .route(
+            "/api/v1/organizations/{organization_id}/invites/{invite_id}",
+            axum::routing::delete(organisations::revoke_invite),
+        )
+        .route("/api/v1/organization-invites/accept", post(organisations::accept_invite))
         .route("/api/v1/permissions", get(roles::catalog))
         .route("/api/v1/projects/{project_id}/roles", get(roles::list_roles).post(roles::create_role))
         .route(
@@ -314,6 +350,25 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     if !config.secure_cookies {
         tracing::warn!("KARBIRD_ENV=dev: Secure cookie flag disabled for local http. Never use in production.");
     }
+    let resend_api_key = args.resend_api_key.as_deref().filter(|value| !value.trim().is_empty());
+    let mail_from = args.mail_from.as_deref().filter(|value| !value.trim().is_empty());
+    let mailer: std::sync::Arc<dyn mail::Mailer> = match (resend_api_key, mail_from) {
+        (Some(key), Some(from)) => std::sync::Arc::new(mail::ResendMailer::new(key.to_owned(), from.to_owned())?),
+        (None, None) if !args.mail_enabled => std::sync::Arc::new(mail::DisabledMailer),
+        _ => anyhow::bail!("KARBIRD_MAIL_ENABLED needs KARBIRD_RESEND_API_KEY and KARBIRD_MAIL_FROM"),
+    };
+    let google_client_id = args.google_client_id.as_deref().filter(|value| !value.trim().is_empty());
+    let google_client_secret = args.google_client_secret.as_deref().filter(|value| !value.trim().is_empty());
+    let google_redirect_url = args.google_redirect_url.as_deref().filter(|value| !value.trim().is_empty());
+    let google_oauth = match (google_client_id, google_client_secret, google_redirect_url) {
+        (Some(client_id), Some(client_secret), Some(redirect_url)) => Some(routes::oauth::GoogleOAuthConfig {
+            client_id: client_id.to_owned(),
+            client_secret: client_secret.to_owned(),
+            redirect_url: redirect_url.to_owned(),
+        }),
+        (None, None, None) => None,
+        _ => anyhow::bail!("Google OAuth needs KARBIRD_GOOGLE_CLIENT_ID, KARBIRD_GOOGLE_CLIENT_SECRET and KARBIRD_GOOGLE_REDIRECT_URL"),
+    };
     let state = state::AppState {
         pg,
         ch,
@@ -322,6 +377,11 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         login_throttle: auth::LoginThrottle::default(),
         signup_throttle: routes::signup::SignupThrottle::default(),
         live_slots: std::sync::Arc::new(tokio::sync::Semaphore::new(args.max_live_connections)),
+        mailer,
+        public_url: args.public_url.trim_end_matches('/').to_owned(),
+        google_oauth,
+        oauth_states: routes::oauth::OAuthStateStore::default(),
+        oauth_client: reqwest::Client::builder().timeout(Duration::from_secs(10)).build()?,
     };
     let listener = tokio::net::TcpListener::bind(args.addr).await?;
     tracing::info!(addr = %args.addr, "karbird-api listening");
@@ -462,6 +522,7 @@ mod tests {
             (Method::POST, "/api/v1/account/password".to_owned()),
             (Method::POST, "/api/v1/account/sessions/revoke-others".to_owned()),
             (Method::DELETE, format!("/api/v1/account/sessions/{PLAN}")),
+            (Method::POST, "/api/v1/onboarding/first-project".to_owned()),
             (Method::POST, "/api/v1/projects".to_owned()),
             (Method::PATCH, "/api/v1/projects/demo".to_owned()),
             (Method::POST, "/api/v1/projects/demo/leave".to_owned()),
@@ -795,6 +856,9 @@ mod tests {
             ("/api/v1/session/register".into(), "post"),
             ("/api/v1/session/logout".into(), "post"),
             ("/api/v1/session".into(), "get"),
+            ("/api/v1/auth/google/start".into(), "get"),
+            ("/api/v1/auth/google/callback".into(), "get"),
+            ("/api/v1/onboarding/first-project".into(), "post"),
             ("/api/v1/projects".into(), "get"),
             ("/api/v1/permissions".into(), "get"),
             ("/api/v1/projects/{project_id}/roles".into(), "get"),
@@ -817,6 +881,14 @@ mod tests {
             ("/api/v1/projects/{project_id}/invites/{invite_id}".into(), "delete"),
             ("/api/v1/invites/preview".into(), "post"),
             ("/api/v1/invites/accept".into(), "post"),
+            ("/api/v1/organizations/{organization_id}/members".into(), "get"),
+            ("/api/v1/organizations/{organization_id}/members".into(), "post"),
+            ("/api/v1/organizations/{organization_id}/projects/{project_id}/members/{user_id}".into(), "put"),
+            ("/api/v1/organizations/{organization_id}/projects/{project_id}/members/{user_id}".into(), "delete"),
+            ("/api/v1/organizations/{organization_id}/invites".into(), "get"),
+            ("/api/v1/organizations/{organization_id}/invites".into(), "post"),
+            ("/api/v1/organizations/{organization_id}/invites/{invite_id}".into(), "delete"),
+            ("/api/v1/organization-invites/accept".into(), "post"),
             ("/api/v1/admin/overview".into(), "get"),
             ("/api/v1/admin/permissions".into(), "get"),
             ("/api/v1/admin/projects".into(), "get"),

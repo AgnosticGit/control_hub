@@ -1,29 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import { SetupCard } from "@/components/account/AccountHome";
 import { projectColor } from "@/components/account/project-color";
+import { ProjectWizard } from "@/components/projects/ProjectWizard";
 import { Icon, Logo } from "@/components/ui/Icon";
 import { useSession } from "@/lib/session";
 
 export default function AppIndex() {
-  const router = useRouter();
   const session = useSession();
   const projects = session.data?.projects ?? [];
-  const only = projects.length === 1 && projects[0]?.environments.length === 1 ? projects[0] : null;
 
-  useEffect(() => {
-    const env = only?.environments[0];
-    if (only && env) router.replace(`/app/${only.id}/${env.id}`);
-  }, [only, router]);
-
-  if (session.isPending || only) {
+  if (session.isPending) {
     return <p className="p-8 text-sm text-muted">Loading…</p>;
   }
   if (session.error) {
     return <p className="p-8 text-sm text-error">Cannot load session.</p>;
+  }
+  if ((session.data?.organizations.length ?? 0) === 0) {
+    return <main className="min-h-screen px-6 py-16"><ProjectWizard /></main>;
   }
   return (
     <div className="min-h-screen">
@@ -53,7 +48,7 @@ export default function AppIndex() {
       </header>
 
       <main className="mx-auto max-w-4xl px-6 py-12">
-        <h1 className="text-[2rem] leading-tight font-bold tracking-[-0.02em]">Choose an environment</h1>
+        <h1 className="text-[2rem] leading-tight font-bold tracking-[-0.02em]">Projects</h1>
         <p className="mt-2 text-muted">
           {projects.length === 0
             ? "You are not a member of any project yet."

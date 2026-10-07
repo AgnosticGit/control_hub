@@ -194,6 +194,8 @@ async fn prepare_storage(retention: &[(Table, u32)], allow_shrink: bool) -> anyh
             // Members, role templates and invite links are managed from the web app (permission checks in the API).
             "SELECT, INSERT, UPDATE, DELETE ON memberships, project_roles",
             "SELECT, INSERT, UPDATE ON project_invites",
+            "SELECT, INSERT, UPDATE ON organisations, organisation_memberships, project_memberships, organisation_invites, oauth_identities",
+            "DELETE ON organisation_memberships, project_memberships, organisation_invites",
             "SELECT, INSERT, UPDATE ON sessions",
             "SELECT, INSERT ON audit_log",
             "SELECT, INSERT, UPDATE ON ingest_tokens, api_tokens",

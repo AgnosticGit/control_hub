@@ -8,11 +8,12 @@ use karbird_storage::pg::{MemberChange, NewAuditEntry, SessionInfoRow};
 use karbird_storage::secrets::{hash_password, verify_password};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::auth::{CurrentUser, authorize_project};
+use crate::auth::{CurrentUser, authorize_organization_admin, authorize_project};
 use crate::error::{ApiError, ApiResult};
 use crate::permissions::Permission;
 use crate::routes::session::{ProjectDto, UserDto, projects_for, user_dto};
@@ -21,7 +22,6 @@ use crate::state::AppState;
 
 /// Projects one account may own; bounds what a single sign-up can create.
 pub const MAX_OWNED_PROJECTS: i64 = 20;
-const NEW_PROJECT_ENVIRONMENT: &str = "production";
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AccountUpdateRequest {
@@ -54,6 +54,38 @@ pub struct RevokedSessions {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ProjectRequest {
     pub name: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateProjectRequest {
+    pub organization_id: String,
+    pub name: String,
+    pub environments: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct FirstRunRequest {
+    pub organization_name: String,
+    pub project_name: String,
+    pub environments: Vec<String>,
+}
+
+/// Normalises environment names once at the API boundary. PostgreSQL keeps the
+/// display spelling; uniqueness is case-insensitive for predictable routing.
+pub(crate) fn validate_environment_names(raw: &[String]) -> Result<Vec<String>, ApiError> {
+    if raw.is_empty() {
+        return Err(ApiError::BadRequest("add at least one environment".into()));
+    }
+    let mut seen = HashSet::with_capacity(raw.len());
+    raw.iter()
+        .map(|name| {
+            let name = required_name(name, "environment name")?;
+            if !seen.insert(name.to_lowercase()) {
+                return Err(ApiError::BadRequest("environment names must be unique".into()));
+            }
+            Ok(name)
+        })
+        .collect()
 }
 
 fn session_dto(s: SessionInfoRow, current: Uuid) -> SessionDto {
@@ -197,23 +229,75 @@ pub async fn revoke_other_sessions(
     Ok(Json(RevokedSessions { revoked }))
 }
 
-#[utoipa::path(post, path = "/api/v1/projects", tag = "projects", request_body = ProjectRequest,
+#[utoipa::path(post, path = "/api/v1/projects", tag = "projects", request_body = CreateProjectRequest,
     responses((status = 201, body = ProjectDto), (status = 400, body = crate::error::ErrorBody), (status = 401, body = crate::error::ErrorBody),
         (status = 403, body = crate::error::ErrorBody), (status = 409, body = crate::error::ErrorBody)))]
 pub async fn create_project(
     State(state): State<AppState>,
     user: CurrentUser,
-    Json(req): Json<ProjectRequest>,
+    Json(req): Json<CreateProjectRequest>,
 ) -> ApiResult<(StatusCode, Json<ProjectDto>)> {
     user.session_id()?;
     let name = required_name(&req.name, "project name")?;
+    let environments = validate_environment_names(&req.environments)?;
+    let organization = authorize_organization_admin(&state, &user, &req.organization_id).await?;
     if state.pg.owned_project_count(user.user_id).await? >= MAX_OWNED_PROJECTS {
         return Err(ApiError::Conflict("you already own the maximum number of projects (20)"));
     }
-    let scope = state.pg.create_project(user.user_id, &name, NEW_PROJECT_ENVIRONMENT).await?;
-    let (t, p) = (scope.tenant_id.as_str(), scope.project_id.as_str());
-    audit(&state, Some((t, p)), &user, "project.create", p, Some(json!({ "name": name }))).await?;
-    let project = projects_for(&state, &user).await?.into_iter().find(|x| x.id == p).ok_or(ApiError::NotFound)?;
+    let created = state
+        .pg
+        .create_project_with_environments(user.user_id, organization.organization_id.as_str(), &name, &environments)
+        .await?;
+    audit(
+        &state,
+        Some((&created.organization_id, &created.project_id)),
+        &user,
+        "project.create",
+        &created.project_id,
+        Some(json!({ "name": name, "environments": environments })),
+    )
+    .await?;
+    let project = projects_for(&state, &user)
+        .await?
+        .into_iter()
+        .find(|x| x.id == created.project_id)
+        .ok_or(ApiError::NotFound)?;
+    Ok((StatusCode::CREATED, Json(project)))
+}
+
+#[utoipa::path(post, path = "/api/v1/onboarding/first-project", tag = "onboarding", request_body = FirstRunRequest,
+    responses((status = 201, body = ProjectDto), (status = 400, body = crate::error::ErrorBody), (status = 401, body = crate::error::ErrorBody),
+        (status = 409, body = crate::error::ErrorBody)))]
+pub async fn create_first_project(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Json(req): Json<FirstRunRequest>,
+) -> ApiResult<(StatusCode, Json<ProjectDto>)> {
+    user.session_id()?;
+    let organization_name = required_name(&req.organization_name, "organization name")?;
+    let project_name = required_name(&req.project_name, "project name")?;
+    let environments = validate_environment_names(&req.environments)?;
+    if !state.pg.organisations_for_user(user.user_id).await?.is_empty() {
+        return Err(ApiError::Conflict("your first organization is already configured"));
+    }
+    let created = state
+        .pg
+        .create_organization_with_project(user.user_id, &organization_name, &project_name, &environments)
+        .await?;
+    audit(
+        &state,
+        Some((&created.organization_id, &created.project_id)),
+        &user,
+        "organization.create",
+        &created.organization_id,
+        Some(json!({ "name": organization_name, "project": project_name, "environments": environments })),
+    )
+    .await?;
+    let project = projects_for(&state, &user)
+        .await?
+        .into_iter()
+        .find(|x| x.id == created.project_id)
+        .ok_or(ApiError::NotFound)?;
     Ok((StatusCode::CREATED, Json(project)))
 }
 
@@ -289,5 +373,16 @@ mod tests {
         assert_eq!(dtos.iter().filter(|d| d.current).count(), 1);
         assert!(dtos[1].current);
         assert_eq!(dtos[0].created_at, "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn environment_names_are_normalized_unique_and_nonempty() {
+        assert_eq!(
+            validate_environment_names(&[" Development ".into(), "Staging".into(), "Production".into()]).unwrap(),
+            vec!["Development", "Staging", "Production"]
+        );
+        assert!(validate_environment_names(&[]).is_err());
+        assert!(validate_environment_names(&["dev".into(), " DEV ".into()]).is_err());
+        assert!(validate_environment_names(&[" ".into()]).is_err());
     }
 }

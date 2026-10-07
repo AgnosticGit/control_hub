@@ -7,6 +7,8 @@ use tokio::sync::Semaphore;
 
 use crate::auth::LoginThrottle;
 use crate::routes::signup::SignupThrottle;
+use crate::mail::Mailer;
+use crate::routes::oauth::{GoogleOAuthConfig, OAuthStateStore};
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
@@ -44,6 +46,11 @@ pub struct AppState {
     pub signup_throttle: SignupThrottle,
     /// Bounds concurrent live WebSocket connections (each polls ClickHouse once per second).
     pub live_slots: Arc<Semaphore>,
+    pub mailer: Arc<dyn Mailer>,
+    pub public_url: String,
+    pub google_oauth: Option<GoogleOAuthConfig>,
+    pub oauth_states: OAuthStateStore,
+    pub oauth_client: reqwest::Client,
 }
 
 /// State whose stores point at closed local ports: any handler that reaches storage fails
@@ -72,5 +79,10 @@ pub fn test_state(secure_cookies: bool) -> AppState {
         login_throttle: LoginThrottle::default(),
         signup_throttle: SignupThrottle::default(),
         live_slots: Arc::new(Semaphore::new(2)),
+        mailer: Arc::new(crate::mail::DisabledMailer),
+        public_url: "http://localhost:3000".into(),
+        google_oauth: None,
+        oauth_states: OAuthStateStore::default(),
+        oauth_client: reqwest::Client::new(),
     }
 }

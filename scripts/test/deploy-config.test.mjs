@@ -18,6 +18,14 @@ const input = {
   KARBIRD_VERSION: 'v1.2.3',
 };
 
+const identity = {
+  KARBIRD_GOOGLE_CLIENT_ID: 'google-client',
+  KARBIRD_GOOGLE_CLIENT_SECRET: 'google-secret',
+  KARBIRD_GOOGLE_REDIRECT_URL: 'https://karbird.example.com/api/v1/auth/google/callback',
+  KARBIRD_RESEND_API_KEY: 'resend-secret',
+  KARBIRD_MAIL_FROM: 'Karbird <invite@karbird.example.com>',
+};
+
 const files = render(input);
 const storage = parseEnv(files['storage/.env']);
 const app = parseEnv(files['app/.env']);
@@ -119,6 +127,19 @@ test('sign-up is open by default on a deployment, can be closed, and only reache
   for (const bad of ['0', '-1', 'many', '1e3']) {
     assert.throws(() => render({ ...input, KARBIRD_SIGNUP_PER_HOUR: bad }), /KARBIRD_SIGNUP_PER_HOUR/, bad);
   }
+});
+
+test('OAuth and Resend credentials stay on the app host and incomplete pairs fail', () => {
+  const configured = render({ ...input, ...identity });
+  const configuredApp = parseEnv(configured['app/.env']);
+  assert.equal(configuredApp.KARBIRD_GOOGLE_CLIENT_ID, identity.KARBIRD_GOOGLE_CLIENT_ID);
+  assert.equal(configuredApp.KARBIRD_GOOGLE_CLIENT_SECRET, identity.KARBIRD_GOOGLE_CLIENT_SECRET);
+  assert.equal(configuredApp.KARBIRD_RESEND_API_KEY, identity.KARBIRD_RESEND_API_KEY);
+  assert.equal(configuredApp.KARBIRD_MAIL_ENABLED, 'true');
+  assert.ok(!configured['storage/.env'].includes(identity.KARBIRD_GOOGLE_CLIENT_SECRET));
+  assert.ok(!configured['storage/.env'].includes(identity.KARBIRD_RESEND_API_KEY));
+  assert.throws(() => render({ ...input, KARBIRD_GOOGLE_CLIENT_ID: 'only-one' }), /Google OAuth requires/);
+  assert.throws(() => render({ ...input, KARBIRD_RESEND_API_KEY: 'only-one' }), /email delivery requires/);
 });
 
 test('every variable a production compose file reads is rendered for its host or has a default', () => {

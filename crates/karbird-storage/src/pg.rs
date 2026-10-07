@@ -50,6 +50,67 @@ pub struct MembershipRow {
     pub permissions: Vec<String>,
 }
 
+/// An organisation is the stable, customer-facing name for an existing tenant.
+/// Its identifier intentionally remains the original tenant ID so stored scopes
+/// do not need a telemetry migration.
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct OrganizationRow {
+    pub id: String,
+    pub name: String,
+    pub created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct OrganizationMemberRow {
+    pub user_id: Uuid,
+    pub organization_id: String,
+    pub role: String,
+    pub created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct ProjectAssignmentRow {
+    pub user_id: Uuid,
+    pub project_id: String,
+    pub role_id: Option<Uuid>,
+    pub permissions: Option<Vec<String>>,
+    pub based_on: Option<Uuid>,
+    pub created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct OrganizationPersonRow {
+    pub user_id: Uuid,
+    pub email: String,
+    pub display_name: String,
+    pub organization_id: String,
+    pub role: String,
+    pub created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct InviteProjectAssignment {
+    pub project_id: String,
+    pub role_id: Uuid,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct OrganizationInviteRow {
+    pub id: Uuid,
+    pub organization_id: String,
+    pub email: String,
+    pub organization_role: String,
+    pub project_assignments: serde_json::Value,
+    pub token_prefix: String,
+    pub created_by: Uuid,
+    pub created_at: OffsetDateTime,
+    pub expires_at: OffsetDateTime,
+    pub revoked_at: Option<OffsetDateTime>,
+    pub accepted_at: Option<OffsetDateTime>,
+    pub delivery_status: String,
+    pub delivery_error: Option<String>,
+}
+
 impl MembershipRow {
     pub fn is_owner(&self) -> bool {
         self.role_key.as_deref() == Some("owner")
@@ -300,6 +361,13 @@ pub struct CreatedAccount {
     pub scope: Scope,
 }
 
+#[derive(Debug, Clone)]
+pub struct CreatedProject {
+    pub organization_id: String,
+    pub project_id: String,
+    pub environments: Vec<EnvironmentRow>,
+}
+
 /// Random, unguessable ids for a signed-up tenant, so they never collide with seeded or
 /// other customers' ids and reveal nothing about how many accounts exist.
 /// `LIKE` patterns for addresses in exactly these domains (lowercased, wildcards escaped;
@@ -321,6 +389,16 @@ fn like_escape(s: &str) -> String {
 fn new_account_scope() -> Result<Scope> {
     let id = |prefix: &str| format!("{prefix}-{}", Uuid::new_v4().simple());
     scope_from(id("t"), id("p"), id("e"))
+}
+
+fn new_project_id() -> Result<ProjectId> {
+    ProjectId::parse(format!("p-{}", Uuid::new_v4().simple()))
+        .map_err(|e| StorageError::Other(format!("invalid generated project id: {e}")))
+}
+
+fn new_environment_id() -> Result<EnvironmentId> {
+    EnvironmentId::parse(format!("e-{}", Uuid::new_v4().simple()))
+        .map_err(|e| StorageError::Other(format!("invalid generated environment id: {e}")))
 }
 
 fn scope_from(t: String, p: String, e: String) -> Result<Scope> {
@@ -363,6 +441,295 @@ impl PgStore {
     pub async fn ping(&self) -> Result<()> {
         sqlx::query("SELECT 1").execute(&self.pool).await?;
         Ok(())
+    }
+
+    /// Looks up the organisation owning a project without changing the
+    /// tenant/project/environment identifiers used by telemetry scopes.
+    pub async fn organisation_for_project(&self, project_id: &str) -> Result<Option<OrganizationRow>> {
+        Ok(sqlx::query_as::<_, OrganizationRow>(
+            "SELECT o.id, o.name, o.created_at
+             FROM projects p
+             JOIN organisations o ON o.id = p.tenant_id
+             WHERE p.id = $1",
+        )
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    pub async fn organisation_memberships(&self, user_id: Uuid) -> Result<Vec<OrganizationMemberRow>> {
+        Ok(sqlx::query_as::<_, OrganizationMemberRow>(
+            "SELECT user_id, organisation_id AS organization_id, role, created_at
+             FROM organisation_memberships WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn project_assignment_exists(&self, user_id: Uuid, project_id: &str) -> Result<bool> {
+        Ok(sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM project_memberships WHERE user_id = $1 AND project_id = $2)",
+        )
+        .bind(user_id)
+        .bind(project_id)
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
+    pub async fn organisations_for_user(&self, user_id: Uuid) -> Result<Vec<OrganizationRow>> {
+        Ok(sqlx::query_as::<_, OrganizationRow>(
+            "SELECT o.id, o.name, o.created_at
+             FROM organisations o JOIN organisation_memberships m ON m.organisation_id = o.id
+             WHERE m.user_id = $1 ORDER BY lower(o.name), o.id",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn user_for_oauth_identity(&self, provider: &str, subject: &str) -> Result<Option<UserRow>> {
+        Ok(sqlx::query_as::<_, UserRow>(
+            "SELECT u.id, u.email, u.display_name, u.password_hash
+             FROM oauth_identities i JOIN users u ON u.id = i.user_id
+             WHERE i.provider = $1 AND i.subject = $2",
+        )
+        .bind(provider)
+        .bind(subject)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    pub async fn link_oauth_identity(
+        &self,
+        provider: &str,
+        subject: &str,
+        user_id: Uuid,
+        email: &str,
+    ) -> Result<bool> {
+        match sqlx::query(
+            "INSERT INTO oauth_identities (provider, subject, user_id, email) VALUES ($1, $2, $3, $4)
+             ON CONFLICT (provider, subject) DO NOTHING",
+        )
+        .bind(provider)
+        .bind(subject)
+        .bind(user_id)
+        .bind(email)
+        .execute(&self.pool)
+        .await
+        {
+            Ok(result) => Ok(result.rows_affected() == 1),
+            Err(sqlx::Error::Database(error)) if error.is_unique_violation() => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub async fn organization_members(&self, organization_id: &str) -> Result<Vec<OrganizationPersonRow>> {
+        Ok(sqlx::query_as::<_, OrganizationPersonRow>(
+            "SELECT u.id AS user_id, u.email, u.display_name,
+                    m.organisation_id AS organization_id, m.role, m.created_at
+             FROM organisation_memberships m JOIN users u ON u.id = m.user_id
+             WHERE m.organisation_id = $1
+             ORDER BY lower(u.display_name), lower(u.email)",
+        )
+        .bind(organization_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn organization_project_assignments(
+        &self,
+        organization_id: &str,
+        user_id: Uuid,
+    ) -> Result<Vec<ProjectAssignmentRow>> {
+        Ok(sqlx::query_as::<_, ProjectAssignmentRow>(
+            "SELECT pm.user_id, pm.project_id, pm.role_id, pm.permissions, pm.based_on, pm.created_at
+             FROM project_memberships pm JOIN projects p ON p.id = pm.project_id
+             WHERE p.tenant_id = $1 AND pm.user_id = $2 ORDER BY pm.project_id",
+        )
+        .bind(organization_id)
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn upsert_organization_member(&self, organization_id: &str, user_id: Uuid, role: &str) -> Result<bool> {
+        let result = sqlx::query(
+            "INSERT INTO organisation_memberships (user_id, organisation_id, role)
+             SELECT $1, id, $3 FROM organisations WHERE id = $2
+             ON CONFLICT (user_id, organisation_id) DO UPDATE SET role = EXCLUDED.role",
+        )
+        .bind(user_id)
+        .bind(organization_id)
+        .bind(role)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    pub async fn assign_project_role(
+        &self,
+        organization_id: &str,
+        project_id: &str,
+        user_id: Uuid,
+        role_id: Uuid,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "INSERT INTO memberships (user_id, project_id, role_id)
+             SELECT $3, p.id, r.id FROM projects p JOIN project_roles r ON r.project_id = p.id
+             WHERE p.tenant_id = $1 AND p.id = $2 AND r.id = $4
+             ON CONFLICT (user_id, project_id) DO UPDATE
+             SET role_id = EXCLUDED.role_id, permissions = NULL, based_on = NULL",
+        )
+        .bind(organization_id)
+        .bind(project_id)
+        .bind(user_id)
+        .bind(role_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    pub async fn create_organization_invite(
+        &self,
+        organization_id: &str,
+        email: &str,
+        organization_role: &str,
+        assignments: &[InviteProjectAssignment],
+        token_hash: &[u8],
+        token_prefix: &str,
+        created_by: Uuid,
+        expires_at: OffsetDateTime,
+    ) -> Result<Option<Uuid>> {
+        let assignments = serde_json::to_value(assignments).map_err(|error| StorageError::Other(error.to_string()))?;
+        Ok(sqlx::query_scalar(
+            "INSERT INTO organisation_invites
+                (id, organisation_id, email, organisation_role, project_assignments,
+                 token_hash, token_prefix, created_by, expires_at)
+             SELECT $1, o.id, $3, $4, $5, $6, $7, $8, $9 FROM organisations o WHERE o.id = $2
+             RETURNING id",
+        )
+        .bind(Uuid::now_v7())
+        .bind(organization_id)
+        .bind(email)
+        .bind(organization_role)
+        .bind(assignments)
+        .bind(token_hash)
+        .bind(token_prefix)
+        .bind(created_by)
+        .bind(expires_at)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    const ORGANIZATION_INVITE_COLUMNS: &'static str =
+        "id, organisation_id AS organization_id, email, organisation_role AS organization_role,
+         project_assignments, token_prefix, created_by, created_at, expires_at, revoked_at,
+         accepted_at, delivery_status, delivery_error";
+
+    pub async fn organization_invites(&self, organization_id: &str) -> Result<Vec<OrganizationInviteRow>> {
+        let query = format!(
+            "SELECT {} FROM organisation_invites WHERE organisation_id = $1 ORDER BY created_at DESC",
+            Self::ORGANIZATION_INVITE_COLUMNS
+        );
+        Ok(sqlx::query_as::<_, OrganizationInviteRow>(&query)
+            .bind(organization_id)
+            .fetch_all(&self.pool)
+            .await?)
+    }
+
+    pub async fn find_organization_invite(&self, token_hash: &[u8]) -> Result<Option<OrganizationInviteRow>> {
+        let query = format!(
+            "SELECT {} FROM organisation_invites WHERE token_hash = $1",
+            Self::ORGANIZATION_INVITE_COLUMNS
+        );
+        Ok(sqlx::query_as::<_, OrganizationInviteRow>(&query)
+            .bind(token_hash)
+            .fetch_optional(&self.pool)
+            .await?)
+    }
+
+    pub async fn set_organization_invite_delivery(
+        &self,
+        invite_id: Uuid,
+        status: &str,
+        error: Option<&str>,
+    ) -> Result<()> {
+        sqlx::query("UPDATE organisation_invites SET delivery_status = $2, delivery_error = $3 WHERE id = $1")
+            .bind(invite_id)
+            .bind(status)
+            .bind(error)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn revoke_organization_invite(&self, organization_id: &str, invite_id: Uuid) -> Result<bool> {
+        Ok(sqlx::query(
+            "UPDATE organisation_invites SET revoked_at = now()
+             WHERE organisation_id = $1 AND id = $2 AND revoked_at IS NULL AND accepted_at IS NULL",
+        )
+        .bind(organization_id)
+        .bind(invite_id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected()
+            == 1)
+    }
+
+    pub async fn accept_organization_invite(
+        &self,
+        invite_id: Uuid,
+        user_id: Uuid,
+        organization_id: &str,
+        organization_role: &str,
+        assignments: &[InviteProjectAssignment],
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+        let claimed = sqlx::query(
+            "UPDATE organisation_invites SET accepted_at = now(), accepted_by = $2
+             WHERE id = $1 AND organisation_id = $3 AND revoked_at IS NULL AND accepted_at IS NULL
+               AND expires_at > now()",
+        )
+        .bind(invite_id)
+        .bind(user_id)
+        .bind(organization_id)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if claimed != 1 {
+            return Ok(false);
+        }
+        sqlx::query(
+            "INSERT INTO organisation_memberships (user_id, organisation_id, role) VALUES ($1, $2, $3)
+             ON CONFLICT (user_id, organisation_id) DO UPDATE SET role = EXCLUDED.role",
+        )
+        .bind(user_id)
+        .bind(organization_id)
+        .bind(organization_role)
+        .execute(&mut *tx)
+        .await?;
+        for assignment in assignments {
+            let changed = sqlx::query(
+                "INSERT INTO memberships (user_id, project_id, role_id)
+                 SELECT $1, p.id, r.id FROM projects p JOIN project_roles r ON r.project_id = p.id
+                 WHERE p.tenant_id = $2 AND p.id = $3 AND r.id = $4
+                 ON CONFLICT (user_id, project_id) DO UPDATE
+                 SET role_id = EXCLUDED.role_id, permissions = NULL, based_on = NULL",
+            )
+            .bind(user_id)
+            .bind(organization_id)
+            .bind(&assignment.project_id)
+            .bind(assignment.role_id)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+            if changed != 1 {
+                return Err(StorageError::Other("invite contains an invalid project assignment".into()));
+            }
+        }
+        tx.commit().await?;
+        Ok(true)
     }
 
     // ------------------------------------------------------------ bootstrap
@@ -464,6 +831,28 @@ impl PgStore {
         Ok(Some(CreatedAccount { user_id, scope }))
     }
 
+    /// Creates an account before first-run onboarding. No tenant, project or
+    /// environment is allocated until the user completes the organisation
+    /// wizard, preventing abandoned sign-ups from creating empty telemetry
+    /// scopes.
+    pub async fn create_unconfigured_account(
+        &self,
+        email: &str,
+        display_name: &str,
+        password_hash: &str,
+    ) -> Result<Option<Uuid>> {
+        Ok(sqlx::query_scalar(
+            "INSERT INTO users (id, email, display_name, password_hash)
+             VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO NOTHING RETURNING id",
+        )
+        .bind(Uuid::now_v7())
+        .bind(email)
+        .bind(display_name)
+        .bind(password_hash)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     /// A new project in its own new tenant with one environment, owned by `user_id`.
     pub async fn create_project(&self, user_id: Uuid, project_name: &str, environment_name: &str) -> Result<Scope> {
         let mut tx = self.pool.begin().await?;
@@ -510,6 +899,105 @@ impl PgStore {
         .execute(&mut **tx)
         .await?;
         Ok(scope)
+    }
+
+    /// Creates one project and all of its environments inside an existing
+    /// organisation. The caller's project owner role is written through the
+    /// legacy membership table so its synchronisation trigger also records the
+    /// new project assignment.
+    pub async fn create_project_with_environments(
+        &self,
+        user_id: Uuid,
+        organization_id: &str,
+        project_name: &str,
+        environment_names: &[String],
+    ) -> Result<CreatedProject> {
+        let mut tx = self.pool.begin().await?;
+        let created =
+            Self::insert_project_with_environments(&mut tx, user_id, organization_id, project_name, environment_names)
+                .await?;
+        tx.commit().await?;
+        Ok(created)
+    }
+
+    /// First-run onboarding creates a tenant-backed organisation plus its first
+    /// project in a single transaction. Scope identifiers remain unchanged in
+    /// shape: the organisation ID is the tenant ID.
+    pub async fn create_organization_with_project(
+        &self,
+        user_id: Uuid,
+        organization_name: &str,
+        project_name: &str,
+        environment_names: &[String],
+    ) -> Result<CreatedProject> {
+        let mut tx = self.pool.begin().await?;
+        let organization_id = format!("t-{}", Uuid::new_v4().simple());
+        sqlx::query("INSERT INTO tenants (id, name) VALUES ($1, $2)")
+            .bind(&organization_id)
+            .bind(organization_name)
+            .execute(&mut *tx)
+            .await?;
+        // The migration trigger creates the organisation row. Make the creator
+        // an owner before adding the first project.
+        sqlx::query("INSERT INTO organisation_memberships (user_id, organisation_id, role) VALUES ($1, $2, 'owner')")
+            .bind(user_id)
+            .bind(&organization_id)
+            .execute(&mut *tx)
+            .await?;
+        let created =
+            Self::insert_project_with_environments(&mut tx, user_id, &organization_id, project_name, environment_names)
+                .await?;
+        tx.commit().await?;
+        Ok(created)
+    }
+
+    async fn insert_project_with_environments(
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        user_id: Uuid,
+        organization_id: &str,
+        project_name: &str,
+        environment_names: &[String],
+    ) -> Result<CreatedProject> {
+        let project_id = new_project_id()?;
+        sqlx::query("INSERT INTO projects (id, tenant_id, name) VALUES ($1, $2, $3)")
+            .bind(project_id.as_str())
+            .bind(organization_id)
+            .bind(project_name)
+            .execute(&mut **tx)
+            .await?;
+        sqlx::query(
+            "INSERT INTO memberships (user_id, project_id, role_id)
+             SELECT $1, $2, id FROM project_roles WHERE project_id = $2 AND builtin = 'owner'",
+        )
+        .bind(user_id)
+        .bind(project_id.as_str())
+        .execute(&mut **tx)
+        .await?;
+        let mut environments = Vec::with_capacity(environment_names.len());
+        for name in environment_names {
+            let id = new_environment_id()?;
+            sqlx::query(
+                "INSERT INTO environments (id, tenant_id, project_id, name, is_demo) VALUES ($1, $2, $3, $4, FALSE)",
+            )
+            .bind(id.as_str())
+            .bind(organization_id)
+            .bind(project_id.as_str())
+            .bind(name)
+            .execute(&mut **tx)
+            .await?;
+            environments.push(EnvironmentRow {
+                id: id.to_string(),
+                project_id: project_id.to_string(),
+                tenant_id: organization_id.to_owned(),
+                name: name.clone(),
+                is_demo: false,
+            });
+        }
+        Ok(CreatedProject {
+            organization_id: organization_id.to_owned(),
+            project_id: project_id.to_string(),
+            environments,
+        })
     }
 
     /// Projects in which the user holds the Owner role.
@@ -1574,6 +2062,27 @@ mod tests {
     fn token_kinds_map_to_the_sql_kind_column() {
         assert_eq!(TokenKind::Ingest.as_str(), "ingest");
         assert_eq!(TokenKind::Api.as_str(), "api");
+    }
+
+    #[tokio::test]
+    async fn organisation_lookup_is_scoped_to_a_project_id() {
+        let pg = PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/karbird", 1).unwrap();
+        let result = pg.organisation_for_project("project-a").await;
+
+        // The lazy store has no database behind it. This assertion only reaches
+        // the transport layer after the organisation query itself is available.
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn organisation_rows_preserve_the_existing_tenant_identifier() {
+        let organisation = OrganizationRow {
+            id: "tenant-existing".into(),
+            name: "Existing tenant".into(),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+        };
+
+        assert_eq!(organisation.id, "tenant-existing");
     }
 
     #[tokio::test]

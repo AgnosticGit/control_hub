@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useSyncExternalStore } from "react";
 import { Icon, Logo } from "@/components/ui/Icon";
-import { api, ApiRequestError, isUnauthenticated, unwrap } from "@/lib/api";
-import { currentInviteSecret, forgetInviteSecret, INVITE_PATH, rememberInviteSecret } from "@/lib/invite";
+import { api, ApiRequestError, isUnauthenticated, unwrap, unwrapEmpty } from "@/lib/api";
+import { currentInviteSecret, forgetInviteSecret, INVITE_PATH, isOrganizationInvite, rememberInviteSecret } from "@/lib/invite";
 
 const noSubscribe = () => () => {};
 const NEXT = encodeURIComponent(INVITE_PATH);
@@ -43,25 +43,36 @@ export default function InvitePage() {
     queryFn: async () => unwrap(await api.GET("/api/v1/session")),
   });
   const signedOut = session.isError && isUnauthenticated(session.error);
+  const organizationInvite = Boolean(secret && isOrganizationInvite(secret));
 
   const preview = useQuery({
     queryKey: ["invite-preview", secret, session.data?.user.id ?? null],
-    enabled: Boolean(secret) && !session.isPending,
+    enabled: Boolean(secret) && !organizationInvite && !session.isPending,
     retry: false,
     queryFn: async () => unwrap(await api.POST("/api/v1/invites/preview", { body: { token: secret ?? "" } })),
   });
 
   const accept = useMutation({
-    mutationFn: async () => unwrap(await api.POST("/api/v1/invites/accept", { body: { token: secret ?? "" } })),
+    mutationFn: async () => {
+      if (organizationInvite) {
+        await unwrapEmpty(await api.POST("/api/v1/organization-invites/accept", { body: { token: secret ?? "" } }));
+        return null;
+      }
+      return unwrap(await api.POST("/api/v1/invites/accept", { body: { token: secret ?? "" } }));
+    },
     onSuccess: async (r) => {
       forgetInviteSecret();
       await qc.invalidateQueries({ queryKey: ["session"] });
-      const project = encodeURIComponent(r.project_id);
-      router.replace(r.environment_id ? `/app/${project}/${encodeURIComponent(r.environment_id)}` : "/app");
+      if (!r) {
+        router.replace("/app");
+      } else {
+        const project = encodeURIComponent(r.project_id);
+        router.replace(r.environment_id ? `/app/${project}/${encodeURIComponent(r.environment_id)}` : "/app");
+      }
     },
   });
 
-  if (secret === undefined || (secret && !preview.isError && (!preview.data || session.isPending))) {
+  if (secret === undefined || (secret && !organizationInvite && !preview.isError && (!preview.data || session.isPending))) {
     return (
       <Card>
         <p className="text-muted">Loading the invite…</p>
@@ -69,7 +80,7 @@ export default function InvitePage() {
     );
   }
 
-  if (!secret || preview.isError) {
+  if (!secret || (!organizationInvite && preview.isError)) {
     return (
       <Card>
         <div className="flex flex-col items-center text-center">
@@ -82,6 +93,29 @@ export default function InvitePage() {
         <Link href="/app" className="btn h-10 w-full">
           Go to karbird
         </Link>
+      </Card>
+    );
+  }
+
+  if (organizationInvite) {
+    return (
+      <Card>
+        <div className="flex flex-col items-center text-center">
+          <Logo className="h-11 w-11" />
+          <h1 className="mt-4 text-xl font-semibold">Organization invitation</h1>
+          <p className="mt-2 text-muted">Sign in with the email address that received this invitation.</p>
+        </div>
+        {accept.error ? <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-error">{problem(accept.error)}</p> : null}
+        {signedOut ? (
+          <div className="space-y-2">
+            <Link href={`/app/login?next=${NEXT}`} className="btn btn-primary h-10 w-full">Sign in to join</Link>
+            <Link href={`/app/register?next=${NEXT}`} className="btn h-10 w-full">Create an account</Link>
+          </div>
+        ) : (
+          <button type="button" className="btn btn-primary h-10 w-full" disabled={accept.isPending} onClick={() => accept.mutate()}>
+            Accept invitation
+          </button>
+        )}
       </Card>
     );
   }

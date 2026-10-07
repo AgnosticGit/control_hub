@@ -388,6 +388,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/first-project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_first_project"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organization-invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["accept_organization_invite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_organization_invites"];
+        put?: never;
+        post: operations["create_organization_invite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/invites/{invite_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["revoke_organization_invite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_organization_members"];
+        put?: never;
+        post: operations["add_organization_member"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/projects/{project_id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["put_organization_project_assignment"];
+        post?: never;
+        delete: operations["delete_organization_project_assignment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/permissions": {
         parameters: {
             query?: never;
@@ -985,6 +1081,9 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AcceptOrganizationInviteRequest: {
+            token: string;
+        };
         AcceptedInvite: {
             already_member: boolean;
             /** @description First environment of the project, to open after joining. */
@@ -1055,6 +1154,11 @@ export interface components {
             service: string;
             target: string;
         };
+        AddOrganizationMemberRequest: {
+            assignments?: components["schemas"]["AssignmentRequest"][];
+            email: string;
+            organization_role: string;
+        };
         AdminAuditEntryDto: {
             action: string;
             /** @description Email of the acting account, when it still exists. */
@@ -1124,6 +1228,10 @@ export interface components {
             projects: number;
             /** @description Name of the account's administrator role, if it has one. */
             system_role?: string | null;
+        };
+        AssignmentRequest: {
+            project_id: string;
+            role_id: string;
         };
         AuditEntryDto: {
             action: string;
@@ -1252,6 +1360,18 @@ export interface components {
             max_uses?: number | null;
             role_id: string;
         };
+        CreateOrganizationInviteRequest: {
+            assignments?: components["schemas"]["AssignmentRequest"][];
+            email: string;
+            /** Format: int32 */
+            expires_in_days?: number | null;
+            organization_role: string;
+        };
+        CreateProjectRequest: {
+            environments: string[];
+            name: string;
+            organization_id: string;
+        };
         CreateTokenRequest: {
             /**
              * Format: int32
@@ -1264,6 +1384,11 @@ export interface components {
         CreatedInvite: {
             invite: components["schemas"]["InviteDto"];
             /** @description Shown once; the link is `<web app>/app/invite#<secret>`. */
+            secret: string;
+        };
+        CreatedOrganizationInvite: {
+            invite: components["schemas"]["OrganizationInviteDto"];
+            /** @description Returned once so local installations without email can still deliver the link safely. */
             secret: string;
         };
         CreatedTokenResponse: {
@@ -1375,6 +1500,11 @@ export interface components {
         EventListResponse: {
             completeness: components["schemas"]["Completeness"];
             events: components["schemas"]["EventDto"][];
+        };
+        FirstRunRequest: {
+            environments: string[];
+            organization_name: string;
+            project_name: string;
         };
         HealthResponse: {
             status: string;
@@ -1673,6 +1803,28 @@ export interface components {
             /** @default  */
             service_name: string;
         };
+        OrganizationDto: {
+            id: string;
+            name: string;
+        };
+        OrganizationInviteDto: {
+            assignments: components["schemas"]["ProjectAssignmentDto"][];
+            delivery_error?: string | null;
+            email: string;
+            expires_at: string;
+            id: string;
+            organization_role: string;
+            prefix: string;
+            status: string;
+        };
+        OrganizationMemberDto: {
+            assignments: components["schemas"]["ProjectAssignmentDto"][];
+            display_name: string;
+            email: string;
+            organization_id: string;
+            role: string;
+            user_id: string;
+        };
         ParamSpecDto: {
             /** @description An on/off switch, sent as the integer 0 or 1. */
             boolean: boolean;
@@ -1706,10 +1858,15 @@ export interface components {
             checks: components["schemas"]["PolicyCheckDto"][];
             requires_approval: boolean;
         };
+        ProjectAssignmentDto: {
+            project_id: string;
+            role_id?: string | null;
+        };
         ProjectDto: {
             environments: components["schemas"]["EnvironmentDto"][];
             id: string;
             name: string;
+            organization_id: string;
             /** @description Effective permission ids in this project (see `GET /api/v1/permissions`). */
             permissions: string[];
             /**
@@ -1740,8 +1897,6 @@ export interface components {
             email: string;
             /** @description At least 12 characters. */
             password: string;
-            /** @description Name of the first project; defaults to "My project". */
-            project_name?: string | null;
         };
         /** @enum {string} */
         RelationKindDto: "calls" | "depends_on" | "runs_on" | "deployed_from" | "owns" | "publishes_to" | "consumes_from";
@@ -1853,6 +2008,7 @@ export interface components {
             id: string;
         };
         SessionResponse: {
+            organizations: components["schemas"]["OrganizationDto"][];
             projects: components["schemas"]["ProjectDto"][];
             system?: null | components["schemas"]["SystemAccessDto"];
             user: components["schemas"]["UserDto"];
@@ -2017,6 +2173,9 @@ export interface components {
             span_count: number;
             start_ns: string;
             trace_id: string;
+        };
+        UpdateProjectAssignmentRequest: {
+            role_id: string;
         };
         UserDto: {
             /** @description RFC 3339. */
@@ -3442,6 +3601,280 @@ export interface operations {
             };
         };
     };
+    create_first_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FirstRunRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectDto"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    accept_organization_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptOrganizationInviteRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_organization_invites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationInviteDto"][];
+                };
+            };
+        };
+    };
+    create_organization_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrganizationInviteRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedOrganizationInvite"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_organization_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                invite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_organization_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMemberDto"][];
+                };
+            };
+        };
+    };
+    add_organization_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddOrganizationMemberRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMemberDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_organization_project_assignment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                project_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProjectAssignmentRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_organization_project_assignment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                project_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     catalog: {
         parameters: {
             query?: never;
@@ -3505,7 +3938,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProjectRequest"];
+                "application/json": components["schemas"]["CreateProjectRequest"];
             };
         };
         responses: {

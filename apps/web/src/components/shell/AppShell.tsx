@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { Icon, Logo, type IconName } from "@/components/ui/Icon";
 import { can } from "@/lib/permissions";
 import { useLogout, useSession } from "@/lib/session";
+import { workspaceTarget } from "./scope-switcher";
 
 export type NavId = "overview" | "integration" | "actions" | "tokens" | "settings";
 
@@ -21,11 +23,19 @@ interface Props {
 
 export function AppShell({ projectId, environmentId, active, top, status, children }: Props) {
   const session = useSession();
+  const router = useRouter();
+  const pathname = usePathname();
   const logout = useLogout();
   const project = session.data?.projects.find((p) => p.id === projectId);
-  const env = project?.environments.find((e) => e.id === environmentId);
   const base = `/app/${encodeURIComponent(projectId)}/${encodeURIComponent(environmentId)}`;
   const email = session.data?.user.email ?? "";
+  const organization = session.data?.organizations.find((item) => item.id === project?.organization_id);
+  const organizationProjects = session.data?.projects.filter((item) => item.organization_id === project?.organization_id) ?? [];
+  const navigate = (nextProjectId: string, nextEnvironmentId?: string) => {
+    const nextProject = session.data?.projects.find((item) => item.id === nextProjectId);
+    const targetEnvironment = nextEnvironmentId ?? nextProject?.environments[0]?.id;
+    router.push(targetEnvironment ? workspaceTarget(nextProjectId, targetEnvironment, pathname) : "/app");
+  };
 
   const nav: Array<{ id: NavId; href: string; label: string; icon: IconName; show: boolean }> = [
     { id: "overview", href: base, label: "Overview", icon: "map", show: true },
@@ -43,31 +53,34 @@ export function AppShell({ projectId, environmentId, active, top, status, childr
           karbird
         </Link>
 
-        <div className="mx-3 space-y-2 rounded-xl border border-border bg-surface/70 p-3">
-          <div>
-            <div className="label">Project</div>
-            <div className="mt-1 flex items-center gap-2 text-sm font-medium">
-              <span className="flex h-5 w-5 items-center justify-center rounded-md bg-violet/20 text-[10px] font-bold text-violet">
-                {(project?.name ?? projectId).slice(0, 1).toUpperCase()}
-              </span>
-              <span className="truncate">{project?.name ?? projectId}</span>
-            </div>
-          </div>
-          <div>
-            <div className="label">Environment</div>
-            <div className="mt-1 flex items-center gap-2 text-sm">
-              <span className="dot bg-ok shadow-[0_0_8px_rgb(34_197_94/0.8)]" aria-hidden />
-              <span className="truncate">{env?.name ?? environmentId}</span>
-              {env?.is_demo ? (
-                <span className="badge ml-auto border-warn/50 bg-warn/10 text-warn" title="Demo environment with synthetic load and fault injection">
-                  DEMO
-                </span>
-              ) : null}
-            </div>
-          </div>
-          <Link href="/app" className="block text-[11px] text-muted hover:text-accent">
-            Switch environment
-          </Link>
+        <div className="mx-3 grid gap-2 rounded-xl border border-border bg-surface/70 p-3">
+          <label className="grid gap-1 text-xs text-muted">
+            Organization
+            <select
+              aria-label="Organization"
+              className="input h-8 text-xs"
+              value={organization?.id ?? ""}
+              onChange={(event) => {
+                const next = session.data?.projects.find((item) => item.organization_id === event.target.value);
+                if (next) navigate(next.id);
+                else router.push("/app");
+              }}
+            >
+              {(session.data?.organizations ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs text-muted">
+            Project
+            <select aria-label="Project" className="input h-8 text-xs" value={projectId} onChange={(event) => navigate(event.target.value)}>
+              {organizationProjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs text-muted">
+            Environment
+            <select aria-label="Environment" className="input h-8 text-xs" value={environmentId} onChange={(event) => navigate(projectId, event.target.value)}>
+              {(project?.environments ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}{item.is_demo ? " · demo" : ""}</option>)}
+            </select>
+          </label>
         </div>
 
         <nav aria-label="Workspace" className="mt-4 space-y-0.5 px-3">

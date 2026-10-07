@@ -64,6 +64,7 @@ pub struct EnvironmentDto {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ProjectDto {
     pub id: String,
+    pub organization_id: String,
     pub tenant_id: String,
     pub name: String,
     /// Built-in role key (`owner`, `admin`, `operator`, `viewer`), `custom` for a role template or
@@ -77,8 +78,15 @@ pub struct ProjectDto {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct OrganizationDto {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SessionResponse {
     pub user: UserDto,
+    pub organizations: Vec<OrganizationDto>,
     pub projects: Vec<ProjectDto>,
     /// karbird administrator access; absent for everyone else and for API tokens.
     pub system: Option<crate::routes::admin::SystemAccessDto>,
@@ -124,9 +132,20 @@ pub async fn projects_for(state: &AppState, user: &CurrentUser) -> ApiResult<Vec
                 .map(|e| EnvironmentDto { id: e.id.clone(), name: e.name.clone(), is_demo: e.is_demo })
                 .collect(),
             id: m.project_id,
+            organization_id: m.tenant_id.clone(),
             tenant_id: m.tenant_id,
             name: m.project_name,
         })
+        .collect())
+}
+
+async fn organizations_for(state: &AppState, user_id: uuid::Uuid) -> ApiResult<Vec<OrganizationDto>> {
+    Ok(state
+        .pg
+        .organisations_for_user(user_id)
+        .await?
+        .into_iter()
+        .map(|o| OrganizationDto { id: o.id, name: o.name })
         .collect())
 }
 
@@ -190,6 +209,7 @@ pub(crate) async fn start_session(
 
     let current = CurrentUser { credential: crate::auth::Credential::Session(session_id), user_id, email };
     let body = SessionResponse {
+        organizations: organizations_for(state, user_id).await?,
         projects: projects_for(state, &current).await?,
         user: user_dto(state, user_id).await?,
         system: crate::routes::admin::system_access_for(state, &current).await?,
@@ -209,6 +229,7 @@ pub(crate) async fn start_session(
     responses((status = 200, body = SessionResponse), (status = 401, body = crate::error::ErrorBody)))]
 pub async fn session(State(state): State<AppState>, user: CurrentUser) -> ApiResult<Json<SessionResponse>> {
     Ok(Json(SessionResponse {
+        organizations: organizations_for(&state, user.user_id).await?,
         projects: projects_for(&state, &user).await?,
         user: user_dto(&state, user.user_id).await?,
         system: crate::routes::admin::system_access_for(&state, &user).await?,

@@ -31,6 +31,11 @@ export const INPUTS = {
     "KARBIRD_METRICS_RETENTION_DAYS",
     "KARBIRD_SIGNUP",
     "KARBIRD_SIGNUP_PER_HOUR",
+    "KARBIRD_GOOGLE_CLIENT_ID",
+    "KARBIRD_GOOGLE_CLIENT_SECRET",
+    "KARBIRD_GOOGLE_REDIRECT_URL",
+    "KARBIRD_RESEND_API_KEY",
+    "KARBIRD_MAIL_FROM",
   ],
 };
 
@@ -76,6 +81,16 @@ function validate(env) {
   if (signup && signup !== "open" && signup !== "closed") throw new Error("KARBIRD_SIGNUP must be open or closed");
   const perHour = env.KARBIRD_SIGNUP_PER_HOUR?.trim();
   if (perHour && !/^[1-9]\d{0,4}$/.test(perHour)) throw new Error("KARBIRD_SIGNUP_PER_HOUR must be a whole number from 1");
+  const google = ["KARBIRD_GOOGLE_CLIENT_ID", "KARBIRD_GOOGLE_CLIENT_SECRET", "KARBIRD_GOOGLE_REDIRECT_URL"];
+  const configuredGoogle = google.filter((key) => env[key]?.trim());
+  if (configuredGoogle.length !== 0 && configuredGoogle.length !== google.length) {
+    throw new Error(`Google OAuth requires ${google.join(", ")}`);
+  }
+  const mail = ["KARBIRD_RESEND_API_KEY", "KARBIRD_MAIL_FROM"];
+  const configuredMail = mail.filter((key) => env[key]?.trim());
+  if (configuredMail.length !== 0 && configuredMail.length !== mail.length) {
+    throw new Error(`email delivery requires ${mail.join(", ")}`);
+  }
 }
 
 const envFile = (header, vars) =>
@@ -129,6 +144,13 @@ export function render(env) {
     "app/.env": envFile("karbird app host (Kafka, services, web, Caddy).", {
       ...common,
       KARBIRD_DOMAIN: env.DOMAIN,
+      KARBIRD_PUBLIC_URL: `https://${env.DOMAIN}`,
+      KARBIRD_GOOGLE_CLIENT_ID: env.KARBIRD_GOOGLE_CLIENT_ID?.trim() || "",
+      KARBIRD_GOOGLE_CLIENT_SECRET: env.KARBIRD_GOOGLE_CLIENT_SECRET?.trim() || "",
+      KARBIRD_GOOGLE_REDIRECT_URL: env.KARBIRD_GOOGLE_REDIRECT_URL?.trim() || "",
+      KARBIRD_RESEND_API_KEY: env.KARBIRD_RESEND_API_KEY?.trim() || "",
+      KARBIRD_MAIL_FROM: env.KARBIRD_MAIL_FROM?.trim() || "",
+      KARBIRD_MAIL_ENABLED: env.KARBIRD_RESEND_API_KEY?.trim() ? "true" : "false",
       ...Object.fromEntries(Object.entries(SIGNUP_DEFAULTS).map(([k, d]) => [k, env[k]?.trim() || d])),
       ACME_EMAIL: env.ACME_EMAIL?.trim() || env.OWNER_EMAIL.trim(),
       STORAGE_ADDR: env.STORAGE_PRIVATE_IP,
