@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EDGE_STYLES, dashes, edgePath, endDirection, isEdgeStyle, pointAt, type EdgePath } from "./edge-path";
+import { EDGE_STYLES, build, dashes, zoomInvariantDashes, edgePath, endDirection, isEdgeStyle, pointAt, type EdgePath } from "./edge-path";
 
 const BOX = { hw: 90, hh: 32 };
 
@@ -72,6 +72,16 @@ describe("edgePath", () => {
 });
 
 describe("pointAt / endDirection / dashes", () => {
+  it("keeps the dash count stable at every zoom level", () => {
+    const long = build([0, 0, 1_000_000, 0]);
+    const dashesAtZoomOut = zoomInvariantDashes(long);
+    const dashesAtNormalZoom = zoomInvariantDashes(long);
+    const dashesAtZoomIn = zoomInvariantDashes(long);
+    expect(dashesAtZoomOut.length).toBe(512);
+    expect(dashesAtNormalZoom.length).toBe(dashesAtZoomOut.length);
+    expect(dashesAtZoomIn.length).toBe(dashesAtZoomOut.length);
+    expect(dashesAtZoomIn.flat().every(Number.isFinite)).toBe(true);
+  });
   const p = edgePath("orthogonal", 0, 0, 400, 0, BOX);
 
   it("moves by arc length", () => {

@@ -701,6 +701,56 @@ mod tests {
     }
 
     #[test]
+    fn real_workspace_topology_uses_branches_instead_of_a_single_horizontal_row() {
+        let names = ids(&[
+            "external-clients",
+            "postgres-orders",
+            "external-provider",
+            "auth",
+            "catalog",
+            "orders",
+            "inventory",
+            "gateway",
+            "migrate-check",
+            "notifications",
+            "payments",
+        ]);
+        let edges = [
+            (0, 3),
+            (0, 4),
+            (0, 5),
+            (0, 6),
+            (0, 7),
+            (0, 9),
+            (0, 10),
+            (4, 6),
+            (5, 1),
+            (5, 6),
+            (5, 9),
+            (5, 10),
+            (6, 1),
+            (7, 3),
+            (7, 4),
+            (7, 5),
+            (10, 2),
+        ];
+        let mut layout = Layout::default();
+        layout.compute(&names, &edges);
+
+        let columns: std::collections::HashSet<_> =
+            names.iter().map(|id| layout.position(id).unwrap().0.to_bits()).collect();
+        let rows: std::collections::HashSet<_> =
+            names.iter().map(|id| layout.position(id).unwrap().1.to_bits()).collect();
+        assert!(columns.len() < names.len(), "all {} nodes were put in separate columns", names.len());
+        assert!(rows.len() > 1, "all {} nodes were put on one horizontal row", names.len());
+        for &(source, target) in &edges {
+            let source = layout.position(&names[source as usize]).unwrap();
+            let target = layout.position(&names[target as usize]).unwrap();
+            assert!(source.0 < target.0, "edge is not laid out left-to-right: {source:?} -> {target:?}");
+        }
+    }
+
+    #[test]
     fn corridors_keep_clear_of_cards_after_snapping_to_pixels() {
         // Minimal case found by the property test below.
         let names: Vec<String> = (0..9).map(|i| format!("n{i:02}")).collect();

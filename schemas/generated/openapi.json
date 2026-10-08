@@ -3350,6 +3350,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "live",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -3358,7 +3382,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/InfrastructureSnapshot"
+                  "$ref": "#/components/schemas/InfrastructureResponse"
                 }
               }
             }
@@ -4146,7 +4170,6 @@
           {
             "name": "from",
             "in": "query",
-            "description": "Start, unix epoch nanoseconds as a decimal string. Default: `to - 15m`.",
             "required": false,
             "schema": {
               "type": "string"
@@ -4155,7 +4178,24 @@
           {
             "name": "to",
             "in": "query",
-            "description": "End (exclusive), unix epoch nanoseconds as a decimal string. Default: now.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "live",
+            "in": "query",
+            "description": "Live inventory persists inactive relationships; historical ranges stay exact.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "description": "Placement at the selected cursor, independent of relationship-range membership.",
             "required": false,
             "schema": {
               "type": "string"
@@ -4173,7 +4213,50 @@
               }
             }
           },
+          "304": {
+            "description": "Saved graph unchanged; authorization was checked"
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
             "description": "",
             "content": {
               "application/json": {
@@ -6804,6 +6887,171 @@
           }
         }
       },
+      "InfraBadge": {
+        "type": "object",
+        "description": "`×N` on a service card with several instances.",
+        "required": [
+          "node",
+          "count",
+          "hosts"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "hosts": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "node": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "InfraChip": {
+        "type": "object",
+        "description": "Instances of one service grouped on a machine, drawn inside its frame (centre point).",
+        "required": [
+          "node",
+          "service_id",
+          "instance_id",
+          "instance_ids",
+          "label",
+          "host_id",
+          "x",
+          "y"
+        ],
+        "properties": {
+          "host_id": {
+            "type": "string"
+          },
+          "instance_id": {
+            "type": "string"
+          },
+          "instance_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "label": {
+            "type": "string"
+          },
+          "node": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "service_id": {
+            "type": "string"
+          },
+          "x": {
+            "type": "number",
+            "format": "float"
+          },
+          "y": {
+            "type": "number",
+            "format": "float"
+          }
+        }
+      },
+      "InfraFrame": {
+        "type": "object",
+        "description": "A machine drawn around the service cards running on it (world coordinates, top-left corner).",
+        "required": [
+          "host_id",
+          "label",
+          "x",
+          "y",
+          "width",
+          "height",
+          "hot",
+          "has_metrics"
+        ],
+        "properties": {
+          "has_metrics": {
+            "type": "boolean"
+          },
+          "height": {
+            "type": "number",
+            "format": "float"
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "hot": {
+            "type": "boolean",
+            "description": "CPU at or above 90 %, or a noisy-neighbour hint on this machine."
+          },
+          "label": {
+            "type": "string",
+            "description": "e.g. `vps-app · CPU 92% · RAM 870/1024 MB`."
+          },
+          "width": {
+            "type": "number",
+            "format": "float"
+          },
+          "x": {
+            "type": "number",
+            "format": "float"
+          },
+          "y": {
+            "type": "number",
+            "format": "float"
+          }
+        }
+      },
+      "InfraLink": {
+        "type": "object",
+        "description": "Noisy-neighbour link from the slowed service to the neighbour eating the CPU.",
+        "required": [
+          "from",
+          "to",
+          "victim_node",
+          "host_id",
+          "label"
+        ],
+        "properties": {
+          "from": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "neighbor_node": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "victim_node": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "InfraTimeline": {
         "type": "object",
         "description": "Machines over time and what happened to their containers.",
@@ -6856,6 +7104,63 @@
             "description": "The range holds more metric rows than were read: later buckets may be missing."
           }
         }
+      },
+      "InfraView": {
+        "type": "object",
+        "required": [
+          "frames",
+          "chips",
+          "badges",
+          "links"
+        ],
+        "properties": {
+          "badges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraBadge"
+            }
+          },
+          "chips": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraChip"
+            }
+          },
+          "frames": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraFrame"
+            }
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InfraLink"
+            }
+          }
+        }
+      },
+      "InfrastructureResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/InfrastructureSnapshot"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "topology": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TopologyResponse"
+                  }
+                ]
+              }
+            }
+          }
+        ]
       },
       "InfrastructureSnapshot": {
         "type": "object",
@@ -7925,6 +8230,47 @@
           }
         }
       },
+      "SavedTopologyGeometry": {
+        "type": "object",
+        "required": [
+          "version",
+          "revision",
+          "plain"
+        ],
+        "properties": {
+          "external": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "infrastructure": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TopologyView"
+              }
+            ]
+          },
+          "plain": {
+            "$ref": "#/components/schemas/TopologyView"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "ServiceDto": {
         "type": "object",
         "required": [
@@ -8537,7 +8883,9 @@
           "edges",
           "from_ns",
           "to_ns",
-          "completeness"
+          "completeness",
+          "geometry",
+          "updated_at_ns"
         ],
         "properties": {
           "completeness": {
@@ -8552,6 +8900,19 @@
           "from_ns": {
             "type": "string"
           },
+          "geometry": {
+            "$ref": "#/components/schemas/SavedTopologyGeometry"
+          },
+          "infrastructure_snapshot": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InfrastructureSnapshot"
+              }
+            ]
+          },
           "nodes": {
             "type": "array",
             "items": {
@@ -8560,6 +8921,139 @@
           },
           "to_ns": {
             "type": "string"
+          },
+          "updated_at_ns": {
+            "type": "string"
+          }
+        }
+      },
+      "TopologyView": {
+        "type": "object",
+        "required": [
+          "revision",
+          "nodes",
+          "edges"
+        ],
+        "properties": {
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopologyViewEdge"
+            }
+          },
+          "infra": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InfraView",
+                "description": "Machine frames, instance chips and noisy-neighbour links; only with the infrastructure\nlayer on and a snapshot loaded."
+              }
+            ]
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopologyViewNode"
+            }
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Serialized as a JSON number (values stay far below 2^53).",
+            "minimum": 0
+          }
+        }
+      },
+      "TopologyViewEdge": {
+        "type": "object",
+        "required": [
+          "index",
+          "source",
+          "target",
+          "relation",
+          "provenance",
+          "reasons",
+          "points"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              }
+            },
+            "description": "Corridor waypoints `[x, y]` (world coordinates) where the edge crosses intermediate\nlayout columns; empty for edges between adjacent columns."
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/ProvenanceDto"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "relation": {
+            "$ref": "#/components/schemas/RelationKindDto"
+          },
+          "source": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "target": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "TopologyViewNode": {
+        "type": "object",
+        "required": [
+          "index",
+          "id",
+          "name",
+          "kind",
+          "provenance",
+          "x",
+          "y"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EntityKindDto"
+          },
+          "name": {
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/ProvenanceDto"
+          },
+          "x": {
+            "type": "number",
+            "format": "float"
+          },
+          "y": {
+            "type": "number",
+            "format": "float"
           }
         }
       },

@@ -25,18 +25,18 @@ import {
   type InfraView,
   type TopologyView,
 } from "@karbird/web-engine";
-import { FRAME_HEADER, NOISY_LINK, chipAt, frameAt, frameLook, linkArc, linkLabelAt } from "./infra-layer";
-import { DEFAULT_EDGE_STYLE, build, dashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
+import { FRAME_HEADER, NOISY_LINK, chipAt, frameAt, frameHeaderAt, frameLook, linkArc, linkLabelAt } from "./infra-layer";
+import { DEFAULT_EDGE_STYLE, build, zoomInvariantDashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
 import { edgeAt, midpoint } from "./edge-hit";
 import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
 import { dashedRect, nodeSubLabel } from "./external";
 import { ACCENT, CARD_BG, EDGE_ERROR, EDGE_INFERRED, EDGE_OK, EDGE_WARN, EXTERNAL_COLOR, STATUS_COLORS } from "./map-colors";
 import { cullRect } from "./cull";
-import { fitCamera } from "./fit";
+import { fitCamera, MIN_MAP_SCALE, overlayInset, zoomCamera } from "./fit";
 import { gridLines } from "./grid";
 import { animTimeMs, hopPhase, type AnimClock } from "./hops";
 import { serviceColors } from "./service-colors";
-import { frameFocused, nodeFocused, SELECTION_DIM_ALPHA, selectionAlpha, type MapSelection } from "./selection-style";
+import { frameFocused, incidentEdgeIndices, incidentGlowWidth, nodeFocused, SELECTION_DIM_ALPHA, selectionAlpha, type MapSelection } from "./selection-style";
 
 /** Pan (screen px) and zoom of the map. */
 export interface MapCamera {
@@ -60,7 +60,7 @@ export interface MapCallbacks {
 const EDGE_HIT_PX = 7;
 const EDGE_SELECTED = 0x22d3ee;
 
-const MIN_SCALE = 0.15;
+const MIN_SCALE = MIN_MAP_SCALE;
 const MAX_SCALE = 4;
 /** Node card size in world units (layout spacing is 300 × 140). */
 const CARD_W = 172;
@@ -101,6 +101,7 @@ interface ReplicaText extends NodeText {
 
 export class PixiMap {
   private app: Application | null = null;
+  private latestTopologyRevision = -1;
   private host: HTMLElement | null = null;
   private readonly world = new Container();
   private readonly grid = new Graphics();
@@ -154,6 +155,7 @@ export class PixiMap {
   private edgeStyle: EdgeStyle = DEFAULT_EDGE_STYLE;
   private routeNodes: RouteNode[] = [];
   private routeEdges: RouteEdge[] = [];
+  private readonly selectedIncidentEdges = new Set<number>();
   private readonly hostByNode = new Map<number, string>();
   private routes = new Map<number, Route>();
   private names: string[] = [];
@@ -164,6 +166,8 @@ export class PixiMap {
   private selectedEdgeNodes: readonly [number, number] | null = null;
   private edgeAnchors = "";
   private fitted = false;
+  private minimumCamera: MapCamera = { x: 0, y: 0, scale: MIN_SCALE };
+  private pendingCamera: MapCamera | null = null;
   /** The camera is where `fit` put it (no pan or zoom since). */
   private cameraIsFit = false;
   /** Screen pixels at the top covered by an overlay; `fit` keeps the map below them. */
@@ -214,12 +218,19 @@ export class PixiMap {
     // With reduced motion hops are drawn once per frame (no interpolation between frames).
     if (!this.reducedMotion) app.ticker.add(() => this.drawHops());
     this.bindInput(app.canvas);
-    const ro = new ResizeObserver(() => this.reportViewport());
+    const ro = new ResizeObserver(() => {
+      if (this.cameraIsFit) this.fit();
+      else if (this.frame?.nodeIndices.length) this.refreshZoomFloor();
+      else this.reportViewport();
+    });
     ro.observe(host);
     this.cleanup.push(() => ro.disconnect());
   }
 
   setTopology(topology: TopologyView | null) {
+    if (topology && topology.revision < this.latestTopologyRevision) return;
+    if (topology) this.latestTopologyRevision = topology.revision;
+    this.host?.setAttribute("data-layout-nodes", JSON.stringify(topology?.nodes.map(n=>({id:n.id,name:n.name,x:n.x,y:n.y})) ?? []));
     const nodes = topology?.nodes ?? [];
     const names: string[] = [];
     const kinds: EntityKindDto[] = [];
@@ -229,25 +240,30 @@ export class PixiMap {
     }
     this.kinds = kinds;
     this.colors = serviceColors(nodes);
-    this.routeNodes = nodes.map((n) => ({ index: n.index, x: n.x, y: n.y }));
-    this.routeEdges = (topology?.edges ?? []).map((e) => ({ index: e.index, source: e.source, target: e.target, points: e.points }));
+    const nextNodes = nodes.map((n) => ({ index: n.index, x: n.x, y: n.y }));
+    const nextEdges = (topology?.edges ?? []).map((e) => ({ index: e.index, source: e.source, target: e.target, points: e.points }));
+    const reroute = nextNodes.length !== this.routeNodes.length || nextEdges.length !== this.routeEdges.length
+      || nextNodes.some((n,i)=>{const old=this.routeNodes[i];return !old || n.index!==old.index || n.x!==old.x || n.y!==old.y;})
+      || nextEdges.some((e,i)=>{const old=this.routeEdges[i];return !old || e.index!==old.index || e.source!==old.source || e.target!==old.target || e.points.length!==old.points.length || e.points.some((p,j)=>p[0]!==old.points[j]?.[0] || p[1]!==old.points[j]?.[1]);});
+    this.routeNodes = nextNodes;
+    this.routeEdges = nextEdges;
+    this.refreshSelectedIncidentEdges();
     const selectedRoute = this.routeEdges.find((edge) => edge.index === this.selectedEdge);
     this.selectedEdgeNodes = selectedRoute ? [selectedRoute.source, selectedRoute.target] : null;
-    this.reroute();
+    if (reroute) this.reroute();
     const infra = topology?.infra ?? null;
-    // Switching the layer moves every card: fit again on the next frame.
-    const refit = (infra === null) !== (this.infraView === null);
+    // Server revisions change geometry without resetting the user's camera.
     this.infraView = infra;
+    if (this.frame?.nodeIndices.length) {
+      if (this.cameraIsFit) this.fit();
+      else this.refreshZoomFloor();
+    }
     this.hostByNode.clear();
     for (const node of this.routeNodes) {
       const frame = infra?.frames.find((candidate) => node.x >= candidate.x && node.x <= candidate.x + candidate.width && node.y >= candidate.y && node.y <= candidate.y + candidate.height);
       if (frame) this.hostByNode.set(node.index, frame.host_id);
     }
     this.drawInfra();
-    if (refit) {
-      if (this.frame) this.fit();
-      else this.fitted = false;
-    }
     if (names.length !== this.names.length || names.some((n, i) => n !== this.names[i])) {
       this.names = names;
       for (const t of this.textPool.values()) {
@@ -266,6 +282,7 @@ export class PixiMap {
   setSelected(index: number | null) {
     if (index === this.selectedIndex) return;
     this.selectedIndex = index;
+    this.refreshSelectedIncidentEdges();
     this.syncSelectionFade();
     this.drawInfra();
     if (this.frame) this.draw(this.frame);
@@ -308,6 +325,11 @@ export class PixiMap {
     if (!this.fitted && frame.nodeIndices.length > 0) {
       this.fitted = true;
       this.fit();
+    } else if (this.pendingCamera && frame.nodeIndices.length > 0) {
+      const saved = this.pendingCamera;
+      this.pendingCamera = null;
+      this.fit();
+      if (saved.scale >= this.minimumCamera.scale) this.setCamera(saved);
     }
     this.draw(frame);
     if (this.reducedMotion) this.drawHops();
@@ -331,8 +353,12 @@ export class PixiMap {
       maxX = Math.max(maxX, x);
       maxY = Math.max(maxY, y);
     }
+    const visibleEdges = new Set(f.edgeIndices);
     for (const e of this.routeEdges) {
-      for (const [, y] of e.points) {
+      if (!visibleEdges.has(e.index)) continue;
+      for (const [x, y] of e.points) {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
         minY = Math.min(minY, y);
         maxY = Math.max(maxY, y);
       }
@@ -356,12 +382,13 @@ export class PixiMap {
         maxScale: 1.3,
       },
     );
+    this.minimumCamera = cam;
     this.world.scale.set(cam.scale);
     this.world.position.set(cam.x, cam.y);
     this.reportViewport();
     this.cameraIsFit = true;
     // Screen y of the top card edge after a fit, for tests: it must stay below any overlay.
-    this.host?.setAttribute("data-fit-top", String(Math.round(cam.y + (minY - CARD_H / 2) * cam.scale)));
+    this.host?.setAttribute("data-fit-top", String(cam.y + (minY - CARD_H / 2) * cam.scale));
   }
 
   /** Highlights the frame of the machine open in the inspector. */
@@ -374,10 +401,11 @@ export class PixiMap {
 
   /** Keeps `fit` clear of an overlay this many screen pixels tall; refits a fitted camera. */
   setTopInset(px: number) {
-    const next = Math.max(0, Math.round(px));
+    const next = overlayInset(px);
     if (next === this.topInset) return;
     this.topInset = next;
     if (this.cameraIsFit) this.fit();
+    else if (this.frame?.nodeIndices.length) this.refreshZoomFloor();
   }
 
   zoomBy(factor: number, sx?: number, sy?: number) {
@@ -385,12 +413,9 @@ export class PixiMap {
     if (!app) return;
     const cx = sx ?? app.screen.width / 2;
     const cy = sy ?? app.screen.height / 2;
-    const old = this.world.scale.x;
-    const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, old * factor));
-    const wx = (cx - this.world.x) / old;
-    const wy = (cy - this.world.y) / old;
-    this.world.scale.set(next);
-    this.world.position.set(cx - wx * next, cy - wy * next);
+    const next = zoomCamera(this.getCamera(), factor, cx, cy, this.minimumCamera, MAX_SCALE);
+    this.world.scale.set(next.scale);
+    this.world.position.set(next.x, next.y);
     this.reportViewport();
   }
 
@@ -401,14 +426,27 @@ export class PixiMap {
   /** Restores a saved pan and zoom; the map then no longer fits itself to the first frame. */
   setCamera(camera: MapCamera) {
     this.fitted = true;
-    this.world.scale.set(Math.max(MIN_SCALE, Math.min(MAX_SCALE, camera.scale)));
-    this.world.position.set(camera.x, camera.y);
+    if (!this.frame?.nodeIndices.length) {
+      this.pendingCamera = camera;
+      this.world.scale.set(Math.max(MIN_SCALE, Math.min(MAX_SCALE, camera.scale)));
+      this.world.position.set(camera.x, camera.y);
+      return;
+    }
+    const next = camera.scale < this.minimumCamera.scale ? this.minimumCamera : { ...camera, scale: Math.min(MAX_SCALE, camera.scale) };
+    this.world.scale.set(next.scale);
+    this.world.position.set(next.x, next.y);
     this.reportViewport();
   }
 
   panBy(dx: number, dy: number) {
     this.world.position.set(this.world.x + dx, this.world.y + dy);
     this.reportViewport();
+  }
+
+  private refreshZoomFloor() {
+    const current = this.getCamera();
+    this.fit();
+    if (current.scale >= this.minimumCamera.scale) this.setCamera(current);
   }
 
   destroy() {
@@ -439,6 +477,7 @@ export class PixiMap {
     const app = this.app;
     if (!app) return;
     const s = this.world.scale.x;
+    this.host?.setAttribute("data-camera",JSON.stringify({x:this.world.x,y:this.world.y,scale:s}));
     const r = cullRect({ x: -this.world.x / s, y: -this.world.y / s, width: app.screen.width / s, height: app.screen.height / s }, CARD_W / 2 + 8);
     this.callbacks.onViewport(r.x, r.y, r.width, r.height, s);
     this.publishEdgeAnchors();
@@ -449,11 +488,11 @@ export class PixiMap {
   private publishReplicaAnchors() {
     const s = this.world.scale.x;
     const anchors = (this.infraView?.chips ?? []).map((c) =>
-      `${encodeURIComponent(c.service_id)}@${encodeURIComponent(c.host_id)}:${Math.round(c.x * s + this.world.x)},${Math.round(c.y * s + this.world.y)}`,
+      `${encodeURIComponent(c.service_id)}@${encodeURIComponent(c.host_id)}:${c.x * s + this.world.x},${c.y * s + this.world.y}`,
     ).join(";");
     this.host?.setAttribute("data-replica-anchors", anchors);
     const frames = (this.infraView?.frames ?? []).map((frame) =>
-      `${encodeURIComponent(frame.host_id)}:${Math.round((frame.x + frame.width / 2) * s + this.world.x)},${Math.round((frame.y + FRAME_HEADER / 2) * s + this.world.y)}`,
+      `${encodeURIComponent(frame.host_id)}:${(frame.x + frame.width / 2) * s + this.world.x},${(frame.y + FRAME_HEADER / 2) * s + this.world.y}`,
     ).join(";");
     this.host?.setAttribute("data-frame-anchors", frames);
   }
@@ -467,7 +506,7 @@ export class PixiMap {
     const parts: string[] = [];
     for (const [index, g] of this.edgeGeom) {
       const m = midpoint(g.path.pts);
-      if (m) parts.push(`${index}:${Math.round(m[0] * s + this.world.x)},${Math.round(m[1] * s + this.world.y)}`);
+      if (m) parts.push(`${index}:${m[0] * s + this.world.x},${m[1] * s + this.world.y}`);
     }
     const next = parts.join(";");
     if (next === this.edgeAnchors) return;
@@ -492,6 +531,11 @@ export class PixiMap {
     if (chip) {
       if (this.callbacks.onPickInstance) this.callbacks.onPickInstance(chip.instance_id, chip.host_id, chip.service_id);
       else this.callbacks.onPick(chip.x, chip.y);
+      return;
+    }
+    const header = frameHeaderAt(this.infraView, wx, wy);
+    if (header && this.callbacks.onPickHost) {
+      this.callbacks.onPickHost(header.host_id);
       return;
     }
     if (this.callbacks.onPickEdge) {
@@ -569,7 +613,7 @@ export class PixiMap {
     }
     this.publishReplicaAnchors();
     for (const l of view.links) {
-      for (const dash of dashes(build(linkArc(l.from, l.to)), 8, 6)) line(front, dash);
+      for (const dash of zoomInvariantDashes(build(linkArc(l.from, l.to)))) line(front, dash);
       front.stroke({ color: NOISY_LINK, width: 3, alpha: 0.95 * selectionAlpha(selection), ...LINE_STYLE });
       front.circle(l.to[0], l.to[1], 6).stroke({ color: NOISY_LINK, width: 2 });
       const [mx, my] = linkLabelAt(l.from, l.to);
@@ -742,6 +786,12 @@ export class PixiMap {
     return { node: this.selectedIndex, edge: this.selectedEdge, edgeNodes: this.selectedEdgeNodes, host: this.selectedHost };
   }
 
+  private refreshSelectedIncidentEdges() {
+    this.selectedIncidentEdges.clear();
+    for (const index of incidentEdgeIndices(this.selectedIndex, this.routeEdges)) this.selectedIncidentEdges.add(index);
+    this.host?.setAttribute("data-selected-incident-edges", [...this.selectedIncidentEdges].sort((a, b) => a - b).join(","));
+  }
+
   private syncSelectionFade() {
     this.hops.alpha = selectionAlpha(this.selection());
   }
@@ -779,24 +829,35 @@ export class PixiMap {
               ? EDGE_INFERRED
               : EDGE_OK;
       const index = f.edgeIndices[i] ?? 0;
-      const fade = this.selectedEdge === index || selectionAlpha(selection) === 1 ? 1 : SELECTION_DIM_ALPHA;
+      const incident = this.selectedIncidentEdges.has(index);
+      const selected = this.selectedEdge === index;
+      const focused = selected || incident;
+      const fade = focused || selectionAlpha(selection) === 1 ? 1 : SELECTION_DIM_ALPHA;
       const route = this.routes.get(index);
       // A route is only valid for the positions it was computed for (topology may lag a frame).
       const fresh = route && near(route.sx, sx) && near(route.sy, sy) && near(route.tx, tx) && near(route.ty, ty);
       const path = fresh ? route.path : edgePath(this.edgeStyle, sx, sy, tx, ty, CARD_BOX);
       if (!path) continue;
       this.edgeGeom.set(index, { path, color });
-      const e = (flags & FLAG_DIMMED) !== 0 ? this.edgesDim : this.edges;
-      if (index === this.selectedEdge) line(this.edges, path.pts).stroke({ color: EDGE_SELECTED, width: 10, alpha: 0.35, ...LINE_STYLE });
       const width = highlight ? 2.5 : 1.25 + Math.min(1.5, Math.log10(1 + calls) * 0.6);
+      const e = focused || (flags & FLAG_DIMMED) === 0 ? this.edges : this.edgesDim;
+      if (index === this.selectedEdge) line(this.edges, path.pts).stroke({ color: EDGE_SELECTED, width: 10, alpha: 0.35, ...LINE_STYLE });
+      if (incident && !selected) {
+        line(this.edges, path.pts).stroke({
+          color: EDGE_SELECTED,
+          width: incidentGlowWidth(width, inferred),
+          alpha: inferred ? 0.34 : 0.32,
+          ...LINE_STYLE,
+        });
+      }
       if (inferred) {
-        for (const dash of dashes(path, 6, 5)) line(e, dash);
+        for (const dash of zoomInvariantDashes(path)) line(e, dash);
         e.stroke({ color, width, alpha: 0.8 * fade, ...LINE_STYLE });
       } else {
         line(e, path.pts).stroke({ color, width: width + 6, alpha: (calls > 0 ? 0.1 : 0.05) * fade, ...LINE_STYLE });
         line(e, path.pts).stroke({ color, width, alpha: (calls > 0 ? 0.9 : 0.5) * fade, ...LINE_STYLE });
       }
-      arrow(e, path, color, fade);
+      arrow(e, path, incident ? EDGE_SELECTED : color, fade);
     }
     this.publishEdgeAnchors();
   }

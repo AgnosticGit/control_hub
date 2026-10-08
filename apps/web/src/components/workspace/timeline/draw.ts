@@ -60,6 +60,9 @@ export interface RulerInput {
 }
 
 const DIMMED_ROW_ALPHA = 0.28;
+/** Fixed visual reference values keep live chart heights from rescaling every tick. */
+const COUNT_REFERENCE_MAX = 100;
+const LATENCY_REFERENCE_MAX_MS = 1_000;
 
 export const FUTURE_FILL = "rgba(100, 116, 139, 0.13)";
 export const FUTURE_EDGE = "rgba(148, 163, 184, 0.55)";
@@ -146,9 +149,6 @@ export function bucketGeometry(t: TimelineTracks, view: View, width: number) {
 }
 
 function bars(ctx: CanvasRenderingContext2D, values: number[], y: number, h: number, g: ReturnType<typeof bucketGeometry>, width: number, color: string) {
-  let max = 0;
-  for (const v of values) if (v > max) max = v;
-  if (max <= 0) return;
   ctx.fillStyle = color;
   const w = Math.max(1, g.bucketPx - (g.bucketPx > 3 ? 1 : 0));
   for (let i = 0; i < values.length; i++) {
@@ -156,17 +156,17 @@ function bars(ctx: CanvasRenderingContext2D, values: number[], y: number, h: num
     if (v <= 0) continue;
     const x = g.x0 + i * g.bucketPx;
     if (x + w < 0 || x > width) continue;
-    const bh = Math.max(1.5, (v / max) * (h - 5));
+    const bh = Math.max(1.5, Math.sqrt(Math.min(v, COUNT_REFERENCE_MAX) / COUNT_REFERENCE_MAX) * (h - 5));
     ctx.fillRect(x, y + h - 2 - bh, w, bh);
   }
 }
 
 function latency(ctx: CanvasRenderingContext2D, values: Array<number | null>, y: number, h: number, g: ReturnType<typeof bucketGeometry>) {
-  let max = 0;
-  for (const v of values) if (v !== null && v > max) max = v;
-  if (max <= 0) return;
   const base = y + h - 2;
-  const pt = (i: number, v: number) => [g.x0 + (i + 0.5) * g.bucketPx, base - (v / max) * (h - 6)] as const;
+  const pt = (i: number, v: number) => [
+    g.x0 + (i + 0.5) * g.bucketPx,
+    base - Math.sqrt(Math.min(v, LATENCY_REFERENCE_MAX_MS) / LATENCY_REFERENCE_MAX_MS) * (h - 6),
+  ] as const;
   let run: Array<readonly [number, number]> = [];
   const flush = () => {
     if (run.length === 0) return;
@@ -293,16 +293,13 @@ function clips(
 }
 
 function heat(ctx: CanvasRenderingContext2D, counts: number[], y: number, h: number, g: ReturnType<typeof bucketGeometry>, width: number, base: string) {
-  let max = 0;
-  for (const v of counts) if (v > max) max = v;
-  if (max <= 0) return;
   const w = Math.max(1, g.bucketPx);
   for (let i = 0; i < counts.length; i++) {
     const v = counts[i] ?? 0;
     if (v <= 0) continue;
     const x = g.x0 + i * g.bucketPx;
     if (x + w < 0 || x > width) continue;
-    ctx.fillStyle = withAlpha(base, 0.2 + 0.7 * (v / max));
+    ctx.fillStyle = withAlpha(base, 0.22 + 0.68 * Math.sqrt(Math.min(v, COUNT_REFERENCE_MAX) / COUNT_REFERENCE_MAX));
     ctx.fillRect(x, y + 4, w, h - 8);
   }
 }

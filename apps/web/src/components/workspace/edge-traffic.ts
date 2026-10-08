@@ -1,7 +1,7 @@
 // Pure helpers for the link inspector: byte rates, size coverage and the throughput chart.
 // Data comes from the engine (`EdgeMetrics`) and `GET …/edges/traffic` (`EdgeTraffic`).
 
-import type { TopologyView } from "@karbird/web-engine";
+import type { TopologyView, RelationKindDto } from "@karbird/web-engine";
 import type { Schemas } from "@/lib/api";
 
 export type EdgeTraffic = Schemas["EdgeTraffic"];
@@ -10,6 +10,7 @@ export type EdgeTraffic = Schemas["EdgeTraffic"];
 export interface SelectedEdge {
   source: string;
   target: string;
+  relation?: RelationKindDto;
 }
 
 /** Node IDs at the ends of engine edge `index`. */
@@ -17,13 +18,13 @@ export function edgeEnds(topology: TopologyView | null, index: number): Selected
   const e = topology?.edges.find((x) => x.index === index);
   const s = e ? topology?.nodes[e.source] : undefined;
   const t = e ? topology?.nodes[e.target] : undefined;
-  return s && t ? { source: s.id, target: t.id } : null;
+  return s && t && e ? { source: s.id, target: t.id, relation:e.relation } : null;
 }
 
 /** Engine edge index of the line `edge.source → edge.target`, or null when it is not on the map. */
 export function edgeIndex(topology: TopologyView | null, edge: SelectedEdge | null): number | null {
   if (!topology || !edge) return null;
-  const hit = topology.edges.find((e) => topology.nodes[e.source]?.id === edge.source && topology.nodes[e.target]?.id === edge.target);
+  const hit = topology.edges.find((e) => topology.nodes[e.source]?.id === edge.source && topology.nodes[e.target]?.id === edge.target && (edge.relation === undefined || edge.relation === e.relation));
   return hit?.index ?? null;
 }
 

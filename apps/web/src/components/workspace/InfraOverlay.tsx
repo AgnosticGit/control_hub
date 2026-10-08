@@ -27,7 +27,11 @@ export function InfraOverlay({ snapshot, error, selectedHost, visibleHostIds, on
   useEffect(() => {
     const el = rootRef.current;
     if (!el || !onBottom) return;
-    const report = () => onBottom(el.offsetTop + el.offsetHeight);
+    const report = () => {
+      const parent = el.offsetParent;
+      const origin = parent instanceof HTMLElement ? parent.getBoundingClientRect().top : 0;
+      onBottom(Math.max(0, el.getBoundingClientRect().bottom - origin));
+    };
     report();
     const ro = new ResizeObserver(report);
     ro.observe(el);

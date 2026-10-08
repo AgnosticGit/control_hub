@@ -22,6 +22,14 @@ const edges: RouteEdge[] = [
   { index: 4, source: 2, target: 4, points: [] },
 ];
 
+it("uses the backend corridor for backward links instead of crossing intermediate cards",()=>{
+  const chain=[{index:0,x:0,y:0},{index:1,x:300,y:0},{index:2,x:600,y:0}];
+  const backward:RouteEdge={index:0,source:2,target:0,points:[[750,0],[750,120],[-150,120],[-150,0]]};
+  const path=routeEdges("orthogonal",chain,[backward],BOX).get(0);
+  expect(path?.pts).toContain(120);
+  expect(path?.pts).toEqual([600+BOX.hw,0,750,0,750,120,-150,120,-150,0,-BOX.hw,0]);
+});
+
 function insideAnyCard(x: number, y: number, except: number[]): boolean {
   return nodes.some((n) => !except.includes(n.index) && Math.abs(x - n.x) < CARD_W / 2 && Math.abs(y - n.y) < CARD_H / 2);
 }

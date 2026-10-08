@@ -13,6 +13,7 @@ function serverSpans(n: number, fromNs: bigint, ms: number): SpanInput[] {
 }
 
 test("infrastructure layer: machines, noisy neighbour, service → instance → container → machine, signals of the moment", async ({ page }) => {
+  test.setTimeout(120_000);
   const run = randomHex(4);
   const host = `e2e-vps-${run}`;
   const replicaHost = `e2e-vps-replica-${run}`;
@@ -29,10 +30,11 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
     unit,
     kind: "sum",
     monotonic,
-    points: rows.flatMap(([attributes, a, b]) => [
-      { attributes, value: a, startNs: t1 - SEC, timeNs: t1 },
-      { attributes, value: b, startNs: t1 - SEC, timeNs: t2 },
-    ]),
+    // Match the agent's ten-second cadence so browser setup cannot discard the
+    // only baseline sample and turn an otherwise valid CPU rate into "unknown".
+    points: rows.flatMap(([attributes, a, b]) => Array.from({ length: 9 }, (_, i) => ({
+      attributes, value: a + (b - a) * i / 8, timeNs: t1 + BigInt(i) * 10n * SEC, startNs: t1 - SEC,
+    }))),
   });
   const gauge = (name: string, unit: string, value: number): MetricInput => ({ name, unit, kind: "gauge", points: [{ value, timeNs: t2 }] });
   const container = (id: string, name: string, cores: number) => ({
@@ -84,24 +86,16 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   await expect(toggle).not.toBeChecked();
   await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Pause live" })).toBeVisible();
-  await toggle.check();
+  // Keep the point containing both counter samples fixed; otherwise a slow browser
+  // run ages the first sample out of the two-minute metrics window while asserting it.
+  await page.getByRole("button", { name: "Pause live" }).click();
+  await (await mapLayer(page, "Infrastructure")).check();
 
   const machines = page.getByRole("region", { name: "Machines" });
   await expect(machines.getByRole("heading", { name: "Machines" })).toBeVisible();
   const machineButton = machines.getByRole("button", { name: `${host} · CPU 95% · RAM 870/1024 MB` });
-  // The snapshot follows the cursor; processing takes a few seconds, so reload until it is there.
-  await expect
-    .poll(
-      async () => {
-        if ((await machineButton.count()) > 0) return true;
-        await page.reload();
-        await expect(page.getByText("Starting engine…")).toBeHidden();
-        await (await mapLayer(page, "Infrastructure")).check();
-        return false;
-      },
-      { timeout: 60_000, intervals: [3_000] },
-    )
-    .toBe(true);
+  // The open paused map must adopt processing results without a reload.
+  await expect(machineButton).toBeVisible({ timeout: 60_000 });
 
   // Deterministic noisy-neighbour hint on the map.
   const banner = page.getByRole("status", { name: "Noisy neighbour" }).filter({ hasText: orders });
@@ -111,9 +105,9 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   const mapKey = page.getByRole("button", { name: "Show map key" });
   await mapKey.hover();
   await expect(page.getByRole("dialog", { name: "Map key" })).toHaveCount(0);
-  await mapKey.click();
+  await mapKey.press("Enter");
   await expect(page.getByRole("dialog", { name: "Map key" })).toBeVisible();
-  await page.getByRole("button", { name: "Close map key" }).click();
+  await page.getByRole("button", { name: "Close map key" }).press("Enter");
 
   // Fit to screen keeps every card below the machines panel and the hints.
   await page.getByRole("button", { name: "Fit to screen" }).click();

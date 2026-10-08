@@ -108,7 +108,8 @@ export function routeEdges(
     const t = pos.get(e.target);
     if (!s || !t || e.source === e.target) continue;
     if (t.x <= s.x) {
-      const p = edgePath(style, s.x, s.y, t.x, t.y, box);
+      const points=[s.x+box.hw,s.y,...e.points.flatMap(([x,y])=>[x,y]),t.x-box.hw,t.y];
+      const p = e.points.length>0 ? build(style==="orthogonal" ? points : rounded(points,12)) : edgePath(style, s.x, s.y, t.x, t.y, box);
       if (p) out.set(e.index, p);
       continue;
     }

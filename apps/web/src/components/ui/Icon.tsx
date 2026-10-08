@@ -29,6 +29,7 @@ const PATHS = {
   plus: ["M12 5v14", "M5 12h14"],
   minus: ["M5 12h14"],
   maximize: ["M8 3H5a2 2 0 0 0-2 2v3", "M21 8V5a2 2 0 0 0-2-2h-3", "M3 16v3a2 2 0 0 0 2 2h3", "M16 21h3a2 2 0 0 0 2-2v-3"],
+  minimize: ["M8 3v5H3", "M21 8h-5V3", "M3 16h5v5", "M16 21v-5h5"],
   arrowLeft: ["m12 19-7-7 7-7", "M19 12H5"],
   arrowRight: ["M5 12h14", "m12 5 7 7-7 7"],
   check: ["M20 6 9 17l-5-5"],

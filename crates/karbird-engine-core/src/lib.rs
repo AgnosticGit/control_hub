@@ -10,6 +10,7 @@ mod infra;
 mod layout;
 mod reducer;
 pub mod reference;
+mod server_layout;
 mod skew;
 mod tracks;
 pub mod types;
@@ -21,6 +22,7 @@ use hops::{Hop, HopIndex};
 use karbird_domain::{EntityKind, HealthStatus, Provenance, RelationKind};
 use layout::Layout;
 use reducer::*;
+pub use server_layout::{SERVER_LAYOUT_VERSION, SavedTopologyGeometry, build_server_geometry};
 use skew::SkewCache;
 pub use tracks::{MAX_CLIP_CAP, MAX_TRACK_BUCKETS};
 pub use types::*;
@@ -125,6 +127,7 @@ pub struct Engine {
     infra: Option<InfrastructureSnapshot>,
     /// Machine-frame layout for `infra`; recomputed with the layered layout.
     infra_layout: Option<infra::InfraLayout>,
+    server_geometry: Option<SavedTopologyGeometry>,
 }
 
 #[derive(Debug, Clone)]
@@ -225,6 +228,7 @@ impl Engine {
             layout_dirty: false,
             infra: None,
             infra_layout: None,
+            server_geometry: None,
         }
     }
 
@@ -236,6 +240,11 @@ impl Engine {
 
     /// Replace topology (nodes/edges known from the server). Recorded items are kept.
     pub fn load_topology(&mut self, snapshot: TopologySnapshot) {
+        self.replace_topology(snapshot, None);
+    }
+
+    fn replace_topology(&mut self, snapshot: TopologySnapshot, geometry: Option<SavedTopologyGeometry>) {
+        self.server_geometry = geometry;
         let old_nodes = std::mem::take(&mut self.nodes);
         self.node_index.clear();
         self.edges.clear();
@@ -245,7 +254,7 @@ impl Engine {
         }
         // Keep nodes discovered from items so their items remain attributable.
         for n in old_nodes {
-            if !self.node_index.contains_key(&n.id) {
+            if self.server_geometry.is_none() && !self.node_index.contains_key(&n.id) {
                 self.ensure_node(&n.id, &n.name, n.kind, n.provenance);
             }
         }
@@ -258,15 +267,42 @@ impl Engine {
                 rec.reasons = e.reasons;
             }
         }
-        self.relayout();
+        if self.server_geometry.is_some() {
+            self.layout_dirty = false;
+            self.refresh_infra();
+            self.topology_revision += 1;
+        } else {
+            self.relayout();
+        }
         self.timeline = None;
         self.hops = None;
     }
 
     pub fn load_topology_json(&mut self, json: &str) -> Result<(), EngineError> {
-        let snap: TopologySnapshot =
-            serde_json::from_str(json).map_err(|e| EngineError::InvalidInput(e.to_string()))?;
-        self.load_topology(snap);
+        #[derive(serde::Deserialize)]
+        struct Response {
+            #[serde(flatten)]
+            snapshot: TopologySnapshot,
+            geometry: Option<SavedTopologyGeometry>,
+            infrastructure_snapshot: Option<InfrastructureSnapshot>,
+        }
+        let response: Response = serde_json::from_str(json).map_err(|e| EngineError::InvalidInput(e.to_string()))?;
+        if self.config.server_owned_topology && response.geometry.is_none() {
+            return Err(EngineError::InvalidInput("server topology geometry is required".into()));
+        }
+        if let Some(geometry) = &response.geometry {
+            geometry.validate(&response.snapshot)?;
+            if self.server_geometry.as_ref() == Some(geometry) {
+                if let Some(snapshot) = response.infrastructure_snapshot {
+                    self.set_infrastructure(snapshot);
+                }
+                return Ok(());
+            }
+        }
+        self.replace_topology(response.snapshot, response.geometry);
+        if let Some(snapshot) = response.infrastructure_snapshot {
+            self.set_infrastructure(snapshot);
+        }
         Ok(())
     }
 
@@ -284,7 +320,9 @@ impl Engine {
         for item in batch.items {
             match item {
                 TimelineItem::Span(s) => {
-                    self.ensure_node(&s.service_id, &s.service_name, EntityKind::Service, Provenance::Observed);
+                    if self.server_geometry.is_none() && !self.config.server_owned_topology {
+                        self.ensure_node(&s.service_id, &s.service_name, EntityKind::Service, Provenance::Observed);
+                    }
                     let key = (s.trace_id.clone(), s.span_id.clone());
                     match self.spans.get(&key) {
                         None => {
@@ -303,7 +341,9 @@ impl Engine {
                     }
                 }
                 TimelineItem::Log(l) => {
-                    self.ensure_node(&l.service_id, &l.service_name, EntityKind::Service, Provenance::Observed);
+                    if self.server_geometry.is_none() && !self.config.server_owned_topology {
+                        self.ensure_node(&l.service_id, &l.service_name, EntityKind::Service, Provenance::Observed);
+                    }
                     match self.logs.get(&l.id) {
                         None => {
                             self.pending.push(ItemKey::Log(l.id.clone()));
@@ -321,7 +361,9 @@ impl Engine {
                 TimelineItem::Event(e) => {
                     if let (Some(id), Some(name)) = (&e.service_id, &e.service_name) {
                         let (id, name) = (id.clone(), name.clone());
-                        self.ensure_node(&id, &name, EntityKind::Service, Provenance::Observed);
+                        if self.server_geometry.is_none() && !self.config.server_owned_topology {
+                            self.ensure_node(&id, &name, EntityKind::Service, Provenance::Observed);
+                        }
                     }
                     match self.events.get(&e.id) {
                         None => {
@@ -400,13 +442,58 @@ impl Engine {
     }
 
     pub fn set_infrastructure_json(&mut self, json: &str) -> Result<(), EngineError> {
-        let snap: InfrastructureSnapshot =
-            serde_json::from_str(json).map_err(|e| EngineError::InvalidInput(e.to_string()))?;
-        self.set_infrastructure(snap);
+        #[derive(serde::Deserialize)]
+        struct Response {
+            #[serde(flatten)]
+            snapshot: InfrastructureSnapshot,
+            topology: Option<serde_json::Value>,
+        }
+        let response: Response = serde_json::from_str(json).map_err(|e| EngineError::InvalidInput(e.to_string()))?;
+        if let Some(topology) = response.topology {
+            self.load_topology_json(
+                &serde_json::to_string(&topology).map_err(|e| EngineError::InvalidInput(e.to_string()))?,
+            )?;
+        }
+        self.set_infrastructure(response.snapshot);
         Ok(())
     }
 
     fn refresh_infra(&mut self) {
+        if self.config.server_owned_topology && self.server_geometry.is_none() {
+            self.infra_layout = None;
+            return;
+        }
+        if let Some(saved) = &self.server_geometry {
+            self.infra_layout = if self.filters.infrastructure {
+                saved.infrastructure.as_ref().map(|view| infra::InfraLayout {
+                    positions: view.nodes.iter().map(|n| (n.index, (n.x, n.y))).collect(),
+                    waypoints: view.edges.iter().map(|e| e.points.iter().map(|p| (p[0], p[1])).collect()).collect(),
+                    external: saved.external.iter().copied().collect(),
+                    view: view.infra.clone().unwrap_or_default(),
+                })
+            } else {
+                None
+            };
+            if let (Some(layout), Some(snapshot)) = (&mut self.infra_layout, &self.infra) {
+                for frame in &mut layout.view.frames {
+                    if let Some(host) = snapshot.hosts.iter().find(|h| h.id == frame.host_id) {
+                        frame.label = infra::frame_label(host);
+                        frame.hot = host.cpu_utilization.is_some_and(|v| v >= infra::HOT_CPU)
+                            || snapshot.hints.iter().any(|hint| hint.host_id == host.id);
+                        frame.has_metrics = host.has_metrics;
+                    } else {
+                        let name = frame.label.split(" · ").next().unwrap_or(&frame.host_id).to_owned();
+                        frame.label = format!("{name} · no agent metrics");
+                        frame.hot = false;
+                        frame.has_metrics = false;
+                    }
+                }
+                let node_of = self.nodes.iter().enumerate().map(|(i, n)| (n.id.as_str(), i as u32)).collect();
+                layout.view.links =
+                    infra::noisy_links(snapshot, &node_of, &layout.positions, &layout.view.chips, &layout.view.frames);
+            }
+            return;
+        }
         self.infra_layout = match (&self.infra, self.filters.infrastructure) {
             (Some(snap), true) => {
                 let nodes: Vec<infra::LayoutNode<'_>> = self
@@ -483,7 +570,10 @@ impl Engine {
         {
             return Some(p);
         }
-        self.layout.position(id)
+        self.server_geometry
+            .as_ref()
+            .and_then(|g| g.plain.nodes.iter().find(|n| n.id == id).map(|n| (n.x, n.y)))
+            .or_else(|| self.layout.position(id))
     }
 
     /// Which hops frames carry: those overlapping `[time - before, time + after]`, each side
@@ -555,7 +645,10 @@ impl Engine {
                     reasons: e.reasons.clone(),
                     points: match &self.infra_layout {
                         Some(l) => l.waypoints.get(i).map_or(&[][..], Vec::as_slice),
-                        None => self.layout.waypoints(i),
+                        None => match &self.server_geometry {
+                            Some(g) => return g.plain.edges[i].clone(),
+                            None => self.layout.waypoints(i),
+                        },
                     }
                     .iter()
                     .map(|&(x, y)| [x, y])
@@ -1285,6 +1378,9 @@ impl Engine {
             let idx = match self.edge_index.get(&(a, b, rel)) {
                 Some(&i) => i,
                 None => {
+                    if self.server_geometry.is_some() || self.config.server_owned_topology {
+                        continue;
+                    }
                     let i = self.ensure_edge(a, b, rel, prov);
                     if prov == Provenance::Inferred
                         && let Some(e) = self.edges.get_mut(i as usize)

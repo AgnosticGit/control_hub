@@ -81,6 +81,13 @@ export function dashes(p: EdgePath, on: number, off: number): number[][] {
   return out;
 }
 
+/** Dash in map coordinates so zooming never changes a route's dash count. */
+export function zoomInvariantDashes(p: EdgePath): number[][] {
+  // Bound drawing work for long saved server corridors independently of camera scale.
+  const step = Math.max(1, p.length / (11 * 512));
+  return dashes(p, 6 * step, 5 * step);
+}
+
 /** A path through the given points (flat x, y pairs); duplicate points are dropped. */
 export function build(pts: number[]): EdgePath {
   const clean: number[] = [pts[0] ?? 0, pts[1] ?? 0];

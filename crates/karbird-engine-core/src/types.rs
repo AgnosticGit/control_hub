@@ -14,6 +14,8 @@ use ts_rs::TS;
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(default)]
 pub struct EngineConfig {
+    /// Private workspaces require backend geometry and never infer membership locally.
+    pub server_owned_topology: bool,
     /// Hard cap on stored timeline items (spans + logs + events). Oldest are evicted.
     pub max_items: u32,
     /// Rolling window used for rates / error ratios at the selected time.
@@ -41,6 +43,7 @@ pub struct EngineConfig {
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
+            server_owned_topology: false,
             max_items: 200_000,
             rolling_window_ns: 30_000_000_000,
             checkpoint_budget_bytes: 16 * 1024 * 1024,

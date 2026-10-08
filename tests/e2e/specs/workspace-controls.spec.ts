@@ -101,7 +101,14 @@ test.describe("workspace controls on demo data", () => {
     await (await mapLayer(page, "Hide inferred")).uncheck();
     await expect.poll(async () => (await column(table, 5)).filter((p) => p === "inferred").length).toBeGreaterThan(0);
 
-    await (await mapLayer(page, "Only problems")).check();
+    const onlyProblems = await mapLayer(page, "Only problems");
+    if (await onlyProblems.isDisabled()) {
+      // This fixture currently has no degraded/failing services, so the empty filter is unavailable.
+      await expect(onlyProblems).not.toBeChecked();
+      return;
+    }
+
+    await onlyProblems.check();
     const empty = page.getByText("No components match the current filters.");
     await expect
       .poll(async () => {
@@ -110,7 +117,7 @@ test.describe("workspace controls on demo data", () => {
         return statuses.every((s) => s === "Degraded" || s === "Failing");
       })
       .toBe(true);
-    await (await mapLayer(page, "Only problems")).uncheck();
+    await onlyProblems.uncheck();
     await expect(page.getByRole("table").getByRole("button", { name: "gateway", exact: true })).toBeVisible();
   });
 

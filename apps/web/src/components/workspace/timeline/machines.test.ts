@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_MACHINE_BUCKETS,
   MAX_MACHINE_SPAN,
+  MACHINE_TIMELINE_BUCKETS,
   eventLabel,
   eventMarkers,
   formatShare,
@@ -12,6 +13,7 @@ import {
   type ContainerEvent,
   type InfraTimeline,
 } from "./machines";
+import { futureShare, withFuture } from "./scale";
 
 const S = 1_000_000_000n;
 const FROM = 1_800_000_000n * S;
@@ -84,22 +86,31 @@ describe("machine timeline", () => {
 
   it("asks for a window covering the view that does not move with every small pan", () => {
     const view = { from: FROM + 3n * S, to: FROM + 903n * S };
-    const w = machineWindow(view, 900, 3);
+    const w = machineWindow(view);
     expect(w).not.toBeNull();
     if (!w) return;
     expect(w.from <= view.from && w.to >= view.to).toBe(true);
-    expect(machineWindow({ from: view.from + S, to: view.to + S }, 900, 3)).toEqual(w);
-    // About one bucket every 3 px of the visible part.
-    expect(w.buckets).toBeGreaterThanOrEqual(300);
-    expect(w.buckets).toBeLessThanOrEqual(400);
+    expect(machineWindow({ from: view.from + S, to: view.to + S })).toEqual(w);
+    expect(w.buckets).toBe(MACHINE_TIMELINE_BUCKETS);
+  });
+
+  it("uses a fixed bucket count so viewport size cannot change the request", () => {
+    const view = { from: FROM + 3n * S, to: FROM + 903n * S };
+    expect(machineWindow(view)?.buckets).toBe(MACHINE_TIMELINE_BUCKETS);
+  });
+
+  it("excludes the visual future stretch from the request window", () => {
+    const data = { from: FROM, to: FROM + 900n * S };
+    const narrow = withFuture(data, futureShare(480));
+    const wide = withFuture(data, futureShare(1440));
+    expect(machineWindow(narrow, data)).toEqual(machineWindow(wide, data));
   });
 
   it("keeps the window within what the API accepts", () => {
-    const huge = machineWindow({ from: FROM - 30n * 24n * 3600n * S, to: FROM }, 8000, 1);
+    const huge = machineWindow({ from: FROM - 30n * 24n * 3600n * S, to: FROM });
     expect(huge && huge.to - huge.from).toBe(MAX_MACHINE_SPAN);
-    expect(huge?.buckets).toBe(MAX_MACHINE_BUCKETS);
-    expect(machineWindow({ from: FROM, to: FROM }, 900, 3)).toBeNull();
-    expect(machineWindow({ from: FROM, to: FROM + S }, 0, 3)).toBeNull();
+    expect(huge?.buckets).toBeLessThanOrEqual(MAX_MACHINE_BUCKETS);
+    expect(machineWindow({ from: FROM, to: FROM })).toBeNull();
   });
 
   it("holds a machine's value over empty buckets between exports, up to 90 s", () => {

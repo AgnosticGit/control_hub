@@ -12,12 +12,12 @@ import { MapKey } from "./MapKey";
 import { NodeTable } from "./NodeTable";
 import type { WorkspaceMemory } from "./workspace-memory";
 import { toggleSelection } from "@/renderer/selection-style";
+import { mapLayerAvailability, type MapLayerAvailability } from "@/renderer/map-layer-availability";
 
-type ZoomAction = "in" | "out" | "fit";
+type ZoomAction = "in" | "out" | "fullscreen";
 const ZOOM_BUTTONS: Array<{ label: string; icon: IconName; action: ZoomAction }> = [
   { label: "Zoom in", icon: "plus", action: "in" },
   { label: "Zoom out", icon: "minus", action: "out" },
-  { label: "Fit to screen", icon: "maximize", action: "fit" },
 ];
 
 /** Icon paths in a 20 × 12 box: the same two cards joined in each style. */
@@ -57,6 +57,8 @@ interface Props {
   onHideInferredChange: (enabled: boolean) => void;
   tableView: boolean;
   onTableViewChange: (enabled: boolean) => void;
+  fullscreen: boolean;
+  onToggleFullscreen: () => void;
 }
 
 export function MapView({
@@ -83,11 +85,14 @@ export function MapView({
   onHideInferredChange,
   tableView,
   onTableViewChange,
+  fullscreen,
+  onToggleFullscreen,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<PixiMap | null>(null);
   const [webglError, setWebglError] = useState<string | null>(null);
   const [lastFrame, setLastFrame] = useState<Frame | null>(null);
+  const [availability, setAvailability] = useState<MapLayerAvailability>({ ready: false, problems: false, inferred: false });
   const showTable = forceTable || webglError !== null;
   const onSelectRef = useRef(onSelect);
   const onSelectHostRef = useRef(onSelectHost);
@@ -116,6 +121,11 @@ export function MapView({
     selectedEdgeRef.current = selectedEdgeIndex;
     mapRef.current?.setSelectedEdge(selectedEdgeIndex);
   }, [selectedEdgeIndex]);
+  useEffect(() => {
+    if (!availability.ready) return;
+    if (!availability.problems && onlyProblems) onOnlyProblemsChange(false);
+    if (!availability.inferred && hideInferred) onHideInferredChange(false);
+  }, [availability, hideInferred, onHideInferredChange, onOnlyProblemsChange, onlyProblems]);
   useEffect(() => {
     topInsetRef.current = topInset;
     mapRef.current?.setTopInset(topInset);
@@ -184,7 +194,16 @@ export function MapView({
         map.setTopology(topo);
         const sel = selectedRef.current;
         map.setSelected(sel ? (topo?.nodes.find((n) => n.id === sel)?.index ?? null) : null);
-        off = actions.onFrame((f) => map.render(f));
+        off = actions.onFrame((f) => {
+          if (f.topology) map.setTopology(f.topology);
+          const nextAvailability = mapLayerAvailability(f, (f.topology ?? topologyRef.current)?.edges ?? null);
+          setAvailability((current) =>
+            current.ready === nextAvailability.ready && current.problems === nextAvailability.problems && current.inferred === nextAvailability.inferred
+              ? current
+              : nextAvailability,
+          );
+          map.render(f);
+        });
       } catch (e) {
         if (!disposed) setWebglError(e instanceof Error ? e.message : String(e));
       }
@@ -210,8 +229,17 @@ export function MapView({
   // Table view needs frames as React state (throttled).
   useEffect(() => {
     if (!showTable) return;
+    // A table has no camera. Non-positive dimensions explicitly disable engine culling;
+    // otherwise saved cards outside the previous map viewport disappear from its rows.
+    actions.setViewport(0, 0, 0, 0, 1);
     let last = 0;
     return actions.onFrame((f) => {
+      const nextAvailability = mapLayerAvailability(f, (f.topology ?? topologyRef.current)?.edges ?? null);
+      setAvailability((current) =>
+        current.ready === nextAvailability.ready && current.problems === nextAvailability.problems && current.inferred === nextAvailability.inferred
+          ? current
+          : nextAvailability,
+      );
       const now = performance.now();
       if (now - last > 250) {
         last = now;
@@ -221,11 +249,14 @@ export function MapView({
   }, [actions, showTable]);
 
   function zoomControl(action: ZoomAction) {
+    if (action === "fullscreen") {
+      onToggleFullscreen();
+      return;
+    }
     const m = mapRef.current;
     if (!m) return;
     if (action === "in") m.zoomBy(1.2);
-    else if (action === "out") m.zoomBy(1 / 1.2);
-    else m.fit();
+    else m.zoomBy(1 / 1.2);
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -241,7 +272,9 @@ export function MapView({
       ArrowRight: () => m.panBy(-step, 0),
       ArrowUp: () => m.panBy(0, step),
       ArrowDown: () => m.panBy(0, -step),
-      Escape: () => onSelect(null),
+      Escape: () => {
+        if (!fullscreen) onSelect(null);
+      },
     };
     const fn = handled[e.key];
     if (fn) {
@@ -273,6 +306,7 @@ export function MapView({
           onHideInferredChange={onHideInferredChange}
           tableView={tableView}
           onTableViewChange={onTableViewChange}
+          availability={availability}
         />
       </div>
     );
@@ -303,6 +337,16 @@ export function MapView({
               <Icon name={b.icon} className="h-4 w-4" />
             </button>
           ))}
+          <button
+            type="button"
+            aria-label={fullscreen ? "Exit full screen" : "Full screen"}
+            title={fullscreen ? "Exit full screen (Esc)" : "Full screen"}
+            aria-pressed={fullscreen}
+            onClick={onToggleFullscreen}
+            className="btn btn-icon bg-surface/90 backdrop-blur"
+          >
+            <Icon name={fullscreen ? "minimize" : "maximize"} className="h-4 w-4" />
+          </button>
           <div role="group" aria-label="Line style" className="ml-1.5 flex gap-0.5 rounded-lg border border-border bg-surface/90 p-0.5 backdrop-blur">
             {LINE_STYLES.map((s) => {
               const active = s.style === edgeStyle;
@@ -341,6 +385,7 @@ export function MapView({
         onHideInferredChange={onHideInferredChange}
         tableView={tableView}
         onTableViewChange={onTableViewChange}
+        availability={availability}
       />
     </div>
   );
@@ -391,6 +436,7 @@ function AnimationNote({
   onHideInferredChange,
   tableView,
   onTableViewChange,
+  availability,
 }: {
   mode: Mode;
   speed: Speed;
@@ -403,6 +449,7 @@ function AnimationNote({
   onHideInferredChange: (enabled: boolean) => void;
   tableView: boolean;
   onTableViewChange: (enabled: boolean) => void;
+  availability: MapLayerAvailability;
 }) {
   const clock =
     mode === "live"
@@ -425,6 +472,7 @@ function AnimationNote({
         onHideInferredChange={onHideInferredChange}
         tableView={tableView}
         onTableViewChange={onTableViewChange}
+        availability={availability}
       />
       <MapKey animation={`Requests from recorded spans, ${clock}.`} capped={capped} />
     </div>
@@ -440,6 +488,7 @@ function MapLayers({
   onHideInferredChange,
   tableView,
   onTableViewChange,
+  availability,
 }: {
   infrastructure: boolean;
   onInfrastructureChange: (enabled: boolean) => void;
@@ -449,6 +498,7 @@ function MapLayers({
   onHideInferredChange: (enabled: boolean) => void;
   tableView: boolean;
   onTableViewChange: (enabled: boolean) => void;
+  availability: MapLayerAvailability;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -492,8 +542,8 @@ function MapLayers({
           <p className="mb-2 px-2 text-xs font-semibold tracking-wide text-muted uppercase">Map layers</p>
           <div className="space-y-1">
             <LayerToggle label="Infrastructure" checked={infrastructure} onChange={onInfrastructureChange} />
-            <LayerToggle label="Only problems" checked={onlyProblems} onChange={onOnlyProblemsChange} />
-            <LayerToggle label="Hide inferred" checked={hideInferred} onChange={onHideInferredChange} />
+            <LayerToggle label="Only problems" checked={onlyProblems} onChange={onOnlyProblemsChange} disabled={!availability.ready || !availability.problems} />
+            <LayerToggle label="Hide inferred" checked={hideInferred} onChange={onHideInferredChange} disabled={!availability.ready || !availability.inferred} />
             <LayerToggle label="Table view" checked={tableView} onChange={onTableViewChange} />
           </div>
         </div>
@@ -502,11 +552,11 @@ function MapLayers({
   );
 }
 
-function LayerToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (enabled: boolean) => void }) {
+function LayerToggle({ label, checked, onChange, disabled = false }: { label: string; checked: boolean; onChange: (enabled: boolean) => void; disabled?: boolean }) {
   return (
-    <label className="flex cursor-pointer items-center justify-between gap-4 rounded-lg px-2 py-2 text-sm text-text hover:bg-bg/70">
+    <label className={`flex items-center justify-between gap-4 rounded-lg px-2 py-2 text-sm text-text ${disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer hover:bg-bg/70"}`}>
       {label}
-      <input type="checkbox" className="switch" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <input type="checkbox" className="switch" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
     </label>
   );
 }

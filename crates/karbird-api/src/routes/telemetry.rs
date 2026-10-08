@@ -84,7 +84,7 @@ fn limit(v: Option<u32>, default: u32, max: u32) -> u32 {
     v.unwrap_or(default).clamp(1, max)
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct Completeness {
     /// Data ingested before this time (nanoseconds) has been processed into storage.
     /// `null` when the processor has not reported progress yet.
@@ -251,7 +251,7 @@ fn merge_services(spans: Vec<ServiceSummaryRow>, logs: Vec<LogServiceRow>) -> Ve
 
 // ---------------------------------------------------------------- topology
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct TopologyNodeDto {
     pub id: String,
     pub name: String,
@@ -259,7 +259,7 @@ pub struct TopologyNodeDto {
     pub provenance: ProvenanceDto,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct TopologyEdgeDto {
     pub source: String,
     pub target: String,
@@ -273,37 +273,95 @@ pub struct TopologyEdgeDto {
 }
 
 /// Superset of the engine's `TopologySnapshot`; the Worker passes it to WASM unchanged.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct TopologyResponse {
     pub nodes: Vec<TopologyNodeDto>,
     pub edges: Vec<TopologyEdgeDto>,
     pub from_ns: String,
     pub to_ns: String,
     pub completeness: Completeness,
+    pub geometry: karbird_engine_core::SavedTopologyGeometry,
+    pub updated_at_ns: String,
+    #[serde(default)]
+    pub infrastructure_snapshot: Option<karbird_engine_core::InfrastructureSnapshot>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct TopologyParams {
+    pub from: Option<String>,
+    pub to: Option<String>,
+    /// Live inventory persists inactive relationships; historical ranges stay exact.
+    #[serde(default)]
+    pub live: bool,
+    /// Placement at the selected cursor, independent of relationship-range membership.
+    pub at: Option<String>,
 }
 
 #[utoipa::path(get, path = "/api/v1/projects/{project_id}/environments/{environment_id}/topology", tag = "telemetry",
-    params(("project_id" = String, Path), ("environment_id" = String, Path), RangeParams),
-    responses((status = 200, body = TopologyResponse), (status = 404, body = crate::error::ErrorBody)))]
+    params(("project_id" = String, Path), ("environment_id" = String, Path), TopologyParams),
+    responses((status = 200, body = TopologyResponse),
+        (status = 304, description = "Saved graph unchanged; authorization was checked"),
+        (status = 400, body = crate::error::ErrorBody),
+        (status = 401, body = crate::error::ErrorBody),
+        (status = 403, body = crate::error::ErrorBody),
+        (status = 404, body = crate::error::ErrorBody),
+        (status = 503, body = crate::error::ErrorBody)))]
 pub async fn topology(
     State(state): State<AppState>,
     user: CurrentUser,
     Path((project_id, environment_id)): Path<(String, String)>,
-    Query(q): Query<RangeParams>,
-) -> ApiResult<Json<TopologyResponse>> {
+    Query(q): Query<TopologyParams>,
+    headers: axum::http::HeaderMap,
+) -> ApiResult<axum::response::Response> {
+    use axum::response::IntoResponse;
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
-    let r = q.resolve()?;
+    let r = RangeParams { from: q.from, to: q.to }.resolve()?;
+    let response = crate::topology::read(&state, &scope, r, q.live).await?;
+    let response = if let Some(at) = parse_ns(&q.at, "at")? {
+        let snapshot = crate::routes::infrastructure::load_snapshot(&state, &scope, at).await?;
+        crate::topology::with_placement(&state, &scope, response, snapshot).await?
+    } else {
+        response
+    };
+    use sha2::Digest;
+    let bytes = serde_json::to_vec(&response).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let mut identity = sha2::Sha256::new();
+    identity.update(serde_json::to_vec(&scope).map_err(|e| ApiError::Internal(e.to_string()))?);
+    identity.update(&bytes);
+    let etag = format!("\"map-{:x}\"", identity.finalize());
+    let unchanged = headers.get(axum::http::header::IF_NONE_MATCH).and_then(|h| h.to_str().ok()) == Some(etag.as_str());
+    let mut result = if unchanged {
+        axum::http::StatusCode::NOT_MODIFIED.into_response()
+    } else {
+        ([(axum::http::header::CONTENT_TYPE, "application/json")], bytes).into_response()
+    };
+    result.headers_mut().insert(
+        axum::http::header::ETAG,
+        etag.parse().map_err(|e: axum::http::header::InvalidHeaderValue| ApiError::Internal(e.to_string()))?,
+    );
+    result
+        .headers_mut()
+        .insert(axum::http::header::CACHE_CONTROL, axum::http::HeaderValue::from_static("private, no-cache"));
+    Ok(result)
+}
+
+pub(crate) async fn aggregate_topology(
+    state: &AppState,
+    scope: &Scope,
+    r: Range,
+) -> ApiResult<(Vec<TopologyNodeDto>, Vec<TopologyEdgeDto>, Completeness)> {
     let (services, logs, calls, resources, clients) = tokio::try_join!(
-        state.ch.service_summaries(&scope, r.from, r.to),
-        state.ch.log_services(&scope, r.from, r.to),
-        state.ch.call_edges(&scope, r.from, r.to),
-        state.ch.resource_edges(&scope, r.from, r.to),
-        state.ch.external_client_edges(&scope, r.from, r.to),
+        state.ch.service_summaries(scope, r.from, r.to),
+        state.ch.log_services(scope, r.from, r.to),
+        state.ch.call_edges(scope, r.from, r.to),
+        state.ch.resource_edges(scope, r.from, r.to),
+        state.ch.external_client_edges(scope, r.from, r.to),
     )?;
-    let (nodes, edges) = build_topology(&services, &logs, calls, resources, clients, &external_clients_id(&scope));
-    let mut completeness = completeness(&state, &scope, false).await?;
-    completeness.notes.extend(archive_note(archive_cutoff(&state), r.from));
-    Ok(Json(TopologyResponse { nodes, edges, from_ns: ns(r.from), to_ns: ns(r.to), completeness }))
+    let (nodes, edges) = build_topology(&services, &logs, calls, resources, clients, &external_clients_id(scope));
+    let mut completeness = completeness(state, scope, false).await?;
+    completeness.notes.extend(archive_note(archive_cutoff(state), r.from));
+    Ok((nodes, edges, completeness))
 }
 
 /// One node per environment for everything that calls it without being instrumented

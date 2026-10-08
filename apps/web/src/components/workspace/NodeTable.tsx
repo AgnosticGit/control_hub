@@ -13,12 +13,12 @@ interface Props {
   onSelect: (id: string) => void;
 }
 
-/** Accessible, non-GPU representation of the map. */
-export function NodeTable({ frame, topology, selectedId, onSelect }: Props) {
+export function nodeTableRows(frame: Pick<Frame, "topology" | "nodeIndices" | "nodeData"> | null, topology: TopologyView | null) {
+  const currentTopology = frame?.topology ?? topology;
   const rows: Array<{ id: string; name: string; kind: EntityKindDto; provenance: string; status: number; active: number; requests: number }> = [];
-  if (frame && topology) {
+  if (frame && currentTopology) {
     for (let i = 0; i < frame.nodeIndices.length; i++) {
-      const node = topology.nodes[frame.nodeIndices[i] ?? -1];
+      const node = currentTopology.nodes[frame.nodeIndices[i] ?? -1];
       if (!node) continue;
       const o = i * NODE_STRIDE;
       rows.push({
@@ -33,8 +33,14 @@ export function NodeTable({ frame, topology, selectedId, onSelect }: Props) {
     }
   }
   rows.sort((a, b) => b.status - a.status || a.name.localeCompare(b.name));
+  return rows;
+}
 
-  if (!frame || !topology) return <p className="p-4 text-sm text-muted">Waiting for engine…</p>;
+/** Accessible, non-GPU representation of the map. */
+export function NodeTable({ frame, topology, selectedId, onSelect }: Props) {
+  const currentTopology = frame?.topology ?? topology;
+  const rows = nodeTableRows(frame, topology);
+  if (!frame || !currentTopology) return <p className="p-4 text-sm text-muted">Waiting for engine…</p>;
   if (rows.length === 0) return <p className="p-4 text-sm text-muted">No components match the current filters.</p>;
 
   return (

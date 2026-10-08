@@ -14,6 +14,7 @@ import { RULER_H, bucketGeometry, draw, drawRuler, rowTop, totalHeight, type Act
 import { EVENT_COLOR, eventLabel, eventMarkers, formatShare, holdSamples, machineAt, machineWindow, type EventMarker, type InfraTimeline } from "./machines";
 import { centeredOn, nearestItems, tracksMatch, viewIsEmpty } from "./neighbours";
 import { placeAbove, rangeBetween, viewAround } from "./range";
+import { stableTrackWindow } from "./track-window";
 import {
   clampView,
   follow,
@@ -30,7 +31,8 @@ import {
   type View,
 } from "./scale";
 
-const BUCKET_PX = 3;
+/** Data resolution stays stable while the canvas adapts to the viewport. */
+export const TIMELINE_TRACK_BUCKETS = 180;
 const CLIP_CAP = 400;
 const REFETCH_MS = 100;
 export const LABEL_W = 168;
@@ -65,6 +67,7 @@ function isoNs(iso: string | null | undefined): bigint | null {
 function useTracks(actions: WorkspaceActions, view: View, buckets: number, clipCap: number, key: string, enabled: boolean) {
   const [tracks, setTracks] = useState<TimelineTracks | null>(null);
   const busy = useRef(false);
+  const window = stableTrackWindow(view, buckets);
   useEffect(() => {
     if (!enabled || buckets <= 0) return;
     let cancelled = false;
@@ -72,7 +75,7 @@ function useTracks(actions: WorkspaceActions, view: View, buckets: number, clipC
       if (busy.current) return;
       busy.current = true;
       void actions
-        .timelineTracks(view.from, view.to, buckets, clipCap)
+        .timelineTracks(window.from, window.to, window.buckets, clipCap)
         .then((t) => {
           if (!cancelled && t) setTracks(t);
         })
@@ -84,7 +87,7 @@ function useTracks(actions: WorkspaceActions, view: View, buckets: number, clipC
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [actions, view.from, view.to, buckets, clipCap, key, enabled]);
+  }, [actions, window.from, window.to, window.buckets, buckets, clipCap, key, enabled]);
   return tracks;
 }
 
@@ -163,7 +166,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
 
   const ready = state.phase === "ready";
   const dataKey = `${state.load?.at ?? 0}|${filterKey}`;
-  const tracks = useTracks(actions, view, Math.floor(width / BUCKET_PX), CLIP_CAP, dataKey, ready);
+  const tracks = useTracks(actions, view, TIMELINE_TRACK_BUCKETS, CLIP_CAP, dataKey, ready);
 
   const plans = useQuery({
     queryKey: ["actions", projectId, environmentId],
@@ -186,7 +189,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     return out;
   }, [plans.data, data.to]);
 
-  const win = machineWindow(view, width, BUCKET_PX);
+  const win = machineWindow(view, data);
   const machines = useQuery({
     queryKey: ["infra-timeline", projectId, environmentId, win?.from.toString(), win?.to.toString(), win?.buckets],
     enabled: ready && win !== null,

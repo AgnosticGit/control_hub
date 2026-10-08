@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { fitCamera, type FitOptions } from "./fit";
+import { fitCamera, MIN_MAP_SCALE, overlayInset, zoomCamera, type FitOptions } from "./fit";
 
 const OPTS: FitOptions = { width: 1000, height: 600, padX: 100, padY: 100, topInset: 0, insetGap: 50, minScale: 0.15, maxScale: 1.3 };
 const BOUNDS = { minX: 0, minY: 0, maxX: 1200, maxY: 600 };
 const screenY = (y: number, c: { y: number; scale: number }) => c.y + y * c.scale;
 
 describe("fitCamera", () => {
+  it("never rounds a fractional overlay down over a tiny overview card", () => {
+    expect(overlayInset(214.390625)).toBe(215);
+    expect(overlayInset(-4)).toBe(0);
+    expect(overlayInset(Number.NaN)).toBe(0);
+  });
+  it("fits a large saved inventory instead of leaving its lower cards outside the viewport", () => {
+    const bounds = { minX: 0, minY: 0, maxX: 1200, maxY: 100_000 };
+    const c = fitCamera(bounds, { ...OPTS, minScale: MIN_MAP_SCALE, topInset: 140 });
+    expect(screenY(bounds.minY, c)).toBeGreaterThanOrEqual(140);
+    expect(screenY(bounds.maxY, c)).toBeLessThanOrEqual(OPTS.height);
+  });
   it("centres the padded bounds on the screen", () => {
     const c = fitCamera(BOUNDS, OPTS);
     expect(c.scale).toBeCloseTo(Math.min(1000 / 1400, 600 / 800));
@@ -49,5 +60,22 @@ describe("fitCamera", () => {
   it("does not zoom a tiny map past the maximum scale", () => {
     const c = fitCamera({ minX: 0, minY: 0, maxX: 10, maxY: 10 }, OPTS);
     expect(c.scale).toBe(1.3);
+  });
+});
+
+describe("zoomCamera", () => {
+  it("stops zooming out at the fitted overview and restores its position", () => {
+    const fit = { x: 120, y: 80, scale: 0.2 };
+    const current = { x: -800, y: -600, scale: 0.21 };
+    expect(zoomCamera(current, 0.5, 500, 300, fit, 4)).toEqual(fit);
+  });
+
+  it("zooms around the pointer while remaining above the fitted minimum", () => {
+    const fit = { x: 0, y: 0, scale: 0.2 };
+    const current = { x: 100, y: 60, scale: 0.5 };
+    const next = zoomCamera(current, 0.5, 300, 200, fit, 4);
+    expect(next.scale).toBe(0.25);
+    expect(next.x + ((300 - current.x) / current.scale) * next.scale).toBeCloseTo(300);
+    expect(next.y + ((200 - current.y) / current.scale) * next.scale).toBeCloseTo(200);
   });
 });

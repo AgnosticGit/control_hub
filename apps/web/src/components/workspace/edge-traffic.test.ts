@@ -33,7 +33,7 @@ describe("edgeEnds / edgeIndex", () => {
   };
 
   it("maps an engine edge index to the node IDs at its ends and back", () => {
-    expect(edgeEnds(topo, 1)).toEqual({ source: "svc_orders", target: "db" });
+    expect(edgeEnds(topo, 1)).toEqual({ source: "svc_orders", target: "db", relation:"calls" });
     expect(edgeIndex(topo, { source: "svc_orders", target: "db" })).toBe(1);
   });
 
@@ -42,6 +42,11 @@ describe("edgeEnds / edgeIndex", () => {
     expect(edgeEnds(topo, 9)).toBeNull();
     expect(edgeEnds(null, 0)).toBeNull();
     expect(edgeIndex(topo, null)).toBeNull();
+  });
+
+  it("keeps a selected relation distinct when the same nodes have two kinds of links", () => {
+    const graph: TopologyView = { ...topo, edges:[edge(0,0,1),{...edge(1,0,1),relation:"depends_on"}] };
+    expect(edgeIndex(graph,{source:"svc_gw",target:"svc_orders",relation:"depends_on"})).toBe(1);
   });
 });
 

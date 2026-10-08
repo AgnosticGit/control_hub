@@ -5,6 +5,7 @@ import type { InfrastructureSnapshot } from "@karbird/web-engine";
 import { infraAt } from "./infrastructure";
 import { useDebounced } from "./useDebounced";
 import type { WorkspaceActions } from "./useWorkspaceEngine";
+import { startInfrastructureRefresh } from "./infrastructure-refresh";
 
 export interface InfrastructureState {
   snapshot: InfrastructureSnapshot | null;
@@ -17,18 +18,13 @@ export function useInfrastructure(actions: WorkspaceActions, ready: boolean, ena
   const at = useDebounced(infraAt(cursor), 300);
   useEffect(() => {
     if (!ready || !enabled) return;
-    let cancelled = false;
-    actions.loadInfrastructure(at).then(
-      (snapshot) => {
-        if (!cancelled) setState({ snapshot, error: null });
-      },
-      (e: unknown) => {
-        if (!cancelled) setState((s) => ({ snapshot: s.snapshot, error: e instanceof Error ? e.message : String(e) }));
-      },
+    // A paused cursor can acquire late metrics and new placement just like a live view.
+    // Live cursor changes restart this effect, so this does not add a second live poll.
+    return startInfrastructureRefresh(
+      () => actions.loadInfrastructure(at),
+      (snapshot) => setState({ snapshot, error: null }),
+      (e: unknown) => setState((s) => ({ snapshot: s.snapshot, error: e instanceof Error ? e.message : String(e) })),
     );
-    return () => {
-      cancelled = true;
-    };
   }, [actions, ready, enabled, at]);
   return state;
 }

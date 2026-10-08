@@ -1605,6 +1605,57 @@ export interface components {
             memory: (number | null)[];
             name: string;
         };
+        /** @description `×N` on a service card with several instances. */
+        InfraBadge: {
+            /** Format: int32 */
+            count: number;
+            /** Format: int32 */
+            hosts: number;
+            /** Format: int32 */
+            node: number;
+        };
+        /** @description Instances of one service grouped on a machine, drawn inside its frame (centre point). */
+        InfraChip: {
+            host_id: string;
+            instance_id: string;
+            instance_ids: string[];
+            label: string;
+            /** Format: int32 */
+            node: number;
+            service_id: string;
+            /** Format: float */
+            x: number;
+            /** Format: float */
+            y: number;
+        };
+        /** @description A machine drawn around the service cards running on it (world coordinates, top-left corner). */
+        InfraFrame: {
+            has_metrics: boolean;
+            /** Format: float */
+            height: number;
+            host_id: string;
+            /** @description CPU at or above 90 %, or a noisy-neighbour hint on this machine. */
+            hot: boolean;
+            /** @description e.g. `vps-app · CPU 92% · RAM 870/1024 MB`. */
+            label: string;
+            /** Format: float */
+            width: number;
+            /** Format: float */
+            x: number;
+            /** Format: float */
+            y: number;
+        };
+        /** @description Noisy-neighbour link from the slowed service to the neighbour eating the CPU. */
+        InfraLink: {
+            from: number[];
+            host_id: string;
+            label: string;
+            /** Format: int32 */
+            neighbor_node?: number | null;
+            to: number[];
+            /** Format: int32 */
+            victim_node: number;
+        };
         /** @description Machines over time and what happened to their containers. */
         InfraTimeline: {
             /** @description Bucket `i` covers `[from + i * bucket_ns, from + (i + 1) * bucket_ns)`. */
@@ -1620,6 +1671,15 @@ export interface components {
             to_ns: string;
             /** @description The range holds more metric rows than were read: later buckets may be missing. */
             truncated: boolean;
+        };
+        InfraView: {
+            badges: components["schemas"]["InfraBadge"][];
+            chips: components["schemas"]["InfraChip"][];
+            frames: components["schemas"]["InfraFrame"][];
+            links: components["schemas"]["InfraLink"][];
+        };
+        InfrastructureResponse: components["schemas"]["InfrastructureSnapshot"] & {
+            topology?: null | components["schemas"]["TopologyResponse"];
         };
         /**
          * @description Machines, containers and service instances at one moment, as returned by
@@ -2005,6 +2065,15 @@ export interface components {
             grace_seconds?: number | null;
             reason?: string | null;
         };
+        SavedTopologyGeometry: {
+            external?: number[];
+            infrastructure?: null | components["schemas"]["TopologyView"];
+            plain: components["schemas"]["TopologyView"];
+            /** Format: int64 */
+            revision: number;
+            /** Format: int32 */
+            version: number;
+        };
         ServiceDto: {
             /** Format: int64 */
             error_logs: number;
@@ -2171,8 +2240,49 @@ export interface components {
             completeness: components["schemas"]["Completeness"];
             edges: components["schemas"]["TopologyEdgeDto"][];
             from_ns: string;
+            geometry: components["schemas"]["SavedTopologyGeometry"];
+            infrastructure_snapshot?: null | components["schemas"]["InfrastructureSnapshot"];
             nodes: components["schemas"]["TopologyNodeDto"][];
             to_ns: string;
+            updated_at_ns: string;
+        };
+        TopologyView: {
+            edges: components["schemas"]["TopologyViewEdge"][];
+            infra?: null | components["schemas"]["InfraView"];
+            nodes: components["schemas"]["TopologyViewNode"][];
+            /**
+             * Format: int64
+             * @description Serialized as a JSON number (values stay far below 2^53).
+             */
+            revision: number;
+        };
+        TopologyViewEdge: {
+            /** Format: int32 */
+            index: number;
+            /**
+             * @description Corridor waypoints `[x, y]` (world coordinates) where the edge crosses intermediate
+             *     layout columns; empty for edges between adjacent columns.
+             */
+            points: number[][];
+            provenance: components["schemas"]["ProvenanceDto"];
+            reasons: string[];
+            relation: components["schemas"]["RelationKindDto"];
+            /** Format: int32 */
+            source: number;
+            /** Format: int32 */
+            target: number;
+        };
+        TopologyViewNode: {
+            id: string;
+            /** Format: int32 */
+            index: number;
+            kind: components["schemas"]["EntityKindDto"];
+            name: string;
+            provenance: components["schemas"]["ProvenanceDto"];
+            /** Format: float */
+            x: number;
+            /** Format: float */
+            y: number;
         };
         TraceDetailResponse: {
             completeness: components["schemas"]["Completeness"];
@@ -4585,6 +4695,9 @@ export interface operations {
             query?: {
                 /** @description Moment to show, unix epoch nanoseconds as a decimal string. Default: now. */
                 at?: string;
+                from?: string;
+                to?: string;
+                live?: boolean;
             };
             header?: never;
             path: {
@@ -4600,7 +4713,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["InfrastructureSnapshot"];
+                    "application/json": components["schemas"]["InfrastructureResponse"];
                 };
             };
             400: {
@@ -5018,10 +5131,12 @@ export interface operations {
     topology: {
         parameters: {
             query?: {
-                /** @description Start, unix epoch nanoseconds as a decimal string. Default: `to - 15m`. */
                 from?: string;
-                /** @description End (exclusive), unix epoch nanoseconds as a decimal string. Default: now. */
                 to?: string;
+                /** @description Live inventory persists inactive relationships; historical ranges stay exact. */
+                live?: boolean;
+                /** @description Placement at the selected cursor, independent of relationship-range membership. */
+                at?: string;
             };
             header?: never;
             path: {
@@ -5040,7 +5155,46 @@ export interface operations {
                     "application/json": components["schemas"]["TopologyResponse"];
                 };
             };
+            /** @description Saved graph unchanged; authorization was checked */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

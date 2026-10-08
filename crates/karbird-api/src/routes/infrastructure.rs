@@ -11,8 +11,8 @@ use karbird_engine_core::{
     ResourceMatch, ResourcePlacementDto,
 };
 use karbird_storage::ch::{InfraSeriesRow, InstanceLatencyRow, ResourceAddressRow};
-use serde::Deserialize;
-use utoipa::IntoParams;
+use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
 use crate::auth::{CurrentUser, authorize};
 use crate::error::ApiResult;
@@ -46,37 +46,66 @@ pub const TOP_CONSUMER_SHARE: f64 = 0.5;
 pub struct InfrastructureParams {
     /// Moment to show, unix epoch nanoseconds as a decimal string. Default: now.
     pub at: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    #[serde(default)]
+    pub live: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InfrastructureResponse {
+    #[serde(flatten)]
+    pub snapshot: InfrastructureSnapshot,
+    pub topology: Option<crate::routes::telemetry::TopologyResponse>,
 }
 
 #[utoipa::path(get, path = "/api/v1/projects/{project_id}/environments/{environment_id}/infrastructure", tag = "telemetry",
     params(("project_id" = String, Path), ("environment_id" = String, Path), InfrastructureParams),
-    responses((status = 200, body = InfrastructureSnapshot), (status = 400, body = crate::error::ErrorBody),
+    responses((status = 200, body = InfrastructureResponse), (status = 400, body = crate::error::ErrorBody),
         (status = 404, body = crate::error::ErrorBody)))]
 pub async fn infrastructure(
     State(state): State<AppState>,
     user: CurrentUser,
     Path((project_id, environment_id)): Path<(String, String)>,
     Query(q): Query<InfrastructureParams>,
-) -> ApiResult<Json<InfrastructureSnapshot>> {
+) -> ApiResult<Json<InfrastructureResponse>> {
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let at = parse_ns(&q.at, "at")?.unwrap_or_else(now_ns);
+    let snapshot = load_snapshot(&state, &scope, at).await?;
+    let topology = if q.from.is_some() && q.to.is_some() {
+        let range = crate::routes::telemetry::RangeParams { from: q.from, to: q.to }.resolve()?;
+        let topology = crate::topology::read(&state, &scope, range, q.live).await?;
+        let mut topology = crate::topology::with_placement(&state, &scope, topology, snapshot.clone()).await?;
+        topology.infrastructure_snapshot = None;
+        Some(topology)
+    } else {
+        None
+    };
+    Ok(Json(InfrastructureResponse { snapshot, topology }))
+}
+
+pub(crate) async fn load_snapshot(
+    state: &AppState,
+    scope: &karbird_domain::Scope,
+    at: i64,
+) -> ApiResult<InfrastructureSnapshot> {
     let (series, latency, addresses) = tokio::try_join!(
-        state.ch.infra_series(&scope, at.saturating_sub(METRICS_WINDOW_NS), at, MAX_SERIES),
+        state.ch.infra_series(scope, at.saturating_sub(METRICS_WINDOW_NS), at, MAX_SERIES),
         state.ch.instance_latency(
-            &scope,
+            scope,
             at.saturating_sub(RECENT_NS + BASELINE_NS),
             at.saturating_sub(RECENT_NS),
             at,
             MAX_INSTANCES
         ),
-        state.ch.resource_addresses(&scope, at.saturating_sub(RECENT_NS), at, MAX_RESOURCE_ROWS),
+        state.ch.resource_addresses(scope, at.saturating_sub(RECENT_NS), at, MAX_RESOURCE_ROWS),
     )?;
     let truncated = series.len() >= MAX_SERIES as usize
         || latency.len() >= MAX_INSTANCES as usize
         || addresses.len() >= MAX_RESOURCE_ROWS as usize;
     let mut snap = build_snapshot(at, &series, &latency, truncated);
     place_resources(&mut snap, &series, &addresses);
-    Ok(Json(snap))
+    Ok(snap)
 }
 
 // ---------------------------------------------------------------- metrics → machines

@@ -96,6 +96,7 @@ export function asCompleteness(v: unknown): Completeness | null {
 
 export function useWorkspaceEngine(projectId: string, environmentId: string) {
   const clientRef = useRef<EngineClient | null>(null);
+  const infrastructureEnabledRef=useRef(false);
   /** Settles once every range load started so far is done (success or not). */
   const loadsRef = useRef<Promise<void>>(Promise.resolve());
   const frameListeners = useRef(new Set<(f: Frame) => void>());
@@ -138,7 +139,8 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
   const refreshTopologyView = useCallback(async () => {
     const c = clientRef.current;
     if (!c) return;
-    patch({ topology: await c.call({ kind: "topology" }) });
+    const topology = await c.call({ kind: "topology" });
+    if (c === clientRef.current && topology.revision >= (stateRef.current.topology?.revision ?? -1)) patch({ topology });
   }, [patch]);
 
   const recordLoad = useCallback(
@@ -172,7 +174,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       try {
         if (opts.reset) await c.call({ kind: "evictBefore", beforeNs: EVICT_ALL.toString() });
         if (opts.topology) {
-          await c.call({ kind: "loadTopology", url: url("topology", from, to) });
+          await c.call({ kind: "loadTopology", url: url("topology", from, to, { ...(stateRef.current.mode === "historical" ? {} : { live: "true" }),...(infrastructureEnabledRef.current ? {at:stateRef.current.cursor.toString()}: {}) }) });
         }
         const r = await c.call({ kind: "loadTimeline", url: url("timeline", from, to, { limit: TIMELINE_LIMIT }) });
         recordLoad(r);
@@ -217,8 +219,12 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     const offFrame = client.onFrame((f) => {
       lastFrameRef.current = f;
       for (const l of frameListeners.current) l(f);
-      if (lastRevision !== null && lastRevision !== f.summary.topology_revision) {
-        void client.call({ kind: "topology" }).then((topology) => patch({ topology }));
+      if (f.topology) {
+        patch({ topology: f.topology });
+      } else if (lastRevision !== null && lastRevision !== f.summary.topology_revision) {
+        void client.call({ kind: "topology" }).then((topology) => {
+          if (client === clientRef.current && topology.revision >= (stateRef.current.topology?.revision ?? -1)) patch({ topology });
+        }).catch(() => {});
       }
       lastRevision = f.summary.topology_revision;
       const wait = SUMMARY_MS - (performance.now() - lastSummaryAt);
@@ -228,7 +234,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     const offFatal = client.onFatal((message) => patch({ phase: "error", error: message }));
     (async () => {
       try {
-        const init = await client.call({ kind: "init" });
+        const init = await client.call({ kind: "init", config:{server_owned_topology:true} });
         patch({ phase: "ready", init });
         const now = nowNs();
         const from = now - LIVE_WINDOW_NS;
@@ -276,7 +282,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
         }
         if (Date.now() - lastTopology > TOPOLOGY_POLL_MS) {
           lastTopology = Date.now();
-          const r = await c.call({ kind: "loadTopology", url: url("topology", now - LIVE_WINDOW_NS, now) });
+          const r = await c.call({ kind: "loadTopology", url: url("topology", now - LIVE_WINDOW_NS, now, { live: "true",...(infrastructureEnabledRef.current ? {at:stateRef.current.cursor.toString()}:{}) }) });
           await refreshTopologyView();
           const prev = stateRef.current.load;
           if (prev) patch({ load: { ...prev, completeness: asCompleteness(r.completeness) ?? prev.completeness } });
@@ -347,6 +353,34 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     const w = hopWindowFor(state.mode);
     clientRef.current?.setHopWindow(w.before, w.after);
   }, [state.phase, state.mode]);
+
+  // Historical cache refreshes can finish after the initial response. Adopt the completed
+  // revision and late telemetry while keeping the user's historical cursor unchanged.
+  useEffect(() => {
+    if (state.phase !== "ready" || state.mode === "live") return;
+    let cancelled=false;
+    let busy=false;
+    const timer=setInterval(()=>{
+      const client=clientRef.current;
+      if(cancelled || busy || !client) return;
+      busy=true;
+      const {rangeFrom,rangeTo}=stateRef.current;
+      void (async()=>{
+        try {
+          await client.call({kind:"loadTopology",url:url("topology",rangeFrom,rangeTo,{...(stateRef.current.mode==="historical" ? {} : {live:"true"}),...(infrastructureEnabledRef.current ? {at:stateRef.current.cursor.toString()}: {})})});
+          if(cancelled || client!==clientRef.current) return;
+          const result=await client.call({kind:"loadTimeline",url:url("timeline",rangeFrom,rangeTo,{limit:TIMELINE_LIMIT})});
+          if(!cancelled && client===clientRef.current) {
+            recordLoad(result);
+            client.seek(stateRef.current.cursor);
+          }
+        } catch(error) {
+          if(!cancelled) patch({error:error instanceof Error ? error.message : String(error)});
+        } finally {busy=false;}
+      })();
+    },TOPOLOGY_POLL_MS);
+    return ()=>{cancelled=true;clearInterval(timer);};
+  },[state.phase,state.mode,state.rangeFrom,state.rangeTo,url,recordLoad,patch]);
 
   // Replay: advance the cursor at `speed` x real time; stop at the loaded end or loop the range.
   useEffect(() => {
@@ -452,13 +486,13 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       await loadRange(from, to, { reset: true, topology: true });
       clientRef.current?.seek(to);
     },
-    /** Machines and instances at `at`; the engine lays out the infrastructure layer from them. */
+    /** Machines, instances and saved backend placement at the selected time. */
     loadInfrastructure: async (at: bigint) =>
       (await clientRef.current?.call({
         kind: "loadInfrastructure",
-        url: scopedUrl(projectId, environmentId, "infrastructure", { at: at.toString() }),
+        url: scopedUrl(projectId, environmentId, "infrastructure", { at: at.toString(),from:stateRef.current.rangeFrom.toString(),to:stateRef.current.rangeTo.toString(),live:stateRef.current.mode==="historical" ? "false" : "true" }),
       })) ?? null,
-    setFilters: (f: Filters) => clientRef.current?.setFilters(f),
+    setFilters: (f: Filters) => { infrastructureEnabledRef.current=f.infrastructure;clientRef.current?.setFilters(f); },
     setViewport: (x: number, y: number, w: number, h: number, scale: number) =>
       clientRef.current?.setViewport(x, y, w, h, scale),
     pick: async (x: number, y: number) => (await clientRef.current?.call({ kind: "pick", x, y })) ?? null,

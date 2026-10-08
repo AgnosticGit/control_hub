@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request } from "@playwright/test";
 import { collectErrors, ingestMetrics, login, randomHex, type MetricInput } from "./helpers";
 
 const WORKSPACE = "/app/isolation/isolation-test";
@@ -85,6 +85,25 @@ test("machine track on the timeline: CPU and memory per machine and a container 
   await expect.poll(() => cursorText(page)).toContain(clock(restartAt));
   await expect(timeline.getByRole("button", { name: "Pause live" })).toHaveCount(0);
   await expect(row).toContainText("50% · 50%");
+
+  // A viewport change redraws the canvas, but must not refetch the same infrastructure window.
+  const ruler = timeline.locator("canvas").first();
+  const oldWidth = await ruler.getAttribute("width");
+  const resizeRequests: string[] = [];
+  const onRequest = (request: Request) => {
+    if (request.url().includes("/infrastructure/timeline")) resizeRequests.push(request.url());
+  };
+  page.on("request", onRequest);
+  try {
+    await page.setViewportSize({ width: 1200, height: 1000 });
+    await expect.poll(() => ruler.getAttribute("width")).not.toBe(oldWidth);
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    );
+    expect(resizeRequests).toEqual([]);
+  } finally {
+    page.off("request", onRequest);
+  }
   await page.screenshot({ path: "../../test-results/e2e/infra-timeline.png" });
   expect(errors).toEqual([]);
 });

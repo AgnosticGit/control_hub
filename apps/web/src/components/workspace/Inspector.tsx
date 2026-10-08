@@ -226,7 +226,7 @@ export function Inspector({
                     aria-label={`Open link ${e.dir === "out" ? `${node.name} → ${e.other.name}` : `${e.other.name} → ${node.name}`}`}
                     title="Calls and data flow over this link"
                     onClick={() =>
-                      onSelectEdge(e.dir === "out" ? { source: node.id, target: e.other.id } : { source: e.other.id, target: node.id })
+                      onSelectEdge(e.dir === "out" ? { source: node.id, target: e.other.id, relation:e.relation } : { source: e.other.id, target: node.id, relation:e.relation })
                     }
                   >
                     <Icon name="activity" className="h-3.5 w-3.5" />
@@ -273,7 +273,7 @@ function relations(topology: TopologyView | null, index: number) {
   const out: Array<{
     dir: "in" | "out";
     other: { id: string; name: string };
-    relation: string;
+    relation: TopologyView["edges"][number]["relation"];
     provenance: string;
     reasons: string[];
   }> = [];

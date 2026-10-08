@@ -27,23 +27,31 @@ export const EVENT_COLOR: Record<ContainerEventKind, string> = {
 /** The API's longest range and largest bucket count. */
 export const MAX_MACHINE_SPAN = 7n * 24n * 3600n * 1_000_000_000n;
 export const MAX_MACHINE_BUCKETS = 1000;
+/**
+ * Timeline requests are independent of viewport size. Rendering projects these samples onto the
+ * current canvas width, so a resize never causes an additional infrastructure API request.
+ */
+export const MACHINE_TIMELINE_BUCKETS = 180;
 
 /**
  * Range and bucket count to ask the API for so the visible view is covered. Edges snap to a
  * power-of-two grid of about 1/16 of the span, so panning and live following refetch only
- * after the view has moved by a step, not on every frame.
+ * after the view has moved by a step, not on every frame. Bucket count deliberately stays
+ * independent of viewport width: resizing only redraws the canvas.
  */
-export function machineWindow(view: View, width: number, bucketPx: number): { from: bigint; to: bigint; buckets: number } | null {
-  const span = view.to - view.from;
-  if (span <= 0n || width <= 0) return null;
+export function machineWindow(view: View, data: View = view): { from: bigint; to: bigint; buckets: number } | null {
+  // `view` may include the visual FUTURE tail, whose pixel width changes on resize. Metrics only
+  // exist in the loaded data range, so clip it before deriving the query key.
+  const visible = { from: view.from > data.from ? view.from : data.from, to: view.to < data.to ? view.to : data.to };
+  const span = visible.to - visible.from;
+  if (span <= 0n) return null;
   let step = 1_000_000_000n;
   while (step * 16n < span) step *= 2n;
   const floor = (t: bigint) => (t >= 0n ? t / step : (t - step + 1n) / step) * step;
-  let from = floor(view.from);
-  const to = floor(view.to) + step;
+  let from = floor(visible.from);
+  const to = floor(visible.to) + step;
   if (to - from > MAX_MACHINE_SPAN) from = to - MAX_MACHINE_SPAN;
-  const wanted = Math.ceil(((width / bucketPx) * Number(to - from)) / Number(span) / 10) * 10;
-  return { from, to, buckets: Math.max(1, Math.min(MAX_MACHINE_BUCKETS, wanted)) };
+  return { from, to, buckets: MACHINE_TIMELINE_BUCKETS };
 }
 
 /** Agents export every 10–60 s; a value holds over empty buckets for this long (the API's stale limit). */

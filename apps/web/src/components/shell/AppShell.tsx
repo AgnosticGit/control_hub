@@ -58,7 +58,7 @@ export function AppShell({ projectId, environmentId, active, top, status, childr
             Organization
             <select
               aria-label="Organization"
-              className="input h-8 text-xs"
+              className="select w-full"
               value={organization?.id ?? ""}
               onChange={(event) => {
                 const next = session.data?.projects.find((item) => item.organization_id === event.target.value);
@@ -71,13 +71,13 @@ export function AppShell({ projectId, environmentId, active, top, status, childr
           </label>
           <label className="grid gap-1 text-xs text-muted">
             Project
-            <select aria-label="Project" className="input h-8 text-xs" value={projectId} onChange={(event) => navigate(event.target.value)}>
+            <select aria-label="Project" className="select w-full" value={projectId} onChange={(event) => navigate(event.target.value)}>
               {organizationProjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>
           <label className="grid gap-1 text-xs text-muted">
             Environment
-            <select aria-label="Environment" className="input h-8 text-xs" value={environmentId} onChange={(event) => navigate(projectId, event.target.value)}>
+            <select aria-label="Environment" className="select w-full" value={environmentId} onChange={(event) => navigate(projectId, event.target.value)}>
               {(project?.environments ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}{item.is_demo ? " · demo" : ""}</option>)}
             </select>
           </label>

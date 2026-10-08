@@ -12,6 +12,9 @@ const spec = JSON.parse(readFileSync(join(root, 'schemas', 'generated', 'openapi
 // Sign-up is public like login; its Origin/input/rate rules are covered in signup.test.mjs.
 // Invite preview answers anyone holding the link; covered in invites.test.mjs.
 const PUBLIC = new Set(['/api/v1/health', '/api/v1/ready', '/api/v1/session/login', '/api/v1/session/register', '/api/v1/invites/preview']);
+// OAuth starts without an existing account session and validates its own one-time state.
+PUBLIC.add('/api/v1/auth/google/start');
+PUBLIC.add('/api/v1/auth/google/callback');
 // The live route is a WebSocket upgrade; its rules are covered in e2e-flow.test.mjs.
 const WEBSOCKET = /\/live$/;
 const FAKE_UUID = '00000000-0000-4000-8000-000000000000';
@@ -77,6 +80,16 @@ test('unknown routes return 404 and wrong methods are refused', async () => {
   assert.equal((await fetch(`${API}/api/v1/openapi.json`)).status, 404, 'the API does not serve its schema');
   const wrong = await fetch(`${API}/api/v1/session/login`);
   assert.equal(wrong.status, 405);
+});
+
+test('OAuth entry points work without a session but never accept a missing callback state',async()=>{
+  const start=await fetch(`${API}/api/v1/auth/google/start`,{redirect:'manual'});
+  await start.arrayBuffer();
+  assert.ok([307,404].includes(start.status));
+  assert.ok(!start.headers.getSetCookie().some(cookie=>cookie.startsWith('karbird_session=')));
+  const callback=await fetch(`${API}/api/v1/auth/google/callback`,{redirect:'manual'});
+  await callback.arrayBuffer();
+  assert.ok([401,404].includes(callback.status));
 });
 
 test('every non-public route requires authentication (401 with a typed error body)', async () => {

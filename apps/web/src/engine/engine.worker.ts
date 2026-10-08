@@ -18,6 +18,7 @@ import {
 } from "@karbird/web-engine";
 import { WASM_BYTES, WASM_URL } from "@/generated/wasm-manifest";
 import { MAX_RESPONSE_BYTES, countItems, liveRetryDelayMs, newerSeek, parseLiveHead, timelineTail } from "./worker-utils";
+import { applyTopologyResponse, topologyCacheKey } from "./topology-cache";
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -28,6 +29,8 @@ let pendingFilters: Filters | null = null;
 let pendingHopWindow: { beforeNs: string; afterNs: string } | null = null;
 let dirty = false;
 let scheduled = false;
+let publishedTopologyRevision: number | null = null;
+let topologyLoadSequence = 0;
 
 function post(msg: WorkerResponse, transfer: Transferable[] = []) {
   self.postMessage(msg, transfer);
@@ -69,6 +72,10 @@ function flush() {
   }
   const vs = engine.getVisibleState() as Omit<Frame, "computeMs" | "summary"> & { summary: FrameSummary };
   const frame: Frame = { ...vs, computeMs: performance.now() - t0 };
+  if (publishedTopologyRevision !== frame.summary.topology_revision) {
+    frame.topology = engine.getTopology();
+    publishedTopologyRevision = frame.summary.topology_revision;
+  }
   post({ kind: "frame", frame }, [
     frame.nodeData.buffer,
     frame.nodeIndices.buffer,
@@ -79,9 +86,15 @@ function flush() {
   ]);
 }
 
-async function fetchText(url: string): Promise<{ text: string; ms: number }> {
+const topologyCache = new Map<string, { etag: string; text: string }>();
+async function fetchText(url: string, conditional = false): Promise<{ text: string; ms: number }> {
   const t0 = performance.now();
-  const res = await fetch(url, { credentials: "same-origin", headers: { accept: "application/json" } });
+  const key = conditional ? topologyCacheKey(url) : "";
+  const cached = conditional ? topologyCache.get(key) : undefined;
+  const headers: Record<string,string> = { accept: "application/json" };
+  if (cached) headers["if-none-match"] = cached.etag;
+  const res = await fetch(url, { credentials: "same-origin", headers });
+  if (res.status === 304 && cached) return { text: cached.text, ms: performance.now() - t0 };
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
     try {
@@ -96,6 +109,16 @@ async function fetchText(url: string): Promise<{ text: string; ms: number }> {
   if (declared > MAX_RESPONSE_BYTES) throw new Error("response too large for the engine window");
   const text = await res.text();
   if (text.length > MAX_RESPONSE_BYTES) throw new Error("response too large for the engine window");
+  const etag = res.headers.get("etag");
+  if (conditional && etag) {
+    topologyCache.delete(key);
+    topologyCache.set(key, { etag, text });
+    while (topologyCache.size > 4) {
+      const oldest = topologyCache.keys().next().value;
+      if (oldest === undefined) break;
+      topologyCache.delete(oldest);
+    }
+  }
   return { text, ms: performance.now() - t0 };
 }
 
@@ -201,13 +224,16 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       }
       engine?.free();
       engine = new WebEngine(msg.config ? JSON.stringify(msg.config) : "");
+      publishedTopologyRevision = null;
+      topologyCache.clear();
       return { abiVersion: abi, wasmBytes: WASM_BYTES, initMs: performance.now() - t0 };
     }
     case "loadTopology": {
+      const sequence = ++topologyLoadSequence;
       const e = requireEngine();
-      const { text, ms } = await fetchText(msg.url);
+      const { text, ms } = await fetchText(msg.url, true);
       const t0 = performance.now();
-      e.loadTopology(text);
+      applyTopologyResponse(sequence, topologyLoadSequence, () => e.loadTopology(text));
       const parsed = JSON.parse(text) as { nodes: unknown[]; completeness?: unknown; from_ns?: string; to_ns?: string };
       schedule();
       const result: LoadResult = {
@@ -242,11 +268,14 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       return result;
     }
     case "loadInfrastructure": {
+      const sequence=++topologyLoadSequence;
       const e = requireEngine();
       const { text } = await fetchText(msg.url);
-      e.setInfrastructure(text);
+      applyTopologyResponse(sequence, topologyLoadSequence, () => e.setInfrastructure(text));
       schedule();
-      return JSON.parse(text) as InfrastructureSnapshot;
+      const snapshot=JSON.parse(text) as InfrastructureSnapshot & {topology?:unknown};
+      delete snapshot.topology;
+      return snapshot;
     }
     case "evictBefore":
       requireEngine().evictBefore(BigInt(msg.beforeNs));

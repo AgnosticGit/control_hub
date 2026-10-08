@@ -99,6 +99,8 @@ export interface ResultMap {
 export type RpcKind = keyof ResultMap;
 
 export interface Frame {
+  /** Metadata paired with this frame when the topology revision changes. */
+  topology?: TopologyView;
   nodeData: Float32Array;
   nodeIndices: Uint32Array;
   edgeData: Float32Array;

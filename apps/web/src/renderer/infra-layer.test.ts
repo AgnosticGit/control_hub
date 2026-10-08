@@ -10,6 +10,7 @@ import {
   badgeText,
   chipAt,
   frameAt,
+  frameHeaderAt,
   frameColor,
   frameLook,
   linkArc,
@@ -36,6 +37,12 @@ const view: InfraView = {
 };
 
 describe("infra layer hit tests", () => {
+  it("distinguishes machine headers from their bodies for header-first picking", () => {
+    expect(frameHeaderAt(view, 250, 22)?.host_id).toBe("vps-app");
+    expect(frameHeaderAt(view, 650, 22)?.host_id).toBe("vps-worker");
+    expect(frameHeaderAt(view, 250, 100)).toBeNull();
+    expect(frameHeaderAt(undefined, 250, 22)).toBeNull();
+  });
   it("finds a replica card anywhere on it and nowhere outside", () => {
     expect(chipAt(view, 700, 250)?.instance_id).toBe("catalog-2");
     expect(chipAt(view, 700 + CHIP_W / 2, 250 + CHIP_H / 2)?.node).toBe(3);

@@ -8,6 +8,7 @@ pub mod ch;
 pub mod pg;
 pub mod retention;
 pub mod secrets;
+pub mod topology;
 
 pub use karbird_domain::Scope;
 

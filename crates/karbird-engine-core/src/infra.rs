@@ -267,7 +267,7 @@ fn point_on_host(
         .or_else(|| positions.get(&node).map(|&(x, y)| [x, y]))
 }
 
-fn noisy_links(
+pub(crate) fn noisy_links(
     snap: &InfrastructureSnapshot,
     node_of: &HashMap<&str, u32>,
     positions: &HashMap<u32, (f32, f32)>,

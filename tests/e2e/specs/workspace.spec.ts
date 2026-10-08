@@ -36,6 +36,65 @@ test.describe("workspace on demo data", () => {
     await expect(inspector.getByText(/observed|inferred/).first()).toBeVisible();
   });
 
+  test("organization, project, and environment selectors share the site style", async ({ page }) => {
+    const styles = await Promise.all(["Organization", "Project", "Environment"].map(async (label) => {
+      const select = page.getByRole("combobox", { name: label });
+      await expect(select).toBeVisible();
+      return select.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          height: style.height,
+          borderRadius: style.borderRadius,
+          paddingRight: style.paddingRight,
+          backgroundImage: style.backgroundImage,
+        };
+      });
+    }));
+
+    expect(styles).toEqual([
+      { height: "32px", borderRadius: "8px", paddingRight: "32px", backgroundImage: expect.stringContaining("data:image/svg+xml") },
+      { height: "32px", borderRadius: "8px", paddingRight: "32px", backgroundImage: expect.stringContaining("data:image/svg+xml") },
+      { height: "32px", borderRadius: "8px", paddingRight: "32px", backgroundImage: expect.stringContaining("data:image/svg+xml") },
+    ]);
+  });
+
+  test("System Map can enter and exit full screen", async ({ page }) => {
+    const systemMap = page.getByRole("main", { name: "System map" });
+    await page.getByRole("button", { name: "Full screen" }).click();
+    await expect.poll(() => systemMap.evaluate((element) => element.matches(":fullscreen"))).toBe(true);
+    await expect(page.getByRole("button", { name: "Exit full screen" })).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect.poll(() => systemMap.evaluate((element) => element.matches(":fullscreen"))).toBe(false);
+    await expect(page.getByRole("button", { name: "Full screen" })).toBeVisible();
+  });
+
+  test("selecting a service highlights all its incoming and outgoing lines", async ({ page }) => {
+    const tableView = await mapLayer(page, "Table view");
+    await tableView.check();
+    await page.getByRole("table").getByRole("button", { name: "gateway", exact: true }).click();
+    await expect(page.getByRole("complementary", { name: "Inspector" }).getByRole("heading", { name: "gateway", exact: true })).toBeVisible();
+
+    await (await mapLayer(page, "Table view")).uncheck();
+    const incidentLines = page.locator("[data-selected-incident-edges]");
+    await expect.poll(async () => (await incidentLines.getAttribute("data-selected-incident-edges"))?.split(",").filter(Boolean).length ?? 0)
+      .toBeGreaterThan(1);
+  });
+
+  test("zooming out stops at a fitted overview instead of losing the map", async ({ page }) => {
+    const map = page.getByRole("application", { name: /Service map/ });
+    await expect(map).toHaveAttribute("data-drawn-nodes", /\d/);
+    await map.focus();
+    for (let i = 0; i < 40; i++) await page.keyboard.press("-");
+    const camera = async () => JSON.parse((await map.getAttribute("data-camera")) ?? "null") as { x: number; y: number; scale: number } | null;
+    await expect.poll(async () => (await camera())?.scale ?? 4).toBeLessThan(1);
+    const atLimit = await camera();
+    expect(atLimit).not.toBeNull();
+
+    for (let i = 0; i < 8; i++) await page.keyboard.press("-");
+    await expect.poll(camera).toEqual(atLimit);
+  });
+
   test("map renders on a canvas when WebGL is available", async ({ page }) => {
     const canvas = page.locator("main canvas");
     const fallback = page.getByText(/WebGL is unavailable/);

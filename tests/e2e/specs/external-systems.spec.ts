@@ -32,18 +32,9 @@ test("requests from outside the project and calls to third-party services are ma
   const table = page.getByRole("table");
   const row = (name: string) => table.getByRole("row").filter({ has: page.getByRole("button", { name, exact: true }) });
 
-  // The topology is re-read periodically; reload until the new service has arrived.
-  await expect
-    .poll(
-      async () => {
-        if ((await row(extHost).count()) > 0) return true;
-        await page.reload();
-        await (await mapLayer(page, "Table view")).check();
-        return false;
-      },
-      { timeout: 45_000, intervals: [2_000] },
-    )
-    .toBe(true);
+  // The open table adopts both entities from the backend revision without reopening.
+  await expect(row(extHost)).toBeVisible({ timeout: 45_000 });
+  await expect(row(front)).toBeVisible({ timeout: 45_000 });
 
   await expect(row(extHost)).toContainText("External service");
   await expect(row("External clients")).toContainText("External client");

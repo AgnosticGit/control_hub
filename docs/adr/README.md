@@ -23,3 +23,4 @@
 | [0019](0019-edge-traffic.md) | Link statistics from the engine; data flow from declared HTTP body sizes (unknown is not zero) | Accepted |
 | [0020](0020-demo-platform-actions.md) | Container restart, scaling, feature flags and rollback as typed demo actions through a demo orchestrator; per-check verification | Accepted |
 | [0021](0021-organisations-and-external-auth.md) | Organisations, explicit project assignments, Resend invitations and Google OIDC | Accepted |
+| [0022](0022-persisted-server-topology.md) | Persisted backend graphs, shared geometry, fenced refresh and atomic client updates | Accepted |

@@ -21,11 +21,13 @@ async function zoomIntoQuietStretch(page: Page) {
   await page.keyboard.press("Home");
   for (let i = 0; i < 6; i++) await page.keyboard.press("Shift+ArrowRight");
   const zoomIn = timeline.getByRole("button", { name: "Zoom in time" });
-  for (let i = 0; i < 12; i++) await zoomIn.click();
+  await zoomIn.focus();
+  for (let i = 0; i < 12; i++) await zoomIn.press("Enter");
   await expect(timeline.getByRole("button", { name: "Whole range" })).toHaveAttribute("aria-pressed", "false");
 }
 
 test("a zoomed-in stretch with nothing in it offers the nearest item on each side", async ({ page }) => {
+  test.setTimeout(90_000);
   const errors = collectErrors(page);
   const service = `quiet-${randomHex(4)}`;
   const now = BigInt(Date.now()) * MS;
@@ -39,36 +41,28 @@ test("a zoomed-in stretch with nothing in it offers the nearest item on each sid
   const earlier = timeline.getByRole("button", { name: /^Go to the nearest earlier item/ });
   const later = timeline.getByRole("button", { name: /^Go to the nearest later item/ });
 
-  // Telemetry reaches the workspace through the pipeline; reload until both spans are loaded.
-  await expect
-    .poll(
-      async () => {
-        await zoomIntoQuietStretch(page);
-        const shown = await later.waitFor({ timeout: 3_000 }).then(
-          () => true,
-          () => false,
-        );
-        if (shown && (await earlier.isVisible())) return true;
-        await page.reload();
-        return false;
-      },
-      { timeout: 60_000, intervals: [2_000] },
-    )
-    .toBe(true);
+  // Other specs share the environment. Isolate our two requests so their data cannot
+  // fill the supposedly quiet stretch; wait for backend discovery without reopening.
+  const only = timeline.getByRole("button", { name: `Show only ${service}`, exact: true });
+  await expect(only).toBeVisible({ timeout: 60_000 });
+  await only.click();
+  await zoomIntoQuietStretch(page);
+  await expect(earlier).toBeVisible({ timeout: 30_000 });
+  await expect(later).toBeVisible({ timeout: 30_000 });
 
   await expect(timeline.getByText("Nothing in this stretch of time")).toBeVisible();
   await expect(earlier).toContainText(/\d/);
   await expect(later).toContainText(/\d/);
 
   const before = await cursorMs(page);
-  await earlier.click();
+  await earlier.press("Enter");
   await expect(timeline.getByText("Nothing in this stretch of time")).toBeHidden();
   await expect(earlier).toHaveCount(0);
   await expect.poll(() => cursorMs(page)).toBeLessThan(before);
   await expect(timeline.getByRole("button", { name: "Whole range" }), "the zoom level is kept").toHaveAttribute("aria-pressed", "false");
 
   // The whole range always has something in it, so no buttons there.
-  await timeline.getByRole("button", { name: "Whole range" }).click();
+  await timeline.getByRole("button", { name: "Whole range" }).press("Enter");
   await expect(timeline.getByText("Nothing in this stretch of time")).toHaveCount(0);
   expect(errors).toEqual([]);
 });

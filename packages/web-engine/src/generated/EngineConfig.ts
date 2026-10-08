@@ -2,6 +2,10 @@
 
 export type EngineConfig = { 
 /**
+ * Private workspaces require backend geometry and never infer membership locally.
+ */
+server_owned_topology: boolean, 
+/**
  * Hard cap on stored timeline items (spans + logs + events). Oldest are evicted.
  */
 max_items: number, 

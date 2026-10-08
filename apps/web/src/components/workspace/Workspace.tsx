@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NODE_STRIDE, type Diagnostics, type NodeDiff } from "@karbird/web-engine";
 import { AppShell, StatusRow } from "@/components/shell/AppShell";
 import { Icon, type IconName } from "@/components/ui/Icon";
@@ -102,6 +102,8 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const [selectedEdge, setSelectedEdge] = useState<SelectedEdge | null>(null);
   const [selectedContainer, setSelectedContainer] = useState<ContainerRef | null>(null);
   const [overlayBottom, setOverlayBottom] = useState(0);
+  const mapPanelRef = useRef<HTMLElement | null>(null);
+  const [mapFullscreen, setMapFullscreen] = useState(false);
   const [markA, setMarkA] = useState<bigint | null>(null);
   const [compare, setCompare] = useState<{ a: bigint; b: bigint; diffs: NodeDiff[] } | null>(null);
   const [side, setSide] = useState<SideTab>("signals");
@@ -113,6 +115,31 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const infraSnapshot = layerPrefs.infrastructure ? infra.snapshot : null;
   const changeLayer = (layer: keyof MapLayers, enabled: boolean) =>
     writePersisted(layerPrefsKey, JSON.stringify({ ...layerPrefs, [layer]: enabled }));
+
+  useEffect(() => {
+    const syncFullscreen = () => setMapFullscreen(document.fullscreenElement === mapPanelRef.current);
+    const exitOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && document.fullscreenElement === mapPanelRef.current) {
+        void document.exitFullscreen();
+      }
+    };
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    document.addEventListener("keydown", exitOnEscape, true);
+    return () => {
+      document.removeEventListener("fullscreenchange", syncFullscreen);
+      document.removeEventListener("keydown", exitOnEscape, true);
+    };
+  }, []);
+
+  const toggleMapFullscreen = () => {
+    const panel = mapPanelRef.current;
+    if (!panel) return;
+    if (document.fullscreenElement === panel) {
+      void document.exitFullscreen();
+    } else {
+      void panel.requestFullscreen().catch(() => setMapFullscreen(false));
+    }
+  };
 
   // Selecting something opens its details; the signals tab stays one click away.
   const select = (id: string | null) => {
@@ -257,7 +284,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
         <KpiRow state={state} actions={actions} />
 
         <div className="flex min-h-0 flex-1">
-          <main className="card relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" aria-label="System map">
+          <main ref={mapPanelRef} className="system-map-fullscreen card relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" aria-label="System map">
             <div className="card-header">
               <span className="card-title-icon">
                 <Icon name="layers" className="h-3.5 w-3.5" />
@@ -300,6 +327,8 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                   onHideInferredChange={(enabled) => changeLayer("hideInferred", enabled)}
                   tableView={layerPrefs.tableView}
                   onTableViewChange={(enabled) => changeLayer("tableView", enabled)}
+                  fullscreen={mapFullscreen}
+                  onToggleFullscreen={toggleMapFullscreen}
                 />
               )}
               {layerPrefs.infrastructure && !layerPrefs.tableView && state.phase === "ready" ? (

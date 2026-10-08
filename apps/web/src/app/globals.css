@@ -106,6 +106,13 @@ a {
     color: var(--color-text);
   }
 
+  .system-map-fullscreen:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    border: 0;
+    border-radius: 0;
+  }
+
   /* Native checkbox styled as a switch (keeps checkbox semantics and keyboard support). */
   .switch {
     @apply relative h-4 w-7 shrink-0 cursor-pointer appearance-none rounded-full border border-border-strong bg-surface-3 transition-colors checked:border-accent checked:bg-accent;

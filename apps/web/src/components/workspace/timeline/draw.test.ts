@@ -146,13 +146,44 @@ describe("draw", () => {
     expect(alt.map((c) => c.args)).toEqual([[0, 10, WIDTH, 15]]);
   });
 
-  it("draws bars scaled to the maximum bucket", () => {
+  it("draws bars against a fixed count scale", () => {
     const { ctx, calls } = fakeCtx();
     draw(ctx, input({ rows: [row("r", "requests", 25)], tracks: tracks({ requests: [0, 5, 10] }) }));
     const bars = calls.filter((c) => c.name === "fillRect" && c.fillStyle === "#3b82f6");
     expect(bars).toHaveLength(2);
     const heights = bars.map((b) => b.args[3]);
-    expect(heights).toEqual([10, 20]);
+    expect(heights[0]).toBeCloseTo(Math.sqrt(0.05) * 20);
+    expect(heights[1]).toBeCloseTo(Math.sqrt(0.1) * 20);
+  });
+
+  it("keeps a bucket's height stable when a later live tick adds a higher bucket", () => {
+    const heightForFirstBucket = (requests: number[]) => {
+      const { ctx, calls } = fakeCtx();
+      draw(ctx, input({ rows: [row("r", "requests", 25)], tracks: tracks({ requests }) }));
+      return calls.find((c) => c.name === "fillRect" && c.fillStyle === "#3b82f6")?.args[3];
+    };
+
+    expect(heightForFirstBucket([5, 10])).toBe(heightForFirstBucket([5, 40]));
+  });
+
+  it("keeps a service bucket's intensity stable when another bucket changes", () => {
+    const firstBucketColor = (counts: number[]) => {
+      const { ctx, calls } = fakeCtx();
+      draw(ctx, input({ rows: [row("s", "service", 20, { track: 0, color: "#a78bfa" })], tracks: tracks({ services: [{ node: 0, name: "orders", counts, spans_in_view: 20, clipped: false }] }) }));
+      return calls.find((c) => c.name === "fillRect" && String(c.fillStyle).startsWith("rgba(167, 139, 250,"))?.fillStyle;
+    };
+
+    expect(firstBucketColor([5, 10])).toBe(firstBucketColor([5, 40]));
+  });
+
+  it("keeps a latency sample's height stable when another bucket changes", () => {
+    const firstPointY = (latency_p95_ms: Array<number | null>) => {
+      const { ctx, named } = fakeCtx();
+      draw(ctx, input({ rows: [row("l", "latency", 30)], tracks: tracks({ latency_p95_ms }) }));
+      return named("moveTo")[0]?.args[1];
+    };
+
+    expect(firstPointY([100, 200])).toBe(firstPointY([100, 800]));
   });
 
   it("draws dimmed rows faded and restores full alpha afterwards", () => {

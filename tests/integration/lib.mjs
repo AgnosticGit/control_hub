@@ -124,40 +124,7 @@ export const hex = (bytes) => randomBytes(bytes).toString('hex');
  * POSTs a body of `size` bytes, sending only the headers until the server answers, so a
  * server that refuses early by Content-Length (413) is observed instead of a connection reset.
  */
-export function postOversized(url, headers, size) {
-  const u = new URL(url);
-  return new Promise((resolve, reject) => {
-    const req = http.request({
-      host: u.hostname,
-      port: u.port,
-      path: u.pathname,
-      method: 'POST',
-      headers: { ...headers, 'content-length': String(size) },
-    });
-    req.on('response', (res) => {
-      res.resume();
-      resolve(res.statusCode);
-      req.destroy();
-    });
-    req.on('error', (e) => (e.code === 'ECONNRESET' || e.code === 'EPIPE' ? resolve(e.code) : reject(e)));
-    req.flushHeaders();
-    // Give the server a moment to refuse by Content-Length, then stream the body in chunks.
-    const chunk = Buffer.alloc(64 * 1024, 0x61);
-    let sent = 0;
-    const pump = () => {
-      while (sent < size && !req.destroyed) {
-        const n = Math.min(chunk.length, size - sent);
-        sent += n;
-        if (!req.write(n === chunk.length ? chunk : chunk.subarray(0, n))) {
-          req.once('drain', pump);
-          return;
-        }
-      }
-      if (!req.destroyed) req.end();
-    };
-    setTimeout(pump, 500);
-  });
-}
+export { postOversized } from './http.mjs';
 
 // ------------------------------------------------------------ minimal protobuf encoder (OTLP)
 // Just enough of the wire format for ExportTraceServiceRequest / ExportLogsServiceRequest,

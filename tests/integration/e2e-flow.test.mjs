@@ -8,7 +8,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import http from 'node:http';
-import { API, OTLP, ORIGIN, WEB, creds, user, Session, DEMO, ISO, eventually } from './lib.mjs';
+import { API, OTLP, ORIGIN, WEB, creds, user, Session, DEMO, ISO, eventually, nowNs, hex, encodeTraces, encodeLogs, otlpHttp } from './lib.mjs';
 
 let admin;
 before(async () => {
@@ -64,14 +64,32 @@ test('trace detail links spans across services with correlated logs', async () =
 });
 
 test('timeline returns engine-compatible items with nanosecond strings', async () => {
-  const { status, body } = await admin.json(`${DEMO}/timeline?limit=2000`);
-  assert.equal(status, 200);
-  assert.ok(body.items.length > 0);
-  const types = new Set(body.items.map((i) => i.type));
-  assert.ok(types.has('span') && types.has('log') && types.has('event'), `types: ${[...types]}`);
-  const span = body.items.find((i) => i.type === 'span');
-  assert.match(span.start_ns, /^\d+$/);
-  assert.ok(typeof body.completeness.processing_caught_up === 'boolean');
+  // Demo events are infrequent and can fall outside its rolling window. Seed all three
+  // signals in our own exact range so this contract test never depends on demo uptime.
+  const session = new Session();
+  await session.login('isolation@karbird.local');
+  const at = nowNs() - 2n * 86_400_000_000_000n;
+  const service = `timeline-contract-${hex(4)}`;
+  const traceId = hex(16), spanId = hex(8), eventId = randomUUID();
+  assert.equal((await otlpHttp('traces', encodeTraces(service, [{ traceId, spanId, name: service, kind: 2, startNs: at, endNs: at + 1_000_000n }]))).status, 200);
+  assert.equal((await otlpHttp('logs', encodeLogs(service, [{ timeNs: at, body: service, traceId, spanId }]))).status, 200);
+  const event = await fetch(`${OTLP}/api/v1/events/batch`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${creds.ingest_tokens['isolation-test']}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ events: [{ event_id: eventId, event_type: 'deployment.finished', service: { name: service }, event_time: `${at}` }] }),
+  });
+  assert.equal(event.status, 200);
+  assert.equal((await event.json()).accepted, 1);
+  await eventually(async () => {
+    const { status, body } = await session.json(`${ISO}/timeline?from=${at - 1n}&to=${at + 2_000_000n}&limit=2000`);
+    assert.equal(status, 200);
+    const types = new Set(body.items.map((i) => i.type));
+    assert.ok(types.has('span') && types.has('log') && types.has('event'), `types: ${[...types]}`);
+    const span = body.items.find((i) => i.type === 'span' && i.trace_id === traceId);
+    assert.ok(span, 'the seeded trace must be returned');
+    assert.match(span.start_ns, /^\d+$/);
+    assert.ok(typeof body.completeness.processing_caught_up === 'boolean');
+  });
 });
 
 test('unauthenticated requests are rejected', async () => {

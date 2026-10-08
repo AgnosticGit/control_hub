@@ -141,6 +141,12 @@ test('infrastructure and edge traffic stay read-only and environment-bound', asy
 
   const topology = await mcp.call('get_topology', { minutes: 15 });
   assert.equal(topology.isError, false, JSON.stringify(topology));
+  const saved = topology.structuredContent.data;
+  assert.equal(saved.geometry.version, 1);
+  assert.ok(saved.geometry.revision > 0);
+  const reopened = await mcp.call('get_topology', { from_ns: saved.from_ns, to_ns: saved.to_ns });
+  assert.equal(reopened.isError, false, JSON.stringify(reopened));
+  assert.deepEqual(reopened.structuredContent.data.geometry, saved.geometry, 'MCP reuses the canonical backend map');
   const edge = topology.structuredContent.data.edges.find((candidate) => candidate.source && candidate.target && candidate.relation);
   assert.ok(edge, 'a demo edge is available');
   const traffic = await mcp.call('get_edge_traffic', {

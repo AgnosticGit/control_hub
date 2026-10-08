@@ -11,6 +11,7 @@ mod routes;
 mod state;
 mod system_permissions;
 mod test_fixtures;
+mod topology;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;

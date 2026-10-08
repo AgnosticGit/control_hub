@@ -51,6 +51,12 @@ export function frameAt(view: InfraView | null | undefined, x: number, y: number
   return view?.frames.find((f) => x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + f.height) ?? null;
 }
 
+/** Opaque machine headers own the click even when a line's zoom-scaled hit radius overlaps. */
+export function frameHeaderAt(view: InfraView | null | undefined, x: number, y: number): InfraFrame | null {
+  const frame = frameAt(view, x, y);
+  return frame && y <= frame.y + FRAME_HEADER ? frame : null;
+}
+
 /** `×3`, with the machine count when the replicas are spread out. */
 export function badgeText(count: number, hosts: number): string {
   return hosts > 1 ? `×${count} · ${hosts} machines` : `×${count}`;

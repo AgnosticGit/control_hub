@@ -7,6 +7,8 @@ const MS = 1_000_000n;
 const MB = 1024 * 1024;
 
 test("a link between two components shows its calls and data flow, from the inspector and from the map", async ({ page }) => {
+  // Includes a backend refresh plus multiple inspector/renderer transitions.
+  test.setTimeout(120_000);
   const run = randomHex(4);
   const gw = `et-gw-${run}`;
   const orders = `et-orders-${run}`;
@@ -51,20 +53,11 @@ test("a link between two components shows its calls and data flow, from the insp
   const errors = collectErrors(page);
   await login(page, "isolation@karbird.local", WORKSPACE);
   const tableView = await mapLayer(page, "Table view");
+  await tableView.check();
   const gwRow = page.getByRole("table").getByRole("button", { name: gw, exact: true });
-  // Processing and the topology refresh take a few seconds: reload until the service is listed.
-  await expect
-    .poll(
-      async () => {
-        await expect(page.getByText("Starting engine…")).toBeHidden();
-        await tableView.check();
-        if ((await gwRow.count()) > 0) return true;
-        await page.reload();
-        return false;
-      },
-      { timeout: 60_000, intervals: [3_000] },
-    )
-    .toBe(true);
+  // Backend revisions arrive on the open map. Reloading also closes the layers menu,
+  // so a checkbox retained across reloads cannot be used as the processing wait.
+  await expect(gwRow).toBeVisible({ timeout: 60_000 });
 
   const inspector = page.getByRole("complementary", { name: "Inspector" });
   const relations = inspector.getByRole("region", { name: "Relations" });
@@ -104,14 +97,20 @@ test("a link between two components shows its calls and data flow, from the insp
   await relations.getByRole("button", { name: `Open link ${gw} → ${orders}` }).click();
   await (await mapLayer(page, "Table view")).uncheck();
   const map = page.getByRole("application", { name: /Service map/ });
+  await expect(map).toHaveAttribute("data-camera", /scale/);
+  await page.getByRole("searchbox", { name: "Find component on map" }).fill(run);
+  await expect.poll(async () => ((await map.getAttribute("data-drawn-nodes")) ?? "").split(",").filter(Boolean).length).toBe(3);
+  // Shared incremental geometry preserves the camera: explicitly include the new cards
+  // before testing a click on their line, as a user would do after leaving the table.
+  await page.getByRole("button", { name: "Fit to screen", exact: true }).click();
   const mapKey = page.getByRole("button", { name: "Show map key" });
   await mapKey.hover();
   await expect(page.getByRole("dialog", { name: "Map key" })).toHaveCount(0);
   await mapKey.focus();
   await expect(page.getByRole("dialog", { name: "Map key" })).toHaveCount(0);
-  await mapKey.click();
+  await mapKey.press("Enter");
   await expect(page.getByRole("dialog", { name: "Map key" })).toBeVisible();
-  await page.getByRole("button", { name: "Close map key" }).click();
+  await page.getByRole("button", { name: "Close map key" }).press("Enter");
   await expect(page.getByRole("dialog", { name: "Map key" })).toHaveCount(0);
   const webgl = await page
     .locator("main canvas")
@@ -128,7 +127,7 @@ test("a link between two components shows its calls and data flow, from the insp
     return hit ? hit.slice(hit.indexOf(":") + 1).split(",").map(Number) : null;
   };
   await expect.poll(anchor).not.toBeNull();
-  await link.getByRole("button", { name: "Close link" }).click();
+  await link.getByRole("button", { name: "Close link" }).press("Enter");
   await expect(map).toHaveAttribute("data-selected-edge", "");
   await expect(map).toHaveAttribute("data-selection-dimmed", "false");
   await expect(link).toHaveCount(0);

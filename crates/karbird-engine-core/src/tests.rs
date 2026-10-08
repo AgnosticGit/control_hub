@@ -1363,3 +1363,65 @@ proptest! {
         }
     }
 }
+#[test]
+fn server_geometry_is_authoritative_and_repeated_snapshots_are_noops() {
+    let json = r#"{"nodes":[{"id":"svc","name":"service","kind":"service","provenance":"observed"}],"edges":[],"geometry":{"version":2,"revision":42,"plain":{"revision":42,"nodes":[{"index":0,"id":"svc","name":"service","kind":"service","provenance":"observed","x":123,"y":456}],"edges":[],"infra":null},"infrastructure":null}}"#;
+    let mut engine = Engine::new(EngineConfig::default());
+    engine.load_topology_json(json).unwrap();
+    let first = engine.topology();
+    assert_eq!((first.nodes[0].x, first.nodes[0].y), (123.0, 456.0));
+    engine.load_topology_json(json).unwrap();
+    assert_eq!(engine.topology(), first);
+    engine.set_viewport(Viewport { x: 100_000.0, y: 100_000.0, width: 100.0, height: 100.0, scale: 1.0 });
+    assert_eq!(engine.visible_state().summary.visible_nodes, 0);
+    engine.set_viewport(Viewport { x: 0.0, y: 0.0, width: 0.0, height: 0.0, scale: 1.0 });
+    assert_eq!(engine.visible_state().summary.visible_nodes, 1, "table mode disables camera culling");
+    assert_eq!(engine.topology(), first, "switching view does not rebuild saved geometry");
+}
+
+#[test]
+fn invalid_server_geometry_does_not_replace_a_valid_graph() {
+    let mut engine = Engine::new(EngineConfig::default());
+    let before = engine.topology();
+    let json = r#"{"nodes":[],"edges":[],"geometry":{"version":99,"revision":1,"plain":{"revision":1,"nodes":[],"edges":[],"infra":null},"infrastructure":null}}"#;
+    assert!(engine.load_topology_json(json).is_err());
+    assert_eq!(engine.topology(), before);
+}
+
+#[test]
+fn client_timeline_cannot_invent_nodes_in_a_saved_server_graph() {
+    let snapshot = TopologySnapshot {
+        nodes: vec![TopologyNode {
+            id: "svc_known".into(),
+            name: "known".into(),
+            kind: EntityKindDto::Service,
+            provenance: ProvenanceDto::Observed,
+        }],
+        edges: vec![],
+    };
+    let geometry = build_server_geometry(&snapshot, None, None).unwrap();
+    let json = serde_json::json!({"nodes":snapshot.nodes,"edges":snapshot.edges,"geometry":geometry});
+    let mut engine = Engine::new(EngineConfig::default());
+    engine.load_topology_json(&json.to_string()).unwrap();
+    let before = engine.topology();
+    engine
+        .apply_batch(Batch { items: vec![TimelineItem::Span(span("t", "s", None, "unknown", 2, 0, SEC, false))] })
+        .unwrap();
+    engine.seek(BASE + SEC, 1);
+    engine.visible_state();
+    assert_eq!(engine.topology(), before);
+    assert_eq!(engine.item_count(), 1, "keep telemetry so a later server revision can attribute it");
+}
+
+#[test]
+fn server_owned_workspace_waits_for_geometry_before_discovering_any_nodes() {
+    let mut engine = Engine::new(EngineConfig { server_owned_topology: true, ..EngineConfig::default() });
+    engine
+        .apply_batch(Batch { items: vec![TimelineItem::Span(span("t", "s", None, "unknown", 2, 0, SEC, false))] })
+        .unwrap();
+    engine.seek(BASE + SEC, 1);
+    engine.visible_state();
+    assert!(engine.topology().nodes.is_empty());
+    assert!(engine.load_topology_json(r#"{"nodes":[],"edges":[]}"#).is_err());
+    assert_eq!(engine.item_count(), 1);
+}

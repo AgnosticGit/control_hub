@@ -183,6 +183,7 @@ async fn prepare_storage(retention: &[(Table, u32)], allow_shrink: bool) -> anyh
             "SELECT ON consumer_offsets, processing_errors",
             // INSERT only (no UPDATE/DELETE): self-service sign-up creates a user with a new tenant.
             "SELECT, INSERT ON tenants, projects, environments, users",
+            "SELECT, INSERT, UPDATE, DELETE ON topology_snapshots",
             // Users edit their own profile, password and onboarding state; project admins rename projects.
             "UPDATE (display_name, password_hash, onboarding_completed_at) ON users",
             "UPDATE (name) ON projects",

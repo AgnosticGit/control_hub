@@ -1,7 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { chipFocused, frameFocused, nodeFocused, selectionAlpha, toggleSelection, type MapSelection } from "./selection-style";
+import { chipFocused, frameFocused, incidentEdgeIndices, incidentGlowWidth, nodeFocused, selectionAlpha, toggleSelection, type MapSelection } from "./selection-style";
 
 describe("map selection focus", () => {
+  it("uses a slimmer glow for solid lines while leaving room under dashed lines", () => {
+    expect(incidentGlowWidth(2, false)).toBe(6);
+    expect(incidentGlowWidth(2, true)).toBe(8);
+    expect(incidentGlowWidth(2, false)).toBeLessThan(incidentGlowWidth(2, true));
+  });
+
+  it("collects both incoming and outgoing lines of a selected service", () => {
+    const edges = [
+      { index: 2, source: 1, target: 4 },
+      { index: 3, source: 4, target: 5 },
+      { index: 8, source: 2, target: 3 },
+    ];
+
+    expect([...incidentEdgeIndices(4, edges)]).toEqual([2, 3]);
+    expect([...incidentEdgeIndices(null, edges)]).toEqual([]);
+  });
+
   it("keeps every placement of a selected logical service in focus", () => {
     const selection: MapSelection = { node: 4, edge: null, edgeNodes: null, host: null };
     expect(nodeFocused(4, null, selection)).toBe(true);
