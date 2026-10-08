@@ -1683,6 +1683,81 @@
         }
       }
     },
+    "/api/v1/auth/google/callback": {
+      "get": {
+        "tags": [
+          "session"
+        ],
+        "operationId": "finish_google_oauth",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Session started"
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/google/start": {
+      "get": {
+        "tags": [
+          "session"
+        ],
+        "operationId": "start_google_oauth",
+        "parameters": [
+          {
+            "name": "next",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "307": {
+            "description": "Redirect to Google"
+          },
+          "404": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
