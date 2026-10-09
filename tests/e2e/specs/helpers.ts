@@ -64,17 +64,19 @@ export async function mapLayer(page: Page, name: string): Promise<Locator> {
   return checkbox;
 }
 
-const REPLAY_SPEEDS = ["0.001", "0.01", "0.1", "0.5", "1", "2", "10"];
-
-/** Selects a supported replay speed through the slider's real keyboard interaction. */
+/** Selects a replay speed through the slider's real keyboard interaction. */
 export async function setReplaySpeed(page: Page, value: string) {
-  const index = REPLAY_SPEEDS.indexOf(value);
-  if (index < 0) throw new Error(`unsupported replay speed ${value}`);
+  const speed = Number(value);
+  if (!Number.isFinite(speed) || speed < 0.001 || speed > 10) throw new Error(`unsupported replay speed ${value}`);
+  const position = Math.round(Math.log10(speed / 0.001) * 250);
+  const selectedSpeed = Number((0.001 * 10 ** (position / 250)).toPrecision(4)).toString();
   const slider = page.getByRole("slider", { name: "Replay speed" });
   await slider.focus();
-  await page.keyboard.press("Home");
-  for (let step = 0; step < index; step++) await page.keyboard.press("ArrowRight");
-  await expect(slider).toHaveAttribute("aria-valuetext", `${value}×`);
+  const fromEnd = 1000 - position;
+  await page.keyboard.press(fromEnd < position ? "End" : "Home");
+  const direction = fromEnd < position ? "ArrowLeft" : "ArrowRight";
+  for (let step = 0; step < Math.min(fromEnd, position); step++) await page.keyboard.press(direction);
+  await expect(slider).toHaveAttribute("aria-valuetext", `${selectedSpeed}×`);
 }
 
 /** The page's own alert; skips Next.js's empty route announcer, which also has role=alert. */

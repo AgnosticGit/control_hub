@@ -98,11 +98,13 @@ test("a link between two components shows its calls and data flow, from the insp
   await (await mapLayer(page, "Table view")).uncheck();
   const map = page.getByRole("application", { name: /Service map/ });
   await expect(map).toHaveAttribute("data-camera", /scale/);
-  await page.getByRole("searchbox", { name: "Find component on map" }).fill(run);
-  await expect.poll(async () => ((await map.getAttribute("data-drawn-nodes")) ?? "").split(",").filter(Boolean).length).toBe(3);
+  const mapText = page.getByRole("region", { name: "System Map text" });
+  await expect(mapText.getByText(gw, { exact: true })).toBeAttached();
+  await expect(mapText.getByText(orders, { exact: true })).toBeAttached();
   // Shared incremental geometry preserves the camera: explicitly include the new cards
   // before testing a click on their line, as a user would do after leaving the table.
-  await page.getByRole("button", { name: "Fit to screen", exact: true }).click();
+  await map.focus();
+  await page.keyboard.press("0");
   const mapKey = page.getByRole("button", { name: "Show map key" });
   await mapKey.hover();
   await expect(page.getByRole("dialog", { name: "Map key" })).toHaveCount(0);

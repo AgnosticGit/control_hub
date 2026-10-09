@@ -6,7 +6,7 @@ import { NODE_STRIDE, type Diagnostics, type NodeDiff } from "@karbird/web-engin
 import { AppShell, StatusRow } from "@/components/shell/AppShell";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { useSession } from "@/lib/session";
-import { NS_PER_MS, formatClock, formatDateTime, nowNs, parseNs } from "@/lib/time";
+import { formatClock, parseNs } from "@/lib/time";
 import { Splitter } from "@/components/ui/Splitter";
 import { usePersisted, writePersisted } from "@/lib/persisted";
 import type { SelectedEdge } from "./edge-traffic";
@@ -20,15 +20,8 @@ import { SignalsPanel, type Tab } from "./SignalsPanel";
 import { TimelineBar } from "./TimelineBar";
 import { TraceFocusBar } from "./TraceFocusBar";
 import type { View } from "./timeline/scale";
-import { useDebounced } from "./useDebounced";
-import { useWorkspaceEngine, type EngineState, type Mode, type WorkspaceActions } from "./useWorkspaceEngine";
+import { useWorkspaceEngine, type EngineState, type WorkspaceActions } from "./useWorkspaceEngine";
 import { WorkspaceMemory } from "./workspace-memory";
-
-const PRESETS = [
-  { label: "1h", minutes: 60 },
-  { label: "6h", minutes: 360 },
-  { label: "24h", minutes: 1440 },
-];
 
 type SideTab = "details" | "signals";
 const SIDE_TABS: Array<{ id: SideTab; label: string; icon: IconName }> = [
@@ -95,7 +88,6 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   // With a selected request: show only it on the map and the timeline.
   const [traceOnly, setTraceOnly] = useState(true);
   const [traceFocus, setTraceFocus] = useState<View | null>(null);
-  const [search, setSearch] = useState("");
   // Service node IDs switched off on the timeline: dimmed on the map and left out of totals.
   const [muted, setMuted] = useState<string[]>([]);
   const [selectedHost, setSelectedHost] = useState<string | null>(null);
@@ -109,7 +101,6 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const [side, setSide] = useState<SideTab>("signals");
   const [sideWidth, setSideWidth] = usePersistedSize("karbird.workspace.sideWidth", 400, SIDE_MIN, SIDE_MAX);
   const [dockHeight, setDockHeight] = usePersistedSize("karbird.workspace.timelineHeight", 220, DOCK_MIN, DOCK_MAX);
-  const debouncedSearch = useDebounced(search, 150);
   const selectedNode = state.topology?.nodes.find((n) => n.id === selectedId) ?? null;
   const infra = useInfrastructure(actions, state.phase === "ready", layerPrefs.infrastructure, state.cursor);
   const infraSnapshot = layerPrefs.infrastructure ? infra.snapshot : null;
@@ -192,7 +183,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   useEffect(() => {
     if (state.phase !== "ready") return;
     actions.setFilters({
-      search: debouncedSearch.trim(),
+      search: "",
       hide_inferred: layerPrefs.hideInferred,
       only_problems: layerPrefs.onlyProblems,
       selected_trace_id: traceId,
@@ -200,7 +191,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
       muted_services: muted,
       infrastructure: layerPrefs.infrastructure,
     });
-  }, [actions, state.phase, debouncedSearch, layerPrefs, traceId, traceOnly, muted]);
+  }, [actions, state.phase, layerPrefs, traceId, traceOnly, muted]);
 
   const selectTrace = (id: string | null) => {
     setTraceId(id);
@@ -229,47 +220,6 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
     );
   }
 
-  const top = (
-    <>
-      <label className="relative w-80 max-w-[40%]">
-        <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted">
-          <Icon name="search" className="h-4 w-4" />
-        </span>
-        <input
-          type="search"
-          placeholder="Find component…"
-          aria-label="Find component on map"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="input h-9 w-full pl-9"
-        />
-      </label>
-      <ModePill mode={state.mode} />
-      <div className="ml-auto flex items-center gap-3">
-        <div className="seg" role="group" aria-label="Load a recent range">
-          {PRESETS.map((p) => (
-            <button
-              key={p.label}
-              type="button"
-              className="seg-item"
-              title={`Load the last ${p.label}`}
-              onClick={() => {
-                const t = nowNs();
-                void actions.loadHistorical(t - BigInt(p.minutes) * 60_000n * NS_PER_MS, t);
-              }}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <span className="flex items-center gap-2 rounded-lg border border-border bg-bg/60 px-3 py-1.5 font-mono text-xs tabular-nums text-muted">
-          <Icon name="calendar" className="h-3.5 w-3.5" />
-          {formatDateTime(state.rangeFrom).replace(/\.\d+$/, "")} — {formatClock(state.rangeTo, false)}
-        </span>
-      </div>
-    </>
-  );
-
   const status = (
     <>
       <LiveTransportRow transport={state.liveTransport} />
@@ -279,12 +229,15 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   );
 
   return (
-    <AppShell projectId={projectId} environmentId={environmentId} active="overview" top={top} status={status}>
+    <AppShell projectId={projectId} environmentId={environmentId} active="overview" status={status}>
       <div className="flex h-full min-h-0 flex-col p-3">
         <KpiRow state={state} actions={actions} />
 
         <div className="flex min-h-0 flex-1">
           <main ref={mapPanelRef} className="system-map-fullscreen card relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" aria-label="System map">
+            <div className="sr-only" role="region" aria-label="System Map text">
+              {state.topology?.nodes.map((node) => <span key={node.id}>{node.name}</span>)}
+            </div>
             <div className="card-header">
               <span className="card-title-icon">
                 <Icon name="layers" className="h-3.5 w-3.5" />
@@ -440,7 +393,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
         <TimelineBar
           projectId={projectId}
           environmentId={environmentId}
-          filterKey={`${debouncedSearch.trim()}|${layerPrefs.hideInferred}|${layerPrefs.onlyProblems}|${muted.join(",")}|${traceId ?? ""}|${traceOnly}`}
+          filterKey={`${layerPrefs.hideInferred}|${layerPrefs.onlyProblems}|${muted.join(",")}|${traceId ?? ""}|${traceOnly}`}
           muted={muted}
           onMuted={setMuted}
           focus={traceFocus}
@@ -459,23 +412,6 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
         />
       </div>
     </AppShell>
-  );
-}
-
-const MODE_PILL: Record<Mode, { text: string; cls: string }> = {
-  live: { text: "LIVE", cls: "border-ok/40 bg-ok/10 text-ok" },
-  paused: { text: "PAUSED", cls: "border-muted/50 bg-muted/10 text-text/80" },
-  replay: { text: "REPLAY", cls: "border-accent/40 bg-accent/10 text-accent" },
-  historical: { text: "HISTORY", cls: "border-violet/40 bg-violet/10 text-violet" },
-};
-
-function ModePill({ mode }: { mode: Mode }) {
-  const m = MODE_PILL[mode];
-  return (
-    <span className={`flex items-center gap-2 rounded-lg border px-2.5 py-1 text-[11px] font-bold tracking-widest ${m.cls}`} aria-hidden>
-      <span className={`dot bg-current ${mode === "live" ? "animate-pulse" : ""}`} />
-      {m.text}
-    </span>
   );
 }
 

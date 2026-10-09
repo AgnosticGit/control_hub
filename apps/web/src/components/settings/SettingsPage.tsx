@@ -75,14 +75,6 @@ export function SettingsPage({ projectId, environmentId }: { projectId: string; 
       projectId={projectId}
       environmentId={environmentId}
       active="settings"
-      top={
-        <>
-          <span className="card-title-icon">
-            <Icon name="users" className="h-3.5 w-3.5" />
-          </span>
-          <span className="text-sm text-muted">{project.name}</span>
-        </>
-      }
     >
       <main className="h-full overflow-auto">
         <div className="mx-auto max-w-6xl space-y-5 p-6">

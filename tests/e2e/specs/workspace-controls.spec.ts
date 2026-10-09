@@ -57,14 +57,17 @@ test.describe("workspace controls on demo data", () => {
     await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
   });
 
-  test("replay speed slider steps through the supported speeds", async ({ page }) => {
+  test("replay speed slider moves in fine steps and labels its limits", async ({ page }) => {
     const speed = page.getByRole("slider", { name: "Replay speed" });
     await expect(speed).toHaveAttribute("aria-valuetext", "1×");
     await speed.focus();
     await page.keyboard.press("ArrowRight");
-    await expect(speed).toHaveAttribute("aria-valuetext", "2×");
+    await expect(speed).toHaveValue("751");
+    await expect(speed).toHaveAttribute("aria-valuetext", "1.009×");
     await page.keyboard.press("Home");
     await expect(speed).toHaveAttribute("aria-valuetext", "0.001×");
+    await expect(speed).toHaveAttribute("min", "0");
+    await expect(speed).toHaveAttribute("max", "1000");
   });
 
   test("KPI row summarises services, request rate, error rate and active requests", async ({ page }) => {
@@ -76,20 +79,12 @@ test.describe("workspace controls on demo data", () => {
     await expect(kpi("Active requests")).toContainText("in flight at the selected time");
   });
 
-  test("Find component filters the map to matching names (case-insensitive) and clears", async ({ page }) => {
-    const table = await openTable(page);
-    const search = page.getByRole("searchbox", { name: "Find component on map" });
-    await search.fill("ORDE");
-    await expect(table.getByRole("button", { name: "gateway", exact: true })).toHaveCount(0);
-    await expect(table.getByRole("button", { name: "orders", exact: true })).toBeVisible();
-    expect((await column(table, 0)).every((n) => n.toLowerCase().includes("orde"))).toBe(true);
-
-    await search.fill("no-such-component-xyz");
-    await expect(page.getByText("No components match the current filters.")).toBeVisible();
-
-    await search.fill("");
-    await expect(table.getByRole("button", { name: "gateway", exact: true })).toBeVisible();
-    expect((await column(table, 0)).length).toBeGreaterThanOrEqual(7);
+  test("removes map search and exposes map labels as searchable page text", async ({ page }) => {
+    await expect(page.getByRole("searchbox", { name: "Find component on map" })).toHaveCount(0);
+    const mapText = page.getByRole("region", { name: "System Map text" });
+    await expect(mapText.getByText("gateway", { exact: true })).toBeAttached();
+    await expect(mapText.getByText("orders", { exact: true })).toBeAttached();
+    expect(await page.evaluate(() => window.find("gateway"))).toBe(true);
   });
 
   test("Hide inferred removes inferred dependencies; Only problems keeps degraded/failing only", async ({ page }) => {
@@ -164,16 +159,17 @@ test.describe("workspace controls on demo data", () => {
     await expect(inspector.getByText("Select a component on the map to inspect it.")).toBeVisible();
   });
 
-  test("map zoom and fit buttons work without errors", async ({ page }) => {
+  test("map zoom buttons and keyboard fit work without errors", async ({ page }) => {
     const errors = collectErrors(page);
     const map = page.getByRole("application", { name: /Service map/ });
     test.skip((await page.getByText(/WebGL is unavailable/).count()) > 0, "no WebGL in this browser");
     await expect(map).toBeVisible();
-    for (const name of ["Zoom in", "Zoom in", "Zoom out", "Fit to screen"]) {
+    for (const name of ["Zoom in", "Zoom in", "Zoom out"]) {
       await page.getByRole("button", { name, exact: true }).click();
     }
     await map.focus();
     for (const key of ["+", "-", "ArrowLeft", "ArrowUp", "0", "Escape"]) await page.keyboard.press(key);
+    await expect(page.getByRole("button", { name: "Full screen", exact: true })).toBeVisible();
     await expect(page.locator("main canvas").first()).toBeVisible();
     expect(errors.filter((e) => !/Download the React DevTools/.test(e))).toEqual([]);
   });

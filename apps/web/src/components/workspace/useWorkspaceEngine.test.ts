@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NS_PER_MS } from "@/lib/time";
-import { LIVE_ANIM_DELAY_MS, SPEEDS, animClockFor, asCompleteness, hopWindowFor, seeksIntoFuture, type Mode } from "./useWorkspaceEngine";
+import { LIVE_ANIM_DELAY_MS, SPEEDS, animClockFor, asCompleteness, hopWindowFor, seeksIntoFuture, sliderPositionForSpeed, speedFromSlider, type Mode } from "./useWorkspaceEngine";
 
 describe("seeksIntoFuture", () => {
   it("is a seek past the loaded data of a range that still grows (it returns to live)", () => {
@@ -50,9 +50,16 @@ describe("hopWindowFor", () => {
 });
 
 describe("SPEEDS", () => {
-  it("is strictly increasing and includes real time", () => {
+  it("provides a fine-grained logarithmic range from slow motion to fast-forward", () => {
+    expect(SPEEDS).toHaveLength(1001);
     for (let i = 1; i < SPEEDS.length; i++) expect(SPEEDS[i]).toBeGreaterThan(SPEEDS[i - 1] ?? Infinity);
-    expect(SPEEDS).toContain(1);
+    expect(speedFromSlider(0)).toBe(0.001);
+    expect(speedFromSlider(750)).toBeCloseTo(1, 12);
+    expect(speedFromSlider(1000)).toBe(10);
+    expect(sliderPositionForSpeed(0.001)).toBe(0);
+    expect(sliderPositionForSpeed(1)).toBe(750);
+    expect(sliderPositionForSpeed(10)).toBe(1000);
+    expect(speedFromSlider(sliderPositionForSpeed(0.5))).toBeCloseTo(0.5, 2);
   });
 });
 

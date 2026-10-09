@@ -6,7 +6,7 @@ import { TimelineTracksView } from "./timeline/TimelineTracksView";
 import { timelineArchiveNote } from "./logs-query";
 import { formatSpan, type View } from "./timeline/scale";
 import type { WorkspaceMemory } from "./workspace-memory";
-import { SPEEDS, type EngineState, type Mode, type WorkspaceActions } from "./useWorkspaceEngine";
+import { SPEED_MAX, SPEED_MIN, SPEED_SLIDER_STEPS, formatSpeed, sliderPositionForSpeed, speedFromSlider, type EngineState, type Mode, type WorkspaceActions } from "./useWorkspaceEngine";
 import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime, nowNs } from "@/lib/time";
 
 const MODE_STYLE: Record<Mode, string> = {
@@ -47,7 +47,7 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
   const playing = state.mode === "replay";
   const summary = state.summary;
   const fine = state.speed < 0.1 && state.mode !== "live";
-  const speedIndex = Math.max(0, SPEEDS.indexOf(state.speed));
+  const speedPosition = sliderPositionForSpeed(state.speed);
 
   return (
     <section className="card relative flex min-h-0 shrink-0 flex-col gap-2 px-3 pt-2 pb-3" style={{ height }} aria-label="Timeline">
@@ -85,31 +85,30 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
           className="flex items-center gap-2 rounded-lg border border-border bg-bg/50 px-2 py-1"
           role="group"
           aria-label="Replay speed control"
-          title={state.mode === "live" ? "Speed applies to replay; live always follows the wall clock." : "Choose one of seven replay speeds."}
+          title={state.mode === "live" ? "Speed applies to replay; live always follows the wall clock." : "Choose from 1,001 replay speeds."}
         >
           <span className="text-xs text-muted">Speed</span>
           <output className="min-w-12 rounded-md bg-surface px-1.5 py-0.5 text-center font-mono text-xs font-semibold tabular-nums text-text" aria-live="polite">
-            {state.speed}×
+            {formatSpeed(state.speed)}×
           </output>
           <div className="flex w-36 flex-col gap-0.5">
             <input
               type="range"
               min={0}
-              max={SPEEDS.length - 1}
+              max={SPEED_SLIDER_STEPS}
               step={1}
-              value={speedIndex}
+              value={speedPosition}
               aria-label="Replay speed"
-              aria-valuetext={`${state.speed}×`}
+              aria-valuetext={`${formatSpeed(state.speed)}×`}
               aria-describedby="replay-speed-range"
               onChange={(event) => {
-                const selected = SPEEDS[Number(event.target.value)];
-                if (selected !== undefined) actions.setSpeed(selected);
+                actions.setSpeed(speedFromSlider(Number(event.target.value)));
               }}
               className="h-4 w-full cursor-pointer accent-accent"
             />
             <span id="replay-speed-range" className="flex justify-between text-[9px] leading-none text-muted">
-              <span>0.001×</span>
-              <span>10×</span>
+              <span>{SPEED_MIN}×</span>
+              <span>{SPEED_MAX}×</span>
             </span>
           </div>
         </div>

@@ -36,26 +36,46 @@ test.describe("workspace on demo data", () => {
     await expect(inspector.getByText(/observed|inferred/).first()).toBeVisible();
   });
 
-  test("organization, project, and environment selectors share the site style", async ({ page }) => {
-    const styles = await Promise.all(["Organization", "Project", "Environment"].map(async (label) => {
-      const select = page.getByRole("combobox", { name: label });
-      await expect(select).toBeVisible();
-      return select.evaluate((element) => {
+  test("scope menus match the site style and can be operated from the keyboard", async ({ page }) => {
+    for (const label of ["Organization", "Project", "Environment"]) {
+      const trigger = page.getByRole("combobox", { name: label });
+      await expect(trigger).toBeVisible();
+      const triggerStyle = await trigger.evaluate((element) => {
         const style = getComputedStyle(element);
-        return {
-          height: style.height,
-          borderRadius: style.borderRadius,
-          paddingRight: style.paddingRight,
-          backgroundImage: style.backgroundImage,
-        };
+        return { height: style.height, borderRadius: style.borderRadius, backgroundColor: style.backgroundColor };
       });
-    }));
+      expect(triggerStyle.height).toBe("36px");
+      expect(triggerStyle.borderRadius).toBe("8px");
 
-    expect(styles).toEqual([
-      { height: "32px", borderRadius: "8px", paddingRight: "32px", backgroundImage: expect.stringContaining("data:image/svg+xml") },
-      { height: "32px", borderRadius: "8px", paddingRight: "32px", backgroundImage: expect.stringContaining("data:image/svg+xml") },
-      { height: "32px", borderRadius: "8px", paddingRight: "32px", backgroundImage: expect.stringContaining("data:image/svg+xml") },
-    ]);
+      await trigger.click();
+      const menu = page.getByRole("listbox", { name: `${label} options` });
+      await expect(menu).toBeVisible();
+      const menuStyle = await menu.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { borderRadius: style.borderRadius, backgroundColor: style.backgroundColor, borderStyle: style.borderStyle, width: element.getBoundingClientRect().width };
+      });
+      expect(menuStyle.borderRadius).toBe("12px");
+      expect(menuStyle.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+      expect(menuStyle.borderStyle).toBe("solid");
+      expect(menuStyle.width).toBeCloseTo(await trigger.evaluate((element) => element.getBoundingClientRect().width), 0);
+      await trigger.press("ArrowDown");
+      await trigger.press("Enter");
+      await expect(menu).toBeHidden();
+    }
+  });
+
+  test("the workspace has no top header and the sidebar can be hidden and restored", async ({ page }) => {
+    await expect(page.getByRole("group", { name: "Load a recent range" })).toHaveCount(0);
+    await expect(page.getByRole("banner")).toHaveCount(0);
+    await page.getByRole("button", { name: "Hide sidebar" }).click();
+    await expect(page.locator('[aria-label="Sidebar"]')).toHaveAttribute("aria-hidden", "true");
+    await expect(page.getByRole("button", { name: "Show sidebar" })).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Show sidebar" })).toBeVisible();
+    await expect(page.locator('[aria-label="Sidebar"]')).toHaveAttribute("aria-hidden", "true");
+    await page.getByRole("button", { name: "Show sidebar" }).click();
+    await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
   });
 
   test("System Map can enter and exit full screen", async ({ page }) => {

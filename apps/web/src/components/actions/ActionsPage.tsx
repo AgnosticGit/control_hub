@@ -203,16 +203,6 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
       projectId={projectId}
       environmentId={environmentId}
       active="actions"
-      top={
-        <>
-          <span className="card-title-icon">
-            <Icon name="bolt" className="h-3.5 w-3.5" />
-          </span>
-          <span className="text-sm text-muted">
-            {project?.name} / {env.name}
-          </span>
-        </>
-      }
     >
       <main className="h-full overflow-auto">
         <div className="mx-auto max-w-7xl space-y-5 p-6">

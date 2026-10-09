@@ -6,11 +6,10 @@ const MS = 1_000_000n;
 
 describe("speedFor", () => {
   it("picks the fastest speed at which the request still takes a few seconds", () => {
-    // 20 ms at 0.001x = 20 s; 0.01x would be 2 s (too fast to follow).
-    expect(speedFor(20n * MS)).toBe(0.001);
-    // 400 ms: 0.1x = 4 s.
-    expect(speedFor(400n * MS)).toBe(0.1);
-    expect(speedFor(5000n * MS)).toBe(1);
+    // Continuous speed picks the fastest value that keeps the replay at least 4 s.
+    expect(speedFor(20n * MS)).toBeCloseTo(0.005);
+    expect(speedFor(400n * MS)).toBeCloseTo(0.1);
+    expect(speedFor(5000n * MS)).toBeCloseTo(1.25);
     expect(speedFor(3_600_000n * MS)).toBe(10);
   });
 

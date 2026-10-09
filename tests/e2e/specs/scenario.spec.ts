@@ -26,8 +26,6 @@ test("injected errors in orders show up as a failing component and error traces"
     await (await mapLayer(page, "Table view")).uncheck();
     await (await mapLayer(page, "Only problems")).check();
     await (await mapLayer(page, "Only problems")).uncheck();
-    await page.getByPlaceholder("Find component…").fill("");
-
     const panel = page.getByRole("region", { name: "Signals" });
     await panel.getByRole("tab", { name: "Traces" }).click();
     await panel.getByLabel("Only errors").check();

@@ -11,9 +11,28 @@ import { hasFuture } from "./timeline/scale";
 import { asLogSource, type LogSource } from "./logs-query";
 
 export type Mode = "live" | "paused" | "replay" | "historical";
-/** Replay speeds; 0.001x shows one millisecond of recorded time per second. */
-export const SPEEDS = [0.001, 0.01, 0.1, 0.5, 1, 2, 10] as const;
-export type Speed = (typeof SPEEDS)[number];
+export const SPEED_MIN = 0.001;
+export const SPEED_MAX = 10;
+export const SPEED_SLIDER_STEPS = 1000;
+
+/** Logarithmic slider: 250 fine steps per tenfold change in replay speed. */
+export function speedFromSlider(position: number): number {
+  const step = Math.max(0, Math.min(SPEED_SLIDER_STEPS, Math.round(Number.isFinite(position) ? position : 0)));
+  return SPEED_MIN * 10 ** (step / 250);
+}
+
+export function sliderPositionForSpeed(speed: number): number {
+  const safeSpeed = Math.max(SPEED_MIN, Math.min(SPEED_MAX, Number.isFinite(speed) && speed > 0 ? speed : SPEED_MIN));
+  return Math.round(Math.log10(safeSpeed / SPEED_MIN) * 250);
+}
+
+export function formatSpeed(speed: number): string {
+  return Number(speed.toPrecision(4)).toString();
+}
+
+/** Replay speeds; 0.001× shows one millisecond of recorded time per second. */
+export const SPEEDS = Array.from({ length: SPEED_SLIDER_STEPS + 1 }, (_, position) => speedFromSlider(position));
+export type Speed = number;
 
 /**
  * Live request animation runs this far behind the wall clock: SDKs export spans in batches

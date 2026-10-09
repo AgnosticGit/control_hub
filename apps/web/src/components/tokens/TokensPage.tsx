@@ -119,16 +119,6 @@ export function TokensPage({ projectId, environmentId }: { projectId: string; en
       projectId={projectId}
       environmentId={environmentId}
       active="tokens"
-      top={
-        <>
-          <span className="card-title-icon">
-            <Icon name="key" className="h-3.5 w-3.5" />
-          </span>
-          <span className="text-sm text-muted">
-            {project?.name} / {env.name}
-          </span>
-        </>
-      }
     >
       <main className="h-full overflow-auto">
         <div className="mx-auto max-w-6xl space-y-5 p-6">

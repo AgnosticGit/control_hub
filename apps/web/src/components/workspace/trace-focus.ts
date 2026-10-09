@@ -3,7 +3,7 @@
 
 import type { View } from "./timeline/scale";
 import { MIN_LOOP_NS } from "./timeline/range";
-import { SPEEDS, type Speed } from "./useWorkspaceEngine";
+import { SPEEDS, SPEED_MIN, type Speed } from "./useWorkspaceEngine";
 
 /** Shortest wall-clock time one pass over a focused request should take. */
 export const MIN_PLAY_MS = 4000;
@@ -14,7 +14,7 @@ const MIN_PAD_NS = 50_000n;
 /** The fastest replay speed at which the request takes at least `MIN_PLAY_MS` to play. */
 export function speedFor(durationNs: bigint): Speed {
   const ms = Number(durationNs) / NS_PER_MS;
-  let best: Speed = SPEEDS[0];
+  let best: Speed = SPEEDS[0] ?? SPEED_MIN;
   for (const s of SPEEDS) if (ms / s >= MIN_PLAY_MS) best = s;
   return best;
 }
