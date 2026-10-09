@@ -5,23 +5,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { AppShell } from "@/components/shell/AppShell";
 import { Icon } from "@/components/ui/Icon";
-import { api, ApiRequestError, scopedPath, unwrap, type Schemas } from "@/lib/api";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { api, errorMessage, scopedPath, unwrap, type Schemas } from "@/lib/api";
 import { can } from "@/lib/permissions";
 import { useSession } from "@/lib/session";
+import { formatIsoDateTime } from "@/lib/time";
 
 type TokenDto = Schemas["TokenDto"];
 type TokenKind = Schemas["TokenKindDto"];
 type Created = Schemas["CreatedTokenResponse"];
 
 const BASE = "/api/v1/projects/{project_id}/environments/{environment_id}/tokens" as const;
-
-function message(e: unknown) {
-  return e instanceof ApiRequestError ? e.message : e instanceof Error ? e.message : String(e);
-}
-
-function when(iso: string | null | undefined) {
-  return iso ? new Date(iso).toLocaleString() : "—";
-}
 
 function Centered({ children }: { children: ReactNode }) {
   return (
@@ -204,11 +198,7 @@ export function TokensPage({ projectId, environmentId }: { projectId: string; en
           </form>
           ) : null}
 
-          {error ? (
-            <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
-              {message(error)}
-            </p>
-          ) : null}
+          {error ? <ErrorNotice className="text-sm">{errorMessage(error)}</ErrorNotice> : null}
 
           <div className="card overflow-hidden">
             <table className="w-full text-left text-sm" aria-label="Tokens">
@@ -230,9 +220,9 @@ export function TokensPage({ projectId, environmentId }: { projectId: string; en
                     <td className="px-4 py-2.5 font-medium">{t.name}</td>
                     <td className="px-2">{t.kind === "api" ? "API" : "Ingestion"}</td>
                     <td className="px-2 font-mono text-xs text-muted">{t.prefix}…</td>
-                    <td className="px-2 text-xs text-muted">{when(t.created_at)}</td>
-                    <td className="px-2 text-xs text-muted">{t.expires_at ? when(t.expires_at) : "never"}</td>
-                    <td className="px-2 text-xs text-muted">{t.kind === "api" ? when(t.last_used_at) : "—"}</td>
+                    <td className="px-2 text-xs text-muted">{formatIsoDateTime(t.created_at)}</td>
+                    <td className="px-2 text-xs text-muted">{t.expires_at ? formatIsoDateTime(t.expires_at) : "never"}</td>
+                    <td className="px-2 text-xs text-muted">{t.kind === "api" ? formatIsoDateTime(t.last_used_at) : "—"}</td>
                     <td className="px-2">
                       <span className={`badge ${t.active ? "border-ok/40 bg-ok/10 text-ok" : "border-border-strong text-muted"}`}>
                         {t.active ? "active" : t.revoked_at ? "revoked" : "expired"}

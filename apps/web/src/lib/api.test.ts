@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { ApiRequestError, apiSentence, isUnauthenticated, scopedPath, scopedUrl } from "./api";
+import { ApiRequestError, apiSentence, errorMessage, isUnauthenticated, scopedPath, scopedUrl } from "./api";
+
+describe("errorMessage", () => {
+  it("returns API and native error messages without changing them", () => {
+    expect(errorMessage(new ApiRequestError(409, "conflict", "already exists"))).toBe("already exists");
+    expect(errorMessage(new Error("network failure"))).toBe("network failure");
+  });
+
+  it("stringifies non-Error values", () => {
+    expect(errorMessage(null)).toBe("null");
+    expect(errorMessage({ reason: "unknown" })).toBe("[object Object]");
+  });
+});
 
 describe("scopedUrl", () => {
   it("builds the scoped API path with a query string", () => {

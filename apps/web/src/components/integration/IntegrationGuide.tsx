@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { api, ApiRequestError, scopedPath, unwrap } from "@/lib/api";
 import {
   curlCheck,
@@ -165,11 +166,7 @@ export function IntegrationGuide({
             Creating tokens needs the “Create, rotate and revoke tokens” permission. Ask a project admin for an ingestion token.
           </p>
         )}
-        {create.error ? (
-          <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-error">
-            {create.error instanceof ApiRequestError ? create.error.message : "Could not create the token."}
-          </p>
-        ) : null}
+        {create.error ? <ErrorNotice>{create.error instanceof ApiRequestError ? create.error.message : "Could not create the token."}</ErrorNotice> : null}
         {secret ? (
           <div role="status" className="rounded-xl border border-warn/50 bg-warn/10 p-3">
             <p className="font-medium">Copy the token now; it will not be shown again. The snippets below already contain it.</p>

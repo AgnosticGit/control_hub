@@ -5,12 +5,12 @@ use axum::response::{IntoResponse, Response};
 use karbird_storage::pg::AccountRow;
 use karbird_storage::secrets::{generate_token, hash_token, verify_password};
 use serde::{Deserialize, Serialize};
-use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
 
 use crate::auth::{CSRF_COOKIE, Credential, CurrentUser, SESSION_COOKIE, check_origin, effective_permissions};
 use crate::error::{ApiError, ApiResult};
 use crate::permissions;
+use crate::routes::rfc3339;
 use crate::state::AppState;
 
 /// Precomputed Argon2 hash used when the user does not exist, so both paths
@@ -43,7 +43,7 @@ impl From<AccountRow> for UserDto {
             id: a.id.to_string(),
             email: a.email,
             display_name: a.display_name,
-            created_at: a.created_at.format(&Rfc3339).unwrap_or_default(),
+            created_at: rfc3339(a.created_at),
             onboarding_done: a.onboarding_completed_at.is_some(),
         }
     }

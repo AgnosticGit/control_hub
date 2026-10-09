@@ -7,6 +7,7 @@ import { useUpdateAccount } from "@/components/account/useAccount";
 import { IntegrationGuide, useSeenServices } from "@/components/integration/IntegrationGuide";
 import { InviteForm } from "@/components/settings/InvitesTab";
 import type { Actor } from "@/components/settings/matrix";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Icon, Logo } from "@/components/ui/Icon";
 import { api, unwrap, type ProjectDto } from "@/lib/api";
 import { nextStep, onboardingTarget, parseStep, STEPS, type StepId } from "@/lib/onboarding";
@@ -102,11 +103,7 @@ export function Onboarding() {
           {project ? <p className="mt-1 text-sm text-muted">Project: {project.name}{env ? ` / ${env.name}` : ""}</p> : null}
         </div>
 
-        {update.error ? (
-          <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
-            Could not save your progress. Try again.
-          </p>
-        ) : null}
+        {update.error ? <ErrorNotice className="text-sm">Could not save your progress. Try again.</ErrorNotice> : null}
 
         {!project || !env ? (
           <p className="card p-5 text-sm">

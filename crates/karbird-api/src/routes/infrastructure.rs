@@ -70,7 +70,7 @@ pub async fn infrastructure(
     Query(q): Query<InfrastructureParams>,
 ) -> ApiResult<Json<InfrastructureResponse>> {
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
-    let at = parse_ns(&q.at, "at")?.unwrap_or_else(now_ns);
+    let at = parse_ns(q.at.as_deref(), "at")?.unwrap_or_else(now_ns);
     let snapshot = load_snapshot(&state, &scope, at).await?;
     let topology = if q.from.is_some() && q.to.is_some() {
         let range = crate::routes::telemetry::RangeParams { from: q.from, to: q.to }.resolve()?;

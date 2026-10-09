@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { api, ApiRequestError, unwrap, unwrapEmpty } from "@/lib/api";
 import { useLogout } from "@/lib/session";
+import { formatIsoDateTime } from "@/lib/time";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { formText, MIN_PASSWORD_CHARS } from "@/lib/signup";
 import { AccountShell } from "./AccountShell";
 import { passwordChangeProblem } from "./password";
@@ -65,11 +67,7 @@ function PasswordForm() {
           <span className="label">Repeat new password</span>
           <input name="confirm" type="password" autoComplete="new-password" required className="input mt-1.5 h-10 w-full" />
         </label>
-        {problem || change.error ? (
-          <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-error">
-            {problem ?? errorText(change.error)}
-          </p>
-        ) : null}
+        {problem || change.error ? <ErrorNotice>{problem ?? errorText(change.error)}</ErrorNotice> : null}
         {change.isSuccess && !problem ? (
           <p role="status" className="text-ok">
             Password changed. Your other sessions were signed out.
@@ -116,9 +114,7 @@ function Sessions() {
         </button>
       </div>
       {error ? (
-        <p role="alert" className="mx-5 mb-3 rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-error">
-          {error instanceof ApiRequestError ? error.message : "Could not load sessions."}
-        </p>
+        <ErrorNotice className="mx-5 mb-3">{error instanceof ApiRequestError ? error.message : "Could not load sessions."}</ErrorNotice>
       ) : null}
       <table className="w-full text-left" aria-label="Active sessions">
         <thead className="table-head">
@@ -130,14 +126,14 @@ function Sessions() {
         </thead>
         <tbody>
           {list.map((s) => {
-            const started = new Date(s.created_at).toLocaleString();
+            const started = formatIsoDateTime(s.created_at);
             return (
               <tr key={s.id} className="border-t border-border">
                 <td className="px-5 py-2.5">
                   {started}
                   {s.current ? <span className="badge ml-2 border-ok/50 bg-ok/10 text-ok">This browser</span> : null}
                 </td>
-                <td className="px-2 text-muted">{new Date(s.expires_at).toLocaleString()}</td>
+                <td className="px-2 text-muted">{formatIsoDateTime(s.expires_at)}</td>
                 <td className="px-5 text-right">
                   {s.current ? (
                     <button type="button" className="btn btn-sm" onClick={() => void logout()}>

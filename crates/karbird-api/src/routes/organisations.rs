@@ -8,12 +8,11 @@ use karbird_storage::secrets::{generate_token, hash_token, token_prefix};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use crate::auth::{CurrentUser, authorize_organization_admin};
 use crate::error::{ApiError, ApiResult};
 use crate::mail::InviteEmail;
-use crate::routes::signup::normalise_email;
+use crate::routes::{parse_id, rfc3339, signup::normalise_email};
 use crate::state::AppState;
 
 const ORGANIZATION_INVITE_PREFIX: &str = "koi_";
@@ -86,10 +85,6 @@ pub struct AcceptOrganizationInviteRequest {
     pub token: String,
 }
 
-fn parse_uuid(value: &str) -> ApiResult<Uuid> {
-    Uuid::parse_str(value).map_err(|_| ApiError::NotFound)
-}
-
 fn organization_role(value: &str) -> ApiResult<&str> {
     match value {
         "admin" | "member" => Ok(value),
@@ -103,7 +98,7 @@ fn assignments(requests: &[AssignmentRequest]) -> ApiResult<Vec<InviteProjectAss
         .map(|assignment| {
             Ok(InviteProjectAssignment {
                 project_id: assignment.project_id.clone(),
-                role_id: parse_uuid(&assignment.role_id)?,
+                role_id: parse_id(&assignment.role_id)?,
             })
         })
         .collect()
@@ -132,7 +127,7 @@ fn invite_dto(row: OrganizationInviteRow) -> OrganizationInviteDto {
             })
             .collect(),
         prefix: row.token_prefix,
-        expires_at: row.expires_at.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
+        expires_at: rfc3339(row.expires_at),
         status: status.to_owned(),
         delivery_error: row.delivery_error,
     }
@@ -237,10 +232,10 @@ pub async fn put_project_assignment(
     Json(request): Json<UpdateProjectAssignmentRequest>,
 ) -> ApiResult<StatusCode> {
     let access = authorize_organization_admin(&state, &user, &organization_id).await?;
-    let target = parse_uuid(&user_id)?;
+    let target = parse_id(&user_id)?;
     if !state
         .pg
-        .assign_project_role(access.organization_id.as_str(), &project_id, target, parse_uuid(&request.role_id)?)
+        .assign_project_role(access.organization_id.as_str(), &project_id, target, parse_id(&request.role_id)?)
         .await?
     {
         return Err(ApiError::NotFound);
@@ -264,7 +259,7 @@ pub async fn delete_project_assignment(
         .filter(|organization| organization.id == access.organization_id.as_str())
         .ok_or(ApiError::NotFound)?;
     let _ = project;
-    match state.pg.remove_member(&project_id, parse_uuid(&user_id)?).await? {
+    match state.pg.remove_member(&project_id, parse_id(&user_id)?).await? {
         karbird_storage::pg::MemberChange::Done => Ok(StatusCode::NO_CONTENT),
         karbird_storage::pg::MemberChange::NotFound => Err(ApiError::NotFound),
         karbird_storage::pg::MemberChange::LastOwner => Err(ApiError::Conflict("a project needs at least one owner")),
@@ -356,7 +351,7 @@ pub async fn revoke_invite(
     Path((organization_id, invite_id)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
     let access = authorize_organization_admin(&state, &user, &organization_id).await?;
-    if !state.pg.revoke_organization_invite(access.organization_id.as_str(), parse_uuid(&invite_id)?).await? {
+    if !state.pg.revoke_organization_invite(access.organization_id.as_str(), parse_id(&invite_id)?).await? {
         return Err(ApiError::NotFound);
     }
     Ok(StatusCode::NO_CONTENT)

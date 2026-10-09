@@ -10,7 +10,6 @@ use karbird_storage::admin::{AdminAuditRow, AdminProjectRow, AdminUserRow};
 use karbird_storage::pg::{EnvironmentRow, MemberChange, MemberRow, NewAuditEntry, RoleChange, RoleRow};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use time::format_description::well_known::Rfc3339;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -21,11 +20,10 @@ use crate::permissions::{
     from_stored_of, parse_set_of,
 };
 use crate::routes::account::ProjectRequest;
-use crate::routes::roles::{
-    MemberDto, MemberUpdateRequest, RoleDto, RoleRequest, grant_json, parse_id, validate_role_name,
-};
+use crate::routes::roles::{MemberDto, MemberUpdateRequest, RoleDto, RoleRequest, grant_json, validate_role_name};
 use crate::routes::session::EnvironmentDto;
 use crate::routes::signup::{normalise_email, required_name};
+use crate::routes::{parse_id, rfc3339};
 use crate::state::AppState;
 use crate::system_permissions::{SystemPermission, SystemPermissionSet, check_account_change};
 
@@ -215,7 +213,7 @@ fn project_dto(p: AdminProjectRow, envs: &[EnvironmentRow]) -> AdminProjectDto {
             .map(|e| EnvironmentDto { id: e.id.clone(), name: e.name.clone(), is_demo: e.is_demo })
             .collect(),
         protected: PROTECTED_PROJECTS.contains(&p.id.as_str()),
-        created_at: p.created_at.format(&Rfc3339).unwrap_or_default(),
+        created_at: rfc3339(p.created_at),
         id: p.id,
         tenant_id: p.tenant_id,
         name: p.name,
@@ -486,7 +484,7 @@ impl From<AdminUserRow> for AdminUserDto {
             id: u.id.to_string(),
             email: u.email,
             display_name: u.display_name,
-            created_at: u.created_at.format(&Rfc3339).unwrap_or_default(),
+            created_at: rfc3339(u.created_at),
             disabled: u.disabled_at.is_some(),
             projects: u.projects,
             active_sessions: u.active_sessions,
@@ -628,7 +626,7 @@ fn system_member_dto(m: MemberRow) -> MemberDto {
         based_on: m.based_on.map(|id| id.to_string()),
         permissions: permissions::to_strings(&from_stored_of::<SystemPermission>(&m.permissions)),
         is_owner,
-        joined_at: m.created_at.format(&Rfc3339).unwrap_or_default(),
+        joined_at: rfc3339(m.created_at),
     }
 }
 
@@ -912,7 +910,7 @@ impl From<AdminAuditRow> for AdminAuditEntryDto {
     fn from(r: AdminAuditRow) -> Self {
         Self {
             id: r.id.to_string(),
-            occurred_at: r.occurred_at.format(&Rfc3339).unwrap_or_default(),
+            occurred_at: rfc3339(r.occurred_at),
             project_id: r.project_id,
             actor_id: r.actor_id,
             actor_email: r.actor_email,

@@ -3,6 +3,8 @@
 import { useState, type FormEvent } from "react";
 import { apiSentence } from "@/lib/api";
 import { useSession } from "@/lib/session";
+import { formatIsoDate } from "@/lib/time";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { AccountShell } from "./AccountShell";
 import { useUpdateAccount } from "./useAccount";
 
@@ -37,12 +39,8 @@ function ProfileForm({ initialName, email, since }: { initialName: string; email
         <input value={email} readOnly className="input h-10 w-full max-w-md opacity-70" />
         <span className="text-xs text-muted">Your sign-in address. It cannot be changed yet.</span>
       </label>
-      <p className="text-xs text-muted">Member since {since ? new Date(since).toLocaleDateString() : "—"}.</p>
-      {update.error ? (
-        <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-error">
-          {apiSentence(update.error, "Could not save.")}
-        </p>
-      ) : null}
+      <p className="text-xs text-muted">Member since {formatIsoDate(since)}.</p>
+      {update.error ? <ErrorNotice>{apiSentence(update.error, "Could not save.")}</ErrorNotice> : null}
       {update.isSuccess ? (
         <p role="status" className="text-ok">
           Saved.

@@ -7,9 +7,7 @@ use axum::http::StatusCode;
 use karbird_storage::pg::{MemberChange, MemberRow, NewAuditEntry, RoleChange, RoleRow};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use crate::auth::{CurrentUser, ProjectAccess, authorize_project};
 use crate::error::{ApiError, ApiResult};
@@ -17,6 +15,7 @@ use crate::permissions::{
     self, Grant, Permission, PermissionInfo, PermissionSet, Target, check_member_change, check_template_change,
     from_stored, parse_set,
 };
+use crate::routes::{parse_id, rfc3339};
 use crate::state::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -76,7 +75,7 @@ impl From<MemberRow> for MemberDto {
             based_on: m.based_on.map(|id| id.to_string()),
             permissions: permissions::to_strings(&from_stored(&m.permissions)),
             is_owner,
-            joined_at: m.created_at.format(&Rfc3339).unwrap_or_default(),
+            joined_at: rfc3339(m.created_at),
         }
     }
 }
@@ -94,10 +93,6 @@ pub struct MemberUpdateRequest {
     pub permissions: Option<Vec<String>>,
     /// With `permissions`: the role the set was derived from, shown as "Individual, based on …".
     pub based_on: Option<String>,
-}
-
-pub(crate) fn parse_id(id: &str) -> ApiResult<Uuid> {
-    Uuid::parse_str(id).map_err(|_| ApiError::NotFound)
 }
 
 /// Role names are shown to other members: trimmed, 1-64 characters, no control characters.
@@ -376,6 +371,7 @@ pub async fn remove_member(
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+    use uuid::Uuid;
 
     #[test]
     fn role_names_are_trimmed_bounded_and_printable() {

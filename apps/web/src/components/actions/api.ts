@@ -1,14 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiRequestError, scopedPath, unwrap, type Schemas } from "@/lib/api";
+import { api, errorMessage, scopedPath, unwrap, type Schemas } from "@/lib/api";
 import { OPEN_STATES } from "./controls";
+
+export { errorMessage };
 
 type Plan = Schemas["ActionPlanDto"];
 
 export const ACTIONS_BASE = "/api/v1/projects/{project_id}/environments/{environment_id}/actions" as const;
-
-export function errorMessage(e: unknown): string {
-  return e instanceof ApiRequestError ? e.message : e instanceof Error ? e.message : String(e);
-}
 
 /** Catalog, plans and the plan mutations of one environment; shared by the Actions page and the map. */
 export function useActions(projectId: string, environmentId: string, enabled: boolean) {

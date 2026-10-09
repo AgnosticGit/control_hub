@@ -6,18 +6,16 @@ import { useState, type FormEvent } from "react";
 import { api, scopedPath, unwrap, type Schemas } from "@/lib/api";
 import { canCancelPlan, canDecidePlan, canStartAction } from "@/lib/permissions";
 import { useSession } from "@/lib/session";
+import { formatIsoDateTime } from "@/lib/time";
 import { AppShell } from "@/components/shell/AppShell";
 import { Icon } from "@/components/ui/Icon";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { paramValues } from "./params";
 import { OPEN_STATES, stateClass } from "./controls";
 import { ParamFields } from "./ParamFields";
 import { ACTIONS_BASE as BASE, errorMessage as message, useActions } from "./api";
 
 type Spec = Schemas["ActionSpecDto"];
-
-function when(iso: string | null | undefined) {
-  return iso ? new Date(iso).toLocaleString() : "—";
-}
 
 /** Plan fields come from the API and may echo telemetry-derived text: shown as text only. */
 function Json({ value, label }: { value: unknown; label: string }) {
@@ -161,7 +159,7 @@ function PlanDetail({ projectId, environmentId, id }: { projectId: string; envir
         <ol aria-label="Audit trail" className="mt-1 space-y-0.5 text-xs">
           {audit.map((a) => (
             <li key={a.id}>
-              {when(a.occurred_at)} · {a.action} · {a.actor_kind} · {a.outcome}
+              {formatIsoDateTime(a.occurred_at)} · {a.action} · {a.actor_kind} · {a.outcome}
               {a.reason ? ` · ${a.reason}` : ""}
             </li>
           ))}
@@ -226,11 +224,7 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
             <p className="card p-4 text-sm text-muted">{canPropose ? "Loading catalog…" : "Your role in this project does not include proposing actions."}</p>
           )}
 
-          {error ? (
-            <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
-              {message(error)}
-            </p>
-          ) : null}
+          {error ? <ErrorNotice className="text-sm">{message(error)}</ErrorNotice> : null}
 
           <div className="grid gap-5 lg:grid-cols-[3fr_2fr]">
             <div className="card self-start overflow-hidden">
@@ -266,7 +260,7 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
                     <span className={`badge border-current/40 ${stateClass(p.state)}`}>{p.state}</span>
                   </td>
                   <td className="px-2 text-xs text-muted">{p.created_by}</td>
-                  <td className="px-2 text-xs text-muted">{when(p.created_at)}</td>
+                  <td className="px-2 text-xs text-muted">{formatIsoDateTime(p.created_at)}</td>
                   <td className="space-x-1 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {p.state === "proposed" && canDecidePlan(project) ? (
                       <>

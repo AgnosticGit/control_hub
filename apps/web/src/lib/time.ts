@@ -35,6 +35,15 @@ export function formatDateTime(ns: bigint): string {
   return `${d.toLocaleDateString()} ${formatClock(ns)}`;
 }
 
+/** Format an optional API timestamp using the browser's locale. */
+export function formatIsoDateTime(iso: string | null | undefined): string {
+  return iso ? new Date(iso).toLocaleString() : "—";
+}
+
+export function formatIsoDate(iso: string | null | undefined): string {
+  return iso ? new Date(iso).toLocaleDateString() : "—";
+}
+
 export function formatDurationNs(ns: bigint): string {
   const ms = Number(ns) / 1e6;
   if (ms < 1) return `${(ms * 1000).toFixed(0)} µs`;

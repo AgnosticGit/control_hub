@@ -10,13 +10,13 @@ use karbird_storage::secrets::{generate_token, hash_token, token_prefix};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::auth::{CurrentUser, ProjectAccess, authorize_project, check_origin};
 use crate::error::{ApiError, ApiResult};
 use crate::permissions::{Actor, Permission, check_invite, from_stored};
+use crate::routes::{parse_id, rfc3339};
 use crate::state::AppState;
 
 pub const INVITE_PREFIX: &str = "chv_";
@@ -38,10 +38,6 @@ pub struct InviteDto {
     /// `null` = unlimited.
     pub max_uses: Option<i32>,
     pub uses: i32,
-}
-
-fn rfc3339(t: OffsetDateTime) -> String {
-    t.format(&Rfc3339).unwrap_or_default()
 }
 
 impl From<InviteRow> for InviteDto {
@@ -100,10 +96,6 @@ pub struct AcceptedInvite {
     /// First environment of the project, to open after joining.
     pub environment_id: Option<String>,
     pub already_member: bool,
-}
-
-fn parse_id(id: &str) -> ApiResult<Uuid> {
-    Uuid::parse_str(id).map_err(|_| ApiError::NotFound)
 }
 
 fn expiry_days(days: Option<u32>) -> ApiResult<u32> {

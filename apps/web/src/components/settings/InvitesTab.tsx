@@ -3,7 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useSyncExternalStore, type FormEvent } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { api, apiSentence, unwrap, unwrapEmpty, type Schemas } from "@/lib/api";
+import { formatIsoDateTime } from "@/lib/time";
 import { EXPIRY_CHOICES, inviteLink, usesLabel } from "@/lib/invite";
 import { assignableRole, defaultInviteRole, type Actor } from "./matrix";
 
@@ -76,11 +78,7 @@ export function InviteForm({ projectId, actor, roles, onCreated }: { projectId: 
           Create invite link
         </button>
       </form>
-      {create.error ? (
-        <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-error">
-          {message(create.error)}
-        </p>
-      ) : null}
+      {create.error ? <ErrorNotice>{message(create.error)}</ErrorNotice> : null}
       {link ? (
         <div role="status" aria-label="New invite link" className="space-y-2 rounded-xl border border-warn/50 bg-warn/10 p-3">
           <p className="font-medium">Copy the link now; it is shown only once. Anyone with it can join as {role?.name}.</p>
@@ -131,11 +129,7 @@ export function InvitesTab({ projectId, actor, roles }: { projectId: string; act
         <InviteForm projectId={projectId} actor={actor} roles={roles} onCreated={() => void refresh()} />
       </section>
 
-      {error ? (
-        <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
-          {message(error)}
-        </p>
-      ) : null}
+      {error ? <ErrorNotice className="text-sm">{message(error)}</ErrorNotice> : null}
 
       <div className="card overflow-hidden">
         <table className="w-full text-left text-sm" aria-label="Active invite links">
@@ -155,7 +149,7 @@ export function InvitesTab({ projectId, actor, roles }: { projectId: string; act
                 <td className="px-4 py-2.5 font-mono text-xs">{i.prefix}…</td>
                 <td className="px-2">{i.role_name}</td>
                 <td className="px-2 text-muted">{i.created_by_name}</td>
-                <td className="px-2 text-xs text-muted">{new Date(i.expires_at).toLocaleString()}</td>
+                <td className="px-2 text-xs text-muted">{formatIsoDateTime(i.expires_at)}</td>
                 <td className="px-2 text-xs text-muted">{usesLabel(i.uses, i.max_uses)}</td>
                 <td className="px-3 text-right">
                   <button

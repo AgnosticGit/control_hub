@@ -7,6 +7,8 @@ import {
   formatClockMicros,
   formatDateTime,
   formatDurationNs,
+  formatIsoDateTime,
+  formatIsoDate,
   nowNs,
   parseNs,
 } from "./time";
@@ -75,6 +77,27 @@ describe("formatDurationNs", () => {
     expect(formatDurationNs(123_400_000n)).toBe("123.4 ms");
     expect(formatDurationNs(NS_PER_SEC)).toBe("1.00 s");
     expect(formatDurationNs(90n * NS_PER_SEC)).toBe("90.00 s");
+  });
+});
+
+describe("formatIsoDateTime", () => {
+  it("formats present timestamps in the local locale", () => {
+    const iso = "2026-10-09T12:34:56.000Z";
+    expect(formatIsoDateTime(iso)).toBe(new Date(iso).toLocaleString());
+  });
+
+  it("uses an em dash for missing timestamps", () => {
+    expect(formatIsoDateTime(null)).toBe("—");
+    expect(formatIsoDateTime(undefined)).toBe("—");
+    expect(formatIsoDateTime("")).toBe("—");
+  });
+});
+
+describe("formatIsoDate", () => {
+  it("formats present dates in the local locale and marks missing values", () => {
+    const iso = "2026-10-09T12:34:56.000Z";
+    expect(formatIsoDate(iso)).toBe(new Date(iso).toLocaleDateString());
+    expect(formatIsoDate(null)).toBe("—");
   });
 });
 

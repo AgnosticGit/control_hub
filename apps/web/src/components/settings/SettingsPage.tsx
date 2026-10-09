@@ -5,9 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState, type FormEvent } from "react";
 import { AppShell } from "@/components/shell/AppShell";
 import { Icon } from "@/components/ui/Icon";
-import { api, ApiRequestError, unwrap, unwrapEmpty, type Schemas } from "@/lib/api";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { api, errorMessage, unwrap, unwrapEmpty, type Schemas } from "@/lib/api";
 import { can, type PermissionId } from "@/lib/permissions";
 import { useSession } from "@/lib/session";
+import { formatIsoDate } from "@/lib/time";
 import { InvitesTab } from "./InvitesTab";
 import { assignableRole, groupCatalog, memberAfter, memberLock, roleLock, toggle, type Actor, type CatalogEntry } from "./matrix";
 
@@ -16,14 +18,6 @@ type Member = Schemas["MemberDto"];
 
 const ROLES = "/api/v1/projects/{project_id}/roles" as const;
 const MEMBERS = "/api/v1/projects/{project_id}/members" as const;
-
-function message(e: unknown) {
-  return e instanceof ApiRequestError ? e.message : e instanceof Error ? e.message : String(e);
-}
-
-function when(iso: string) {
-  return iso ? new Date(iso).toLocaleDateString() : "—";
-}
 
 type Tab = "members" | "roles" | "invites";
 
@@ -108,11 +102,7 @@ export function SettingsPage({ projectId, environmentId }: { projectId: string; 
                 ))}
               </div>
 
-              {error ? (
-                <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
-                  {message(error)}
-                </p>
-              ) : null}
+              {error ? <ErrorNotice className="text-sm">{errorMessage(error)}</ErrorNotice> : null}
 
               {catalog.data && roles.data && members.data ? (
                 tab === "members" ? (
@@ -200,11 +190,7 @@ function MembersTab({
 
   return (
     <div className="space-y-3">
-      {error ? (
-        <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
-          {message(error)}
-        </p>
-      ) : null}
+      {error ? <ErrorNotice className="text-sm">{errorMessage(error)}</ErrorNotice> : null}
       <div className="card overflow-hidden">
         <table className="w-full text-left text-sm" aria-label="Members">
           <thead className="table-head">
@@ -259,7 +245,7 @@ function MembersTab({
                         ))}
                       </select>
                     </td>
-                    <td className="px-2 text-xs text-muted">{when(m.joined_at)}</td>
+                    <td className="px-2 text-xs text-muted">{formatIsoDate(m.joined_at)}</td>
                     <td className="space-x-2 px-3 text-right whitespace-nowrap">
                       <button
                         type="button"
@@ -388,11 +374,7 @@ function RolesTab({ projectId, actor, catalog, roles }: { projectId: string; act
         </form>
       ) : null}
 
-      {error ? (
-        <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
-          {message(error)}
-        </p>
-      ) : null}
+      {error ? <ErrorNotice className="text-sm">{errorMessage(error)}</ErrorNotice> : null}
 
       <div className="card overflow-x-auto">
         <table className="w-full text-left text-sm" aria-label="Roles">

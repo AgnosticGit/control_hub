@@ -53,12 +53,11 @@ pub struct Range {
     pub to: i64,
 }
 
-pub(crate) fn parse_ns(v: &Option<String>, name: &str) -> ApiResult<Option<i64>> {
-    v.as_ref()
-        .map(|s| {
-            s.parse::<i64>().map_err(|_| ApiError::BadRequest(format!("{name} must be a decimal nanosecond timestamp")))
-        })
-        .transpose()
+pub(crate) fn parse_ns(v: Option<&str>, name: &str) -> ApiResult<Option<i64>> {
+    v.map(|s| {
+        s.parse::<i64>().map_err(|_| ApiError::BadRequest(format!("{name} must be a decimal nanosecond timestamp")))
+    })
+    .transpose()
 }
 
 impl RangeParams {
@@ -67,17 +66,21 @@ impl RangeParams {
     }
 
     fn resolve_max(&self, max_ns: i64) -> ApiResult<Range> {
-        let to = parse_ns(&self.to, "to")?.unwrap_or_else(now_ns);
-        let from = parse_ns(&self.from, "from")?.unwrap_or(to.saturating_sub(15 * NS_PER_MIN));
-        if from >= to {
-            return Err(ApiError::BadRequest("from must be before to".into()));
-        }
-        // Checked: extreme inputs must not wrap around into a "short" range.
-        if to.checked_sub(from).is_none_or(|d| d > max_ns) {
-            return Err(ApiError::BadRequest(format!("time range may not exceed {} days", max_ns / NS_PER_DAY)));
-        }
-        Ok(Range { from, to })
+        resolve_range(self.from.as_deref(), self.to.as_deref(), max_ns)
     }
+}
+
+fn resolve_range(from: Option<&str>, to: Option<&str>, max_ns: i64) -> ApiResult<Range> {
+    let to = parse_ns(to, "to")?.unwrap_or_else(now_ns);
+    let from = parse_ns(from, "from")?.unwrap_or(to.saturating_sub(15 * NS_PER_MIN));
+    if from >= to {
+        return Err(ApiError::BadRequest("from must be before to".into()));
+    }
+    // Checked: extreme inputs must not wrap around into a "short" range.
+    if to.checked_sub(from).is_none_or(|d| d > max_ns) {
+        return Err(ApiError::BadRequest(format!("time range may not exceed {} days", max_ns / NS_PER_DAY)));
+    }
+    Ok(Range { from, to })
 }
 
 fn limit(v: Option<u32>, default: u32, max: u32) -> u32 {
@@ -316,9 +319,9 @@ pub async fn topology(
 ) -> ApiResult<axum::response::Response> {
     use axum::response::IntoResponse;
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
-    let r = RangeParams { from: q.from, to: q.to }.resolve()?;
+    let r = resolve_range(q.from.as_deref(), q.to.as_deref(), MAX_RANGE_NS)?;
     let response = crate::topology::read(&state, &scope, r, q.live).await?;
-    let response = if let Some(at) = parse_ns(&q.at, "at")? {
+    let response = if let Some(at) = parse_ns(q.at.as_deref(), "at")? {
         let snapshot = crate::routes::infrastructure::load_snapshot(&state, &scope, at).await?;
         crate::topology::with_placement(&state, &scope, response, snapshot).await?
     } else {
@@ -540,7 +543,7 @@ pub async fn traces(
 impl TraceListParams {
     /// Validated storage query (one extra row to detect more pages) and the page size.
     fn to_query(&self) -> ApiResult<(TraceQuery, u32)> {
-        let r = RangeParams { from: self.from.clone(), to: self.to.clone() }.resolve()?;
+        let r = resolve_range(self.from.as_deref(), self.to.as_deref(), MAX_RANGE_NS)?;
         let limit = limit(self.limit, 50, 500);
         let query = TraceQuery {
             from_ns: r.from,
@@ -917,7 +920,7 @@ fn parse_template_id(v: Option<&str>) -> ApiResult<Option<u64>> {
 impl LogParams {
     /// Validated storage query (one extra row to detect more pages) and the page size.
     fn to_query(&self, max_range_ns: i64) -> ApiResult<(LogQuery, u32)> {
-        let r = RangeParams { from: self.from.clone(), to: self.to.clone() }.resolve_max(max_range_ns)?;
+        let r = resolve_range(self.from.as_deref(), self.to.as_deref(), max_range_ns)?;
         let limit = limit(self.limit, 200, 1_000);
         if let Some(t) = &self.trace_id {
             TraceId::parse(t.clone()).map_err(|_| ApiError::BadRequest("invalid trace id".into()))?;
@@ -979,7 +982,7 @@ pub async fn events(
     Query(q): Query<EventParams>,
 ) -> ApiResult<Json<EventListResponse>> {
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
-    let r = RangeParams { from: q.from.clone(), to: q.to.clone() }.resolve()?;
+    let r = resolve_range(q.from.as_deref(), q.to.as_deref(), MAX_RANGE_NS)?;
     let limit = limit(q.limit, 200, 1_000);
     let rows = state.ch.events(&scope, r.from, r.to, q.trace_id.as_deref(), limit + 1).await?;
     let truncated = rows.len() > limit as usize;
@@ -1129,7 +1132,7 @@ pub async fn timeline(
     Query(q): Query<TimelineParams>,
 ) -> ApiResult<Json<TimelineResponse>> {
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
-    let r = RangeParams { from: q.from.clone(), to: q.to.clone() }.resolve()?;
+    let r = resolve_range(q.from.as_deref(), q.to.as_deref(), MAX_RANGE_NS)?;
     let limit = limit(q.limit, 20_000, 100_000);
     let cutoff = archive_cutoff(&state);
     let (spans, (logs, logs_source, archive_capped), events) = tokio::try_join!(
@@ -1199,6 +1202,14 @@ mod tests {
         RangeParams { from: from.map(|v| v.to_string()), to: to.map(|v| v.to_string()) }.resolve()
     }
 
+    #[test]
+    fn range_can_be_resolved_from_borrowed_timestamp_strings() {
+        let from = (T0 - NS_PER_MIN).to_string();
+        let to = T0.to_string();
+        let resolved = resolve_range(Some(&from), Some(&to), MAX_RANGE_NS).unwrap();
+        assert_eq!((resolved.from, resolved.to), (T0 - NS_PER_MIN, T0));
+    }
+
     fn bad_request(r: ApiResult<impl std::fmt::Debug>) -> String {
         match r {
             Err(ApiError::BadRequest(m)) => m,
@@ -1265,8 +1276,8 @@ mod tests {
             let m = bad_request(RangeParams { from: None, to: Some(v.into()) }.resolve());
             assert!(m.contains("to"), "{v:?}: {m}");
         }
-        assert_eq!(parse_ns(&Some("-5".into()), "x").unwrap(), Some(-5));
-        assert_eq!(parse_ns(&None, "x").unwrap(), None);
+        assert_eq!(parse_ns(Some("-5"), "x").unwrap(), Some(-5));
+        assert_eq!(parse_ns(None, "x").unwrap(), None);
     }
 
     proptest! {

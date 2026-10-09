@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState, type FormEvent } from "react";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Icon, Logo } from "@/components/ui/Icon";
 import { api, apiSentence, unwrap, unwrapEmpty, type Schemas } from "@/lib/api";
+import { formatIsoDateTime } from "@/lib/time";
 import { useLogout, useSession } from "@/lib/session";
 import { assignableRole, groupCatalog, memberLock, roleLock, toggle, type Actor, type CatalogEntry } from "@/components/settings/matrix";
 import {
@@ -27,17 +29,9 @@ type Role = Schemas["RoleDto"];
 
 const PROJECT_ROLES = ["owner", "admin", "operator", "viewer"] as const;
 
-function when(iso: string) {
-  return iso ? new Date(iso).toLocaleString() : "—";
-}
-
 function ErrorLine({ error }: { error: unknown }) {
   if (!error) return null;
-  return (
-    <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
-      {apiSentence(error)}
-    </p>
-  );
+  return <ErrorNotice className="text-sm">{apiSentence(error)}</ErrorNotice>;
 }
 
 export function AdminPage() {
@@ -243,7 +237,7 @@ function ProjectsTab({ actor }: { actor: Actor }) {
                     <td className="px-4 py-2.5">
                       <div className="font-medium">{p.name}</div>
                       <div className="text-xs text-muted">
-                        {p.id} · created {when(p.created_at)}
+                        {p.id} · created {formatIsoDateTime(p.created_at)}
                       </div>
                     </td>
                     <td className="px-2 text-xs text-muted">{p.owners.join(", ") || "—"}</td>
@@ -494,7 +488,7 @@ function AccountsTab({ actor, system }: { actor: Actor; system: SystemAccess }) 
                       {u.id === actor.userId ? <span className="ml-2 text-xs text-muted">(you)</span> : null}
                     </div>
                     <div className="text-xs text-muted">
-                      {u.email} · joined {when(u.created_at)}
+                      {u.email} · joined {formatIsoDateTime(u.created_at)}
                     </div>
                   </td>
                   <td className="px-2 tabular-nums">{u.projects}</td>
@@ -941,7 +935,7 @@ function AuditTab({ system }: { system: SystemAccess }) {
           <tbody>
             {(audit.data ?? []).map((a) => (
               <tr key={a.id} className="border-t border-border align-top">
-                <td className="px-4 py-2 text-xs whitespace-nowrap text-muted">{when(a.occurred_at)}</td>
+                <td className="px-4 py-2 text-xs whitespace-nowrap text-muted">{formatIsoDateTime(a.occurred_at)}</td>
                 <td className="px-2 py-2 text-xs">{a.actor_email ?? `${a.actor_kind} ${a.actor_id}`}</td>
                 <td className="px-2 py-2">
                   <div>{auditActionLabel(a.action)}</div>

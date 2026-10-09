@@ -11,15 +11,13 @@ use karbird_storage::actions::{ActionPlanRow, NewActionPlan, Transition};
 use karbird_storage::pg::NewAuditEntry;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use super::AuditEntryDto;
 use crate::auth::{Authorized, CurrentUser, authorize, authorize_as};
 use crate::error::{ApiError, ApiResult};
 use crate::permissions::Permission;
+use crate::routes::{parse_id as plan_id, rfc3339};
 use crate::state::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -135,10 +133,6 @@ pub struct DecisionRequest {
     pub comment: Option<String>,
 }
 
-fn ts(t: OffsetDateTime) -> String {
-    t.format(&Rfc3339).unwrap_or_default()
-}
-
 fn risk_str(r: actions::Risk) -> String {
     match r {
         actions::Risk::Low => "low".into(),
@@ -160,14 +154,14 @@ impl From<ActionPlanRow> for ActionPlanDto {
             state: r.state,
             policy: r.policy,
             created_by: r.created_by_email,
-            created_at: ts(r.created_at),
-            expires_at: ts(r.expires_at),
+            created_at: rfc3339(r.created_at),
+            expires_at: rfc3339(r.expires_at),
             decided_by: r.decided_by_email,
-            decided_at: r.decided_at.map(ts),
+            decided_at: r.decided_at.map(rfc3339),
             decision_comment: r.decision_comment,
             executor_id: r.executor_id,
-            started_at: r.started_at.map(ts),
-            finished_at: r.finished_at.map(ts),
+            started_at: r.started_at.map(rfc3339),
+            finished_at: r.finished_at.map(rfc3339),
             result: r.result,
             verification: r.verification,
         }
@@ -257,10 +251,6 @@ fn user_audit<'a>(
         outcome: "succeeded",
         request_id: None,
     }
-}
-
-fn plan_id(id: &str) -> ApiResult<Uuid> {
-    Uuid::parse_str(id).map_err(|_| ApiError::NotFound)
 }
 
 /// Re-validates a stored plan (it was validated at proposal; the catalog may have changed since).
@@ -525,6 +515,8 @@ mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
     use karbird_domain::{EnvironmentId, ProjectId, TenantId};
+    use time::OffsetDateTime;
+    use uuid::Uuid;
 
     fn row(action_type: &str, target: &str, params: Value) -> ActionPlanRow {
         let t = OffsetDateTime::from_unix_timestamp(1_790_000_000).unwrap();

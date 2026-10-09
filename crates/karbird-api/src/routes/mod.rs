@@ -19,12 +19,23 @@ use axum::Json;
 use axum::extract::{Path, State};
 use karbird_storage::pg::AuditRow;
 use serde::Serialize;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use utoipa::ToSchema;
 
 use crate::auth::{CurrentUser, authorize};
+use crate::error::ApiError;
 use crate::error::ApiResult;
 use crate::permissions::Permission;
 use crate::state::AppState;
+use uuid::Uuid;
+
+pub(crate) fn parse_id(id: &str) -> ApiResult<Uuid> {
+    Uuid::parse_str(id).map_err(|_| ApiError::NotFound)
+}
+
+pub(crate) fn rfc3339(value: OffsetDateTime) -> String {
+    value.format(&Rfc3339).unwrap_or_default()
+}
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct HealthResponse {
@@ -60,7 +71,7 @@ impl From<AuditRow> for AuditEntryDto {
     fn from(r: AuditRow) -> Self {
         Self {
             id: r.id.to_string(),
-            occurred_at: r.occurred_at.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
+            occurred_at: rfc3339(r.occurred_at),
             actor_id: r.actor_id,
             actor_kind: r.actor_kind,
             action: r.action,
@@ -88,6 +99,18 @@ pub async fn audit(
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+
+    #[test]
+    fn parse_id_returns_not_found_for_malformed_ids() {
+        assert!(matches!(parse_id("not-a-uuid"), Err(crate::error::ApiError::NotFound)));
+        assert_eq!(parse_id("00000000-0000-0000-0000-000000000001").unwrap(), Uuid::from_u128(1));
+    }
+
+    #[test]
+    fn rfc3339_uses_the_api_timestamp_format() {
+        let epoch = OffsetDateTime::from_unix_timestamp(0).unwrap();
+        assert_eq!(rfc3339(epoch), "1970-01-01T00:00:00Z");
+    }
 
     #[test]
     fn audit_rows_map_to_rfc3339_dtos() {

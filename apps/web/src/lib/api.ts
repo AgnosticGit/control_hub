@@ -23,6 +23,10 @@ export function isUnauthenticated(e: unknown) {
   return e instanceof ApiRequestError && e.status === 401;
 }
 
+export function errorMessage(e: unknown): string {
+  return e instanceof ApiRequestError ? e.message : e instanceof Error ? e.message : String(e);
+}
+
 /** An API error message as a sentence for people: "conflict: you are…" → "You are….". */
 export function apiSentence(e: unknown, fallback = "Cannot reach the karbird API."): string {
   if (!(e instanceof ApiRequestError)) return fallback;

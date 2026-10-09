@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { api, apiSentence, unwrap, unwrapEmpty, type ProjectDto } from "@/lib/api";
 import { can } from "@/lib/permissions";
 import { useSession } from "@/lib/session";
@@ -94,11 +95,7 @@ export function ProjectsPage() {
         <p className="basis-full text-xs text-muted">You become its owner. Environment names can match your delivery workflow.</p>
       </form>
 
-      {error ? (
-        <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
-          {apiSentence(error)}
-        </p>
-      ) : null}
+      {error ? <ErrorNotice className="text-sm">{apiSentence(error)}</ErrorNotice> : null}
 
       <div className="card overflow-hidden">
         <table className="w-full text-left text-sm" aria-label="Your projects">

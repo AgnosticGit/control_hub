@@ -9,15 +9,17 @@ use karbird_storage::secrets::{hash_password, verify_password};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashSet;
-use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::auth::{CurrentUser, authorize_organization_admin, authorize_project};
 use crate::error::{ApiError, ApiResult};
 use crate::permissions::Permission;
-use crate::routes::session::{ProjectDto, UserDto, projects_for, user_dto};
 use crate::routes::signup::{MAX_PASSWORD_BYTES, check_new_password, required_name};
+use crate::routes::{
+    parse_id, rfc3339,
+    session::{ProjectDto, UserDto, projects_for, user_dto},
+};
 use crate::state::AppState;
 
 /// Projects one account may own; bounds what a single sign-up can create.
@@ -91,8 +93,8 @@ pub(crate) fn validate_environment_names(raw: &[String]) -> Result<Vec<String>, 
 fn session_dto(s: SessionInfoRow, current: Uuid) -> SessionDto {
     SessionDto {
         id: s.id.to_string(),
-        created_at: s.created_at.format(&Rfc3339).unwrap_or_default(),
-        expires_at: s.expires_at.format(&Rfc3339).unwrap_or_default(),
+        created_at: rfc3339(s.created_at),
+        expires_at: rfc3339(s.expires_at),
         current: s.id == current,
     }
 }
@@ -208,7 +210,7 @@ pub async fn revoke_session(
     Path(session_id): Path<String>,
 ) -> ApiResult<StatusCode> {
     user.session_id()?;
-    let id = Uuid::parse_str(&session_id).map_err(|_| ApiError::NotFound)?;
+    let id = parse_id(&session_id)?;
     if !state.pg.revoke_user_session(user.user_id, id).await? {
         return Err(ApiError::NotFound);
     }

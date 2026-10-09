@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useSyncExternalStore } from "react";
 import { Icon, Logo } from "@/components/ui/Icon";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { api, ApiRequestError, isUnauthenticated, unwrap, unwrapEmpty } from "@/lib/api";
 import { currentInviteSecret, forgetInviteSecret, INVITE_PATH, isOrganizationInvite, rememberInviteSecret } from "@/lib/invite";
+import { formatIsoDateTime } from "@/lib/time";
 
 const noSubscribe = () => () => {};
 const NEXT = encodeURIComponent(INVITE_PATH);
@@ -87,9 +89,7 @@ export default function InvitePage() {
           <Logo className="h-11 w-11" />
           <h1 className="mt-4 text-xl font-semibold">Invite link</h1>
         </div>
-        <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-error">
-          {secret ? problem(preview.error) : "This invite link is incomplete. Open the full link you were sent."}
-        </p>
+        <ErrorNotice>{secret ? problem(preview.error) : "This invite link is incomplete. Open the full link you were sent."}</ErrorNotice>
         <Link href="/app" className="btn h-10 w-full">
           Go to karbird
         </Link>
@@ -105,7 +105,7 @@ export default function InvitePage() {
           <h1 className="mt-4 text-xl font-semibold">Organization invitation</h1>
           <p className="mt-2 text-muted">Sign in with the email address that received this invitation.</p>
         </div>
-        {accept.error ? <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-error">{problem(accept.error)}</p> : null}
+        {accept.error ? <ErrorNotice>{problem(accept.error)}</ErrorNotice> : null}
         {signedOut ? (
           <div className="space-y-2">
             <Link href={`/app/login?next=${NEXT}`} className="btn btn-primary h-10 w-full">Sign in to join</Link>
@@ -130,14 +130,10 @@ export default function InvitePage() {
         <p className="mt-2 text-muted">
           <span className="text-text">{p.invited_by}</span> invited you to join as <span className="text-text">{p.role_name}</span>.
         </p>
-        <p className="mt-1 text-xs text-muted">The link expires {new Date(p.expires_at).toLocaleString()}.</p>
+        <p className="mt-1 text-xs text-muted">The link expires {formatIsoDateTime(p.expires_at)}.</p>
       </div>
 
-      {accept.error ? (
-        <p role="alert" className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-error">
-          {problem(accept.error)}
-        </p>
-      ) : null}
+      {accept.error ? <ErrorNotice>{problem(accept.error)}</ErrorNotice> : null}
 
       {signedOut || !p.signed_in ? (
         <div className="space-y-2">

@@ -67,7 +67,7 @@ fn require_origin(state: &AppState, headers: &HeaderMap) -> ApiResult<()> {
 /// history older than the window nor skip ahead of now.
 fn start_cursor(resume: &Option<String>, now: i64) -> ApiResult<i64> {
     let floor = now - EVENT_LOOKBACK_NS;
-    Ok(parse_ns(resume, "resume")?.map_or(now - INITIAL_OVERLAP_NS, |r| r.clamp(floor, now)))
+    Ok(parse_ns(resume.as_deref(), "resume")?.map_or(now - INITIAL_OVERLAP_NS, |r| r.clamp(floor, now)))
 }
 
 #[utoipa::path(get, path = "/api/v1/projects/{project_id}/environments/{environment_id}/live", tag = "telemetry",

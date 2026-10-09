@@ -10,13 +10,13 @@ use karbird_storage::pg::{NewAuditEntry, TokenKind, TokenRow};
 use karbird_storage::secrets::{generate_token, hash_token, token_prefix};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::auth::{API_TOKEN_PREFIX, CurrentUser, authorize};
 use crate::error::{ApiError, ApiResult};
 use crate::permissions::Permission;
+use crate::routes::{parse_id, rfc3339};
 use crate::state::AppState;
 
 const INGEST_TOKEN_PREFIX: &str = "chi_";
@@ -54,10 +54,6 @@ pub struct TokenDto {
     pub revoked_at: Option<String>,
     pub last_used_at: Option<String>,
     pub active: bool,
-}
-
-fn rfc3339(t: OffsetDateTime) -> String {
-    t.format(&Rfc3339).unwrap_or_default()
 }
 
 impl TokenDto {
@@ -199,7 +195,7 @@ async fn audit(
 }
 
 async fn find(state: &AppState, scope: &Scope, token_id: &str) -> ApiResult<TokenRow> {
-    let id = Uuid::parse_str(token_id).map_err(|_| ApiError::NotFound)?;
+    let id = parse_id(token_id)?;
     state.pg.list_tokens(scope).await?.into_iter().find(|t| t.id == id).ok_or(ApiError::NotFound)
 }
 
