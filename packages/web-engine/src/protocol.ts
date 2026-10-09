@@ -44,6 +44,8 @@ export type WorkerRequest =
   | { kind: "topology"; id: number }
   /** Open (or re-target) the live WebSocket; `url` is a same-origin path. */
   | { kind: "liveStart"; id: number; url: string }
+  | { kind: "subscribeEdge"; source: string; target: string; relation: string; afterCursorNs: string }
+  | { kind: "unsubscribeEdge" }
   | { kind: "liveStop"; id: number };
 
 /** Live channel status pushed by the Worker. */
@@ -59,7 +61,24 @@ export type LiveEvent =
   | { type: "heartbeat"; resume: string }
   /** The server requires a resume reconnect to continue recovery. */
   | { type: "gap"; resume: string }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "edge_change"; resume: string; change: EdgeChange };
+
+export interface EdgeChange {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  environment_id: string;
+  source: string;
+  target: string;
+  relation: string;
+  trace_id: string;
+  span_id: string;
+  time_ns: string;
+  storage_cursor_ns: string;
+  request_bytes: number | null;
+  response_bytes: number | null;
+}
 
 /** Full, already-redacted records delivered to side panels over the same live channel. */
 export type LiveSignal =
@@ -103,6 +122,8 @@ export interface ResultMap {
   diagnostics: Diagnostics;
   topology: TopologyView;
   liveStart: null;
+  subscribeEdge: null;
+  unsubscribeEdge: null;
   liveStop: null;
 }
 

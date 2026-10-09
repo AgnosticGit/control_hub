@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Filters, Frame, FrameSummary, InitResult, InfrastructureSnapshot, LiveSignal, LoadResult, TopologyView } from "@karbird/web-engine";
+import type { EdgeChange, Filters, Frame, FrameSummary, InitResult, InfrastructureSnapshot, LiveSignal, LoadResult, TopologyView } from "@karbird/web-engine";
 import type { Schemas } from "@/lib/api";
 import { EngineClient } from "@/engine/client";
 import { scopedUrl } from "@/lib/api";
@@ -122,6 +122,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
   const liveSignalListeners = useRef(new Set<(signals: LiveSignal[]) => void>());
   const infrastructureListeners = useRef(new Set<(snapshot: InfrastructureSnapshot) => void>());
   const actionPlanListeners = useRef(new Set<(plan: Schemas["ActionPlanDto"]) => void>());
+  const edgeChangeListeners = useRef(new Set<(change: EdgeChange) => void>());
   const liveActionPlans = useRef(new Map<string, Schemas["ActionPlanDto"]>());
   const recentLiveSignals = useRef<LiveSignal[]>([]);
   const latestInfrastructure = useRef<InfrastructureSnapshot | null>(null);
@@ -374,6 +375,9 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
           for (const listener of actionPlanListeners.current) listener(dto);
           return;
         }
+        case "edge_change":
+          for (const listener of edgeChangeListeners.current) listener(ev.change);
+          return;
         case "gap": {
           patch({ liveTransport: "stale", error: "Live data needs recovery; reconnecting to the stream." });
           return;
@@ -564,6 +568,13 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       for (const plan of liveActionPlans.current.values()) listener(plan);
       return () => { actionPlanListeners.current.delete(listener); };
     },
+    onEdgeChange: (listener: (change: EdgeChange) => void) => {
+      edgeChangeListeners.current.add(listener);
+      return () => { edgeChangeListeners.current.delete(listener); };
+    },
+    subscribeEdge: (source: string, target: string, relation: string, afterCursorNs: string) =>
+      clientRef.current?.call({ kind: "subscribeEdge", source, target, relation, afterCursorNs }),
+    unsubscribeEdge: () => clientRef.current?.call({ kind: "unsubscribeEdge" }),
     setViewport: (x: number, y: number, w: number, h: number, scale: number) =>
       clientRef.current?.setViewport(x, y, w, h, scale),
     pick: async (x: number, y: number) => (await clientRef.current?.call({ kind: "pick", x, y })) ?? null,

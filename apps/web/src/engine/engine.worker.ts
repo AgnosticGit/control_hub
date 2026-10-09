@@ -17,7 +17,7 @@ import {
   type WorkerResponse,
 } from "@karbird/web-engine";
 import { WASM_BYTES, WASM_URL } from "@/generated/wasm-manifest";
-import { MAX_RESPONSE_BYTES, countLiveBatchItems, countItems, liveItemEnvelope, liveRetryDelayMs, liveTopologySnapshot, newerSeek, parseLiveAction, parseLiveHead, parseLiveInfrastructure, parseLiveRecord, parseLiveSignals, timelineTail } from "./worker-utils";
+import { MAX_RESPONSE_BYTES, countLiveBatchItems, countItems, liveItemEnvelope, liveRetryDelayMs, liveTopologySnapshot, newerSeek, parseLiveAction, parseLiveEdgeChange, parseLiveHead, parseLiveInfrastructure, parseLiveRecord, parseLiveSignals, timelineTail } from "./worker-utils";
 import { applyTopologyResponse, topologyCacheKey } from "./topology-cache";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -130,6 +130,7 @@ interface LiveState {
   resume: string | null;
   attempt: number;
   timer: ReturnType<typeof setTimeout> | null;
+  edgeSubscription: { source: string; target: string; relation: string; afterCursorNs: string } | null;
 }
 
 let live: LiveState | null = null;
@@ -151,6 +152,7 @@ function liveConnect() {
     if (live !== l) return;
     l.attempt = 0;
     postLive({ type: "open" });
+    sendEdgeSubscription(l);
   };
   ws.onmessage = (ev: MessageEvent<unknown>) => {
     if (live !== l || typeof ev.data !== "string") return;
@@ -171,7 +173,8 @@ function onLiveMessage(l: LiveState, text: string) {
   const head = parseLiveHead(text);
   if (!head) return;
   const { type, resume } = head;
-  if (resume) l.resume = resume;
+  // Edge replay has its own storage cursor. Never let it advance the telemetry resume token.
+  if (resume && type !== "edge_change") l.resume = resume;
   switch (type) {
     case "span":
     case "log":
@@ -215,6 +218,15 @@ function onLiveMessage(l: LiveState, text: string) {
       if (action) postLive({ type: "action", resume, ...action });
       return;
     }
+    case "edge_change": {
+      const parsed = parseLiveEdgeChange(text);
+      if (!parsed) return;
+      const cursor = parsed.change.storage_cursor_ns;
+      const subscription = l.edgeSubscription;
+      if (subscription && BigInt(cursor) > BigInt(subscription.afterCursorNs)) subscription.afterCursorNs = cursor;
+      postLive({ type: "edge_change", resume: parsed.resume ?? cursor, change: parsed.change });
+      return;
+    }
     case "topology": {
       if (!engine) return;
       const snapshot = liveTopologySnapshot(text);
@@ -242,6 +254,12 @@ function onLiveMessage(l: LiveState, text: string) {
       return;
     }
   }
+}
+
+function sendEdgeSubscription(l: LiveState) {
+  if (l.ws?.readyState !== WebSocket.OPEN || !l.edgeSubscription) return;
+  const { source, target, relation, afterCursorNs } = l.edgeSubscription;
+  l.ws.send(JSON.stringify({ type: "subscribe_edge", source, target, relation, after_cursor_ns: afterCursorNs }));
 }
 
 function liveStop() {
@@ -363,8 +381,20 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       requireEngine();
       if (live?.url === msg.url && (live.ws || live.timer)) return null;
       liveStop();
-      live = { url: msg.url, ws: null, resume: null, attempt: 0, timer: null };
+      live = { url: msg.url, ws: null, resume: null, attempt: 0, timer: null, edgeSubscription: null };
       liveConnect();
+      return null;
+    case "subscribeEdge":
+      if (live) {
+        live.edgeSubscription = { source: msg.source, target: msg.target, relation: msg.relation, afterCursorNs: msg.afterCursorNs };
+        sendEdgeSubscription(live);
+      }
+      return null;
+    case "unsubscribeEdge":
+      if (live) {
+        live.edgeSubscription = null;
+        if (live.ws?.readyState === WebSocket.OPEN) live.ws.send(JSON.stringify({ type: "unsubscribe_edge" }));
+      }
       return null;
     case "liveStop":
       liveStop();

@@ -207,7 +207,6 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
         }),
       ),
     placeholderData: keepPreviousData,
-    refetchInterval: state.mode === "live" ? 15_000 : false,
   });
   const infra = useMemo<InfraTimeline | null>(() => (machines.data ? holdSamples(machines.data) : null), [machines.data]);
 

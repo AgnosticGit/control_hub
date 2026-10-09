@@ -295,6 +295,22 @@ pub struct EdgeTrafficRow {
     pub resume_cursor_ns: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
+pub struct EdgeChangeRow {
+    pub trace_id: String,
+    pub span_id: String,
+    pub time_ns: i64,
+    pub storage_cursor_ns: i64,
+    pub request_bytes: Option<u64>,
+    pub response_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EdgeReplayPage {
+    pub limit: u32,
+    pub offset: u32,
+}
+
 /// Request latency of one service instance now and in the baseline before it.
 #[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
 pub struct InstanceLatencyRow {
@@ -639,7 +655,8 @@ fn edge_traffic_sql(edge: &EdgeSpans) -> String {
     let window = "start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)";
     let inner = match edge {
         EdgeSpans::Call { .. } => format!(
-            "SELECT c.start_time AS t, c.ingested_at, coalesce(c.c_req, p.p_req) AS req, coalesce(c.c_resp, p.p_resp) AS resp
+            "SELECT c.start_time AS t, greatest(c.ingested_at, p.ingested_at) AS ingested_at,
+                    coalesce(c.c_req, p.p_req) AS req, coalesce(c.c_resp, p.p_resp) AS resp
              FROM
              (SELECT trace_id, span_id, {REQUEST_SIZE} AS p_req, {RESPONSE_SIZE} AS p_resp FROM edge_span_facts FINAL
                 WHERE {SCOPE_WHERE} AND {window} AND service_id = ?) AS p
@@ -821,6 +838,27 @@ impl ChStore {
         self.insert_rows("edge_span_facts", &facts).await
     }
 
+    /// Load narrow facts for traces touched by this Kafka record. This resolves both a parent
+    /// stored earlier and children that arrived before their parent.
+    pub async fn edge_facts_for_traces(&self, scope: &Scope, trace_ids: &[String]) -> Result<Vec<EdgeSpanFactRow>> {
+        if trace_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = vec!["?"; trace_ids.len()].join(", ");
+        let sql = format!(
+            "SELECT tenant_id, project_id, environment_id, service_id, trace_id, span_id,
+                    parent_span_id, kind, target_entity_id, toUnixTimestamp64Nano(start_time) AS start_time,
+                    request_size, response_size, toUnixTimestamp64Nano(ingested_at) AS ingested_at
+             FROM edge_span_facts FINAL
+             WHERE {SCOPE_WHERE} AND trace_id IN ({placeholders})"
+        );
+        let mut query = bind_scope(self.client.query(&sql), scope);
+        for trace_id in trace_ids {
+            query = query.bind(trace_id.as_str());
+        }
+        Ok(query.fetch_all().await?)
+    }
+
     pub async fn insert_logs(&self, rows: &[LogRow]) -> Result<()> {
         self.insert_rows("logs", rows).await
     }
@@ -899,6 +937,72 @@ impl ChStore {
             EdgeSpans::ExternalClients { target } => bind_scope(q, s).bind(from).bind(to).bind(target.as_str()),
         };
         Ok(q.bind(limit).fetch_all().await?)
+    }
+
+    /// Durable replay of individual contributions after the chart's cursor.
+    pub async fn edge_change_replay(
+        &self,
+        scope: &Scope,
+        source: &str,
+        target: &str,
+        relation: &str,
+        after: i64,
+        page: EdgeReplayPage,
+    ) -> Result<Vec<EdgeChangeRow>> {
+        let scope_c = SCOPE_WHERE
+            .replace("tenant_id", "c.tenant_id")
+            .replace("project_id", "c.project_id")
+            .replace("environment_id", "c.environment_id");
+        let sql = match relation {
+            "calls" => format!(
+                "SELECT c.trace_id, c.span_id, toUnixTimestamp64Nano(c.start_time) AS time_ns,
+                        toUnixTimestamp64Nano(greatest(c.ingested_at, p.ingested_at)) AS storage_cursor_ns,
+                        coalesce(c.request_size, p.request_size) AS request_bytes,
+                        coalesce(c.response_size, p.response_size) AS response_bytes
+                 FROM edge_span_facts FINAL AS c INNER JOIN edge_span_facts FINAL AS p
+                   ON c.trace_id = p.trace_id AND c.parent_span_id = p.span_id
+                 WHERE {scope_c}
+                   AND p.tenant_id = ? AND p.project_id = ? AND p.environment_id = ?
+                   AND c.service_id = ? AND p.service_id = ? AND c.kind IN (2, 5) AND c.parent_span_id != ''
+                   AND greatest(c.ingested_at, p.ingested_at) >= fromUnixTimestamp64Nano(?)
+                 ORDER BY storage_cursor_ns, c.trace_id, c.span_id LIMIT ? OFFSET ?"
+            ),
+            "external_clients" => format!(
+                "SELECT trace_id, span_id, toUnixTimestamp64Nano(start_time) AS time_ns,
+                        toUnixTimestamp64Nano(ingested_at) AS storage_cursor_ns, request_size AS request_bytes, response_size AS response_bytes
+                 FROM edge_span_facts FINAL
+                 WHERE {SCOPE_WHERE} AND service_id = ? AND kind = 2 AND parent_span_id = ''
+                   AND ingested_at >= fromUnixTimestamp64Nano(?)
+                 ORDER BY ingested_at, trace_id, span_id LIMIT ? OFFSET ?"
+            ),
+            "depends_on" => format!(
+                "SELECT trace_id, span_id, toUnixTimestamp64Nano(start_time) AS time_ns,
+                        toUnixTimestamp64Nano(ingested_at) AS storage_cursor_ns, request_size AS request_bytes, response_size AS response_bytes
+                 FROM edge_span_facts FINAL
+                 WHERE {SCOPE_WHERE} AND service_id = ? AND target_entity_id = ? AND kind IN (3, 4)
+                   AND ingested_at >= fromUnixTimestamp64Nano(?)
+                 ORDER BY ingested_at, trace_id, span_id LIMIT ? OFFSET ?"
+            ),
+            _ => return Ok(Vec::new()),
+        };
+        let mut q = self.client.query(&sql);
+        q = bind_scope(q, scope);
+        if relation == "calls" {
+            q = q
+                .bind(scope.tenant_id.as_str())
+                .bind(scope.project_id.as_str())
+                .bind(scope.environment_id.as_str())
+                .bind(target)
+                .bind(source)
+                .bind(after)
+                .bind(page.limit)
+                .bind(page.offset);
+        } else if relation == "depends_on" {
+            q = q.bind(source).bind(target).bind(after).bind(page.limit).bind(page.offset);
+        } else {
+            q = q.bind(target).bind(after).bind(page.limit).bind(page.offset);
+        }
+        Ok(q.fetch_all().await?)
     }
 
     // ------------------------------------------------------------ reads
@@ -1414,6 +1518,7 @@ mod tests {
         }
         let call = edge_traffic_sql(&EdgeSpans::Call { source: s, target: t });
         assert!(call.contains("kind IN (2, 5)") && call.contains("p.span_id = c.parent_span_id"), "{call}");
+        assert!(call.contains("greatest(c.ingested_at, p.ingested_at) AS ingested_at"), "{call}");
         let clients = edge_traffic_sql(&EdgeSpans::ExternalClients { target: "x".into() });
         assert!(clients.contains("kind = 2 AND parent_span_id = ''"), "{clients}");
     }

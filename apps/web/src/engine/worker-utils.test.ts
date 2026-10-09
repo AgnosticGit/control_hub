@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countItems, countLiveBatchItems, liveItemEnvelope, liveRetryDelayMs, liveTopologySnapshot, newerSeek, parseLiveAction, parseLiveHead, parseLiveInfrastructure, parseLiveRecord, parseLiveSignals, timelineTail } from "./worker-utils";
+import { countItems, countLiveBatchItems, liveItemEnvelope, liveRetryDelayMs, liveTopologySnapshot, newerSeek, parseLiveAction, parseLiveEdgeChange, parseLiveHead, parseLiveInfrastructure, parseLiveRecord, parseLiveSignals, timelineTail } from "./worker-utils";
 
 describe("timelineTail", () => {
   it("reads the metadata after the items array without parsing the items", () => {
@@ -75,6 +75,18 @@ describe("live side-channel payloads", () => {
       .toEqual({ plan: { id: "p2" }, snapshot: false });
     expect(parseLiveAction('{"type":"action","plan":[]}')).toBeNull();
     expect(parseLiveAction("invalid")).toBeNull();
+  });
+
+  it("parses edge deltas and rejects malformed cursors or contribution sizes", () => {
+    const change = {
+      id: "trace:span:calls:api:db", tenant_id: "tenant", project_id: "project", environment_id: "prod",
+      source: "api", target: "db", relation: "calls", trace_id: "trace", span_id: "span",
+      time_ns: "1790000000000000001", storage_cursor_ns: "1790000000000000002", request_bytes: 12, response_bytes: null,
+    };
+    expect(parseLiveEdgeChange(JSON.stringify({ type: "edge_change", resume: "42", change })))
+      .toEqual({ resume: "42", change });
+    expect(parseLiveEdgeChange(JSON.stringify({ type: "edge_change", resume: "x", change }))).toBeNull();
+    expect(parseLiveEdgeChange(JSON.stringify({ type: "edge_change", resume: "42", change: { ...change, request_bytes: "12" } }))).toBeNull();
   });
 
   it("parses one independently framed live record and makes its timeline item consumable by WASM", () => {

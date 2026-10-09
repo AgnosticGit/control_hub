@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use crate::routes::telemetry::TopologyResponse;
 use karbird_domain::Scope;
 use karbird_engine_core::{InfrastructureSnapshot, TimelineItem};
+use karbird_protocol::EdgeChange;
 use serde::Serialize;
 use tokio::sync::mpsc;
 
@@ -30,6 +31,14 @@ pub struct LiveItem {
 pub enum LiveUpdate {
     Telemetry(Box<LiveItem>),
     Action(serde_json::Value),
+    Edge(Box<EdgeChange>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EdgeKey {
+    pub source: String,
+    pub target: String,
+    pub relation: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -57,8 +66,10 @@ struct ScopeChannel {
 
 #[derive(Debug)]
 struct LiveSubscriber {
+    id: u64,
     sender: mpsc::Sender<LiveUpdate>,
     actions_enabled: bool,
+    selected_edge: Option<EdgeKey>,
 }
 
 #[derive(Debug, Default)]
@@ -85,6 +96,7 @@ pub struct LiveHub {
     topology: TopologyCache,
     subscriber_capacity: usize,
     counters: Arc<HubCounters>,
+    next_subscriber_id: Arc<AtomicU64>,
 }
 
 #[derive(Debug)]
@@ -113,6 +125,7 @@ impl LiveHub {
             topology: Arc::new(Mutex::new(HashMap::new())),
             subscriber_capacity: subscriber_capacity.max(1),
             counters: Arc::new(HubCounters::default()),
+            next_subscriber_id: Arc::new(AtomicU64::new(1)),
         }
     }
 
@@ -207,12 +220,22 @@ impl LiveHub {
         self.subscribe_with_actions(scope, after_cursor_ns, false)
     }
 
+    #[cfg(test)]
     pub fn subscribe_with_actions(
         &self,
         scope: Scope,
         after_cursor_ns: i64,
         actions_enabled: bool,
     ) -> Result<(Vec<LiveItem>, mpsc::Receiver<LiveUpdate>), HubError> {
+        self.subscribe_with_controls(scope, after_cursor_ns, actions_enabled).map(|(history, rx, _)| (history, rx))
+    }
+
+    pub fn subscribe_with_controls(
+        &self,
+        scope: Scope,
+        after_cursor_ns: i64,
+        actions_enabled: bool,
+    ) -> Result<(Vec<LiveItem>, mpsc::Receiver<LiveUpdate>, u64), HubError> {
         let mut scopes = self.scopes.lock().map_err(|_| HubError::LockPoisoned)?;
         scopes.retain(|_, channel| !channel.subscribers.is_empty() || !channel.history.is_empty());
         if !scopes.contains_key(&scope) && scopes.len() >= MAX_SCOPES {
@@ -236,8 +259,41 @@ impl LiveHub {
         });
         let (tx, rx) = mpsc::channel(self.subscriber_capacity);
         let history = channel.history.iter().filter(|item| item.cursor_ns > after_cursor_ns).cloned().collect();
-        channel.subscribers.push(LiveSubscriber { sender: tx, actions_enabled });
-        Ok((history, rx))
+        let id = self.next_subscriber_id.fetch_add(1, Ordering::Relaxed).max(1);
+        channel.subscribers.push(LiveSubscriber { id, sender: tx, actions_enabled, selected_edge: None });
+        Ok((history, rx, id))
+    }
+
+    pub fn select_edge(&self, subscriber_id: u64, edge: Option<EdgeKey>) -> bool {
+        let Ok(mut scopes) = self.scopes.lock() else { return false };
+        for channel in scopes.values_mut() {
+            if let Some(subscriber) = channel.subscribers.iter_mut().find(|subscriber| subscriber.id == subscriber_id) {
+                subscriber.selected_edge = edge;
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn publish_edge(&self, scope: Scope, change: EdgeChange) -> Result<(), HubError> {
+        let Ok(mut scopes) = self.scopes.lock() else { return Err(HubError::LockPoisoned) };
+        let Some(channel) = scopes.get_mut(&scope) else { return Ok(()) };
+        let key =
+            EdgeKey { source: change.source.clone(), target: change.target.clone(), relation: change.relation.clone() };
+        channel.subscribers.retain(|subscriber| {
+            if subscriber.selected_edge.as_ref() != Some(&key) {
+                return true;
+            }
+            match subscriber.sender.try_send(LiveUpdate::Edge(Box::new(change.clone()))) {
+                Ok(()) => true,
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    self.counters.subscriber_overflows.fetch_add(1, Ordering::Relaxed);
+                    false
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => false,
+            }
+        });
+        Ok(())
     }
 
     /// Retain a bounded replay window and enqueue each item as its own live message.
@@ -474,6 +530,41 @@ mod tests {
         assert!(rx_b.try_recv().is_err());
         history_a.clear();
         history_b.clear();
+    }
+
+    #[test]
+    fn edge_updates_only_reach_the_exact_selected_edge_in_its_scope() {
+        let hub = LiveHub::new(8);
+        let (history, mut selected, selected_id) =
+            hub.subscribe_with_controls(scope("tenant-a", "prod"), 0, false).unwrap();
+        let (_, mut other_edge, other_id) = hub.subscribe_with_controls(scope("tenant-a", "prod"), 0, false).unwrap();
+        let (_, mut other_scope, scope_id) = hub.subscribe_with_controls(scope("tenant-a", "stage"), 0, false).unwrap();
+        drop(history);
+        let edge = EdgeKey { source: "gateway".into(), target: "orders".into(), relation: "calls".into() };
+        assert!(hub.select_edge(selected_id, Some(edge.clone())));
+        assert!(hub.select_edge(other_id, Some(EdgeKey { target: "inventory".into(), ..edge.clone() })));
+        assert!(hub.select_edge(scope_id, Some(edge)));
+
+        let change = EdgeChange {
+            id: "trace:span:calls:gateway:orders".into(),
+            tenant_id: "tenant-a".into(),
+            project_id: "project".into(),
+            environment_id: "prod".into(),
+            source: "gateway".into(),
+            target: "orders".into(),
+            relation: "calls".into(),
+            trace_id: "trace".into(),
+            span_id: "span".into(),
+            time_ns: "20".into(),
+            storage_cursor_ns: "21".into(),
+            request_bytes: Some(12),
+            response_bytes: Some(34),
+        };
+        hub.publish_edge(scope("tenant-a", "prod"), change.clone()).unwrap();
+
+        assert_eq!(selected.try_recv().unwrap(), LiveUpdate::Edge(Box::new(change)));
+        assert!(other_edge.try_recv().is_err());
+        assert!(other_scope.try_recv().is_err());
     }
 
     #[test]

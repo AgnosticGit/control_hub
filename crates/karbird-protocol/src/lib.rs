@@ -13,6 +13,55 @@ pub const ENVELOPE_SCHEMA_VERSION: u32 = 1;
 
 /// Broker topic carrying [`v1::IngestEnvelope`] records.
 pub const TELEMETRY_TOPIC: &str = "karbird.telemetry.v1";
+/// Durable, per-span edge contributions emitted after ClickHouse persistence.
+pub const EDGE_CHANGES_TOPIC: &str = "karbird.edge_changes.v1";
+
+/// Idempotent traffic contribution derived by the processor from persisted span facts.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EdgeChange {
+    pub id: String,
+    pub tenant_id: String,
+    pub project_id: String,
+    pub environment_id: String,
+    pub source: String,
+    pub target: String,
+    pub relation: String,
+    pub trace_id: String,
+    pub span_id: String,
+    pub time_ns: String,
+    pub storage_cursor_ns: String,
+    pub request_bytes: Option<u64>,
+    pub response_bytes: Option<u64>,
+}
+
+#[cfg(test)]
+mod edge_change_tests {
+    #![allow(clippy::unwrap_used)]
+    use super::EdgeChange;
+
+    #[test]
+    fn edge_change_keeps_nanosecond_cursors_as_decimal_strings() {
+        let change = EdgeChange {
+            id: "trace:span:calls:api:db".into(),
+            tenant_id: "tenant".into(),
+            project_id: "project".into(),
+            environment_id: "prod".into(),
+            source: "api".into(),
+            target: "db".into(),
+            relation: "calls".into(),
+            trace_id: "trace".into(),
+            span_id: "span".into(),
+            time_ns: "1790000000000000001".into(),
+            storage_cursor_ns: "1790000000000000002".into(),
+            request_bytes: Some(8),
+            response_bytes: None,
+        };
+        let value = serde_json::to_value(&change).unwrap();
+        assert_eq!(value["time_ns"], "1790000000000000001");
+        assert_eq!(value["storage_cursor_ns"], "1790000000000000002");
+        assert_eq!(serde_json::from_value::<EdgeChange>(value).unwrap(), change);
+    }
+}
 
 #[cfg(test)]
 mod tests {

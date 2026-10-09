@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EdgeMetrics } from "@karbird/web-engine";
 import { Icon } from "@/components/ui/Icon";
 import { api, scopedPath, unwrap } from "@/lib/api";
@@ -18,7 +18,6 @@ import {
   peakIndex,
   sizeNote,
   sizeState,
-  LiveEdgeAccumulator,
   type EdgeTraffic,
   type SelectedEdge,
 } from "./edge-traffic";
@@ -68,7 +67,8 @@ export function EdgeInspector({ projectId, environmentId, state, actions, edge, 
   const live = state.mode === "live";
   const spanNs = state.rangeTo - state.rangeFrom;
   const rangeKey = live ? `live:${spanNs}` : `${state.rangeFrom}-${state.rangeTo}`;
-  const trafficKey = ["edge-traffic", projectId, environmentId, edge.source, edge.target, relation, rangeKey] as const;
+  const trafficKey = useMemo(() => ["edge-traffic", projectId, environmentId, edge.source, edge.target, relation, rangeKey] as const,
+    [projectId, environmentId, edge.source, edge.target, relation, rangeKey]);
   const traffic = useQuery({
     queryKey: trafficKey,
     enabled: metrics !== null,
@@ -96,32 +96,47 @@ export function EdgeInspector({ projectId, environmentId, state, actions, edge, 
   });
 
   const accumulatorKey = `${edge.source}:${edge.target}:${relation}`;
-  const sourceIsService = state.topology?.nodes.find((n) => n.id === edge.source)?.kind === "service";
-  const accumulatorIdentity = `${accumulatorKey}:${rangeKey}:${sourceIsService}`;
+  const accumulatorIdentity = `${accumulatorKey}:${rangeKey}`;
   const baselineCursor = traffic.data?.resume_cursor_ns;
-  const liveEdgeState = useRef<{ key: string; accumulator: LiveEdgeAccumulator } | null>(null);
-  useEffect(() => {
-    if (baselineCursor === undefined || liveEdgeState.current?.key === accumulatorIdentity) return;
-    liveEdgeState.current = {
-      key: accumulatorIdentity,
-      accumulator: new LiveEdgeAccumulator(edge, relation, sourceIsService, BigInt(baselineCursor)),
-    };
-  }, [accumulatorIdentity, baselineCursor, edge, relation, sourceIsService]);
-
   const hasTraffic = traffic.data !== undefined;
   const hasMetrics = metrics !== null;
+  const baseline = useRef<{ key: string; cursor: string } | null>(null);
+  const seenChanges = useRef(new Set<string>());
   useEffect(() => {
-    const accumulator = liveEdgeState.current?.key === accumulatorIdentity ? liveEdgeState.current.accumulator : null;
-    if (!live || !hasMetrics || !hasTraffic || !accumulator) return;
-    return actions.onLiveSignals((signals) => {
-      const contributions = accumulator.accept(signals);
-      for (const contribution of contributions) {
-        queryClient.setQueryData<EdgeTraffic>(["edge-traffic", projectId, environmentId, edge.source, edge.target, relation, rangeKey], (current) =>
-          current ? applyLiveEdgeContribution(current, contribution, BigInt(current.to_ns)) : current,
-        );
+    if (baselineCursor !== undefined && baseline.current?.key !== accumulatorIdentity) {
+      baseline.current = { key: accumulatorIdentity, cursor: baselineCursor };
+      seenChanges.current.clear();
+    }
+  }, [accumulatorIdentity, baselineCursor]);
+
+  useEffect(() => {
+    const initial = baseline.current;
+    if (!live || !hasMetrics || !hasTraffic || initial?.key !== accumulatorIdentity) return;
+    const unsubscribe = actions.onEdgeChange((change) => {
+      if (change.source !== edge.source || change.target !== edge.target || change.relation !== relation) return;
+      if (seenChanges.current.has(change.id)) return;
+      seenChanges.current.add(change.id);
+      if (seenChanges.current.size > 20_000) {
+        const oldest = seenChanges.current.values().next().value;
+        if (oldest !== undefined) seenChanges.current.delete(oldest);
       }
+      const contribution = {
+        id: change.id,
+        timeNs: BigInt(change.time_ns),
+        requestBytes: change.request_bytes,
+        responseBytes: change.response_bytes,
+        storageCursor: BigInt(change.storage_cursor_ns),
+      };
+      queryClient.setQueryData<EdgeTraffic>(trafficKey, (current) =>
+        current ? applyLiveEdgeContribution(current, contribution, BigInt(current.to_ns)) : current,
+      );
     });
-  }, [actions, accumulatorIdentity, edge.source, edge.target, environmentId, hasMetrics, hasTraffic, live, projectId, queryClient, rangeKey, relation]);
+    void actions.subscribeEdge(edge.source, edge.target, relation, initial.cursor);
+    return () => {
+      unsubscribe();
+      void actions.unsubscribeEdge();
+    };
+  }, [actions, accumulatorIdentity, edge.source, edge.target, hasMetrics, hasTraffic, live, queryClient, relation, trafficKey]);
 
   const sourceName = metrics?.source_name ?? state.topology?.nodes.find((n) => n.id === edge.source)?.name ?? edge.source;
   const targetName = metrics?.target_name ?? state.topology?.nodes.find((n) => n.id === edge.target)?.name ?? edge.target;

@@ -1,4 +1,4 @@
-import type { InfrastructureSnapshot, LiveSignal } from "@karbird/web-engine";
+import type { EdgeChange, InfrastructureSnapshot, LiveSignal } from "@karbird/web-engine";
 
 // Pure helpers of the engine Worker (no WASM, no `self`), kept separate so they can be unit tested.
 
@@ -89,6 +89,23 @@ export function parseLiveAction(text: string): { plan: Record<string, unknown>; 
     const parsed = JSON.parse(text) as { type?: unknown; plan?: unknown; snapshot?: unknown };
     if (parsed.type !== "action" || !parsed.plan || typeof parsed.plan !== "object" || Array.isArray(parsed.plan)) return null;
     return { plan: parsed.plan as Record<string, unknown>, snapshot: parsed.snapshot === true };
+  } catch {
+    return null;
+  }
+}
+
+export function parseLiveEdgeChange(text: string): { resume: string; change: EdgeChange } | null {
+  try {
+    const parsed = JSON.parse(text) as { type?: unknown; resume?: unknown; change?: unknown };
+    if (parsed.type !== "edge_change" || typeof parsed.resume !== "string" || !/^\d+$/.test(parsed.resume)
+      || !parsed.change || typeof parsed.change !== "object" || Array.isArray(parsed.change)) return null;
+    const change = parsed.change as Record<string, unknown>;
+    if (["id", "tenant_id", "project_id", "environment_id", "source", "target", "relation", "trace_id", "span_id", "time_ns", "storage_cursor_ns"]
+      .some((key) => typeof change[key] !== "string")
+      || !/^\d+$/.test(change.storage_cursor_ns as string)
+      || (change.request_bytes !== null && typeof change.request_bytes !== "number")
+      || (change.response_bytes !== null && typeof change.response_bytes !== "number")) return null;
+    return { resume: parsed.resume, change: change as unknown as EdgeChange };
   } catch {
     return null;
   }

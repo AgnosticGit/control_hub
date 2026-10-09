@@ -10,6 +10,7 @@ use rdkafka::util::Timeout;
 
 use crate::live_hub::{LiveHub, LiveItem, LiveSignal};
 use crate::live_metrics::LiveMetrics;
+use karbird_protocol::{EDGE_CHANGES_TOPIC, EdgeChange};
 
 pub async fn run(consumer: StreamConsumer, live_hub: LiveHub, metrics: Arc<LiveMetrics>) {
     let consumer = Arc::new(consumer);
@@ -45,6 +46,30 @@ pub async fn run(consumer: StreamConsumer, live_hub: LiveHub, metrics: Arc<LiveM
                     }
                     continue;
                 };
+                if message.topic() == EDGE_CHANGES_TOPIC {
+                    let parsed = serde_json::from_slice::<EdgeChange>(payload);
+                    match parsed.and_then(|change| {
+                        let scope = edge_scope(&change)
+                            .ok_or_else(|| serde_json::Error::io(std::io::Error::other("invalid edge scope")))?;
+                        Ok((scope, change))
+                    }) {
+                        Ok((scope, change)) => {
+                            if let Err(error) = live_hub.publish_edge(scope, change) {
+                                metrics.publish_retries_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                tracing::warn!(%error, "edge update fan-out failed; committing for durable replay");
+                            }
+                        }
+                        Err(error) => {
+                            metrics.decode_errors_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            tracing::error!(%error, "live consumer skipped invalid edge change");
+                        }
+                    }
+                    if let Err(error) = consumer.commit_message(&message, CommitMode::Async) {
+                        metrics.offset_commit_enqueue_errors_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        tracing::warn!(%error, "edge change offset commit failed; record may be replayed");
+                    }
+                    continue;
+                }
                 let result = karbird_convert::decode_envelope(payload).and_then(|envelope| {
                     let scope = karbird_convert::scope_of(&envelope)?;
                     let converted = karbird_convert::convert(&envelope, envelope.received_time_unix_nano)?;
@@ -111,18 +136,12 @@ pub async fn run(consumer: StreamConsumer, live_hub: LiveHub, metrics: Arc<LiveM
                         }
                         let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
                         let item_count = items.len() as u64;
-                        for chunk in items.chunks(64) {
+                        for item in items {
                             let cursor_ns = crate::advance_live_cursor(&mut last_live_cursor, now);
-                            let batch: Vec<_> = chunk
-                                .iter()
-                                .cloned()
-                                .map(|mut item| {
-                                    item.cursor_ns = cursor_ns;
-                                    item
-                                })
-                                .collect();
+                            let mut item = item;
+                            item.cursor_ns = cursor_ns;
                             loop {
-                                match live_hub.publish_batch(scope.clone(), batch.clone()) {
+                                match live_hub.publish_batch(scope.clone(), vec![item.clone()]) {
                                     Ok(()) => break,
                                     Err(error) => {
                                         metrics
@@ -162,6 +181,14 @@ pub async fn run(consumer: StreamConsumer, live_hub: LiveHub, metrics: Arc<LiveM
             }
         }
     }
+}
+
+fn edge_scope(change: &EdgeChange) -> Option<karbird_domain::Scope> {
+    Some(karbird_domain::Scope {
+        tenant_id: karbird_domain::TenantId::parse(&change.tenant_id).ok()?,
+        project_id: karbird_domain::ProjectId::parse(&change.project_id).ok()?,
+        environment_id: karbird_domain::EnvironmentId::parse(&change.environment_id).ok()?,
+    })
 }
 
 fn consumer_lag(consumer: &StreamConsumer) -> rdkafka::error::KafkaResult<u64> {

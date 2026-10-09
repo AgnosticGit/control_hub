@@ -6,7 +6,7 @@
 // Run: node --test "tests/integration/*.test.mjs"
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { API, DEMO, ISO, Session, encodeTraces, eventually, hex, nowNs, otlpHttp } from './lib.mjs';
+import { API, DEMO, ISO, ORIGIN, Session, encodeTraces, eventually, hex, nowNs, otlpHttp } from './lib.mjs';
 
 const SEC = 1_000_000_000n;
 const MS = 1_000_000n;
@@ -139,6 +139,48 @@ test('a database link without declared sizes reports calls but an unknown rate',
   for (const k of ['avg_request_bps', 'avg_response_bps', 'peak_request_bps', 'peak_response_bps']) {
     assert.equal(r.body[k] ?? null, null, `${k} is unknown, not zero`);
   }
+});
+
+test('a selected service edge replays individual durable changes over the live WebSocket', async () => {
+  const n = await nodeIds();
+  const url = new URL(`${ISO}/live`, API);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(url, { headers: { origin: ORIGIN, cookie: iso.cookieHeader() } });
+  const frames = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      ws.close();
+      reject(new Error(`timed out waiting for edge replay; frames: ${JSON.stringify(framesSeen.map((frame) => frame.type))}`));
+    }, 20_000);
+    const framesSeen = [];
+    ws.onopen = () => ws.send(JSON.stringify({
+      type: 'subscribe_edge',
+      source: n.gw,
+      target: n.orders,
+      relation: 'calls',
+      after_cursor_ns: '0',
+    }));
+    ws.onmessage = (event) => {
+      const frame = JSON.parse(event.data);
+      framesSeen.push(frame);
+      if (frame.type === 'edge_change') {
+        clearTimeout(timer);
+        ws.close();
+        resolve(framesSeen);
+      }
+    };
+    ws.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error('live WebSocket failed before edge replay'));
+    };
+  });
+  const frame = frames.find((item) => item.type === 'edge_change');
+  assert.ok(frame, `frames: ${JSON.stringify(frames.map((item) => item.type))}`);
+  assert.equal(frame.change.source, n.gw);
+  assert.equal(frame.change.target, n.orders);
+  assert.equal(frame.change.relation, 'calls');
+  assert.match(frame.resume, /^\d+$/);
+  assert.match(frame.change.storage_cursor_ns, /^\d+$/);
+  assert.equal(frame.resume, frame.change.storage_cursor_ns);
 });
 
 test('edge traffic validates input, needs a credential and never crosses tenants', async () => {

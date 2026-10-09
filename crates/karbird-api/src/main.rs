@@ -494,7 +494,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         .set("auto.offset.reset", "latest")
         .set("isolation.level", "read_committed")
         .create()?;
-    live_consumer.subscribe(&[TELEMETRY_TOPIC])?;
+    live_consumer.subscribe(&[TELEMETRY_TOPIC, karbird_protocol::EDGE_CHANGES_TOPIC])?;
     let live_task = tokio::spawn(live_consumer::run(live_consumer, state.live_hub.clone(), state.live_metrics.clone()));
     let listener = tokio::net::TcpListener::bind(args.addr).await?;
     tracing::info!(addr = %args.addr, "karbird-api listening");

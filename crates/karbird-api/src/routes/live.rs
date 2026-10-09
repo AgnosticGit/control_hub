@@ -23,7 +23,7 @@ use super::telemetry::{
 };
 use crate::auth::{CurrentUser, authorize};
 use crate::error::{ApiError, ApiResult};
-use crate::live_hub::{LiveItem, LiveSignal, LiveUpdate};
+use crate::live_hub::{EdgeKey, LiveItem, LiveSignal, LiveUpdate};
 use crate::permissions::Permission;
 use crate::state::AppState;
 
@@ -58,11 +58,41 @@ enum ServerMessage<'a> {
     Log { resume: String, storage_cursor: String, item: &'a TimelineItem, record: &'a super::telemetry::LogDto },
     Event { resume: String, storage_cursor: String, item: &'a TimelineItem, record: &'a super::telemetry::EventDto },
     Action { resume: String, plan: serde_json::Value, snapshot: bool },
+    EdgeChange { resume: String, change: &'a karbird_protocol::EdgeChange },
     Topology { resume: String, snapshot: &'a super::telemetry::TopologyResponse },
     Infrastructure { resume: String, snapshot: &'a InfrastructureSnapshot },
     Gap { resume: String, from_ingested_ns: String },
     Heartbeat { resume: String },
     Error { message: &'a str },
+}
+
+#[derive(Debug, Deserialize)]
+struct EdgeControl {
+    #[serde(rename = "type")]
+    kind: String,
+    source: Option<String>,
+    target: Option<String>,
+    relation: Option<String>,
+    after_cursor_ns: Option<String>,
+}
+
+impl EdgeControl {
+    fn edge(&self) -> Option<(String, String, String, i64)> {
+        let source = self.source.as_ref()?.trim();
+        let target = self.target.as_ref()?.trim();
+        let relation = self.relation.as_deref()?;
+        if source.is_empty() || target.is_empty() || source.len() > 256 || target.len() > 256 || source == target {
+            return None;
+        }
+        if !matches!(relation, "calls" | "depends_on") {
+            return None;
+        }
+        let after = self.after_cursor_ns.as_deref().unwrap_or("0").parse::<i64>().ok()?;
+        if after < 0 {
+            return None;
+        }
+        Some((source.to_owned(), target.to_owned(), relation.to_owned(), after))
+    }
 }
 
 /// Browsers always send `Origin` on WebSocket handshakes; requiring an allowed one blocks
@@ -146,14 +176,15 @@ async fn run(socket: WebSocket, state: AppState, scope: Scope, mut cursor: i64, 
     let mut last_sent = Instant::now();
     let mut last_session_check = Instant::now();
     let clients_id = external_clients_id(&scope);
-    let (replay, mut updates) = match state.live_hub.subscribe_with_actions(scope.clone(), cursor, actions_enabled) {
-        Ok(value) => value,
-        Err(error) => {
-            let _ = send(&mut tx, &ServerMessage::Error { message: "live channel unavailable" }).await;
-            tracing::warn!(%error, "live subscription rejected");
-            return;
-        }
-    };
+    let (replay, mut updates, subscriber_id) =
+        match state.live_hub.subscribe_with_controls(scope.clone(), cursor, actions_enabled) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = send(&mut tx, &ServerMessage::Error { message: "live channel unavailable" }).await;
+                tracing::warn!(%error, "live subscription rejected");
+                return;
+            }
+        };
     if !send(&mut tx, &ServerMessage::Hello { resume: cursor.to_string(), poll_ms: 0 }).await {
         return;
     }
@@ -326,7 +357,58 @@ async fn run(socket: WebSocket, state: AppState, scope: Scope, mut cursor: i64, 
         tokio::select! {
             incoming = rx.next() => match incoming {
                 None | Some(Err(_)) | Some(Ok(Message::Close(_))) => break,
-                // Client data is not used; pings are answered by the WebSocket layer.
+                Some(Ok(Message::Text(text))) => {
+                    match serde_json::from_str::<EdgeControl>(&text) {
+                        Ok(control) if control.kind == "unsubscribe_edge" => {
+                            state.live_hub.select_edge(subscriber_id, None);
+                        }
+                        Ok(control) if control.kind == "subscribe_edge" => {
+                            let Some((source, target, relation, after)) = control.edge() else {
+                                let _ = send(&mut tx, &ServerMessage::Error { message: "invalid edge subscription" }).await;
+                                continue;
+                            };
+                            state.live_hub.select_edge(subscriber_id, Some(EdgeKey { source: source.clone(), target: target.clone(), relation: relation.clone() }));
+                            // The initial HTTP chart is the baseline. Durable replay is loaded from
+                            // ClickHouse facts; the edge consumer's live messages queue concurrently.
+                            let storage_relation = if relation == "calls" && source == clients_id { "external_clients" } else { relation.as_str() };
+                            let limit = 5_000;
+                            let mut offset = 0_u32;
+                            loop {
+                                let changes = match state.ch.edge_change_replay(
+                                    &scope, &source, &target, storage_relation, after,
+                                    karbird_storage::ch::EdgeReplayPage { limit, offset },
+                                ).await {
+                                    Ok(changes) => changes,
+                                    Err(error) => {
+                                        tracing::warn!(%error, offset, "edge replay query failed");
+                                        let _ = send(&mut tx, &ServerMessage::Error { message: "edge replay unavailable; reconnect to retry" }).await;
+                                        break;
+                                    }
+                                };
+                                let page_len = changes.len();
+                                for row in changes {
+                                    let change = karbird_protocol::EdgeChange {
+                                        id: format!("{}:{}:{}:{}:{}", row.trace_id, row.span_id, relation, source, target),
+                                        tenant_id: scope.tenant_id.to_string(), project_id: scope.project_id.to_string(),
+                                        environment_id: scope.environment_id.to_string(), source: source.clone(), target: target.clone(),
+                                        relation: relation.clone(), trace_id: row.trace_id, span_id: row.span_id,
+                                        time_ns: row.time_ns.to_string(), storage_cursor_ns: row.storage_cursor_ns.to_string(),
+                                        request_bytes: row.request_bytes, response_bytes: row.response_bytes,
+                                    };
+                                    if !send(&mut tx, &ServerMessage::EdgeChange { resume: change.storage_cursor_ns.clone(), change: &change }).await { return; }
+                                }
+                                if page_len < limit as usize { break; }
+                                let Some(next_offset) = offset.checked_add(limit) else {
+                                    let _ = send(&mut tx, &ServerMessage::Error { message: "edge replay limit exceeded" }).await;
+                                    break;
+                                };
+                                offset = next_offset;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                // Client binary frames and pings are not application controls.
                 Some(Ok(_)) => {}
             },
             update = updates.recv() => {
@@ -341,6 +423,7 @@ async fn run(socket: WebSocket, state: AppState, scope: Scope, mut cursor: i64, 
                     }
                     LiveUpdate::Action(plan) if actions_enabled => send(&mut tx, &ServerMessage::Action { resume: cursor.to_string(), plan, snapshot: false }).await,
                     LiveUpdate::Action(_) => true,
+                    LiveUpdate::Edge(change) => send(&mut tx, &ServerMessage::EdgeChange { resume: change.storage_cursor_ns.clone(), change: &change }).await,
                 };
                 if !sent { break; }
                 last_sent = Instant::now();
@@ -397,6 +480,27 @@ async fn run(socket: WebSocket, state: AppState, scope: Scope, mut cursor: i64, 
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+
+    #[test]
+    fn edge_controls_validate_scope_keys_and_decimal_resume_cursors() {
+        let control: EdgeControl = serde_json::from_str(
+            r#"{"type":"subscribe_edge","source":"gateway","target":"orders","relation":"calls","after_cursor_ns":"1790000000000000000"}"#,
+        ).unwrap();
+        assert_eq!(
+            control.edge(),
+            Some(("gateway".into(), "orders".into(), "calls".into(), 1_790_000_000_000_000_000))
+        );
+
+        for invalid in [
+            r#"{"type":"subscribe_edge","source":" ","target":"orders","relation":"calls"}"#,
+            r#"{"type":"subscribe_edge","source":"gateway","target":"orders","relation":"unknown"}"#,
+            r#"{"type":"subscribe_edge","source":"gateway","target":"orders","relation":"calls","after_cursor_ns":"-1"}"#,
+            r#"{"type":"subscribe_edge","source":"gateway","target":"orders","relation":"calls","after_cursor_ns":"NaN"}"#,
+        ] {
+            let parsed: EdgeControl = serde_json::from_str(invalid).unwrap();
+            assert_eq!(parsed.edge(), None, "{invalid}");
+        }
+    }
 
     #[test]
     fn each_live_record_is_one_websocket_message_accepted_by_the_engine() {

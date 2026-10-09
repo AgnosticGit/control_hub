@@ -462,9 +462,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/timeline/TimelineTracksView.tsx": {
-    "mtime": 1791559563.304235,
-    "seen": 1791559721.6816375,
-    "ast_hash": "65839de4856f8c883c75b4ba23ad3252",
+    "mtime": 1791562209.509888,
+    "seen": 1791562254.463187,
+    "ast_hash": "64159318b10d7f29c05a0255f6370d2b",
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/timeline/draw.test.ts": {
@@ -528,9 +528,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/useWorkspaceEngine.ts": {
-    "mtime": 1791556797.407532,
-    "seen": 1791558717.6527271,
-    "ast_hash": "cd62b1712f44e1b00aa921d1a6f94c6b",
+    "mtime": 1791560136.358937,
+    "seen": 1791562254.463187,
+    "ast_hash": "4e4e17f8693053681dd5a158261c71e6",
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/workspace-memory.test.ts": {
@@ -570,9 +570,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/engine/engine.worker.ts": {
-    "mtime": 1791557860.7504911,
-    "seen": 1791558717.6527271,
-    "ast_hash": "818494b40d216c4e0cf512692f72fa04",
+    "mtime": 1791560669.4187155,
+    "seen": 1791562254.463187,
+    "ast_hash": "e4bcb1610b43d02e79136d1c9d248e36",
     "semantic_hash": ""
   },
   "apps/web/src/engine/web-engine-contract.test.ts": {
@@ -582,15 +582,15 @@
     "semantic_hash": ""
   },
   "apps/web/src/engine/worker-utils.test.ts": {
-    "mtime": 1791557878.993117,
-    "seen": 1791558717.6527271,
-    "ast_hash": "cf14cfa760f75238371ecefd321e6e21",
+    "mtime": 1791560675.2528012,
+    "seen": 1791562254.463187,
+    "ast_hash": "719797f453a9675f2c6e184b346eaa92",
     "semantic_hash": ""
   },
   "apps/web/src/engine/worker-utils.ts": {
-    "mtime": 1791557995.6966357,
-    "seen": 1791558717.6527271,
-    "ast_hash": "196e3a96634267035282ad070f6a6df8",
+    "mtime": 1791560661.8187103,
+    "seen": 1791562254.463187,
+    "ast_hash": "2a12b4f059ba5c2a98f0b2262ae7a84b",
     "semantic_hash": ""
   },
   "apps/web/src/lib/api-client.test.ts": {
@@ -1200,9 +1200,9 @@
     "semantic_hash": ""
   },
   "packages/web-engine/src/protocol.ts": {
-    "mtime": 1791557849.8227885,
-    "seen": 1791558717.673746,
-    "ast_hash": "335720046ad98708939adfe4fba2fef3",
+    "mtime": 1791560225.644626,
+    "seen": 1791562254.4842403,
+    "ast_hash": "49e68a7a02a153e835f039dcad0256c2",
     "semantic_hash": ""
   },
   "packages/web-engine/tsconfig.json": {
@@ -2802,9 +2802,9 @@
     "semantic_hash": ""
   },
   "crates/karbird-api/src/main.rs": {
-    "mtime": 1791556717.8677275,
-    "seen": 1791558717.6630795,
-    "ast_hash": "adee8b16773da879bb546c4427ccdfbb",
+    "mtime": 1791559991.629496,
+    "seen": 1791562254.4724767,
+    "ast_hash": "b9e860c1ca7706d6e71fc7427644a77b",
     "semantic_hash": ""
   },
   "crates/karbird-api/src/openapi.rs": {
@@ -2844,9 +2844,9 @@
     "semantic_hash": ""
   },
   "crates/karbird-api/src/routes/live.rs": {
-    "mtime": 1791557960.660317,
-    "seen": 1791558717.6630795,
-    "ast_hash": "bcf07d77ac28187949066b578163f294",
+    "mtime": 1791560609.760228,
+    "seen": 1791562254.4732084,
+    "ast_hash": "e7aea6911bc11a28ee94c99b4275317d",
     "semantic_hash": ""
   },
   "crates/karbird-api/src/routes/mod.rs": {
@@ -3228,15 +3228,15 @@
     "semantic_hash": ""
   },
   "crates/karbird-processor/src/main.rs": {
-    "mtime": 1791557947.673358,
-    "seen": 1791558717.6687765,
-    "ast_hash": "407de5e7c2c1ab14e8b4ac69b6066d6b",
+    "mtime": 1791562583.586341,
+    "seen": 1791562792.113981,
+    "ast_hash": "8b25be2db4694f162f5431a8402caa25",
     "semantic_hash": ""
   },
   "crates/karbird-protocol/Cargo.toml": {
-    "mtime": 1791123299.9312797,
-    "seen": 1791124506.0155184,
-    "ast_hash": "03e745ad10790dd2d1836a40fb29d73b",
+    "mtime": 1791560462.555451,
+    "seen": 1791562254.4778895,
+    "ast_hash": "750605931621aacea70401de5c657b7e",
     "semantic_hash": ""
   },
   "crates/karbird-protocol/build.rs": {
@@ -3246,9 +3246,9 @@
     "semantic_hash": ""
   },
   "crates/karbird-protocol/src/lib.rs": {
-    "mtime": 1791125425.1441755,
-    "seen": 1791131286.3167555,
-    "ast_hash": "343af1ea132148ee5d60deaeb536f8ca",
+    "mtime": 1791560560.5149088,
+    "seen": 1791562254.4778895,
+    "ast_hash": "d491b6e6823045393b67ec4d19f6b6d9",
     "semantic_hash": ""
   },
   "crates/karbird-runtime/Cargo.toml": {
@@ -3294,9 +3294,9 @@
     "semantic_hash": ""
   },
   "crates/karbird-storage/src/ch.rs": {
-    "mtime": 1791557001.3847108,
-    "seen": 1791558717.6687765,
-    "ast_hash": "6581d736886dafc75e5f25af6287015b",
+    "mtime": 1791562899.9583416,
+    "seen": 1791562966.084653,
+    "ast_hash": "895915b045de11589c873ab7117494d8",
     "semantic_hash": ""
   },
   "crates/karbird-storage/src/lib.rs": {
@@ -3630,9 +3630,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/EdgeInspector.tsx": {
-    "mtime": 1791557594.3484108,
-    "seen": 1791558717.6527271,
-    "ast_hash": "b0a93ae6f3b9867df4033611a781cf75",
+    "mtime": 1791560159.3642879,
+    "seen": 1791562254.463187,
+    "ast_hash": "018f6583c22d56e56e200b6a404531ab",
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/edge-traffic.test.ts": {
@@ -3696,9 +3696,9 @@
     "semantic_hash": ""
   },
   "tests/integration/edge-traffic.test.mjs": {
-    "mtime": 1791170529.389599,
-    "seen": 1791172293.1458755,
-    "ast_hash": "a815f88e14c95ab9750a9053133b46c4",
+    "mtime": 1791563012.7821128,
+    "seen": 1791563082.4797232,
+    "ast_hash": "ed64c487be7963a15b561386b81a98eb",
     "semantic_hash": ""
   },
   "docs/adr/0019-edge-traffic.md": {
@@ -4092,15 +4092,15 @@
     "semantic_hash": ""
   },
   "crates/karbird-api/src/live_consumer.rs": {
-    "mtime": 1791557960.611299,
-    "seen": 1791558717.6630795,
-    "ast_hash": "0cebb56d0d0d5077ec8fe940b1fc5bc5",
+    "mtime": 1791560560.2044072,
+    "seen": 1791562254.4724767,
+    "ast_hash": "6c93d223e8cb76f2c5c1710df7009bce",
     "semantic_hash": ""
   },
   "crates/karbird-api/src/live_hub.rs": {
-    "mtime": 1791557822.7674947,
-    "seen": 1791558717.6630795,
-    "ast_hash": "acee57085c73b76813d3f74920084d1c",
+    "mtime": 1791560721.1164272,
+    "seen": 1791562254.4724767,
+    "ast_hash": "c9d935aa78e0ad6f28438cb337b11534",
     "semantic_hash": ""
   },
   "crates/karbird-api/src/live_metrics.rs": {
@@ -4158,9 +4158,9 @@
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-10-09-websocket-only-live-updates.md": {
-    "mtime": 1791555480.3672755,
-    "seen": 1791558717.6841853,
-    "ast_hash": "c032e057b3eefc403d69e5e91f69ab60",
+    "mtime": 1791563057.1116052,
+    "seen": 1791563082.4901066,
+    "ast_hash": "f505a7093d6eb6679e73673ee5caabe1",
     "semantic_hash": ""
   },
   "docs/superpowers/specs/2026-10-09-websocket-only-live-updates-design.md": {

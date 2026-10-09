@@ -15,13 +15,14 @@ use std::time::{Duration, Instant};
 
 use clap::Parser;
 use karbird_convert as convert;
-use karbird_protocol::TELEMETRY_TOPIC;
+use karbird_protocol::{EDGE_CHANGES_TOPIC, EdgeChange, TELEMETRY_TOPIC};
 use karbird_runtime::{backoff, connect_broker, ensure_topic, init_tracing, load_local_env, shutdown_signal};
 use karbird_storage::ch::{ChConfig, ChStore};
 use karbird_storage::pg::PgStore;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::message::Message;
+use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::topic_partition_list::Offset;
 use rdkafka::util::Timeout;
 use tokio::sync::watch;
@@ -100,6 +101,124 @@ struct Ctx {
     ch: ChStore,
     metrics: Arc<Metrics>,
     stop: watch::Receiver<bool>,
+    edge_producer: FutureProducer,
+}
+
+fn edge_changes(
+    facts: &[karbird_storage::ch::EdgeSpanFactRow],
+    changed: &std::collections::HashSet<(String, String, String, String, String)>,
+) -> Vec<EdgeChange> {
+    use karbird_domain::{EntityId, EnvironmentId, ProjectId, Scope, TenantId};
+    use std::collections::HashMap;
+
+    type SpanKey = (String, String, String, String, String);
+    let key = |fact: &karbird_storage::ch::EdgeSpanFactRow| -> SpanKey {
+        (
+            fact.tenant_id.clone(),
+            fact.project_id.clone(),
+            fact.environment_id.clone(),
+            fact.trace_id.clone(),
+            fact.span_id.clone(),
+        )
+    };
+    let spans: HashMap<SpanKey, &karbird_storage::ch::EdgeSpanFactRow> =
+        facts.iter().map(|fact| (key(fact), fact)).collect();
+    let mut changes = Vec::new();
+    for span in facts {
+        let span_key = key(span);
+        let current_span = changed.contains(&span_key);
+        let mut add = |source: String,
+                       target: String,
+                       relation: &str,
+                       request_bytes: Option<u64>,
+                       response_bytes: Option<u64>,
+                       cursor_ns: i64| {
+            if source.is_empty() || target.is_empty() || source == target {
+                return;
+            }
+            let id = format!("{}:{}:{relation}:{source}:{target}", span.trace_id, span.span_id);
+            changes.push(EdgeChange {
+                id,
+                tenant_id: span.tenant_id.clone(),
+                project_id: span.project_id.clone(),
+                environment_id: span.environment_id.clone(),
+                source,
+                target,
+                relation: relation.to_owned(),
+                trace_id: span.trace_id.clone(),
+                span_id: span.span_id.clone(),
+                time_ns: span.start_time.to_string(),
+                storage_cursor_ns: cursor_ns.to_string(),
+                request_bytes,
+                response_bytes,
+            });
+        };
+        if current_span && matches!(span.kind, 3 | 4) && !span.target_entity_id.is_empty() {
+            add(
+                span.service_id.clone(),
+                span.target_entity_id.clone(),
+                "depends_on",
+                span.request_size,
+                span.response_size,
+                span.ingested_at,
+            );
+        } else if matches!(span.kind, 2 | 5) && !span.parent_span_id.is_empty() {
+            let parent_key = (
+                span.tenant_id.clone(),
+                span.project_id.clone(),
+                span.environment_id.clone(),
+                span.trace_id.clone(),
+                span.parent_span_id.clone(),
+            );
+            if let Some(parent) = spans.get(&parent_key).filter(|_| current_span || changed.contains(&parent_key)) {
+                add(
+                    parent.service_id.clone(),
+                    span.service_id.clone(),
+                    "calls",
+                    span.request_size.or(parent.request_size),
+                    span.response_size.or(parent.response_size),
+                    span.ingested_at.max(parent.ingested_at),
+                );
+            }
+        } else if current_span
+            && span.kind == 2
+            && span.parent_span_id.is_empty()
+            && let (Ok(tenant_id), Ok(project_id), Ok(environment_id)) = (
+                TenantId::parse(&span.tenant_id),
+                ProjectId::parse(&span.project_id),
+                EnvironmentId::parse(&span.environment_id),
+            )
+        {
+            let scope = Scope { tenant_id, project_id, environment_id };
+            let clients = EntityId::derive_resource(&scope, "client", "external", "clients").to_string();
+            add(clients, span.service_id.clone(), "calls", span.request_size, span.response_size, span.ingested_at);
+        }
+    }
+    changes
+}
+
+async fn publish_edge_change(ctx: &Ctx, change: &EdgeChange) -> anyhow::Result<()> {
+    let payload = serde_json::to_vec(change)?;
+    let mut attempt = 0;
+    loop {
+        let record = FutureRecord::to(EDGE_CHANGES_TOPIC).key(&change.id).payload(&payload);
+        match ctx.edge_producer.send(record, Duration::from_secs(10)).await {
+            Ok(_) => return Ok(()),
+            Err((error, _)) => {
+                ctx.metrics.write_failures.fetch_add(1, Ordering::Relaxed);
+                if *ctx.stop.borrow() {
+                    anyhow::bail!("shutdown before edge change was acknowledged: {error}");
+                }
+                tracing::warn!(%error, %change.id, attempt, "edge change publish failed; source offset remains uncommitted");
+                let mut stop = ctx.stop.clone();
+                tokio::select! {
+                    _ = tokio::time::sleep(backoff(attempt, Duration::from_millis(200), Duration::from_secs(10))) => {}
+                    _ = stop.wait_for(|value| *value) => anyhow::bail!("shutdown before edge change was acknowledged"),
+                }
+                attempt += 1;
+            }
+        }
+    }
 }
 
 /// Dead-letter rows keep the raw record only up to `MAX_DEAD_LETTER_PAYLOAD`.
@@ -231,6 +350,36 @@ async fn process_batch(
     {
         anyhow::bail!("shutdown before ClickHouse accepted the record")
     }
+    let mut changed_keys = std::collections::HashSet::new();
+    let mut trace_ids_by_scope =
+        std::collections::HashMap::<karbird_domain::Scope, std::collections::HashSet<String>>::new();
+    for span in &batch.spans {
+        changed_keys.insert((
+            span.tenant_id.clone(),
+            span.project_id.clone(),
+            span.environment_id.clone(),
+            span.trace_id.clone(),
+            span.span_id.clone(),
+        ));
+        let scope = karbird_domain::Scope {
+            tenant_id: karbird_domain::TenantId::parse(&span.tenant_id)?,
+            project_id: karbird_domain::ProjectId::parse(&span.project_id)?,
+            environment_id: karbird_domain::EnvironmentId::parse(&span.environment_id)?,
+        };
+        trace_ids_by_scope.entry(scope).or_default().insert(span.trace_id.clone());
+    }
+    let mut edge_facts = Vec::new();
+    for (scope, trace_ids) in trace_ids_by_scope {
+        let trace_ids = trace_ids.into_iter().collect::<Vec<_>>();
+        let rows = retry_until_ok(ctx, "edge trace lookup", || ctx.ch.edge_facts_for_traces(&scope, &trace_ids))
+            .await
+            .ok_or_else(|| anyhow::anyhow!("shutdown before edge trace lookup completed"))?;
+        edge_facts.extend(rows);
+    }
+    let edge_changes = edge_changes(&edge_facts, &changed_keys);
+    for change in &edge_changes {
+        publish_edge_change(ctx, change).await?;
+    }
     // PostgreSQL remains authoritative: update it only after CH/dead-letter persistence,
     // then commit the Kafka group offset. If Kafka commit fails, replay is idempotent.
     if retry_until_ok(ctx, "offset commit", || {
@@ -277,17 +426,7 @@ async fn run_consumer(config: &ClientConfig, partitions: i32, ctx: Ctx) -> anyho
         tokio::select! {
             message = consumer.recv() => match message {
                 Ok(msg) => {
-                    let mut messages = vec![msg.detach()];
-                    let deadline = tokio::time::Instant::now() + Duration::from_millis(5);
-                    while messages.len() < 128 {
-                        tokio::select! {
-                            next = consumer.recv() => match next {
-                                Ok(message) => messages.push(message.detach()),
-                                Err(error) => { tracing::warn!(%error, "Kafka batch receive failed"); break; }
-                            },
-                            _ = tokio::time::sleep_until(deadline) => break,
-                        }
-                    }
+                    let messages = vec![msg.detach()];
                     let mut by_partition: BTreeMap<i32, Vec<rdkafka::message::OwnedMessage>> = BTreeMap::new();
                     for message in messages {
                         by_partition.entry(message.partition()).or_default().push(message);
@@ -381,6 +520,13 @@ async fn main() -> anyhow::Result<()> {
     ch.ping().await?;
     let kafka = connect_broker(&args.brokers, Duration::from_secs(60)).await?;
     let partitions = ensure_topic(&kafka, TELEMETRY_TOPIC, args.partitions).await?;
+    ensure_topic(&kafka, EDGE_CHANGES_TOPIC, args.partitions).await?;
+    let edge_producer: FutureProducer = kafka
+        .clone()
+        .set("acks", "all")
+        .set("enable.idempotence", "true")
+        .set("message.timeout.ms", "10000")
+        .create()?;
 
     let metrics = Arc::new(Metrics {
         lag: (0..partitions).map(|_| AtomicI64::new(0)).collect(),
@@ -388,7 +534,7 @@ async fn main() -> anyhow::Result<()> {
         ..Metrics::default()
     });
     let (stop_tx, stop_rx) = watch::channel(false);
-    let ctx = Ctx { pg, ch, metrics: metrics.clone(), stop: stop_rx.clone() };
+    let ctx = Ctx { pg, ch, metrics: metrics.clone(), stop: stop_rx.clone(), edge_producer };
     let kafka_config = kafka;
 
     let m = metrics.clone();
@@ -426,6 +572,102 @@ async fn main() -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicU32;
+
+    fn span(service: &str, id: &str, parent: &str, kind: u8, target: &str) -> karbird_storage::ch::SpanRow {
+        karbird_storage::ch::SpanRow {
+            tenant_id: "tenant-1".into(),
+            project_id: "project-1".into(),
+            environment_id: "prod".into(),
+            service_id: service.into(),
+            service_name: service.into(),
+            service_namespace: String::new(),
+            service_instance_id: String::new(),
+            service_version: String::new(),
+            trace_id: "trace-1".into(),
+            span_id: id.into(),
+            parent_span_id: parent.into(),
+            name: "request".into(),
+            kind,
+            start_time: 1_790_000_000_000_000_000,
+            end_time: 1_790_000_000_000_001_000,
+            duration_ns: 1_000,
+            status_code: 0,
+            status_message: String::new(),
+            target_entity_id: target.into(),
+            target_name: String::new(),
+            target_kind: String::new(),
+            attributes: vec![("http.request.body.size".into(), "123".into())],
+            resource_attributes: vec![],
+            batch_id: "batch-1".into(),
+            ingested_at: 1_790_000_000_000_002_000,
+        }
+    }
+
+    #[test]
+    fn edge_changes_are_stable_and_cover_calls_dependencies_and_external_clients() {
+        let spans = [
+            span("svc-a", "span-a", "", 2, ""),
+            span("svc-b", "span-b", "span-a", 2, ""),
+            span("svc-b", "span-c", "span-b", 3, "db-orders"),
+        ];
+        let facts = spans.iter().map(karbird_storage::ch::EdgeSpanFactRow::from).collect::<Vec<_>>();
+        let changed = facts.iter().map(edge_fact_key).collect::<std::collections::HashSet<_>>();
+        let changes = edge_changes(&facts, &changed);
+        assert_eq!(changes.len(), 3);
+        assert_eq!((changes[0].relation.as_str(), changes[0].target.as_str()), ("calls", "svc-a"));
+        assert!(changes[0].source.starts_with("res_"));
+        assert_eq!(
+            (changes[1].relation.as_str(), changes[1].source.as_str(), changes[1].target.as_str()),
+            ("calls", "svc-a", "svc-b")
+        );
+        assert_eq!(
+            (changes[2].relation.as_str(), changes[2].source.as_str(), changes[2].target.as_str()),
+            ("depends_on", "svc-b", "db-orders")
+        );
+        assert_eq!(
+            changes,
+            edge_changes(&facts, &changed),
+            "replaying the source rows must yield identical IDs and values"
+        );
+        assert_eq!(changes[1].request_bytes, Some(123));
+    }
+
+    #[test]
+    fn edge_calls_resolve_parent_and_child_arriving_in_separate_messages_in_either_order() {
+        let mut child = span("svc-b", "child", "parent-client", 2, "");
+        child.attributes.clear();
+        let mut parent = span("svc-a", "parent-client", "", 1, "");
+        parent.attributes =
+            vec![("http.request.body.size".into(), "512".into()), ("http.response.body.size".into(), "2048".into())];
+        let child_fact = karbird_storage::ch::EdgeSpanFactRow::from(&child);
+        let parent_fact = karbird_storage::ch::EdgeSpanFactRow::from(&parent);
+        let facts = [child_fact.clone(), parent_fact.clone()];
+
+        // Parent arrives after child: publishing parent change must materialize the call.
+        let changed_parent = [edge_fact_key(&parent_fact)].into_iter().collect();
+        let changes = edge_changes(&facts, &changed_parent);
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!((changes[0].source.as_str(), changes[0].target.as_str()), ("svc-a", "svc-b"));
+        assert_eq!((changes[0].request_bytes, changes[0].response_bytes), (Some(512), Some(2048)));
+        assert_eq!(changes[0].storage_cursor_ns, parent_fact.ingested_at.to_string());
+
+        // Child arrives after parent: sizes fall back to parent facts.
+        let changed_child = [edge_fact_key(&child_fact)].into_iter().collect();
+        let changes = edge_changes(&facts, &changed_child);
+        assert_eq!(changes.len(), 1);
+        assert_eq!((changes[0].request_bytes, changes[0].response_bytes), (Some(512), Some(2048)));
+    }
+
+    fn edge_fact_key(fact: &karbird_storage::ch::EdgeSpanFactRow) -> (String, String, String, String, String) {
+        (
+            fact.tenant_id.clone(),
+            fact.project_id.clone(),
+            fact.environment_id.clone(),
+            fact.trace_id.clone(),
+            fact.span_id.clone(),
+        )
+    }
 
     #[test]
     fn dead_letter_payload_is_bounded() {
