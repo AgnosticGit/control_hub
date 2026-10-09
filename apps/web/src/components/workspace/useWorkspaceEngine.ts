@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Filters, Frame, FrameSummary, InitResult, LoadResult, TopologyView } from "@karbird/web-engine";
+import type { Filters, Frame, FrameSummary, InitResult, InfrastructureSnapshot, LiveSignal, LoadResult, TopologyView } from "@karbird/web-engine";
+import type { Schemas } from "@/lib/api";
 import { EngineClient } from "@/engine/client";
 import { scopedUrl } from "@/lib/api";
 import { NS_PER_MS, NS_PER_SEC, clampNs, nowNs, parseNs } from "@/lib/time";
@@ -61,9 +62,8 @@ export function hopWindowFor(mode: Mode): { before: bigint; after: bigint } {
 }
 
 const LIVE_WINDOW_NS = 15n * 60n * NS_PER_SEC;
-/** Live clock: advances the cursor (and polls when the WebSocket is unavailable). */
+/** Live clock: advances the playhead locally; telemetry itself arrives over the WebSocket. */
 const LIVE_TICK_MS = 2000;
-const LIVE_FALLBACK_AFTER = 3;
 const EVICT_EVERY_MS = 10_000;
 const TOPOLOGY_POLL_MS = 10_000;
 const OVERLAP_NS = 10n * NS_PER_SEC;
@@ -106,7 +106,7 @@ export interface EngineState {
   topology: TopologyView | null;
   load: LoadInfo | null;
   loading: boolean;
-  liveTransport: "off" | "connecting" | "websocket" | "polling";
+  liveTransport: "off" | "connecting" | "websocket" | "stale";
 }
 
 export function asCompleteness(v: unknown): Completeness | null {
@@ -119,6 +119,12 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
   /** Settles once every range load started so far is done (success or not). */
   const loadsRef = useRef<Promise<void>>(Promise.resolve());
   const frameListeners = useRef(new Set<(f: Frame) => void>());
+  const liveSignalListeners = useRef(new Set<(signals: LiveSignal[]) => void>());
+  const infrastructureListeners = useRef(new Set<(snapshot: InfrastructureSnapshot) => void>());
+  const actionPlanListeners = useRef(new Set<(plan: Schemas["ActionPlanDto"]) => void>());
+  const liveActionPlans = useRef(new Map<string, Schemas["ActionPlanDto"]>());
+  const recentLiveSignals = useRef<LiveSignal[]>([]);
+  const latestInfrastructure = useRef<InfrastructureSnapshot | null>(null);
   const lastFrameRef = useRef<Frame | null>(null);
   const [state, setState] = useState<EngineState>(() => {
     const now = nowNs();
@@ -140,9 +146,15 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       liveTransport: "off",
     };
   });
-  // Mirrors `state` synchronously so callbacks (rAF loop, pollers) never read a
+  // Mirrors `state` synchronously so callbacks (rAF loop, timers) never read a
   // value older than the last patch.
   const stateRef = useRef(state);
+
+  useEffect(() => {
+    liveActionPlans.current.clear();
+    recentLiveSignals.current = [];
+    latestInfrastructure.current = null;
+  }, [projectId, environmentId]);
 
   const patch = useCallback((p: Partial<EngineState>) => {
     stateRef.current = { ...stateRef.current, ...p };
@@ -221,6 +233,8 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
 
   // Engine lifecycle.
   useEffect(() => {
+    recentLiveSignals.current = [];
+    latestInfrastructure.current = null;
     const client = new EngineClient();
     clientRef.current = client;
     // React state gets frame summaries at most every SUMMARY_MS; the trailing
@@ -275,15 +289,13 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
   }, [loadRange, patch]);
 
   // Live: the Worker holds a WebSocket that pushes new items straight into the engine.
-  // After repeated connection failures we fall back to HTTP polling with overlap (the
-  // engine deduplicates by id) until the socket reconnects.
+  // A failed socket marks the view stale and reconnects with backoff; it never polls HTTP.
   useEffect(() => {
     if (state.phase !== "ready" || state.mode !== "live") return;
     const c = clientRef.current;
     if (!c) return;
     let cancelled = false;
     let busy = false;
-    let lastTopology = Date.now();
     let lastEvict = Date.now();
 
     const tick = async () => {
@@ -291,20 +303,9 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       busy = true;
       try {
         const now = nowNs();
-        if (stateRef.current.liveTransport === "polling") {
-          const from = stateRef.current.rangeTo - OVERLAP_NS;
-          recordLoad(await c.call({ kind: "loadTimeline", url: url("timeline", from, now, { limit: TIMELINE_LIMIT }) }));
-        }
         if (Date.now() - lastEvict > EVICT_EVERY_MS) {
           lastEvict = Date.now();
           await c.call({ kind: "evictBefore", beforeNs: (now - LIVE_WINDOW_NS).toString() });
-        }
-        if (Date.now() - lastTopology > TOPOLOGY_POLL_MS) {
-          lastTopology = Date.now();
-          const r = await c.call({ kind: "loadTopology", url: url("topology", now - LIVE_WINDOW_NS, now, { live: "true",...(infrastructureEnabledRef.current ? {at:stateRef.current.cursor.toString()}:{}) }) });
-          await refreshTopologyView();
-          const prev = stateRef.current.load;
-          if (prev) patch({ load: { ...prev, completeness: asCompleteness(r.completeness) ?? prev.completeness } });
         }
         // The user may have paused or seeked while this tick was awaiting; never move their cursor.
         if (cancelled || stateRef.current.mode !== "live") return;
@@ -323,9 +324,30 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
           patch({ liveTransport: "websocket" });
           return;
         case "closed":
-          if (ev.attempt >= LIVE_FALLBACK_AFTER) patch({ liveTransport: "polling" });
+          patch({ liveTransport: "stale" });
           return;
+        case "signal": {
+          recentLiveSignals.current = [...recentLiveSignals.current, ...ev.signals].slice(-2000);
+          for (const listener of liveSignalListeners.current) listener(ev.signals);
+          const prev = stateRef.current.load;
+          patch({
+            liveTransport: "websocket",
+            load: {
+              items: 1,
+              fetchMs: 0,
+              applyMs: ev.applyMs,
+              truncated: false,
+              completeness: prev?.completeness ?? null,
+              at: Date.now(),
+            },
+          });
+          return;
+        }
         case "batch": {
+          if (ev.signals.length) {
+            recentLiveSignals.current = [...recentLiveSignals.current, ...ev.signals].slice(-2000);
+            for (const listener of liveSignalListeners.current) listener(ev.signals);
+          }
           const prev = stateRef.current.load;
           patch({
             liveTransport: "websocket",
@@ -340,12 +362,20 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
           });
           return;
         }
+        case "infrastructure":
+          latestInfrastructure.current = ev.snapshot;
+          for (const listener of infrastructureListeners.current) listener(ev.snapshot);
+          return;
+        case "action": {
+          const plan = ev.plan;
+          if (typeof plan.id !== "string" || typeof plan.state !== "string") return;
+          const dto = plan as Schemas["ActionPlanDto"];
+          liveActionPlans.current.set(dto.id, dto);
+          for (const listener of actionPlanListeners.current) listener(dto);
+          return;
+        }
         case "gap": {
-          // The server skipped rows over its size limit: reload the live window over HTTP.
-          const now = nowNs();
-          void c
-            .call({ kind: "loadTimeline", url: url("timeline", now - LIVE_WINDOW_NS, now, { limit: TIMELINE_LIMIT }) })
-            .then(recordLoad, (e: unknown) => patch({ error: e instanceof Error ? e.message : String(e) }));
+          patch({ liveTransport: "stale", error: "Live data needs recovery; reconnecting to the stream." });
           return;
         }
         case "error":
@@ -356,7 +386,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       }
     });
     patch({ liveTransport: "connecting" });
-    void c.call({ kind: "liveStart", url: scopedUrl(projectId, environmentId, "live", {}) });
+    void c.call({ kind: "liveStart", url: scopedUrl(projectId, environmentId, "live", infrastructureEnabledRef.current ? { infrastructure: "true" } : {}) });
     const id = setInterval(() => void tick(), LIVE_TICK_MS);
     return () => {
       cancelled = true;
@@ -365,7 +395,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       void c.call({ kind: "liveStop" });
       patch({ liveTransport: "off" });
     };
-  }, [state.phase, state.mode, url, recordLoad, refreshTopologyView, patch, projectId, environmentId]);
+  }, [state.phase, state.mode, patch, projectId, environmentId]);
 
   useEffect(() => {
     if (state.phase !== "ready") return;
@@ -506,12 +536,34 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       clientRef.current?.seek(to);
     },
     /** Machines, instances and saved backend placement at the selected time. */
-    loadInfrastructure: async (at: bigint) =>
+    loadInfrastructure: async (at: bigint, live = false) =>
       (await clientRef.current?.call({
         kind: "loadInfrastructure",
-        url: scopedUrl(projectId, environmentId, "infrastructure", { at: at.toString(),from:stateRef.current.rangeFrom.toString(),to:stateRef.current.rangeTo.toString(),live:stateRef.current.mode==="historical" ? "false" : "true" }),
+        url: scopedUrl(projectId, environmentId, "infrastructure", { at: at.toString(), ...(live ? { live: "true" } : {}) }),
       })) ?? null,
-    setFilters: (f: Filters) => { infrastructureEnabledRef.current=f.infrastructure;clientRef.current?.setFilters(f); },
+    setFilters: (f: Filters) => {
+      const changed = infrastructureEnabledRef.current !== f.infrastructure;
+      infrastructureEnabledRef.current = f.infrastructure;
+      clientRef.current?.setFilters(f);
+      if (changed && stateRef.current.mode === "live") {
+        void clientRef.current?.call({ kind: "liveStart", url: scopedUrl(projectId, environmentId, "live", f.infrastructure ? { infrastructure: "true" } : {}) });
+      }
+    },
+    onLiveSignals: (listener: (signals: LiveSignal[]) => void) => {
+      liveSignalListeners.current.add(listener);
+      if (recentLiveSignals.current.length) listener(recentLiveSignals.current);
+      return () => { liveSignalListeners.current.delete(listener); };
+    },
+    onInfrastructure: (listener: (snapshot: InfrastructureSnapshot) => void) => {
+      infrastructureListeners.current.add(listener);
+      if (latestInfrastructure.current) listener(latestInfrastructure.current);
+      return () => { infrastructureListeners.current.delete(listener); };
+    },
+    onActionPlan: (listener: (plan: Schemas["ActionPlanDto"]) => void) => {
+      actionPlanListeners.current.add(listener);
+      for (const plan of liveActionPlans.current.values()) listener(plan);
+      return () => { actionPlanListeners.current.delete(listener); };
+    },
     setViewport: (x: number, y: number, w: number, h: number, scale: number) =>
       clientRef.current?.setViewport(x, y, w, h, scale),
     pick: async (x: number, y: number) => (await clientRef.current?.call({ kind: "pick", x, y })) ?? null,

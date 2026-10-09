@@ -17,7 +17,7 @@ pub mod tokens;
 
 use axum::Json;
 use axum::extract::{Path, State};
-use karbird_storage::pg::AuditRow;
+use karbird_storage::pg::{AuditRow, MemberChange};
 use serde::Serialize;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use utoipa::ToSchema;
@@ -35,6 +35,14 @@ pub(crate) fn parse_id(id: &str) -> ApiResult<Uuid> {
 
 pub(crate) fn rfc3339(value: OffsetDateTime) -> String {
     value.format(&Rfc3339).unwrap_or_default()
+}
+
+pub(crate) fn member_change_result(change: MemberChange, last_owner: &'static str) -> ApiResult<()> {
+    match change {
+        MemberChange::Done => Ok(()),
+        MemberChange::NotFound => Err(ApiError::NotFound),
+        MemberChange::LastOwner => Err(ApiError::Conflict(last_owner)),
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -110,6 +118,16 @@ mod tests {
     fn rfc3339_uses_the_api_timestamp_format() {
         let epoch = OffsetDateTime::from_unix_timestamp(0).unwrap();
         assert_eq!(rfc3339(epoch), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn member_change_errors_keep_their_route_specific_conflict_message() {
+        assert!(member_change_result(MemberChange::Done, "last owner").is_ok());
+        assert!(matches!(member_change_result(MemberChange::NotFound, "last owner"), Err(ApiError::NotFound)));
+        assert!(matches!(
+            member_change_result(MemberChange::LastOwner, "last owner"),
+            Err(ApiError::Conflict("last owner"))
+        ));
     }
 
     #[test]

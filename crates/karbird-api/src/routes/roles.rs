@@ -15,7 +15,7 @@ use crate::permissions::{
     self, Grant, Permission, PermissionInfo, PermissionSet, Target, check_member_change, check_template_change,
     from_stored, parse_set,
 };
-use crate::routes::{parse_id, rfc3339};
+use crate::routes::{member_change_result, parse_id, rfc3339};
 use crate::state::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -288,14 +288,6 @@ fn target_of(m: &MemberRow) -> Target {
     Target { user_id: m.user_id, is_owner: m.is_owner(), permissions: from_stored(&m.permissions) }
 }
 
-fn member_change_result(r: MemberChange) -> ApiResult<()> {
-    match r {
-        MemberChange::Done => Ok(()),
-        MemberChange::NotFound => Err(ApiError::NotFound),
-        MemberChange::LastOwner => Err(ApiError::Conflict("a project needs at least one owner")),
-    }
-}
-
 #[utoipa::path(patch, path = "/api/v1/projects/{project_id}/members/{user_id}", tag = "members",
     params(("project_id" = String, Path), ("user_id" = String, Path)), request_body = MemberUpdateRequest,
     responses((status = 200, body = MemberDto), (status = 400, body = crate::error::ErrorBody), (status = 403, body = crate::error::ErrorBody),
@@ -335,7 +327,7 @@ pub async fn update_member(
         }
         (None, _) => MemberChange::NotFound,
     };
-    member_change_result(change)?;
+    member_change_result(change, "a project needs at least one owner")?;
     let updated = state.pg.member(project, member_id).await?.ok_or(ApiError::NotFound)?;
     let before = grant_json(&target.role_name, &permissions::to_strings(&from_stored(&target.permissions)));
     let after = grant_json(&updated.role_name, &permissions::to_strings(&from_stored(&updated.permissions)));
@@ -361,7 +353,7 @@ pub async fn remove_member(
     if let Err(why) = check_member_change(&access.actor, &target_of(&target), &Grant::Remove, owners) {
         return Err(deny(&state, &access, "member.remove", &user_id, why).await);
     }
-    member_change_result(state.pg.remove_member(project, member_id).await?)?;
+    member_change_result(state.pg.remove_member(project, member_id).await?, "a project needs at least one owner")?;
     let before = grant_json(&target.role_name, &permissions::to_strings(&from_stored(&target.permissions)));
     audit(&state, &access, "member.remove", &user_id, None, Some(before), None, "succeeded").await?;
     Ok(StatusCode::NO_CONTENT)

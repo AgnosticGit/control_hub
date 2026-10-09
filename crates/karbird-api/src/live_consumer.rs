@@ -8,7 +8,7 @@ use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::message::Message;
 use rdkafka::util::Timeout;
 
-use crate::live_hub::{LiveHub, LiveItem};
+use crate::live_hub::{LiveHub, LiveItem, LiveSignal};
 use crate::live_metrics::LiveMetrics;
 
 pub async fn run(consumer: StreamConsumer, live_hub: LiveHub, metrics: Arc<LiveMetrics>) {
@@ -47,8 +47,7 @@ pub async fn run(consumer: StreamConsumer, live_hub: LiveHub, metrics: Arc<LiveM
                 };
                 let result = karbird_convert::decode_envelope(payload).and_then(|envelope| {
                     let scope = karbird_convert::scope_of(&envelope)?;
-                    let converted =
-                        karbird_convert::convert(&envelope, chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0))?;
+                    let converted = karbird_convert::convert(&envelope, envelope.received_time_unix_nano)?;
                     Ok((scope, converted))
                 });
                 match result {
@@ -60,13 +59,13 @@ pub async fn run(consumer: StreamConsumer, live_hub: LiveHub, metrics: Arc<LiveM
                             let cursor_ns = row.ingested_at;
                             let item = crate::routes::telemetry::span_item(
                                 karbird_storage::ch::TimelineSpanRow {
-                                    trace_id: row.trace_id,
-                                    span_id: row.span_id,
-                                    parent_span_id: row.parent_span_id,
-                                    service_id: row.service_id,
-                                    service_name: row.service_name,
-                                    target_entity_id: row.target_entity_id,
-                                    name: row.name,
+                                    trace_id: row.trace_id.clone(),
+                                    span_id: row.span_id.clone(),
+                                    parent_span_id: row.parent_span_id.clone(),
+                                    service_id: row.service_id.clone(),
+                                    service_name: row.service_name.clone(),
+                                    target_entity_id: row.target_entity_id.clone(),
+                                    name: row.name.clone(),
                                     kind: row.kind,
                                     start_time: row.start_time,
                                     end_time: row.end_time,
@@ -75,24 +74,40 @@ pub async fn run(consumer: StreamConsumer, live_hub: LiveHub, metrics: Arc<LiveM
                                 },
                                 &clients_id,
                             );
-                            items.push(LiveItem { cursor_ns, item });
+                            items.push(LiveItem {
+                                cursor_ns,
+                                storage_cursor_ns: cursor_ns,
+                                item,
+                                signal: Some(LiveSignal::Span(crate::routes::telemetry::span_dto(row))),
+                            });
                         }
                         for row in converted.logs {
                             let cursor_ns = row.ingested_at;
                             let item = crate::routes::telemetry::log_item(karbird_storage::ch::TimelineLogRow {
-                                log_id: row.log_id,
-                                service_id: row.service_id,
-                                service_name: row.service_name,
+                                log_id: row.log_id.clone(),
+                                service_id: row.service_id.clone(),
+                                service_name: row.service_name.clone(),
                                 time: row.time,
                                 severity_number: row.severity_number,
-                                trace_id: row.trace_id,
+                                trace_id: row.trace_id.clone(),
                                 ingested_at: row.ingested_at,
                             });
-                            items.push(LiveItem { cursor_ns, item });
+                            items.push(LiveItem {
+                                cursor_ns,
+                                storage_cursor_ns: cursor_ns,
+                                item,
+                                signal: Some(LiveSignal::Log(crate::routes::telemetry::log_dto(row))),
+                            });
                         }
                         for row in converted.events {
                             let cursor_ns = row.ingested_at;
-                            items.push(LiveItem { cursor_ns, item: crate::routes::telemetry::event_item(row) });
+                            let item = crate::routes::telemetry::event_item(row.clone());
+                            items.push(LiveItem {
+                                cursor_ns,
+                                storage_cursor_ns: cursor_ns,
+                                item,
+                                signal: Some(LiveSignal::Event(crate::routes::telemetry::event_dto(row))),
+                            });
                         }
                         let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
                         let item_count = items.len() as u64;

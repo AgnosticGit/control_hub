@@ -215,8 +215,9 @@ function handshake(base, path, headers) {
 }
 
 /** Opens the live channel and collects messages until `done(messages)` returns true. */
-function liveMessages(base, session, done, timeoutMs = 20_000) {
+function liveMessages(base, session, done, timeoutMs = 20_000, { infrastructure = false } = {}) {
   const url = new URL(`${DEMO}/live`, base);
+  if (infrastructure) url.searchParams.set('infrastructure', 'true');
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(url, { headers: { origin: ORIGIN, cookie: session.cookieHeader() } });
   const messages = [];
@@ -271,21 +272,30 @@ for (const [name, base] of [
   ['API', API],
   ['web proxy', WEB],
 ]) {
-  test(`live WebSocket pushes engine items for the demo environment (${name})`, async (t) => {
+  test(`live WebSocket pushes individually framed records for the demo environment (${name})`, async (t) => {
     if (base === WEB && !(await fetch(WEB).then(() => true, () => false))) {
       t.skip(`web server not running at ${WEB}`);
       return;
     }
-    const msgs = await liveMessages(base, admin, (m) => m.some((x) => x.type === 'batch'));
+    const msgs = await liveMessages(base, admin, (m) => m.some((x) => ['span', 'log', 'event'].includes(x.type)));
     assert.equal(msgs[0].type, 'hello');
     assert.match(msgs[0].resume, /^\d+$/);
-    const batch = msgs.find((m) => m.type === 'batch');
-    assert.ok(BigInt(batch.resume) >= BigInt(msgs[0].resume), 'resume cursor moves forward');
-    assert.ok(batch.items.length > 0);
-    const types = new Set(batch.items.map((i) => i.type));
+    const records = msgs.filter((m) => ['span', 'log', 'event'].includes(m.type));
+    assert.ok(records.every((m) => BigInt(m.resume) >= BigInt(msgs[0].resume)), 'resume cursor moves forward');
+    assert.ok(records.every((m) => m.item && m.record), 'each frame has one engine item and one full record');
+    assert.ok(records.every((m) => !Array.isArray(m.items) && !Array.isArray(m.signals)), 'records are not grouped into batches');
+    const types = new Set(records.map((m) => m.type));
     assert.ok(types.has('span') || types.has('log'), `types: ${[...types]}`);
+    assert.ok(records.every((m) => m.record?.service_id), 'live records are typed and scoped');
   });
 }
+
+test('live WebSocket sends the initial infrastructure snapshot when requested', async () => {
+  const msgs = await liveMessages(API, admin, (m) => m.some((x) => x.type === 'infrastructure'), 25_000, { infrastructure: true });
+  const snapshot = msgs.find((message) => message.type === 'infrastructure');
+  assert.ok(snapshot.snapshot && typeof snapshot.snapshot === 'object');
+  assert.match(snapshot.resume, /^\d+$/);
+});
 
 test('ingestion rejects missing and invalid tokens', async () => {
   const none = await fetch(`${OTLP}/api/v1/events/batch`, { method: 'POST', body: '{"events":[]}' });

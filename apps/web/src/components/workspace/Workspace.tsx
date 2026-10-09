@@ -107,7 +107,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const dockMax = Math.max(DOCK_MIN, Math.min(DOCK_MAX, dockContentHeight, dockAvailableHeight));
   const selectedNode = state.topology?.nodes.find((n) => n.id === selectedId) ?? null;
-  const infra = useInfrastructure(actions, state.phase === "ready", layerPrefs.infrastructure, state.cursor);
+  const infra = useInfrastructure(actions, `${projectId}/${environmentId}`, state.phase === "ready", layerPrefs.infrastructure, state.mode, state.cursor);
   const infraSnapshot = layerPrefs.infrastructure ? infra.snapshot : null;
   const changeLayer = (layer: keyof MapLayers, enabled: boolean) =>
     writePersisted(layerPrefsKey, JSON.stringify({ ...layerPrefs, [layer]: enabled }));
@@ -254,9 +254,6 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
 
         <div className="flex min-h-0 flex-1">
           <main ref={mapPanelRef} className="system-map-fullscreen card relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" aria-label="System map">
-            <div className="sr-only" role="region" aria-label="System Map text">
-              {state.topology?.nodes.map((node) => <span key={node.id}>{node.name}</span>)}
-            </div>
             <div className="card-header">
               <span className="card-title-icon">
                 <Icon name="layers" className="h-3.5 w-3.5" />
@@ -396,6 +393,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
               <SignalsPanel
                 projectId={projectId}
                 environmentId={environmentId}
+                actions={actions}
                 state={state}
                 selectedId={selectedId}
                 tab={tab}
@@ -535,7 +533,7 @@ function Kpi({
 const TRANSPORT: Record<Exclude<EngineState["liveTransport"], "off">, { text: string; title: string; tone: "ok" | "warn" | "muted" }> = {
   connecting: { text: "Live: connecting", title: "Opening the live WebSocket", tone: "muted" },
   websocket: { text: "Live: WebSocket", title: "New telemetry is pushed over a WebSocket", tone: "ok" },
-  polling: { text: "Live: polling", title: "WebSocket unavailable; polling the API every 2 s until it reconnects", tone: "warn" },
+  stale: { text: "Live: reconnecting", title: "Live data is paused while the WebSocket reconnects", tone: "warn" },
 };
 
 function LiveTransportRow({ transport }: { transport: EngineState["liveTransport"] }) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chipFocused, frameFocused, incidentEdgeIndices, incidentGlowWidth, nodeFocused, selectionAlpha, toggleSelection, type MapSelection } from "./selection-style";
+import { chipFocused, edgeFadeAlpha, frameFocused, incidentEdgeIndices, incidentGlowWidth, nodeFocused, selectionAlpha, toggleSelection, type MapSelection } from "./selection-style";
 
 describe("map selection focus", () => {
   it("uses a slimmer glow for solid lines while leaving room under dashed lines", () => {
@@ -33,6 +33,13 @@ describe("map selection focus", () => {
     expect(nodeFocused(4, null, selection)).toBe(true);
     expect(nodeFocused(3, null, selection)).toBe(false);
     expect(selectionAlpha(selection)).toBeLessThan(1);
+  });
+
+  it("keeps focused lines bright and dims unrelated lines while a map item is selected", () => {
+    const selection: MapSelection = { node: 4, edge: null, edgeNodes: null, host: null };
+    expect(edgeFadeAlpha(true, selection)).toBe(1);
+    expect(edgeFadeAlpha(false, selection)).toBeLessThan(0.35);
+    expect(edgeFadeAlpha(false, { node: null, edge: null, edgeNodes: null, host: null })).toBe(1);
   });
 
   it("focuses only the selected machine and its replica cards", () => {

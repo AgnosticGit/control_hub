@@ -1,7 +1,7 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import type { EdgeMetrics } from "@karbird/web-engine";
 import { Icon } from "@/components/ui/Icon";
 import { api, scopedPath, unwrap } from "@/lib/api";
@@ -10,6 +10,7 @@ import type { EngineState, WorkspaceActions } from "./useWorkspaceEngine";
 import { SignalLinks, type OpenSignals } from "./InfraInspector";
 import {
   areaPath,
+  applyLiveEdgeContribution,
   bucketRates,
   formatMs,
   formatPercent,
@@ -17,6 +18,7 @@ import {
   peakIndex,
   sizeNote,
   sizeState,
+  LiveEdgeAccumulator,
   type EdgeTraffic,
   type SelectedEdge,
 } from "./edge-traffic";
@@ -46,6 +48,7 @@ interface Props {
 export function EdgeInspector({ projectId, environmentId, state, actions, edge, onClose, onSelect, onSignals }: Props) {
   const [metrics, setMetrics] = useState<EdgeMetrics | null>(null);
   const [missing, setMissing] = useState(false);
+  const queryClient = useQueryClient();
   const summaryKey = `${state.summary?.generation ?? 0}:${state.summary?.time_ns ?? ""}`;
 
   useEffect(() => {
@@ -65,8 +68,9 @@ export function EdgeInspector({ projectId, environmentId, state, actions, edge, 
   const live = state.mode === "live";
   const spanNs = state.rangeTo - state.rangeFrom;
   const rangeKey = live ? `live:${spanNs}` : `${state.rangeFrom}-${state.rangeTo}`;
+  const trafficKey = ["edge-traffic", projectId, environmentId, edge.source, edge.target, relation, rangeKey] as const;
   const traffic = useQuery({
-    queryKey: ["edge-traffic", projectId, environmentId, edge.source, edge.target, relation, rangeKey],
+    queryKey: trafficKey,
     enabled: metrics !== null,
     queryFn: async () => {
       const to = live ? nowNs() : state.rangeTo;
@@ -88,8 +92,36 @@ export function EdgeInspector({ projectId, environmentId, state, actions, edge, 
       );
     },
     placeholderData: keepPreviousData,
-    refetchInterval: live ? 15_000 : false,
+    refetchInterval: false,
   });
+
+  const accumulatorKey = `${edge.source}:${edge.target}:${relation}`;
+  const sourceIsService = state.topology?.nodes.find((n) => n.id === edge.source)?.kind === "service";
+  const accumulatorIdentity = `${accumulatorKey}:${rangeKey}:${sourceIsService}`;
+  const baselineCursor = traffic.data?.resume_cursor_ns;
+  const liveEdgeState = useRef<{ key: string; accumulator: LiveEdgeAccumulator } | null>(null);
+  useEffect(() => {
+    if (baselineCursor === undefined || liveEdgeState.current?.key === accumulatorIdentity) return;
+    liveEdgeState.current = {
+      key: accumulatorIdentity,
+      accumulator: new LiveEdgeAccumulator(edge, relation, sourceIsService, BigInt(baselineCursor)),
+    };
+  }, [accumulatorIdentity, baselineCursor, edge, relation, sourceIsService]);
+
+  const hasTraffic = traffic.data !== undefined;
+  const hasMetrics = metrics !== null;
+  useEffect(() => {
+    const accumulator = liveEdgeState.current?.key === accumulatorIdentity ? liveEdgeState.current.accumulator : null;
+    if (!live || !hasMetrics || !hasTraffic || !accumulator) return;
+    return actions.onLiveSignals((signals) => {
+      const contributions = accumulator.accept(signals);
+      for (const contribution of contributions) {
+        queryClient.setQueryData<EdgeTraffic>(["edge-traffic", projectId, environmentId, edge.source, edge.target, relation, rangeKey], (current) =>
+          current ? applyLiveEdgeContribution(current, contribution, BigInt(current.to_ns)) : current,
+        );
+      }
+    });
+  }, [actions, accumulatorIdentity, edge.source, edge.target, environmentId, hasMetrics, hasTraffic, live, projectId, queryClient, rangeKey, relation]);
 
   const sourceName = metrics?.source_name ?? state.topology?.nodes.find((n) => n.id === edge.source)?.name ?? edge.source;
   const targetName = metrics?.target_name ?? state.topology?.nodes.find((n) => n.id === edge.target)?.name ?? edge.target;

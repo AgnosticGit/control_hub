@@ -3502,7 +3502,7 @@
         "tags": [
           "telemetry"
         ],
-        "description": "WebSocket upgrade. Server messages: hello, batch, gap, heartbeat, error (JSON text frames).",
+        "description": "WebSocket upgrade. Server messages: hello, span, log, event, infrastructure, topology, gap, heartbeat, error (JSON text frames).",
         "operationId": "live",
         "parameters": [
           {
@@ -3528,6 +3528,15 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "infrastructure",
+            "in": "query",
+            "description": "Include coalesced infrastructure snapshots while the infrastructure map layer is enabled.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -6360,8 +6369,11 @@
           "to_ns",
           "buckets",
           "bucket_ns",
+          "resume_cursor_ns",
           "calls",
           "sized_calls",
+          "request_sized_calls",
+          "response_sized_calls",
           "request_bytes",
           "response_bytes",
           "total_calls",
@@ -6445,6 +6457,14 @@
               "minimum": 0
             }
           },
+          "request_sized_calls": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
           "response_bytes": {
             "type": "array",
             "items": {
@@ -6452,6 +6472,18 @@
               "format": "int64",
               "minimum": 0
             }
+          },
+          "response_sized_calls": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          "resume_cursor_ns": {
+            "type": "string",
+            "description": "Storage watermark represented by this baseline; subsequent WebSocket spans can be applied once."
           },
           "size_coverage": {
             "type": [

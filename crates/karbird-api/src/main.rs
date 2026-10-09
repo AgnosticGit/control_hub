@@ -24,6 +24,7 @@ use axum::Router;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::routing::{get, post};
 use clap::{Parser, Subcommand};
+use karbird_domain::{EnvironmentId, ProjectId, Scope, TenantId};
 use karbird_protocol::TELEMETRY_TOPIC;
 use karbird_runtime::connect_broker;
 use karbird_runtime::{init_tracing, load_local_env, shutdown_signal};
@@ -31,10 +32,72 @@ use karbird_storage::ch::{ChConfig, ChStore};
 use karbird_storage::pg::PgStore;
 use karbird_storage::retention::{self, Table};
 use rdkafka::consumer::{Consumer, StreamConsumer};
+use sqlx::postgres::{PgListener, PgNotification};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
+
+#[derive(Debug, serde::Deserialize)]
+struct ActionPlanNotice {
+    tenant_id: String,
+    project_id: String,
+    environment_id: String,
+    plan_id: String,
+}
+
+async fn forward_action_plan_notice(state: &state::AppState, notice: &PgNotification) {
+    let parsed = serde_json::from_str::<ActionPlanNotice>(notice.payload());
+    let Ok(notice) = parsed else {
+        tracing::warn!("discarding malformed action-plan notification");
+        return;
+    };
+    let scope = Scope {
+        tenant_id: match TenantId::parse(notice.tenant_id) {
+            Ok(id) => id,
+            Err(_) => return,
+        },
+        project_id: match ProjectId::parse(notice.project_id) {
+            Ok(id) => id,
+            Err(_) => return,
+        },
+        environment_id: match EnvironmentId::parse(notice.environment_id) {
+            Ok(id) => id,
+            Err(_) => return,
+        },
+    };
+    let id = match uuid::Uuid::parse_str(&notice.plan_id) {
+        Ok(id) => id,
+        Err(_) => return,
+    };
+    match state.pg.action_plan(&scope, id).await {
+        Ok(Some(row)) => {
+            let plan: routes::actions::ActionPlanDto = row.into();
+            match serde_json::to_value(plan) {
+                Ok(plan) => {
+                    if let Err(error) = state.live_hub.publish_action(scope, plan) {
+                        tracing::debug!(%error, "action-plan WebSocket fan-out skipped");
+                    }
+                }
+                Err(error) => tracing::warn!(%error, "could not encode action-plan notification"),
+            }
+        }
+        Ok(None) => {}
+        Err(error) => tracing::warn!(%error, "could not load changed action plan"),
+    }
+}
+
+async fn run_action_notifications(mut listener: PgListener, state: state::AppState) {
+    loop {
+        match listener.recv().await {
+            Ok(notification) => forward_action_plan_notice(&state, &notification).await,
+            Err(error) => {
+                tracing::warn!(%error, "PostgreSQL action notification listener failed");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        }
+    }
+}
 
 #[derive(Debug, Parser)]
 #[command(name = "karbird-api")]
@@ -95,10 +158,11 @@ fn retention_days() -> clap::builder::RangedI64ValueParser<u32> {
 }
 
 impl RetentionArgs {
-    fn tables(&self) -> [(Table, u32); 4] {
+    fn tables(&self) -> [(Table, u32); 5] {
         [
             (Table::Logs, self.logs_retention_days),
             (Table::Spans, self.spans_retention_days),
+            (Table::EdgeSpanFacts, self.spans_retention_days),
             (Table::Events, self.events_retention_days),
             (Table::Metrics, self.metrics_retention_days),
         ]
@@ -419,6 +483,9 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         oauth_states: routes::oauth::OAuthStateStore::default(),
         oauth_client: reqwest::Client::builder().timeout(Duration::from_secs(10)).build()?,
     };
+    let mut action_listener = PgListener::connect_with(state.pg.pool()).await?;
+    action_listener.listen("karbird_action_plan_changed").await?;
+    let action_task = tokio::spawn(run_action_notifications(action_listener, state.clone()));
     let live_consumer: StreamConsumer = kafka_config
         .clone()
         .set("group.id", &live_group_id)
@@ -433,6 +500,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     tracing::info!(addr = %args.addr, "karbird-api listening");
     axum::serve(listener, router(state)).with_graceful_shutdown(shutdown_signal()).await?;
     live_task.abort();
+    action_task.abort();
     Ok(())
 }
 
@@ -1059,6 +1127,7 @@ mod tests {
                 [
                     (super::Table::Logs, 14),
                     (super::Table::Spans, 14),
+                    (super::Table::EdgeSpanFacts, 14),
                     (super::Table::Events, 30),
                     (super::Table::Metrics, 14)
                 ]
@@ -1168,6 +1237,7 @@ mod tests {
                     [
                         (super::Table::Logs, 7),
                         (super::Table::Spans, 3),
+                        (super::Table::EdgeSpanFacts, 3),
                         (super::Table::Events, 90),
                         (super::Table::Metrics, 5)
                     ]

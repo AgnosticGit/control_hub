@@ -57,8 +57,12 @@ pub struct EdgeTraffic {
     pub buckets: u32,
     /// Bucket `i` covers `[from + i * bucket_ns, from + (i + 1) * bucket_ns)`, by call start.
     pub bucket_ns: String,
+    /// Storage watermark represented by this baseline; subsequent WebSocket spans can be applied once.
+    pub resume_cursor_ns: String,
     pub calls: Vec<u64>,
     pub sized_calls: Vec<u64>,
+    pub request_sized_calls: Vec<u64>,
+    pub response_sized_calls: Vec<u64>,
     pub request_bytes: Vec<u64>,
     pub response_bytes: Vec<u64>,
     pub total_calls: u64,
@@ -167,12 +171,15 @@ impl Geometry {
 
 pub fn build(q: &Edge, g: &Geometry, rows: &[EdgeTrafficRow]) -> EdgeTraffic {
     let n = g.buckets as usize;
-    let (mut calls, mut sized, mut req, mut resp) = (vec![0u64; n], vec![0u64; n], vec![0u64; n], vec![0u64; n]);
+    let (mut calls, mut sized, mut request_sized, mut response_sized, mut req, mut resp) =
+        (vec![0u64; n], vec![0u64; n], vec![0u64; n], vec![0u64; n], vec![0u64; n], vec![0u64; n]);
     for r in rows {
         let Some(i) = usize::try_from(r.bucket).ok().filter(|&i| i < n) else { continue };
         for (slot, v) in [
             (&mut calls, r.calls),
             (&mut sized, r.sized_calls),
+            (&mut request_sized, r.request_sized_calls),
+            (&mut response_sized, r.response_sized_calls),
             (&mut req, r.request_bytes),
             (&mut resp, r.response_bytes),
         ] {
@@ -207,6 +214,7 @@ pub fn build(q: &Edge, g: &Geometry, rows: &[EdgeTrafficRow]) -> EdgeTraffic {
         to_ns: g.to.to_string(),
         buckets: g.buckets,
         bucket_ns: g.bucket_ns.to_string(),
+        resume_cursor_ns: rows.iter().map(|row| row.resume_cursor_ns).max().unwrap_or(0).to_string(),
         total_calls,
         total_sized_calls: total_sized,
         total_request_sized_calls: total_request_sized,
@@ -222,6 +230,8 @@ pub fn build(q: &Edge, g: &Geometry, rows: &[EdgeTrafficRow]) -> EdgeTraffic {
         peak_response_at_ns: peak_resp.map(|p| p.1),
         calls,
         sized_calls: sized,
+        request_sized_calls: request_sized,
+        response_sized_calls: response_sized,
         request_bytes: req,
         response_bytes: resp,
     }
@@ -258,6 +268,7 @@ mod tests {
             response_sized_calls: sized,
             request_bytes: req,
             response_bytes: resp,
+            resume_cursor_ns: 0,
         }
     }
 
@@ -351,10 +362,12 @@ mod tests {
                 response_sized_calls: 7,
                 request_bytes: 0,
                 response_bytes: 350,
+                resume_cursor_ns: 123,
             }],
         );
         assert_eq!((t.avg_request_bps, t.peak_request_bps, t.peak_request_at_ns), (None, None, None));
         assert_eq!(t.total_response_sized_calls, 7);
+        assert_eq!(t.resume_cursor_ns, "123");
         assert_eq!(t.avg_response_bps, Some(350.0 / 60.0));
         assert!(t.peak_response_bps.is_some_and(|rate| rate > 0.0));
     }

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, scopedPath, unwrap, type Schemas } from "@/lib/api";
 import { canCancelPlan, canDecidePlan, canStartAction } from "@/lib/permissions";
 import { useSession } from "@/lib/session";
@@ -11,9 +12,10 @@ import { AppShell } from "@/components/shell/AppShell";
 import { Icon } from "@/components/ui/Icon";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { paramValues } from "./params";
-import { OPEN_STATES, stateClass } from "./controls";
+import { stateClass } from "./controls";
 import { ParamFields } from "./ParamFields";
 import { ACTIONS_BASE as BASE, errorMessage as message, useActions } from "./api";
+import { parseActionFrame, upsertActionPlan } from "./live";
 
 type Spec = Schemas["ActionSpecDto"];
 
@@ -118,7 +120,7 @@ function PlanDetail({ projectId, environmentId, id }: { projectId: string; envir
   const detail = useQuery({
     queryKey: ["action", projectId, environmentId, id],
     queryFn: async () => unwrap(await api.GET(`${BASE}/{plan_id}`, { params: { path: { ...path, plan_id: id } } })),
-    refetchInterval: (q) => (q.state.data && OPEN_STATES.has(q.state.data.plan.state) ? 2000 : false),
+    refetchInterval: false,
   });
   if (detail.isPending) return <p className="text-sm text-muted">Loading…</p>;
   if (detail.error) return <p role="alert" className="text-sm text-error">{message(detail.error)}</p>;
@@ -171,6 +173,7 @@ function PlanDetail({ projectId, environmentId, id }: { projectId: string; envir
 
 export function ActionsPage({ projectId, environmentId }: { projectId: string; environmentId: string }) {
   const session = useSession();
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
 
   const project = session.data?.projects.find((p) => p.id === projectId);
@@ -178,6 +181,40 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
   const canPropose = canStartAction(project);
   const me = session.data?.user.email;
   const { catalog, plans, propose, decide } = useActions(projectId, environmentId, env !== undefined);
+
+  useEffect(() => {
+    if (!env) return;
+    let socket: WebSocket | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    let closed = false;
+    const connect = () => {
+      if (closed) return;
+      const url = new URL(`/api/v1/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environmentId)}/live`, window.location.origin);
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      socket = new WebSocket(url);
+      socket.onopen = () => { attempt = 0; };
+      socket.onmessage = (event) => {
+        if (typeof event.data !== "string") return;
+        const plan = parseActionFrame(event.data);
+        if (!plan) return;
+        queryClient.setQueryData<Schemas["ActionPlanDto"][]>(["actions", projectId, environmentId], (current) => upsertActionPlan(current, plan));
+        void queryClient.invalidateQueries({ queryKey: ["action", projectId, environmentId, plan.id] });
+      };
+      socket.onclose = () => {
+        if (closed) return;
+        attempt += 1;
+        timer = setTimeout(connect, Math.min(30_000, 500 * 2 ** Math.min(attempt - 1, 6)));
+      };
+      socket.onerror = () => socket?.close();
+    };
+    connect();
+    return () => {
+      closed = true;
+      if (timer) clearTimeout(timer);
+      socket?.close(1000, "actions page unmounted");
+    };
+  }, [environmentId, env, projectId, queryClient]);
 
   if (session.isPending) return <p className="p-8 text-sm text-muted">Loading…</p>;
   if (!env) {

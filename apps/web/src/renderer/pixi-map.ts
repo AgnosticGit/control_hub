@@ -36,7 +36,7 @@ import { fitCamera, MIN_MAP_SCALE, overlayInset, zoomCamera } from "./fit";
 import { gridLines } from "./grid";
 import { animTimeMs, hopPhase, type AnimClock } from "./hops";
 import { serviceColors } from "./service-colors";
-import { frameFocused, incidentEdgeIndices, incidentGlowWidth, nodeFocused, SELECTION_DIM_ALPHA, selectionAlpha, type MapSelection } from "./selection-style";
+import { edgeFadeAlpha, frameFocused, incidentEdgeIndices, incidentGlowWidth, nodeFocused, SELECTION_DIM_ALPHA, selectionAlpha, type MapSelection } from "./selection-style";
 
 /** Pan (screen px) and zoom of the map. */
 export interface MapCamera {
@@ -103,6 +103,10 @@ export class PixiMap {
   private app: Application | null = null;
   private latestTopologyRevision = -1;
   private host: HTMLElement | null = null;
+  private searchLayer: HTMLDivElement | null = null;
+  private searchWorld: HTMLDivElement | null = null;
+  private readonly searchLabels = new Map<number, HTMLDivElement>();
+  private readonly replicaSearchLabels = new Map<string, HTMLDivElement>();
   private readonly world = new Container();
   private readonly grid = new Graphics();
   private gridKey = "";
@@ -197,6 +201,30 @@ export class PixiMap {
     this.host = host;
     app.canvas.setAttribute("aria-hidden", "true");
     host.appendChild(app.canvas);
+    const searchLayer = document.createElement("div");
+    Object.assign(searchLayer.style, {
+      position: "absolute",
+      inset: "0",
+      overflow: "hidden",
+      pointerEvents: "none",
+      userSelect: "none",
+      zIndex: "1",
+    });
+    searchLayer.setAttribute("role", "region");
+    searchLayer.setAttribute("aria-label", "System Map text");
+    const searchWorld = document.createElement("div");
+    Object.assign(searchWorld.style, {
+      position: "absolute",
+      left: "0",
+      top: "0",
+      transformOrigin: "top left",
+      pointerEvents: "none",
+      userSelect: "none",
+    });
+    searchLayer.appendChild(searchWorld);
+    host.appendChild(searchLayer);
+    this.searchLayer = searchLayer;
+    this.searchWorld = searchWorld;
     // Hops above cards so a request waiting at its callee stays visible on the card border.
     this.world.addChild(
       this.infraBack,
@@ -264,6 +292,7 @@ export class PixiMap {
       if (frame) this.hostByNode.set(node.index, frame.host_id);
     }
     this.drawInfra();
+    this.syncSearchNodes(nodes);
     if (names.length !== this.names.length || names.some((n, i) => n !== this.names[i])) {
       this.names = names;
       for (const t of this.textPool.values()) {
@@ -455,6 +484,11 @@ export class PixiMap {
     this.cleanup = [];
     this.app?.destroy(true, { children: true });
     this.app = null;
+    this.searchLayer?.remove();
+    this.searchLayer = null;
+    this.searchWorld = null;
+    this.searchLabels.clear();
+    this.replicaSearchLabels.clear();
   }
 
   /** Routes are recomputed only when the topology or the line style changes, not per frame. */
@@ -477,6 +511,7 @@ export class PixiMap {
     const app = this.app;
     if (!app) return;
     const s = this.world.scale.x;
+    if (this.searchWorld) this.searchWorld.style.transform = `translate(${this.world.x}px, ${this.world.y}px) scale(${s})`;
     this.host?.setAttribute("data-camera",JSON.stringify({x:this.world.x,y:this.world.y,scale:s}));
     const r = cullRect({ x: -this.world.x / s, y: -this.world.y / s, width: app.screen.width / s, height: app.screen.height / s }, CARD_W / 2 + 8);
     this.callbacks.onViewport(r.x, r.y, r.width, r.height, s);
@@ -755,8 +790,19 @@ export class PixiMap {
       if (pooled.name.text !== nameValue) pooled.name.text = nameValue;
       pooled.name.position.set(left + 52, c.y - 17);
       pooled.sub.position.set(left + 52, c.y + 2);
-      pooled.name.alpha = fade;
+      pooled.name.alpha = 0;
       pooled.sub.alpha = fade;
+      let searchLabel = this.replicaSearchLabels.get(key);
+      if (!searchLabel) {
+        searchLabel = this.createSearchLabel();
+        this.replicaSearchLabels.set(key, searchLabel);
+      }
+      const searchName = this.names[c.node] ?? c.label;
+      if (searchLabel.textContent !== searchName) searchLabel.textContent = searchName;
+      searchLabel.style.left = `${left + 52}px`;
+      searchLabel.style.top = `${c.y - 17}px`;
+      searchLabel.style.opacity = String(fade);
+      searchLabel.style.visibility = "visible";
       if (c.instance_ids.length > 1) {
         pooled.count.text = `×${c.instance_ids.length}`;
         pooled.count.visible = true;
@@ -775,6 +821,8 @@ export class PixiMap {
         text.name.visible = false;
         text.sub.visible = false;
         text.count.visible = false;
+        const searchLabel = this.replicaSearchLabels.get(key);
+        if (searchLabel) searchLabel.style.visibility = "hidden";
       } else {
         text.name.visible = true;
         text.sub.visible = true;
@@ -794,6 +842,45 @@ export class PixiMap {
 
   private syncSelectionFade() {
     this.hops.alpha = selectionAlpha(this.selection());
+  }
+
+  private syncSearchNodes(nodes: TopologyView["nodes"]) {
+    const present = new Set<number>();
+    for (const node of nodes) {
+      present.add(node.index);
+      let label = this.searchLabels.get(node.index);
+      if (!label) {
+        label = this.createSearchLabel();
+        this.searchLabels.set(node.index, label);
+      }
+      if (label.textContent !== node.name) label.textContent = node.name;
+      label.dataset.nodeId = node.id;
+      label.style.left = `${node.x - CARD_W / 2 + 52}px`;
+      label.style.top = `${node.y - 17}px`;
+    }
+    for (const [index, label] of this.searchLabels) {
+      if (!present.has(index)) {
+        label.remove();
+        this.searchLabels.delete(index);
+      }
+    }
+  }
+
+  private createSearchLabel(): HTMLDivElement {
+    const label = document.createElement("div");
+    Object.assign(label.style, {
+      position: "absolute",
+      width: "110px",
+      overflow: "hidden",
+      color: "#e6ecf5",
+      font: "600 13px/16px Inter, 'Segoe UI', system-ui, sans-serif",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      pointerEvents: "none",
+      userSelect: "none",
+    });
+    this.searchWorld?.appendChild(label);
+    return label;
   }
 
   /** Logical service cards belong to exactly one machine frame in infrastructure mode. */
@@ -832,7 +919,7 @@ export class PixiMap {
       const incident = this.selectedIncidentEdges.has(index);
       const selected = this.selectedEdge === index;
       const focused = selected || incident;
-      const fade = focused || selectionAlpha(selection) === 1 ? 1 : SELECTION_DIM_ALPHA;
+      const fade = edgeFadeAlpha(focused, selection);
       const route = this.routes.get(index);
       // A route is only valid for the positions it was computed for (topology may lag a frame).
       const fresh = route && near(route.sx, sx) && near(route.sy, sy) && near(route.tx, tx) && near(route.ty, ty);
@@ -852,10 +939,10 @@ export class PixiMap {
       }
       if (inferred) {
         for (const dash of zoomInvariantDashes(path)) line(e, dash);
-        e.stroke({ color, width, alpha: 0.8 * fade, ...LINE_STYLE });
+        e.stroke({ color, width, alpha: 0.95 * fade, ...LINE_STYLE });
       } else {
-        line(e, path.pts).stroke({ color, width: width + 6, alpha: (calls > 0 ? 0.1 : 0.05) * fade, ...LINE_STYLE });
-        line(e, path.pts).stroke({ color, width, alpha: (calls > 0 ? 0.9 : 0.5) * fade, ...LINE_STYLE });
+        line(e, path.pts).stroke({ color, width: width + 6, alpha: (calls > 0 ? 0.14 : 0.08) * fade, ...LINE_STYLE });
+        line(e, path.pts).stroke({ color, width, alpha: (calls > 0 ? 1 : 0.72) * fade, ...LINE_STYLE });
       }
       arrow(e, path, incident ? EDGE_SELECTED : color, fade);
     }
@@ -865,6 +952,7 @@ export class PixiMap {
   private drawNodes(f: Frame) {
     this.nodes.clear();
     this.nodesDim.clear();
+    for (const label of this.searchLabels.values()) label.style.visibility = "hidden";
     const seen = new Set<number>();
     const hw = CARD_W / 2;
     const hh = CARD_H / 2;
@@ -930,10 +1018,15 @@ export class PixiMap {
       }
       t.name.visible = true;
       t.sub.visible = true;
-      t.name.alpha = (dimmed ? DIM_ALPHA + 0.1 : 1) * fade;
+      t.name.alpha = 0;
       t.sub.alpha = (dimmed ? DIM_ALPHA + 0.1 : 1) * fade;
       t.name.position.set(left + 52, y - 17);
       t.sub.position.set(left + 52, y + 2);
+      const searchLabel = this.searchLabels.get(idx);
+      if (searchLabel) {
+        searchLabel.style.opacity = String((dimmed ? DIM_ALPHA + 0.1 : 1) * fade);
+        searchLabel.style.visibility = "visible";
+      }
     }
     for (const [idx, t] of this.textPool) {
       if (!seen.has(idx)) {

@@ -324,7 +324,7 @@ export function MapView({
       />
       <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2">
         <div className="pointer-events-auto flex flex-col gap-1.5">
-          <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-surface/95 shadow-lg backdrop-blur" role="group" aria-label="Map zoom">
+          <div className="flex w-8 flex-col overflow-hidden rounded-lg border border-border bg-surface/95 shadow-lg backdrop-blur" role="group" aria-label="Map zoom">
             {ZOOM_BUTTONS.map((b, index) => (
               <button
                 key={b.label}
@@ -332,7 +332,7 @@ export function MapView({
                 aria-label={b.label}
                 title={b.label}
                 onClick={() => zoomControl(b.action)}
-                className={`flex h-9 w-9 items-center justify-center text-muted transition-colors hover:bg-surface-2 hover:text-text ${index === 1 ? "border-t border-border" : ""}`}
+                className={`flex h-8 w-8 items-center justify-center text-muted transition-colors hover:bg-surface-2 hover:text-text ${index === 1 ? "border-t border-border" : ""}`}
               >
                 <Icon name={b.icon} className="h-4 w-4" />
               </button>
@@ -344,11 +344,11 @@ export function MapView({
             title={fullscreen ? "Exit full screen (Esc)" : "Full screen"}
             aria-pressed={fullscreen}
             onClick={onToggleFullscreen}
-            className="btn btn-icon bg-surface/95 shadow-lg backdrop-blur"
+            className="btn btn-icon h-8 w-8 bg-surface/95 shadow-lg backdrop-blur"
           >
             <Icon name={fullscreen ? "minimize" : "maximize"} className="h-4 w-4" />
           </button>
-          <div role="group" aria-label="Line style" className="ml-1.5 flex gap-0.5 rounded-lg border border-border bg-surface/90 p-0.5 backdrop-blur">
+          <div role="group" aria-label="Line style" className="flex w-8 flex-col gap-0.5 rounded-lg border border-border bg-surface/90 p-0.5 backdrop-blur">
             {LINE_STYLES.map((s) => {
               const active = s.style === edgeStyle;
               return (
@@ -359,7 +359,7 @@ export function MapView({
                   aria-pressed={active}
                   title={s.label}
                   onClick={() => setEdgeStyle(s.style)}
-                  className={`flex h-7 w-8 items-center justify-center rounded-md transition-colors ${
+                  className={`flex h-7 w-full items-center justify-center rounded-md transition-colors ${
                     active ? "bg-accent/15 text-accent" : "text-muted hover:bg-surface-2 hover:text-text"
                   }`}
                 >
@@ -371,8 +371,10 @@ export function MapView({
             })}
           </div>
         </div>
-        <Legend />
       </div>
+      </div>
+      <div className="pointer-events-none absolute inset-x-3 bottom-3 flex justify-end">
+        <Legend />
       </div>
       <AnimationNote
         mode={mode}

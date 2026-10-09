@@ -17,7 +17,7 @@ import {
   type WorkerResponse,
 } from "@karbird/web-engine";
 import { WASM_BYTES, WASM_URL } from "@/generated/wasm-manifest";
-import { MAX_RESPONSE_BYTES, countItems, liveRetryDelayMs, newerSeek, parseLiveHead, timelineTail } from "./worker-utils";
+import { MAX_RESPONSE_BYTES, countLiveBatchItems, countItems, liveItemEnvelope, liveRetryDelayMs, liveTopologySnapshot, newerSeek, parseLiveAction, parseLiveHead, parseLiveInfrastructure, parseLiveRecord, parseLiveSignals, timelineTail } from "./worker-utils";
 import { applyTopologyResponse, topologyCacheKey } from "./topology-cache";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -166,19 +166,61 @@ function liveConnect() {
   };
 }
 
-/** Batches go to WASM as raw text; only the message head is read in JS. */
+/** Individual telemetry frames are applied in WASM; only one compact item is parsed on UI. */
 function onLiveMessage(l: LiveState, text: string) {
   const head = parseLiveHead(text);
   if (!head) return;
   const { type, resume } = head;
   if (resume) l.resume = resume;
   switch (type) {
+    case "span":
+    case "log":
+    case "event": {
+      if (!engine) return;
+      const signal = parseLiveRecord(text);
+      const envelope = liveItemEnvelope(text);
+      if (!signal || !envelope) return;
+      const t0 = performance.now();
+      engine.applyBatch(envelope);
+      schedule();
+      postLive({
+        type: "signal",
+        resume: signal.resume,
+        signals: [{ kind: signal.kind, resume: signal.resume, storageCursor: signal.storageCursor, record: signal.record }],
+        applyMs: performance.now() - t0,
+      });
+      return;
+    }
     case "batch": {
       if (!engine || !resume) return;
       const t0 = performance.now();
       engine.applyBatch(text);
       schedule();
-      postLive({ type: "batch", items: Math.max(0, countItems(text) - 1), applyMs: performance.now() - t0, resume });
+      const signals = parseLiveSignals(text);
+      postLive({ type: "batch", items: countLiveBatchItems(text), applyMs: performance.now() - t0, resume, signals });
+      return;
+    }
+    case "infrastructure": {
+      if (!engine) return;
+      const snapshot = parseLiveInfrastructure(text);
+      if (!snapshot) return;
+      engine.setInfrastructure(JSON.stringify(snapshot));
+      schedule();
+      if (resume) postLive({ type: "infrastructure", resume, snapshot });
+      return;
+    }
+    case "action": {
+      if (!resume) return;
+      const action = parseLiveAction(text);
+      if (action) postLive({ type: "action", resume, ...action });
+      return;
+    }
+    case "topology": {
+      if (!engine) return;
+      const snapshot = liveTopologySnapshot(text);
+      if (!snapshot) return;
+      try { engine.loadTopology(snapshot); schedule(); }
+      catch { /* A later WebSocket topology snapshot can repair a malformed update. */ }
       return;
     }
     case "gap":

@@ -23,7 +23,7 @@ use crate::routes::account::ProjectRequest;
 use crate::routes::roles::{MemberDto, MemberUpdateRequest, RoleDto, RoleRequest, grant_json, validate_role_name};
 use crate::routes::session::EnvironmentDto;
 use crate::routes::signup::{normalise_email, required_name};
-use crate::routes::{parse_id, rfc3339};
+use crate::routes::{member_change_result, parse_id, rfc3339};
 use crate::state::AppState;
 use crate::system_permissions::{SystemPermission, SystemPermissionSet, check_account_change};
 
@@ -396,14 +396,6 @@ pub struct AdminProjectMemberRequest {
     pub email: String,
     /// Built-in project role: `owner`, `admin`, `operator` or `viewer`.
     pub role: String,
-}
-
-fn member_change_result(r: MemberChange, last: &'static str) -> ApiResult<()> {
-    match r {
-        MemberChange::Done => Ok(()),
-        MemberChange::NotFound => Err(ApiError::NotFound),
-        MemberChange::LastOwner => Err(ApiError::Conflict(last)),
-    }
 }
 
 #[utoipa::path(put, path = "/api/v1/admin/projects/{project_id}/members", tag = "admin", operation_id = "admin_put_project_member",

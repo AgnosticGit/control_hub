@@ -1,23 +1,27 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, scopedPath, unwrap, type Schemas } from "@/lib/api";
 import { formatClock, formatDurationNs, parseNs } from "@/lib/time";
 import type { PanelScope } from "./SignalsPanel";
+import type { WorkspaceActions } from "./useWorkspaceEngine";
 
 type Span = Schemas["SpanDto"];
 
 export function TracesPanel({
   scope,
+  actions,
   traceId,
   onTrace,
 }: {
   scope: PanelScope;
+  actions: WorkspaceActions;
   traceId: string | null;
   onTrace: (id: string | null) => void;
 }) {
   const [onlyErrors, setOnlyErrors] = useState(false);
+  const [liveSpans, setLiveSpans] = useState<Map<string, Span>>(() => new Map());
   const list = useQuery({
     queryKey: ["traces", scope.projectId, scope.environmentId, scope.from.toString(), scope.to.toString(), scope.serviceId, onlyErrors],
     queryFn: async () =>
@@ -36,9 +40,61 @@ export function TracesPanel({
         }),
       ),
     placeholderData: keepPreviousData,
-    refetchInterval: scope.live ? 5000 : false,
+    refetchInterval: false,
   });
-  const traces = list.data?.traces ?? [];
+  useEffect(() => {
+    if (!scope.live) return;
+    return actions.onLiveSignals((signals) => {
+      const incoming = signals.filter((signal) => signal.kind === "span").map((signal) => signal.record as Span);
+      if (!incoming.length) return;
+      setLiveSpans((current) => {
+        const next = new Map(current);
+        for (const span of incoming) next.set(span.span_id, span);
+        while (next.size > 2000) {
+          const oldest = next.keys().next().value;
+          if (oldest === undefined) break;
+          next.delete(oldest);
+        }
+        return next;
+      });
+    });
+  }, [actions, scope.live]);
+  const traces = useMemo(() => {
+    const stored = (list.data?.traces ?? []).filter((trace) => {
+      const start = BigInt(trace.start_ns);
+      return start >= scope.displayFrom && start < scope.displayTo;
+    });
+    if (!scope.live || liveSpans.size === 0) return stored;
+    const known = new Set(stored.map((trace) => trace.trace_id));
+    const groups = new Map<string, Span[]>();
+    for (const span of liveSpans.values()) {
+      const start = BigInt(span.start_ns);
+      if (start < scope.displayFrom || start >= scope.displayTo || known.has(span.trace_id)
+        || (scope.serviceId && span.service_id !== scope.serviceId)
+        || (onlyErrors && span.status_code !== 2)) continue;
+      const group = groups.get(span.trace_id) ?? [];
+      group.push(span);
+      groups.set(span.trace_id, group);
+    }
+    const liveSummaries = [...groups].map(([trace_id, spans]) => {
+      const start = spans.reduce((v, span) => BigInt(span.start_ns) < v ? BigInt(span.start_ns) : v, BigInt(spans[0]?.start_ns ?? "0"));
+      const end = spans.reduce((v, span) => BigInt(span.end_ns) > v ? BigInt(span.end_ns) : v, BigInt(spans[0]?.end_ns ?? "0"));
+      const root = spans.find((span) => !span.parent_span_id) ?? spans.reduce((a, b) => BigInt(a.start_ns) <= BigInt(b.start_ns) ? a : b);
+      const services = [...new Set(spans.map((span) => span.service_name))].sort();
+      return {
+        trace_id,
+        start_ns: start.toString(),
+        end_ns: end.toString(),
+        duration_ms: Number(end - start) / 1e6,
+        span_count: spans.length,
+        error_count: spans.filter((span) => span.status_code === 2).length,
+        root_name: root.name,
+        root_service: root.service_name,
+        services,
+      };
+    });
+    return [...stored, ...liveSummaries].sort((a, b) => BigInt(a.start_ns) > BigInt(b.start_ns) ? -1 : 1);
+  }, [list.data?.traces, liveSpans, scope.live, scope.displayFrom, scope.displayTo, scope.serviceId, onlyErrors]);
 
   return (
     <div className="flex h-full flex-col @3xl:flex-row">

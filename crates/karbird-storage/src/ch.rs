@@ -57,6 +57,47 @@ pub struct SpanRow {
     pub ingested_at: i64,
 }
 
+/// Narrow, durable span facts used by edge traffic queries. This keeps the edge chart's hot path
+/// away from the wide telemetry attributes column while preserving the stable span identity.
+#[derive(Debug, Clone, Row, Serialize, Deserialize)]
+pub struct EdgeSpanFactRow {
+    pub tenant_id: String,
+    pub project_id: String,
+    pub environment_id: String,
+    pub service_id: String,
+    pub trace_id: String,
+    pub span_id: String,
+    pub parent_span_id: String,
+    pub kind: u8,
+    pub target_entity_id: String,
+    pub start_time: i64,
+    pub request_size: Option<u64>,
+    pub response_size: Option<u64>,
+    pub ingested_at: i64,
+}
+
+impl From<&SpanRow> for EdgeSpanFactRow {
+    fn from(row: &SpanRow) -> Self {
+        let size =
+            |key: &str| row.attributes.iter().find(|(name, _)| name == key).and_then(|(_, value)| value.parse().ok());
+        Self {
+            tenant_id: row.tenant_id.clone(),
+            project_id: row.project_id.clone(),
+            environment_id: row.environment_id.clone(),
+            service_id: row.service_id.clone(),
+            trace_id: row.trace_id.clone(),
+            span_id: row.span_id.clone(),
+            parent_span_id: row.parent_span_id.clone(),
+            kind: row.kind,
+            target_entity_id: row.target_entity_id.clone(),
+            start_time: row.start_time,
+            request_size: size("http.request.body.size"),
+            response_size: size("http.response.body.size"),
+            ingested_at: row.ingested_at,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Row, Serialize, Deserialize)]
 pub struct LogRow {
     pub tenant_id: String,
@@ -251,6 +292,7 @@ pub struct EdgeTrafficRow {
     pub response_sized_calls: u64,
     pub request_bytes: u64,
     pub response_bytes: u64,
+    pub resume_cursor_ns: i64,
 }
 
 /// Request latency of one service instance now and in the baseline before it.
@@ -587,8 +629,8 @@ fn resource_addresses_sql() -> String {
     )
 }
 
-const REQUEST_SIZE: &str = "toUInt64OrNull(attributes['http.request.body.size'])";
-const RESPONSE_SIZE: &str = "toUInt64OrNull(attributes['http.response.body.size'])";
+const REQUEST_SIZE: &str = "request_size";
+const RESPONSE_SIZE: &str = "response_size";
 
 /// Per bucket of `bucket_ns` from `from`: calls over the edge and their declared body bytes.
 /// Binds: from, bucket size, the edge's inner binds (see [`ChStore::edge_traffic`]), limit.
@@ -597,22 +639,22 @@ fn edge_traffic_sql(edge: &EdgeSpans) -> String {
     let window = "start_time >= fromUnixTimestamp64Nano(?) AND start_time < fromUnixTimestamp64Nano(?)";
     let inner = match edge {
         EdgeSpans::Call { .. } => format!(
-            "SELECT c.start_time AS t, coalesce(c.c_req, p.p_req) AS req, coalesce(c.c_resp, p.p_resp) AS resp
+            "SELECT c.start_time AS t, c.ingested_at, coalesce(c.c_req, p.p_req) AS req, coalesce(c.c_resp, p.p_resp) AS resp
              FROM
-               (SELECT trace_id, span_id, {REQUEST_SIZE} AS p_req, {RESPONSE_SIZE} AS p_resp FROM spans FINAL
+             (SELECT trace_id, span_id, {REQUEST_SIZE} AS p_req, {RESPONSE_SIZE} AS p_resp FROM edge_span_facts FINAL
                 WHERE {SCOPE_WHERE} AND {window} AND service_id = ?) AS p
              INNER JOIN
-               (SELECT trace_id, parent_span_id, start_time, {REQUEST_SIZE} AS c_req, {RESPONSE_SIZE} AS c_resp
-                FROM spans FINAL
+               (SELECT trace_id, parent_span_id, start_time, ingested_at, {REQUEST_SIZE} AS c_req, {RESPONSE_SIZE} AS c_resp
+                FROM edge_span_facts FINAL
                 WHERE {SCOPE_WHERE} AND {window} AND service_id = ? AND kind IN (2, 5) AND parent_span_id != '') AS c
              ON p.trace_id = c.trace_id AND p.span_id = c.parent_span_id"
         ),
         EdgeSpans::Dependency { .. } => format!(
-            "SELECT start_time AS t, {REQUEST_SIZE} AS req, {RESPONSE_SIZE} AS resp FROM spans FINAL
+            "SELECT start_time AS t, ingested_at, {REQUEST_SIZE} AS req, {RESPONSE_SIZE} AS resp FROM edge_span_facts FINAL
              WHERE {SCOPE_WHERE} AND {window} AND service_id = ? AND target_entity_id = ?"
         ),
         EdgeSpans::ExternalClients { .. } => format!(
-            "SELECT start_time AS t, {REQUEST_SIZE} AS req, {RESPONSE_SIZE} AS resp FROM spans FINAL
+            "SELECT start_time AS t, ingested_at, {REQUEST_SIZE} AS req, {RESPONSE_SIZE} AS resp FROM edge_span_facts FINAL
              WHERE {SCOPE_WHERE} AND {window} AND service_id = ? AND kind = 2 AND parent_span_id = ''"
         ),
     };
@@ -621,7 +663,8 @@ fn edge_traffic_sql(edge: &EdgeSpans) -> String {
                 countIf(isNotNull(req) OR isNotNull(resp)) AS sized_calls,
                 countIf(isNotNull(req)) AS request_sized_calls,
                 countIf(isNotNull(resp)) AS response_sized_calls,
-                toUInt64(sum(ifNull(req, 0))) AS request_bytes, toUInt64(sum(ifNull(resp, 0))) AS response_bytes
+                toUInt64(sum(ifNull(req, 0))) AS request_bytes, toUInt64(sum(ifNull(resp, 0))) AS response_bytes,
+                toUnixTimestamp64Nano(max(ingested_at)) AS resume_cursor_ns
          FROM ({inner})
          GROUP BY bucket ORDER BY bucket LIMIT ?"
     )
@@ -770,6 +813,12 @@ impl ChStore {
 
     pub async fn insert_spans(&self, rows: &[SpanRow]) -> Result<()> {
         self.insert_rows("spans", rows).await
+    }
+
+    /// Persist idempotent narrow edge facts before the processor commits its source offset.
+    pub async fn insert_edge_span_facts(&self, rows: &[SpanRow]) -> Result<()> {
+        let facts = rows.iter().map(EdgeSpanFactRow::from).collect::<Vec<_>>();
+        self.insert_rows("edge_span_facts", &facts).await
     }
 
     pub async fn insert_logs(&self, rows: &[LogRow]) -> Result<()> {
@@ -1095,14 +1144,15 @@ impl ChStore {
         after: i64,
         upto: i64,
         limit: u32,
-    ) -> Result<Vec<TimelineSpanRow>> {
+        offset: u32,
+    ) -> Result<Vec<SpanRow>> {
         let q = self.client.query(&format!(
-            "SELECT {TIMELINE_SPAN_COLUMNS} FROM spans
+            "SELECT * FROM spans
              WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?)
                AND ingested_at > fromUnixTimestamp64Nano(?) AND ingested_at <= fromUnixTimestamp64Nano(?)
-             ORDER BY ingested_at LIMIT ?"
+             ORDER BY ingested_at, trace_id, span_id LIMIT ? OFFSET ?"
         ));
-        Ok(bind_scope(q, s).bind(event_from).bind(after).bind(upto).bind(limit).fetch_all().await?)
+        Ok(bind_scope(q, s).bind(event_from).bind(after).bind(upto).bind(limit).bind(offset).fetch_all().await?)
     }
 
     pub async fn live_logs(
@@ -1112,14 +1162,15 @@ impl ChStore {
         after: i64,
         upto: i64,
         limit: u32,
-    ) -> Result<Vec<TimelineLogRow>> {
+        offset: u32,
+    ) -> Result<Vec<LogRow>> {
         let q = self.client.query(&format!(
-            "SELECT {TIMELINE_LOG_COLUMNS} FROM logs
+            "SELECT * FROM logs
              WHERE {SCOPE_WHERE} AND time >= fromUnixTimestamp64Nano(?)
                AND ingested_at > fromUnixTimestamp64Nano(?) AND ingested_at <= fromUnixTimestamp64Nano(?)
-             ORDER BY ingested_at LIMIT ?"
+             ORDER BY ingested_at, log_id LIMIT ? OFFSET ?"
         ));
-        Ok(bind_scope(q, s).bind(event_from).bind(after).bind(upto).bind(limit).fetch_all().await?)
+        Ok(bind_scope(q, s).bind(event_from).bind(after).bind(upto).bind(limit).bind(offset).fetch_all().await?)
     }
 
     pub async fn live_events(
@@ -1129,14 +1180,15 @@ impl ChStore {
         after: i64,
         upto: i64,
         limit: u32,
+        offset: u32,
     ) -> Result<Vec<EventRow>> {
         let q = self.client.query(&format!(
             "SELECT ?fields FROM events
              WHERE {SCOPE_WHERE} AND event_time >= fromUnixTimestamp64Nano(?)
                AND ingested_at > fromUnixTimestamp64Nano(?) AND ingested_at <= fromUnixTimestamp64Nano(?)
-             ORDER BY ingested_at LIMIT ?"
+             ORDER BY ingested_at, event_id LIMIT ? OFFSET ?"
         ));
-        Ok(bind_scope(q, s).bind(event_from).bind(after).bind(upto).bind(limit).fetch_all().await?)
+        Ok(bind_scope(q, s).bind(event_from).bind(after).bind(upto).bind(limit).bind(offset).fetch_all().await?)
     }
 }
 
@@ -1202,6 +1254,7 @@ mod tests {
             include_str!("../../../infra/migrations/clickhouse/0002_log_templates_and_codecs.sql"),
             include_str!("../../../infra/migrations/clickhouse/0003_metrics.sql"),
             include_str!("../../../infra/migrations/clickhouse/0004_metrics_container_identity.sql"),
+            include_str!("../../../infra/migrations/clickhouse/0005_edge_span_facts.sql"),
         ] {
             let stmts = split_statements(sql);
             assert!(!stmts.is_empty());
@@ -1349,8 +1402,8 @@ mod tests {
             let sql = edge_traffic_sql(&edge);
             assert_eq!(placeholders(&sql), 2 + inner + 1, "{edge:?}: {sql}");
             assert_eq!(scoped_where_count(&sql), scopes, "{edge:?}: {sql}");
-            assert!(sql.contains("FROM spans FINAL"), "{sql}");
-            assert!(sql.contains("http.request.body.size") && sql.contains("http.response.body.size"), "{sql}");
+            assert!(sql.contains("FROM edge_span_facts FINAL"), "{sql}");
+            assert!(sql.contains("request_size") && sql.contains("response_size"), "{sql}");
             assert!(sql.contains("AS request_sized_calls") && sql.contains("AS response_sized_calls"), "{sql}");
             // Only declared sizes: never payloads or statements.
             for forbidden in ["'http.request.body'", "'http.response.body'", "db.statement", "db.query.text"] {
@@ -1363,6 +1416,49 @@ mod tests {
         assert!(call.contains("kind IN (2, 5)") && call.contains("p.span_id = c.parent_span_id"), "{call}");
         let clients = edge_traffic_sql(&EdgeSpans::ExternalClients { target: "x".into() });
         assert!(clients.contains("kind = 2 AND parent_span_id = ''"), "{clients}");
+    }
+
+    #[test]
+    fn edge_span_facts_keep_only_declared_parseable_sizes_and_stable_identity() {
+        let row = SpanRow {
+            tenant_id: "tenant".into(),
+            project_id: "project".into(),
+            environment_id: "prod".into(),
+            service_id: "svc".into(),
+            service_name: "service".into(),
+            service_namespace: String::new(),
+            service_instance_id: String::new(),
+            service_version: String::new(),
+            trace_id: "trace".into(),
+            span_id: "span".into(),
+            parent_span_id: "parent".into(),
+            name: "GET /".into(),
+            kind: 3,
+            start_time: 100,
+            end_time: 200,
+            duration_ns: 100,
+            status_code: 1,
+            status_message: String::new(),
+            target_entity_id: "target".into(),
+            target_name: "target".into(),
+            target_kind: "database".into(),
+            attributes: vec![
+                ("http.request.body.size".into(), "42".into()),
+                ("http.response.body.size".into(), "unknown".into()),
+                ("db.statement".into(), "sensitive".into()),
+            ],
+            resource_attributes: vec![],
+            batch_id: "batch".into(),
+            ingested_at: 300,
+        };
+        let fact = EdgeSpanFactRow::from(&row);
+        assert_eq!(
+            (fact.tenant_id.as_str(), fact.trace_id.as_str(), fact.span_id.as_str()),
+            ("tenant", "trace", "span")
+        );
+        assert_eq!(fact.request_size, Some(42));
+        assert_eq!(fact.response_size, None);
+        assert!(!serde_json::to_string(&fact).unwrap().contains("sensitive"));
     }
 
     #[test]

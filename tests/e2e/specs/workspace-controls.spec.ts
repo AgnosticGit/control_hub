@@ -80,8 +80,10 @@ test.describe("workspace controls on demo data", () => {
   test("removes map search and exposes map labels as searchable page text", async ({ page }) => {
     await expect(page.getByRole("searchbox", { name: "Find component on map" })).toHaveCount(0);
     const mapText = page.getByRole("region", { name: "System Map text" });
+    await expect(mapText).toBeVisible();
     await expect(mapText.getByText("gateway", { exact: true })).toBeAttached();
     await expect(mapText.getByText("orders", { exact: true })).toBeAttached();
+    await expect(mapText).toHaveCSS("user-select", "none");
     expect(await page.evaluate(() => window.find("gateway"))).toBe(true);
   });
 

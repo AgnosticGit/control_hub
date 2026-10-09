@@ -763,7 +763,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description WebSocket upgrade. Server messages: hello, batch, gap, heartbeat, error (JSON text frames). */
+        /** @description WebSocket upgrade. Server messages: hello, span, log, event, infrastructure, topology, gap, heartbeat, error (JSON text frames). */
         get: operations["live"];
         put?: never;
         post?: never;
@@ -1460,7 +1460,11 @@ export interface components {
             peak_response_bps?: number | null;
             relation: components["schemas"]["EdgeRelation"];
             request_bytes: number[];
+            request_sized_calls: number[];
             response_bytes: number[];
+            response_sized_calls: number[];
+            /** @description Storage watermark represented by this baseline; subsequent WebSocket spans can be applied once. */
+            resume_cursor_ns: string;
             /**
              * Format: double
              * @description `total_sized_calls / total_calls`; `null` without calls.
@@ -4784,6 +4788,8 @@ export interface operations {
             query?: {
                 /** @description Resume cursor from a previous message (ingestion time, decimal nanoseconds). */
                 resume?: string;
+                /** @description Include coalesced infrastructure snapshots while the infrastructure map layer is enabled. */
+                infrastructure?: boolean;
             };
             header?: never;
             path: {

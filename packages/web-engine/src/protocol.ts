@@ -51,11 +51,21 @@ export type LiveEvent =
   | { type: "connecting"; attempt: number }
   | { type: "open" }
   | { type: "closed"; attempt: number; retryInMs: number; code: number }
-  | { type: "batch"; items: number; applyMs: number; resume: string }
+  | { type: "signal"; resume: string; signals: [LiveSignal]; applyMs: number }
+  /** Legacy frame accepted only during rolling upgrades; the server no longer emits it. */
+  | { type: "batch"; items: number; applyMs: number; resume: string; signals: LiveSignal[] }
+  | { type: "infrastructure"; resume: string; snapshot: InfrastructureSnapshot }
+  | { type: "action"; resume: string; plan: Record<string, unknown>; snapshot: boolean }
   | { type: "heartbeat"; resume: string }
-  /** The server skipped rows (size limit); reload the range over HTTP. */
+  /** The server requires a resume reconnect to continue recovery. */
   | { type: "gap"; resume: string }
   | { type: "error"; message: string };
+
+/** Full, already-redacted records delivered to side panels over the same live channel. */
+export type LiveSignal =
+  | { kind: "span"; resume: string; storageCursor: string; record: Record<string, unknown> }
+  | { kind: "log"; resume: string; storageCursor: string; record: Record<string, unknown> }
+  | { kind: "event"; resume: string; storageCursor: string; record: Record<string, unknown> };
 
 export interface InitResult {
   abiVersion: number;

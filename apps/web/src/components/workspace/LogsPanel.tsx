@@ -2,10 +2,11 @@
 
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, scopedPath, unwrap, type Schemas } from "@/lib/api";
 import { formatClock, parseNs } from "@/lib/time";
 import type { PanelScope } from "./SignalsPanel";
+import type { WorkspaceActions } from "./useWorkspaceEngine";
 import { useDebounced } from "./useDebounced";
 import {
   SOURCE_CHOICES,
@@ -32,12 +33,13 @@ function severityClass(n: number) {
   return "text-muted";
 }
 
-export function LogsPanel({ scope, onTrace, onSelectRecord }: { scope: PanelScope; onTrace: (id: string) => void; onSelectRecord: (serviceName: string, time: bigint) => void }) {
+export function LogsPanel({ scope, actions, onTrace, onSelectRecord }: { scope: PanelScope; actions: WorkspaceActions; onTrace: (id: string) => void; onSelectRecord: (serviceName: string, time: bigint) => void }) {
   const [minSeverity, setMinSeverity] = useState(0);
   const [text, setText] = useState("");
   const [source, setSource] = useState<LogSourceChoice>("auto");
   const [like, setLike] = useState<{ id: string; body: string } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [liveLogs, setLiveLogs] = useState<Log[]>([]);
   const q = useDebounced(text.trim(), 300);
 
   const filters: LogFilters = {
@@ -72,11 +74,35 @@ export function LogsPanel({ scope, onTrace, onSelectRecord }: { scope: PanelScop
       ),
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     placeholderData: keepPreviousData,
-    refetchInterval: scope.live ? 3000 : false,
+    refetchInterval: false,
   });
 
-  const pages = query.data?.pages ?? [];
-  const logs: Log[] = flattenPages(pages);
+  const pages = useMemo(() => query.data?.pages ?? [], [query.data?.pages]);
+  useEffect(() => {
+    if (!scope.live) return;
+    return actions.onLiveSignals((signals) => {
+      const incoming = signals.filter((signal) => signal.kind === "log").map((signal) => signal.record as Log);
+      if (incoming.length) setLiveLogs((current) => [...current, ...incoming].slice(-2000));
+    });
+  }, [actions, scope.live]);
+  const logs: Log[] = useMemo(() => {
+    const base = flattenPages(pages).filter((log) => {
+      const time = BigInt(log.time_ns);
+      return time >= scope.displayFrom && time < scope.displayTo;
+    });
+    if (!scope.live || source === "archive") return base;
+    const inRange = liveLogs.filter((log) => {
+      const time = BigInt(log.time_ns);
+      return time >= scope.displayFrom && time < scope.displayTo
+        && (!scope.serviceId || log.service_id === scope.serviceId)
+        && log.severity_number >= minSeverity
+        && (!q || log.body.toLocaleLowerCase().includes(q.toLocaleLowerCase()))
+        && (!like || log.template_id === like.id);
+    });
+    const merged = new Map(base.map((log) => [log.id, log]));
+    for (const log of inRange) merged.set(log.id, log);
+    return [...merged.values()].sort((a, b) => (BigInt(a.time_ns) > BigInt(b.time_ns) ? -1 : 1));
+  }, [pages, scope.live, scope.displayFrom, scope.displayTo, scope.serviceId, source, liveLogs, minSeverity, q, like]);
   const badge = sourceBadge(combinedSource(pages));
   const parentRef = useRef<HTMLDivElement | null>(null);
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual returns non-memoizable functions by design

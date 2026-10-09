@@ -42,7 +42,7 @@ Today `crates/karbird-processor/src/convert.rs` contains the canonical envelope 
 
 - Replacing Kafka, ClickHouse, the REST API, or the browser WebSocket protocol.
 - A separate live service, Redis/NATS, or a new broker. API replicas each read a full copy under unique group IDs; a shared fan-out backbone can replace this if duplicate reads become material.
-- Streaming metrics or infrastructure telemetry through this live timeline channel unless the current protocol already represents them as timeline items.
+- Streaming unbounded raw metric points or historical query results through the live channel. Live infrastructure updates are bounded, aggregated snapshots.
 - Exactly-once delivery. The contract is at-least-once with stable-ID deduplication and explicit gap recovery.
 
 ## Acceptance criteria
@@ -55,6 +55,31 @@ Today `crates/karbird-processor/src/convert.rs` contains the canonical envelope 
 6. Restart/replay, duplicate delivery, malformed records, broker outage, session revocation, and gap recovery are covered by tests.
 7. Existing initial snapshot/history and HTTP recovery still work.
 8. `just check`, `just test`, integration, and e2e suites pass where their required services are available.
+
+## Workspace multiplexing extension (2026-10-09)
+
+The workspace uses one authenticated, environment-scoped WebSocket for live spans, logs, events,
+and optional infrastructure snapshots. Existing HTTP APIs remain the source for initial page data,
+historical ranges, filtered/paginated searches, and trace details. The browser does not poll live
+signal endpoints while the socket is healthy. A gap or reconnect uses the existing bounded HTTP
+timeline recovery and refreshes the currently visible signal query.
+
+- Live timeline items carry the complete safe DTO for spans, logs, and events in addition to the
+  compact WASM timeline item. A bounded client ring and query-cache merge make the same live items
+  visible in the side panels without parsing telemetry on the UI thread.
+- Infrastructure snapshots are sent only when the connection opts into the infrastructure layer,
+  at a 10-second cadence. The API shares/coalesces the ClickHouse-backed snapshot by exact scope,
+  so many sockets for one environment cause one snapshot load per interval. No per-socket polling
+  of ClickHouse is allowed.
+- Infrastructure snapshot messages update only infrastructure state; topology remains on its
+  existing revision-aware route. Initial selected-time/history snapshots continue using HTTP.
+- Live message kinds remain explicitly typed (`batch`, `infrastructure`, and existing control
+  messages); unknown kinds are ignored safely. Scope authorization, queue bounds, resume cursors,
+  and session rechecks apply equally to every message kind.
+- Historical search and pagination are intentionally HTTP queries. Live records are merged only
+  into the first page when they satisfy the active service/severity/text/time filters; dedupe is by
+  stable record ID. Trace summaries are incrementally merged from full span DTOs; trace details
+  remain an on-demand HTTP request.
 
 ## Risks and decisions to validate during implementation
 

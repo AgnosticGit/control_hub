@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, errorMessage, scopedPath, unwrap, type Schemas } from "@/lib/api";
-import { OPEN_STATES } from "./controls";
 
 export { errorMessage };
 
@@ -21,7 +20,7 @@ export function useActions(projectId: string, environmentId: string, enabled: bo
     queryKey: ["actions", projectId, environmentId],
     enabled,
     queryFn: async () => unwrap(await api.GET(ACTIONS_BASE, { params: { path } })),
-    refetchInterval: (q) => ((q.state.data ?? []).some((p) => OPEN_STATES.has(p.state)) ? 2000 : 15_000),
+    refetchInterval: false,
   });
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["actions", projectId, environmentId] });

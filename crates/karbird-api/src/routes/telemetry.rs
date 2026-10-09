@@ -322,7 +322,11 @@ pub async fn topology(
     let r = resolve_range(q.from.as_deref(), q.to.as_deref(), MAX_RANGE_NS)?;
     let response = crate::topology::read(&state, &scope, r, q.live).await?;
     let response = if let Some(at) = parse_ns(q.at.as_deref(), "at")? {
-        let snapshot = crate::routes::infrastructure::load_snapshot(&state, &scope, at).await?;
+        let snapshot = if q.live {
+            crate::routes::infrastructure::load_snapshot_coalesced(&state, &scope, at).await?
+        } else {
+            crate::routes::infrastructure::load_snapshot(&state, &scope, at).await?
+        };
         crate::topology::with_placement(&state, &scope, response, snapshot).await?
     } else {
         response
@@ -582,7 +586,7 @@ fn trace_page(rows: Vec<TraceSummaryRow>, limit: u32) -> (Vec<TraceSummaryDto>, 
     (traces, next_cursor, has_more)
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 pub struct SpanDto {
     pub trace_id: String,
     pub span_id: String,
@@ -605,7 +609,7 @@ pub struct SpanDto {
     pub attributes: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 pub struct LogDto {
     pub id: String,
     pub time_ns: String,
@@ -624,7 +628,7 @@ pub struct LogDto {
     pub attributes: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 pub struct EventDto {
     pub id: String,
     pub event_type: String,
@@ -655,7 +659,7 @@ pub struct TraceDetailResponse {
     pub completeness: Completeness,
 }
 
-fn log_dto(l: LogRow) -> LogDto {
+pub(crate) fn log_dto(l: LogRow) -> LogDto {
     LogDto {
         id: l.log_id,
         time_ns: ns(l.time),
@@ -672,7 +676,7 @@ fn log_dto(l: LogRow) -> LogDto {
     }
 }
 
-fn event_dto(e: karbird_storage::ch::EventRow) -> EventDto {
+pub(crate) fn event_dto(e: karbird_storage::ch::EventRow) -> EventDto {
     EventDto {
         id: e.event_id,
         event_type: e.event_type,
@@ -703,7 +707,7 @@ fn missing_parents(spans: &[SpanRow]) -> Vec<String> {
     missing
 }
 
-fn span_dto(s: SpanRow) -> SpanDto {
+pub(crate) fn span_dto(s: SpanRow) -> SpanDto {
     SpanDto {
         duration_ms: s.duration_ns as f64 / 1e6,
         trace_id: s.trace_id,

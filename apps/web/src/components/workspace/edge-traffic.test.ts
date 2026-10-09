@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TopologyView } from "@karbird/web-engine";
 import {
   areaPath,
+  applyLiveEdgeContribution,
   bucketRates,
   edgeEnds,
   edgeIndex,
@@ -9,10 +10,74 @@ import {
   formatMs,
   formatPercent,
   formatRate,
+  LiveEdgeAccumulator,
   peakIndex,
   sizeNote,
   sizeState,
+  type EdgeTraffic,
 } from "./edge-traffic";
+
+function trafficFixture(): EdgeTraffic {
+  return {
+    source: "svc_a", target: "svc_b", relation: "calls", from_ns: "0", to_ns: "60000000000",
+    buckets: 6, bucket_ns: "10000000000", resume_cursor_ns: "100", calls: [0, 0, 0, 0, 0, 0],
+    sized_calls: [0, 0, 0, 0, 0, 0], request_sized_calls: [0, 0, 0, 0, 0, 0],
+    response_sized_calls: [0, 0, 0, 0, 0, 0], request_bytes: [0, 0, 0, 0, 0, 0],
+    response_bytes: [0, 0, 0, 0, 0, 0], total_calls: 0, total_sized_calls: 0,
+    total_request_sized_calls: 0, total_response_sized_calls: 0, total_request_bytes: 0,
+    total_response_bytes: 0, size_coverage: null, avg_request_bps: null, avg_response_bps: null,
+    peak_request_bps: null, peak_request_at_ns: null, peak_response_bps: null, peak_response_at_ns: null,
+  };
+}
+
+const spanSignal = (record: Record<string, unknown>, storageCursor: string) => ({ kind: "span", resume: storageCursor, storageCursor, record });
+
+describe("live edge traffic", () => {
+  it("resolves child-before-parent service calls once and ignores records covered by the baseline", () => {
+    const accumulator = new LiveEdgeAccumulator({ source: "svc_a", target: "svc_b" }, "calls", true, 100n);
+    const child = { trace_id: "t", span_id: "child", parent_span_id: "parent", service_id: "svc_b", kind: 2,
+      start_ns: "20000000000", attributes: { "http.request.body.size": "120", "http.response.body.size": "300" } };
+    const parent = { trace_id: "t", span_id: "parent", service_id: "svc_a", kind: 2, start_ns: "19000000000" };
+    expect(accumulator.accept([spanSignal(child, "101")])).toEqual([]);
+    expect(accumulator.accept([spanSignal(parent, "102")])).toEqual([
+      { id: "t:child", timeNs: 20_000_000_000n, requestBytes: 120, responseBytes: 300, storageCursor: 101n },
+    ]);
+    expect(accumulator.accept([spanSignal(child, "103")])).toEqual([]);
+    expect(accumulator.accept([spanSignal({ ...child, span_id: "old" }, "100")])).toEqual([]);
+  });
+
+  it("matches dependency spans by source and target entity", () => {
+    const accumulator = new LiveEdgeAccumulator({ source: "svc_a", target: "db" }, "depends_on", true, 0n);
+    expect(accumulator.accept([spanSignal({ trace_id: "t", span_id: "s", service_id: "svc_a", kind: 3,
+      target_entity_id: "db", start_ns: "1000000000" }, "1")] )).toHaveLength(1);
+    expect(accumulator.accept([spanSignal({ trace_id: "t", span_id: "other", service_id: "svc_a", kind: 3,
+      target_entity_id: "cache", start_ns: "1000000000" }, "2")])).toEqual([]);
+  });
+
+  it("updates the matching bucket and keeps the cursor monotonic", () => {
+    const updated = applyLiveEdgeContribution(trafficFixture(), {
+      id: "t:s", timeNs: 25_000_000_000n, requestBytes: 1000, responseBytes: 500, storageCursor: 150n,
+    }, 60_000_000_000n);
+    expect(updated.calls).toEqual([0, 0, 1, 0, 0, 0]);
+    expect(updated.request_bytes).toEqual([0, 0, 1000, 0, 0, 0]);
+    expect(updated.total_calls).toBe(1);
+    expect(updated.avg_request_bps).toBeCloseTo(1000 / 60);
+    expect(updated.resume_cursor_ns).toBe("150");
+    const older = applyLiveEdgeContribution(updated, {
+      id: "t:s2", timeNs: 26_000_000_000n, requestBytes: null, responseBytes: null, storageCursor: 120n,
+    }, 60_000_000_000n);
+    expect(older.resume_cursor_ns).toBe("150");
+  });
+
+  it("slides the fixed bucket window when a live span advances beyond its end", () => {
+    const updated = applyLiveEdgeContribution(trafficFixture(), {
+      id: "t:late", timeNs: 65_000_000_000n, requestBytes: 10, responseBytes: null, storageCursor: 200n,
+    }, 65_000_000_000n);
+    expect(updated.from_ns).toBe("10000000000");
+    expect(updated.to_ns).toBe("70000000000");
+    expect(updated.calls).toEqual([0, 0, 0, 0, 0, 1]);
+  });
+});
 
 describe("edgeEnds / edgeIndex", () => {
   const node = (index: number, id: string) => ({ index, id, name: id, kind: "service" as const, provenance: "observed" as const, x: 0, y: 0 });

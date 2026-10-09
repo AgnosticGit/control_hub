@@ -2026,6 +2026,20 @@ mod tests {
         assert_eq!(like_escape(r"50%_a\b"), r"50\%\_a\\b");
     }
 
+    #[test]
+    fn action_plan_notifications_are_transactional_and_carry_only_scope_and_id() {
+        let sql = include_str!("../../../infra/migrations/postgres/0014_action_plan_notifications.sql");
+        assert!(sql.contains("AFTER INSERT OR UPDATE OR DELETE ON action_plans"));
+        assert!(sql.contains("pg_notify("));
+        assert!(sql.contains("'karbird_action_plan_changed'"));
+        for field in ["tenant_id", "project_id", "environment_id", "plan_id"] {
+            assert!(sql.contains(&format!("'{field}'")), "missing {field}");
+        }
+        for secret in ["reason", "params", "created_by_email", "result", "verification"] {
+            assert!(!sql.contains(&format!("'{secret}'")), "notification must not include {secret}");
+        }
+    }
+
     #[tokio::test]
     async fn an_empty_role_prefix_is_refused_before_touching_the_database() {
         let pg = PgStore::connect_lazy("postgres://u:p@127.0.0.1:1/x", 1).unwrap();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countItems, liveRetryDelayMs, newerSeek, parseLiveHead, timelineTail } from "./worker-utils";
+import { countItems, countLiveBatchItems, liveItemEnvelope, liveRetryDelayMs, liveTopologySnapshot, newerSeek, parseLiveAction, parseLiveHead, parseLiveInfrastructure, parseLiveRecord, parseLiveSignals, timelineTail } from "./worker-utils";
 
 describe("timelineTail", () => {
   it("reads the metadata after the items array without parsing the items", () => {
@@ -64,6 +64,60 @@ describe("parseLiveHead", () => {
 
   it("only looks at the first 128 characters", () => {
     expect(parseLiveHead(`${" ".repeat(128)}{"type":"batch"}`)).toBeNull();
+  });
+});
+
+describe("live side-channel payloads", () => {
+  it("accepts committed action updates and initial snapshot entries", () => {
+    expect(parseLiveAction('{"type":"action","snapshot":true,"plan":{"id":"p1","state":"running"}}'))
+      .toEqual({ plan: { id: "p1", state: "running" }, snapshot: true });
+    expect(parseLiveAction('{"type":"action","snapshot":false,"plan":{"id":"p2"}}'))
+      .toEqual({ plan: { id: "p2" }, snapshot: false });
+    expect(parseLiveAction('{"type":"action","plan":[]}')).toBeNull();
+    expect(parseLiveAction("invalid")).toBeNull();
+  });
+
+  it("parses one independently framed live record and makes its timeline item consumable by WASM", () => {
+    const text = JSON.stringify({
+      type: "span", resume: "42", storage_cursor: "40",
+      item: { type: "span", span_id: "s1" },
+      record: { span_id: "s1", trace_id: "t1" },
+    });
+    expect(parseLiveRecord(text)).toEqual({
+      kind: "span", resume: "42", storageCursor: "40", item: { type: "span", span_id: "s1" }, record: { span_id: "s1", trace_id: "t1" },
+    });
+    expect(JSON.parse(liveItemEnvelope(text) ?? "null")).toEqual({ items: [{ type: "span", span_id: "s1" }] });
+    expect(parseLiveRecord('{"type":"batch","items":[]}')).toBeNull();
+  });
+
+  it("extracts only typed records from the same batch frame", () => {
+    const text = JSON.stringify({
+      type: "batch", resume: "42", items: [{ type: "log" }],
+      signals: [
+        { kind: "log", record: { id: "l1", body: "hello" } },
+        { kind: "unknown", resume: "42", record: { id: "x" } },
+        { kind: "event", resume: "42", record: null },
+      ],
+    });
+    expect(parseLiveSignals(text)).toEqual([{ kind: "log", resume: "42", storageCursor: "42", record: { id: "l1", body: "hello" } }]);
+    expect(countLiveBatchItems(text)).toBe(1);
+  });
+
+  it("does not mistake a signal's type attribute for a timeline item", () => {
+    expect(countLiveBatchItems('{"type":"batch","items":[{"type":"log"}],"signals":[{"kind":"log","record":{"attributes":{"type":"exception"}}}]}')).toBe(1);
+  });
+
+  it("accepts a valid infrastructure snapshot and ignores malformed data", () => {
+    expect(parseLiveInfrastructure('{"type":"infrastructure","resume":"1","snapshot":{"hosts":[],"containers":[]}}')).toEqual({ hosts: [], containers: [] });
+    expect(parseLiveInfrastructure('{"type":"infrastructure","snapshot":null}')).toBeNull();
+    expect(parseLiveInfrastructure("invalid")).toBeNull();
+  });
+
+  it("extracts a topology snapshot raw for WASM without parsing the graph on the UI thread", () => {
+    const text = '{"type":"topology","resume":"42","snapshot":{"nodes":[{"id":"svc"}],"edges":[]}}';
+    expect(JSON.parse(liveTopologySnapshot(text) ?? "null")).toEqual({ nodes: [{ id: "svc" }], edges: [] });
+    expect(liveTopologySnapshot('{"type":"batch","snapshot":{}}')).toBeNull();
+    expect(liveTopologySnapshot('{"type":"topology","resume":"42"}')).toBeNull();
   });
 });
 

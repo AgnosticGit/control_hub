@@ -14,6 +14,7 @@ SDK events client ──────POST /api/v1/events/batch┘
                                                  ▼
                               karbird-processor (:9465 admin)
                                  per partition: fetch → decode → insert into ClickHouse
+                                 → persist idempotent edge_span_facts for the live traffic chart
                                  → record undecodable records in processing_errors
                                  → advance the offset in PostgreSQL (consumer_offsets)
                                                  ▼
@@ -56,6 +57,10 @@ karbird CLI `context` / `mcp` ──read-only API token──▶ karbird-api (GE
   Rows have deterministic keys (IDs are derived from the envelope, and span IDs come from OTLP),
   and the tables are `ReplacingMergeTree(ingested_at)`, so duplicates collapse on merge. Queries
   that must be exact use `FINAL`. See ADR-0004.
+- The processor and live reader use the ingest envelope's `received_time_unix_nano` as the stable
+  storage cursor. This differs from the WebSocket resume cursor, which orders live delivery.
+  `edge_span_facts` is written before the processor commits its PostgreSQL offset, uses stable span
+  identity and backs the edge traffic query; redelivery replaces a fact instead of incrementing it.
 - **Undecodable records** do not block the partition. They are stored in `processing_errors`
   (payload capped at 1 MiB), counted, and shown through the coverage endpoint.
 - **No silent drops.** Every item that is rejected, truncated or fails increments a counter,
@@ -76,15 +81,18 @@ karbird CLI `context` / `mcp` ──read-only API token──▶ karbird-api (GE
 - Every seek carries a generation number. The engine drops stale seeks, and the UI ignores frames
   from older generations. Seeks, viewport changes and filter changes that arrive in the same tick
   are merged into a single frame.
-- Live batches are merged into the existing timeline index incrementally. A full rebuild happens
+- Live telemetry frames are merged into the existing timeline index incrementally. A full rebuild happens
   only on structural changes: a new node or edge (which changes the state-vector layout), or a
   parent span that arrives after its child. The diagnostics popover counts both merges and
   rebuilds, and a property test checks that incremental merges equal a full build.
+- The selected edge chart starts from the durable ClickHouse aggregate and applies newly delivered
+  matching span records from the same WebSocket. Its storage cursor keeps catch-up and reconnects
+  from counting records already included in the chart baseline.
 - Modes:
-  - LIVE: WebSocket `…/live` owned by the Worker (`hello`/`batch`/`gap`/`heartbeat`), with a
-    resume cursor on reconnect. On `gap` the window is reloaded over HTTP. After 3 failed
-    reconnects it falls back to polling every 2 s with a 10 s overlap. The badge shows
-    "Live: WebSocket" or "Live: polling".
+  - LIVE: WebSocket `…/live` owned by the Worker (`hello`/`span`/`log`/`event`/`gap`/`heartbeat`),
+    with a resume cursor on reconnect. The API pages durable ClickHouse catch-up results and sends
+    each record in its own frame. A closed or delayed socket marks the view stale and reconnects
+    with backoff; live telemetry never falls back to periodic HTTP polling.
   - PAUSED: stops following live data.
   - REPLAY: a requestAnimationFrame clock at 0.1–10x.
   - HISTORICAL: an explicit range of at most 7 days.

@@ -1,11 +1,11 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TimelineTracks } from "@karbird/web-engine";
 import { Icon } from "@/components/ui/Icon";
-import { api, scopedPath, unwrap } from "@/lib/api";
+import { api, scopedPath, unwrap, type Schemas } from "@/lib/api";
 import { RESOURCE_COLOR, cssColor, serviceColors } from "@/renderer/service-colors";
 import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime } from "@/lib/time";
 import type { EngineState, WorkspaceActions } from "../useWorkspaceEngine";
@@ -161,11 +161,13 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const setView = (v: View) => setUserView(v.from === bounds.from && v.to === bounds.to ? null : v);
 
   const ready = state.phase === "ready";
+  const queryClient = useQueryClient();
+  const actionPlansKey = useMemo(() => ["actions", projectId, environmentId] as const, [projectId, environmentId]);
   const dataKey = `${state.load?.at ?? 0}|${filterKey}`;
   const tracks = useTracks(actions, view, TIMELINE_TRACK_BUCKETS, CLIP_CAP, dataKey, ready);
 
   const plans = useQuery({
-    queryKey: ["actions", projectId, environmentId],
+    queryKey: actionPlansKey,
     enabled: ready,
     queryFn: async () =>
       unwrap(
@@ -173,8 +175,14 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
           params: { path: scopedPath(projectId, environmentId) },
         }),
       ),
-    refetchInterval: 15_000,
+    refetchInterval: false,
   });
+  useEffect(() => actions.onActionPlan((plan) => {
+    queryClient.setQueryData<Schemas["ActionPlanDto"][]>(actionPlansKey, (current = []) => {
+      const index = current.findIndex((item) => item.id === plan.id);
+      return index < 0 ? [...current, plan] : current.map((item) => item.id === plan.id ? plan : item);
+    });
+  }), [actions, actionPlansKey, queryClient]);
   const actionBars = useMemo<ActionBar[]>(() => {
     const out: ActionBar[] = [];
     for (const p of plans.data ?? []) {

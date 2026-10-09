@@ -102,10 +102,6 @@ struct Ctx {
     stop: watch::Receiver<bool>,
 }
 
-fn now_ns() -> i64 {
-    chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
-}
-
 /// Dead-letter rows keep the raw record only up to `MAX_DEAD_LETTER_PAYLOAD`.
 fn dead_letter_payload(payload: &[u8]) -> Option<&[u8]> {
     (payload.len() <= MAX_DEAD_LETTER_PAYLOAD).then_some(payload)
@@ -176,7 +172,6 @@ async fn process_batch(
     if let Some(lag) = ctx.metrics.lag.get(partition as usize) {
         lag.store(high_watermark.saturating_sub(next), Ordering::Relaxed);
     }
-    let ingested_at = now_ns();
     let mut batch = convert::Converted::default();
     let mut dead = Vec::new();
     let mut max_received = 0_i64;
@@ -184,7 +179,7 @@ async fn process_batch(
         let value = msg.payload().unwrap_or_default();
         match convert::decode_envelope(value).and_then(|env| {
             max_received = max_received.max(env.received_time_unix_nano);
-            convert::convert(&env, ingested_at)
+            convert::convert(&env, env.received_time_unix_nano)
         }) {
             Ok(converted) => batch.extend(converted),
             Err(error) => dead.push((msg.offset(), error, value.to_vec())),
@@ -225,6 +220,7 @@ async fn process_batch(
     if !batch.is_empty()
         && retry_until_ok(ctx, "clickhouse insert", || async {
             ctx.ch.insert_spans(&batch.spans).await?;
+            ctx.ch.insert_edge_span_facts(&batch.spans).await?;
             ctx.ch.insert_logs(&batch.logs).await?;
             ctx.ch.insert_events(&batch.events).await?;
             ctx.ch.insert_metrics(&batch.metrics).await?;

@@ -7,6 +7,7 @@ export interface MapSelection {
 
 /** Keep the selection legible while gently quieting the rest of the map. */
 export const SELECTION_DIM_ALPHA = 0.48;
+export const EDGE_SELECTION_DIM_ALPHA = 0.28;
 
 /** Width of the continuous focus ribbon beneath an incident edge. */
 export function incidentGlowWidth(edgeWidth: number, inferred: boolean): number {
@@ -20,6 +21,10 @@ export function toggleSelection<T>(selected: T | null, clicked: T | null): T | n
 
 export function selectionAlpha(selection: MapSelection): number {
   return selection.node !== null || selection.edge !== null || selection.host !== null ? SELECTION_DIM_ALPHA : 1;
+}
+
+export function edgeFadeAlpha(focused: boolean, selection: MapSelection): number {
+  return focused || selectionAlpha(selection) === 1 ? 1 : EDGE_SELECTION_DIM_ALPHA;
 }
 
 export function nodeFocused(node: number, hostId: string | null, selection: MapSelection): boolean {

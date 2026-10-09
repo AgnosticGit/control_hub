@@ -1,16 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api, scopedPath, unwrap } from "@/lib/api";
 import { formatClock, parseNs } from "@/lib/time";
 import type { PanelScope } from "./SignalsPanel";
+import type { WorkspaceActions } from "./useWorkspaceEngine";
+import type { Schemas } from "@/lib/api";
 import { eventAttributeText, filterEvents } from "./events-query";
 
-export function EventsPanel({ scope, onTrace, onSelectRecord }: { scope: PanelScope; onTrace: (id: string) => void; onSelectRecord: (serviceName: string, time: bigint) => void }) {
+type Event = Schemas["EventDto"];
+
+export function EventsPanel({ scope, actions, onTrace, onSelectRecord }: { scope: PanelScope; actions: WorkspaceActions; onTrace: (id: string) => void; onSelectRecord: (serviceName: string, time: bigint) => void }) {
   const [search, setSearch] = useState("");
   const [eventType, setEventType] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [liveEvents, setLiveEvents] = useState<Event[]>([]);
   const query = useQuery({
     queryKey: ["events", scope.projectId, scope.environmentId, scope.from.toString(), scope.to.toString()],
     queryFn: async () =>
@@ -23,9 +28,28 @@ export function EventsPanel({ scope, onTrace, onSelectRecord }: { scope: PanelSc
         }),
       ),
     placeholderData: keepPreviousData,
-    refetchInterval: scope.live ? 3000 : false,
+    refetchInterval: false,
   });
-  const events = useMemo(() => query.data?.events ?? [], [query.data?.events]);
+  useEffect(() => {
+    if (!scope.live) return;
+    return actions.onLiveSignals((signals) => {
+      const incoming = signals.filter((signal) => signal.kind === "event").map((signal) => signal.record as Event);
+      if (incoming.length) setLiveEvents((current) => [...current, ...incoming].slice(-2000));
+    });
+  }, [actions, scope.live]);
+  const events = useMemo(() => {
+    const base = (query.data?.events ?? []).filter((event) => {
+      const time = BigInt(event.time_ns);
+      return time >= scope.displayFrom && time < scope.displayTo;
+    });
+    if (!scope.live) return base;
+    const merged = new Map(base.map((event) => [event.id, event]));
+    for (const event of liveEvents) {
+      const time = BigInt(event.time_ns);
+      if (time >= scope.displayFrom && time < scope.displayTo && (!scope.serviceId || event.service_id === scope.serviceId)) merged.set(event.id, event);
+    }
+    return [...merged.values()].sort((a, b) => (BigInt(a.time_ns) > BigInt(b.time_ns) ? -1 : 1));
+  }, [query.data?.events, liveEvents, scope.live, scope.displayFrom, scope.displayTo, scope.serviceId]);
   const types = useMemo(() => [...new Set(events.map((event) => event.event_type))].sort(), [events]);
   const filtered = useMemo(() => filterEvents(events, { query: search, eventType, serviceName: scope.serviceName }), [events, search, eventType, scope.serviceName]);
 

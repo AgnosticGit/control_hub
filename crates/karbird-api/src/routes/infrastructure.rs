@@ -71,7 +71,11 @@ pub async fn infrastructure(
 ) -> ApiResult<Json<InfrastructureResponse>> {
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let at = parse_ns(q.at.as_deref(), "at")?.unwrap_or_else(now_ns);
-    let snapshot = load_snapshot(&state, &scope, at).await?;
+    let snapshot = if q.live {
+        load_snapshot_coalesced(&state, &scope, at).await?
+    } else {
+        load_snapshot(&state, &scope, at).await?
+    };
     let topology = if q.from.is_some() && q.to.is_some() {
         let range = crate::routes::telemetry::RangeParams { from: q.from, to: q.to }.resolve()?;
         let topology = crate::topology::read(&state, &scope, range, q.live).await?;
@@ -106,6 +110,16 @@ pub(crate) async fn load_snapshot(
     let mut snap = build_snapshot(at, &series, &latency, truncated);
     place_resources(&mut snap, &series, &addresses);
     Ok(snap)
+}
+
+/// Share a recent live snapshot across HTTP topology reads and WebSocket subscribers in a scope.
+pub(crate) async fn load_snapshot_coalesced(
+    state: &AppState,
+    scope: &karbird_domain::Scope,
+    at: i64,
+) -> ApiResult<InfrastructureSnapshot> {
+    let snapshot = state.live_hub.infrastructure_snapshot(scope, || load_snapshot(state, scope, at)).await?;
+    Ok((*snapshot).clone())
 }
 
 // ---------------------------------------------------------------- metrics → machines

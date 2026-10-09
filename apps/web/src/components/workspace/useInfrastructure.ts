@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import type { InfrastructureSnapshot } from "@karbird/web-engine";
 import { infraAt } from "./infrastructure";
 import { useDebounced } from "./useDebounced";
-import type { WorkspaceActions } from "./useWorkspaceEngine";
-import { startInfrastructureRefresh } from "./infrastructure-refresh";
+import type { Mode, WorkspaceActions } from "./useWorkspaceEngine";
+import { nowNs } from "@/lib/time";
 
 export interface InfrastructureState {
   snapshot: InfrastructureSnapshot | null;
@@ -13,18 +13,27 @@ export interface InfrastructureState {
 }
 
 /** Loads machines and instances at the selected time while the infrastructure layer is on. */
-export function useInfrastructure(actions: WorkspaceActions, ready: boolean, enabled: boolean, cursor: bigint): InfrastructureState {
-  const [state, setState] = useState<InfrastructureState>({ snapshot: null, error: null });
+export function useInfrastructure(actions: WorkspaceActions, scopeKey: string, ready: boolean, enabled: boolean, mode: Mode, cursor: bigint): InfrastructureState {
+  const [state, setState] = useState<InfrastructureState & { scopeKey: string }>({ snapshot: null, error: null, scopeKey: "" });
   const at = useDebounced(infraAt(cursor), 300);
+  const cursorKey = mode === "live" ? 0n : at;
   useEffect(() => {
     if (!ready || !enabled) return;
-    // A paused cursor can acquire late metrics and new placement just like a live view.
-    // Live cursor changes restart this effect, so this does not add a second live poll.
-    return startInfrastructureRefresh(
-      () => actions.loadInfrastructure(at),
-      (snapshot) => setState({ snapshot, error: null }),
-      (e: unknown) => setState((s) => ({ snapshot: s.snapshot, error: e instanceof Error ? e.message : String(e) })),
-    );
-  }, [actions, ready, enabled, at]);
-  return state;
+    let cancelled = false;
+    const accept = (snapshot: InfrastructureSnapshot) => {
+      if (!cancelled) setState({ snapshot, error: null, scopeKey });
+    };
+    if (mode === "live") {
+      const unsubscribe = actions.onInfrastructure(accept);
+      void actions.loadInfrastructure(nowNs(), true).then((snapshot) => { if (snapshot) accept(snapshot); }).catch((e: unknown) => {
+        if (!cancelled) setState((s) => ({ snapshot: s.snapshot, error: e instanceof Error ? e.message : String(e), scopeKey }));
+      });
+      return () => { cancelled = true; unsubscribe(); };
+    }
+    void actions.loadInfrastructure(cursorKey).then((snapshot) => { if (snapshot) accept(snapshot); }).catch((e: unknown) => {
+      if (!cancelled) setState((s) => ({ snapshot: s.snapshot, error: e instanceof Error ? e.message : String(e), scopeKey }));
+    });
+    return () => { cancelled = true; };
+  }, [actions, scopeKey, ready, enabled, mode, cursorKey]);
+  return state.scopeKey === scopeKey && ready && enabled ? state : { snapshot: null, error: null };
 }

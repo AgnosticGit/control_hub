@@ -17,17 +17,19 @@ pub const DEFAULT_METRICS_DAYS: u32 = 14;
 pub enum Table {
     Logs,
     Spans,
+    EdgeSpanFacts,
     Events,
     Metrics,
 }
 
 impl Table {
-    pub const ALL: [Table; 4] = [Table::Logs, Table::Spans, Table::Events, Table::Metrics];
+    pub const ALL: [Table; 5] = [Table::Logs, Table::Spans, Table::EdgeSpanFacts, Table::Events, Table::Metrics];
 
     pub fn name(self) -> &'static str {
         match self {
             Table::Logs => "logs",
             Table::Spans => "spans",
+            Table::EdgeSpanFacts => "edge_span_facts",
             Table::Events => "events",
             Table::Metrics => "metrics",
         }
@@ -38,6 +40,7 @@ impl Table {
         match self {
             Table::Logs => "time",
             Table::Spans => "start_time",
+            Table::EdgeSpanFacts => "start_time",
             Table::Events => "event_time",
             Table::Metrics => "time",
         }
@@ -47,6 +50,7 @@ impl Table {
         match self {
             Table::Logs => "KARBIRD_LOGS_RETENTION_DAYS",
             Table::Spans => "KARBIRD_SPANS_RETENTION_DAYS",
+            Table::EdgeSpanFacts => "KARBIRD_SPANS_RETENTION_DAYS",
             Table::Events => "KARBIRD_EVENTS_RETENTION_DAYS",
             Table::Metrics => "KARBIRD_METRICS_RETENTION_DAYS",
         }
@@ -178,7 +182,16 @@ mod tests {
     #[test]
     fn names_come_from_a_fixed_list() {
         let cols: Vec<_> = Table::ALL.iter().map(|t| (t.name(), t.time_column())).collect();
-        assert_eq!(cols, [("logs", "time"), ("spans", "start_time"), ("events", "event_time"), ("metrics", "time")]);
+        assert_eq!(
+            cols,
+            [
+                ("logs", "time"),
+                ("spans", "start_time"),
+                ("edge_span_facts", "start_time"),
+                ("events", "event_time"),
+                ("metrics", "time")
+            ]
+        );
         for t in Table::ALL {
             assert!(t.env_var().starts_with("KARBIRD_") && t.env_var().ends_with("_RETENTION_DAYS"));
         }
