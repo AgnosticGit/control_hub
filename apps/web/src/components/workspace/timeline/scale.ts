@@ -12,9 +12,40 @@ const MS = 1_000_000n;
 const SEC = 1_000_000_000n;
 const MIN = 60n * SEC;
 const HOUR = 60n * MIN;
+const DAY = 24n * HOUR;
 
 /** Narrowest view: one millisecond. */
 export const MIN_VIEW_NS = MS;
+/** Widest view: one month. Navigation can continue through adjacent ranges. */
+export const MAX_VIEW_NS = 30n * DAY;
+/** Raw rows stay bounded to the API's seven-day query window. */
+export const MAX_DETAIL_RANGE_NS = 7n * DAY;
+
+/** Pick the raw-data window needed for a close zoom into a broader view. */
+export function detailChunkFor(view: View): View {
+  const width = span(view);
+  if (width > MAX_DETAIL_RANGE_NS) {
+    const middle = view.from + width / 2n;
+    const from = middle - MAX_DETAIL_RANGE_NS / 2n;
+    return { from, to: from + MAX_DETAIL_RANGE_NS };
+  }
+  // Align detail windows so small pans reuse a previous seven-day fetch.
+  let from = (view.from / MAX_DETAIL_RANGE_NS) * MAX_DETAIL_RANGE_NS;
+  if (view.to > from + MAX_DETAIL_RANGE_NS) from = view.to - MAX_DETAIL_RANGE_NS;
+  return { from, to: from + MAX_DETAIL_RANGE_NS };
+}
+
+/** True when one or more loaded intervals continuously cover the requested view. */
+export function rangeCoveredBy(loaded: readonly View[], target: View): boolean {
+  let coveredTo = target.from;
+  for (const range of [...loaded].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0))) {
+    if (range.to <= coveredTo) continue;
+    if (range.from > coveredTo) return false;
+    coveredTo = range.to;
+    if (coveredTo >= target.to) return true;
+  }
+  return false;
+}
 
 const TICK_STEPS: bigint[] = [
   1n * US, 2n * US, 5n * US, 10n * US, 20n * US, 50n * US, 100n * US, 200n * US, 500n * US,
@@ -22,6 +53,7 @@ const TICK_STEPS: bigint[] = [
   1n * SEC, 2n * SEC, 5n * SEC, 10n * SEC, 15n * SEC, 30n * SEC,
   1n * MIN, 2n * MIN, 5n * MIN, 10n * MIN, 15n * MIN, 30n * MIN,
   1n * HOUR, 2n * HOUR, 3n * HOUR, 6n * HOUR, 12n * HOUR, 24n * HOUR,
+  2n * DAY, 3n * DAY, 7n * DAY, 14n * DAY, 30n * DAY,
 ];
 
 const span = (v: View) => v.to - v.from;
@@ -39,8 +71,9 @@ export function clampView(v: View, bounds: View): View {
 function zoomedWidth(v: View, factor: number, bounds: View): bigint {
   const bw = span(bounds);
   const minW = bw < MIN_VIEW_NS ? bw : MIN_VIEW_NS;
+  const maxW = bw < MAX_VIEW_NS ? bw : MAX_VIEW_NS;
   const next = BigInt(Math.round(Number(span(v)) * factor));
-  return next < minW ? minW : next > bw ? bw : next;
+  return next < minW ? minW : next > maxW ? maxW : next;
 }
 
 /** Zooms by `factor` (< 1 zooms in) keeping `anchor` at the same screen position. */
@@ -136,6 +169,7 @@ const pad = (n: number, w = 2) => String(n).padStart(w, "0");
 /** Label precision follows the step: `HH:MM`, `HH:MM:SS`, `MM:SS.mmm` or `SS.mmm uuu`. */
 export function formatTick(t: bigint, step: bigint): string {
   const d = new Date(Number(t / MS));
+  if (step >= DAY) return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(d);
   const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   if (step >= MIN) return hm;
   if (step >= SEC) return `${hm}:${pad(d.getSeconds())}`;
@@ -152,5 +186,6 @@ export function formatSpan(ns: bigint): string {
   if (n < 1e9) return `${+(n / 1e6).toFixed(n < 1e7 ? 2 : 0)} ms`;
   if (n < 60e9) return `${+(n / 1e9).toFixed(n < 1e10 ? 2 : 1)} s`;
   if (n < 3600e9) return `${+(n / 60e9).toFixed(1)} min`;
+  if (n >= 24 * 3600e9) return `${+(n / (24 * 3600e9)).toFixed(n < 2 * 24 * 3600e9 ? 1 : 0)} days`;
   return `${+(n / 3600e9).toFixed(1)} h`;
 }

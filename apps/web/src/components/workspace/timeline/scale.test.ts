@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   MIN_VIEW_NS,
+  MAX_VIEW_NS,
+  MAX_DETAIL_RANGE_NS,
+  detailChunkFor,
+  rangeCoveredBy,
   follow,
   followLive,
   formatSpan,
@@ -61,6 +65,32 @@ describe("zoomCentered", () => {
     expect(z.from + (z.to - z.from) / 2n).toBe(T0 + 300n * SEC);
     const edge = zoomCentered(bounds, bounds.to, 0.1, bounds);
     expect(edge.to).toBe(bounds.to);
+  });
+
+  it("allows one month of history without zooming out farther", () => {
+    const wide = { from: T0 - 90n * 86_400n * SEC, to: T0 };
+    let view = { from: T0 - 7n * 86_400n * SEC, to: T0 };
+    for (let i = 0; i < 20; i++) view = zoomCentered(view, T0, 2, wide);
+    expect(view.to - view.from).toBe(MAX_VIEW_NS);
+    expect(formatSpan(MAX_VIEW_NS)).toBe("30 days");
+    expect(tickStep(view, 1200)).toBe(3n * 86_400n * SEC);
+  });
+});
+
+describe("detailChunkFor", () => {
+  it("requests a bounded detail window centred on the visible range", () => {
+    const view = { from: T0 - 10n * 86_400n * SEC, to: T0 };
+    const chunk = detailChunkFor(view);
+    expect(chunk.to - chunk.from).toBe(MAX_DETAIL_RANGE_NS);
+    expect(chunk.from + (chunk.to - chunk.from) / 2n).toBe(T0 - 5n * 86_400n * SEC);
+  });
+});
+
+describe("rangeCoveredBy", () => {
+  it("recognizes adjacent loaded intervals but keeps gaps unloaded", () => {
+    const loaded = [{ from: 0n, to: 10n }, { from: 10n, to: 20n }, { from: 30n, to: 40n }];
+    expect(rangeCoveredBy(loaded, { from: 5n, to: 18n })).toBe(true);
+    expect(rangeCoveredBy(loaded, { from: 5n, to: 35n })).toBe(false);
   });
 });
 

@@ -17,6 +17,8 @@ import { placeAbove, rangeBetween, viewAround } from "./range";
 import { stableTrackWindow } from "./track-window";
 import {
   clampView,
+  MAX_DETAIL_RANGE_NS,
+  detailChunkFor,
   follow,
   followLive,
   formatSpan,
@@ -28,6 +30,7 @@ import {
   zoomCentered,
   type View,
 } from "./scale";
+import { summaryTracks } from "./summary-tracks";
 
 /** Data resolution stays stable while the canvas adapts to the viewport. */
 export const TIMELINE_TRACK_BUCKETS = 180;
@@ -119,7 +122,8 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   /** What is loaded; replay ranges stay inside it. */
   const data = useMemo<View>(() => ({ from: state.rangeFrom, to: state.rangeTo }), [state.rangeFrom, state.rangeTo]);
   const [width, setWidth] = useState(0);
-  const bounds = data;
+  // The viewport is capped at 30 days, but the user can page through older history indefinitely.
+  const bounds = useMemo<View>(() => ({ from: 0n, to: data.to }), [data.to]);
   const [userView, setUserView] = useState<View | null>(() => memory?.timelineView() ?? null);
   useEffect(() => memory?.saveTimelineView(userView), [memory, userView]);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -143,7 +147,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const rulerRef = useRef<HTMLCanvasElement | null>(null);
   const rowsRef = useRef<HTMLCanvasElement | null>(null);
 
-  let view = userView ? clampView(userView, bounds) : bounds;
+  let view = userView ? clampView(userView, bounds) : data;
   if (userView) {
     // Keep the playhead in view (derived-state update during render): live keeps the free
     // stretch on the right, replay pages along.
@@ -159,13 +163,38 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     }
   }
   const fitted = userView === null;
-  const setView = (v: View) => setUserView(v.from === bounds.from && v.to === bounds.to ? null : v);
+  const setView = (v: View) => setUserView(v.from === data.from && v.to === data.to ? null : v);
 
   const ready = state.phase === "ready";
   const queryClient = useQueryClient();
   const actionPlansKey = useMemo(() => ["actions", projectId, environmentId] as const, [projectId, environmentId]);
   const dataKey = `${state.load?.at ?? 0}|${filterKey}`;
-  const tracks = useTracks(actions, view, TIMELINE_TRACK_BUCKETS, CLIP_CAP, dataKey, ready);
+  const [chunkLoading, setChunkLoading] = useState(false);
+  const loadDirection = view.from + (view.to - view.from) / 2n < data.from ? "left" : "right";
+  const broadView = view.to - view.from > MAX_DETAIL_RANGE_NS;
+  const tracks = useTracks(actions, view, TIMELINE_TRACK_BUCKETS, CLIP_CAP, dataKey, ready && !broadView);
+  const [summaryWindow, setSummaryWindow] = useState<View | null>(null);
+  useEffect(() => {
+    if (!broadView) return;
+    const timer = setTimeout(() => setSummaryWindow(view), 250);
+    return () => clearTimeout(timer);
+  }, [broadView, data.from, view]);
+  const summary = useQuery({
+    queryKey: ["timeline-summary", projectId, environmentId, summaryWindow?.from.toString(), summaryWindow?.to.toString()],
+    enabled: ready && broadView && summaryWindow !== null,
+    queryFn: async () => {
+      const request = summaryWindow;
+      if (!request) throw new Error("Timeline summary range is not ready");
+      return unwrap(await api.GET("/api/v1/projects/{project_id}/environments/{environment_id}/timeline/summary", {
+        params: {
+          path: scopedPath(projectId, environmentId),
+          query: { from: request.from.toString(), to: request.to.toString(), buckets: 1000 },
+        },
+      }));
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
 
   const plans = useQuery({
     queryKey: actionPlansKey,
@@ -197,7 +226,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const win = machineWindow(view, data);
   const machines = useQuery({
     queryKey: ["infra-timeline", projectId, environmentId, win?.from.toString(), win?.to.toString(), win?.buckets],
-    enabled: ready && win !== null,
+    enabled: ready && !broadView && win !== null,
     queryFn: async () =>
       unwrap(
         await api.GET("/api/v1/projects/{project_id}/environments/{environment_id}/infrastructure/timeline", {
@@ -209,13 +238,43 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
       ),
     placeholderData: keepPreviousData,
   });
-  const infra = useMemo<InfraTimeline | null>(() => (machines.data ? holdSamples(machines.data) : null), [machines.data]);
+  const infrastructureSummary = useMemo<InfraTimeline | null>(() => {
+    if (!summary.data) return null;
+    return {
+      from_ns: summary.data.from_ns,
+      to_ns: summary.data.to_ns,
+      bucket_ns: summary.data.bucket_ns,
+      buckets: summary.data.buckets,
+      hosts: summary.data.hosts.map((host) => ({ id: host.host_id, name: host.host_name, cpu: host.cpu, memory: host.memory })),
+      events: [],
+      events_total: 0,
+      truncated: false,
+    };
+  }, [summary.data]);
+  const infra = useMemo<InfraTimeline | null>(() => {
+    if (broadView) return infrastructureSummary;
+    return machines.data ? holdSamples(machines.data) : null;
+  }, [broadView, infrastructureSummary, machines.data]);
+  useEffect(() => {
+    if (!ready || broadView || actions.hasTimelineRange(view.from, view.to)) return;
+    const timer = setTimeout(() => {
+      setChunkLoading(true);
+      const chunk = detailChunkFor(view);
+      void actions.loadTimelineChunk(chunk.from, chunk.to).finally(() => setChunkLoading(false));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [actions, broadView, data.from, data.to, ready, view]);
 
   const nodeIds = useMemo(() => {
     const ids = new Map<number, string>();
     for (const n of state.topology?.nodes ?? []) ids.set(n.index, n.id);
     return ids;
   }, [state.topology]);
+  const nodeIndexes = useMemo(() => new Map((state.topology?.nodes ?? []).map((node) => [node.id, node.index])), [state.topology]);
+  const displayedTracks = useMemo(() => {
+    if (!broadView || !summary.data) return tracks;
+    return summaryTracks(summary.data, nodeIndexes);
+  }, [broadView, summary.data, nodeIndexes, tracks]);
   const serviceIds = useMemo(() => (state.topology?.nodes ?? []).filter((n) => n.kind === "service").map((n) => n.id), [state.topology]);
   const colors = useMemo(() => serviceColors(state.topology?.nodes ?? []), [state.topology]);
   const mutedSet = useMemo(() => new Set(muted), [muted]);
@@ -228,7 +287,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
       { id: "requests", label: "Requests", kind: "requests", height: 24 },
       { id: "latency", label: "Latency p95", kind: "latency", height: 26 },
     ];
-    const services = tracks?.services ?? [];
+    const services = displayedTracks?.services ?? [];
     const hosts = infra?.hosts ?? [];
     const machineRows: Row[] =
       hosts.length === 0
@@ -255,7 +314,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
       }),
       machineRows,
     );
-  }, [tracks?.services, infra?.hosts, nodeIds, mutedSet, colors]);
+  }, [displayedTracks?.services, infra?.hosts, nodeIds, mutedSet, colors]);
   const height = totalHeight(rows);
   useEffect(() => onContentHeight(height + RULER_H), [height, onContentHeight]);
   const groupAt = rows.findIndex((r) => r.kind === "group" || r.kind === "heading");
@@ -267,10 +326,17 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const baseRowsHeight = rowTop(rows, groupAt === -1 ? rows.length : groupAt);
 
   // Zoomed into a stretch with nothing in it: offer the nearest item on either side.
-  const neighbours = !fitted && tracksMatch(tracks, view) && viewIsEmpty(tracks, view, actionBars) ? nearestItems(tracks, view, actionBars) : null;
+  const neighbours = !broadView && !fitted && tracksMatch(displayedTracks, view) && viewIsEmpty(displayedTracks, view, actionBars) ? nearestItems(displayedTracks, view, actionBars) : null;
+  const seekToTime = async (time: bigint) => {
+    if (!actions.hasTimelineRange(time, time + 1n)) {
+      const chunk = detailChunkFor({ from: time, to: time + 1n });
+      await actions.loadTimelineChunk(chunk.from, chunk.to);
+    }
+    actions.seek(time);
+  };
   const goToItem = (t: bigint) => {
     setView(centeredOn(view, t, bounds));
-    actions.seek(t);
+    void seekToTime(t);
   };
 
   const toggleService = (id: string, on: boolean) => onMuted(on ? muted.filter((m) => m !== id) : [...muted, id]);
@@ -299,8 +365,8 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
 
   useEffect(() => {
     const ctx = setupCanvas(rowsRef.current, width, height);
-    if (ctx) draw(ctx, { width, rows, view, tracks, actions: actionBars, cursor: state.cursor, markA, hoverX, range, machines: infra });
-  }, [width, height, rows, view, tracks, actionBars, state.cursor, markA, hoverX, range, infra]);
+    if (ctx) draw(ctx, { width, rows, view, tracks: displayedTracks, actions: actionBars, cursor: state.cursor, markA, hoverX, range, machines: infra });
+  }, [width, height, rows, view, displayedTracks, actionBars, state.cursor, markA, hoverX, range, infra]);
 
   // Wheel and drag need the latest values without re-binding listeners.
   const live = useRef({ view, bounds, width, setView });
@@ -415,7 +481,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     setDragging(false);
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     if (d?.mode === "select" && !d.moved) {
-      actions.seek(timeAt(localX(e.clientX), view, width));
+      void seekToTime(timeAt(localX(e.clientX), view, width));
     } else if (d?.mode === "select" || d?.mode === "edge") {
       if (draft) {
         actions.setLoop(draft);
@@ -464,7 +530,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const percent = data.to > data.from ? Math.round(xOf(state.cursor, data, 100)) : 100;
   const tip =
     hover && hover.y !== null && !dragging
-      ? describe({ x: hover.x, y: hover.y }, rows, view, width, tracks, actionBars, infra, markers)
+      ? describe({ x: hover.x, y: hover.y }, rows, view, width, displayedTracks, actionBars, infra, markers)
       : null;
 
   return (
@@ -610,6 +676,17 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
             if (top === null) return null;
             return <EventButton key={`${m.event.time_ns}-${m.event.container_id}-${m.event.kind}`} marker={m} top={top} onClick={() => goToItem(m.time)} />;
           })}
+          {(chunkLoading || (broadView && summary.isFetching)) ? (
+            <div className={`timeline-load-edge timeline-load-edge-${loadDirection}`} aria-hidden="true">
+              <span className="timeline-load-wave" />
+              <span className="timeline-load-points"><i /><i /><i /></span>
+            </div>
+          ) : null}
+          {(chunkLoading || (broadView && summary.isFetching)) ? (
+            <span className="sr-only" role="status" aria-live="polite">
+              {loadDirection === "left" ? "Loading earlier timeline data" : "Loading later timeline data"}
+            </span>
+          ) : null}
           {neighbours ? (
             <div
               className="pointer-events-none absolute inset-x-2 flex -translate-y-1/2 items-center gap-2"

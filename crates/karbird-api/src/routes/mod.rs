@@ -13,6 +13,7 @@ pub mod roles;
 pub mod session;
 pub mod signup;
 pub mod telemetry;
+pub mod timeline_summary;
 pub mod tokens;
 
 use axum::Json;

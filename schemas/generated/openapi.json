@@ -3854,6 +3854,93 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/timeline/summary": {
+      "get": {
+        "tags": [
+          "timeline"
+        ],
+        "operationId": "timeline_summary",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Start, unix epoch nanoseconds as a decimal string. Defaults to 30 days before `to`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "End (exclusive), unix epoch nanoseconds as a decimal string. Defaults to now.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "buckets",
+            "in": "query",
+            "description": "Number of summary buckets (default 1000, max 1000).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/environments/{environment_id}/tokens": {
       "get": {
         "tags": [
@@ -8629,6 +8716,105 @@
           }
         }
       },
+      "SummaryHostTrack": {
+        "type": "object",
+        "required": [
+          "host_id",
+          "host_name",
+          "cpu",
+          "memory"
+        ],
+        "properties": {
+          "cpu": {
+            "type": "array",
+            "items": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "float"
+            }
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "host_name": {
+            "type": "string"
+          },
+          "memory": {
+            "type": "array",
+            "items": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "float"
+            }
+          }
+        }
+      },
+      "SummaryServiceTrack": {
+        "type": "object",
+        "required": [
+          "service_id",
+          "service_name",
+          "spans"
+        ],
+        "properties": {
+          "service_id": {
+            "type": "string"
+          },
+          "service_name": {
+            "type": "string"
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        }
+      },
+      "SummarySignalBucket": {
+        "type": "object",
+        "required": [
+          "requests",
+          "errors",
+          "error_logs",
+          "events"
+        ],
+        "properties": {
+          "error_logs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "errors": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "events": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "p95_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "requests": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "SystemAccessDto": {
         "type": "object",
         "description": "The signed-in user's administrator access, for the session payload (`None` without any).",
@@ -8768,6 +8954,55 @@
           },
           "to_ns": {
             "type": "string"
+          }
+        }
+      },
+      "TimelineSummary": {
+        "type": "object",
+        "required": [
+          "from_ns",
+          "to_ns",
+          "buckets",
+          "bucket_ns",
+          "signals",
+          "services",
+          "hosts"
+        ],
+        "properties": {
+          "bucket_ns": {
+            "type": "string",
+            "description": "Width of one bucket in nanoseconds as a decimal string."
+          },
+          "buckets": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "from_ns": {
+            "type": "string",
+            "description": "Unix epoch nanoseconds as decimal strings."
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SummaryHostTrack"
+            }
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SummaryServiceTrack"
+            }
+          },
+          "signals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SummarySignalBucket"
+            }
+          },
+          "to_ns": {
+            "type": "string",
+            "description": "Exclusive end, Unix epoch nanoseconds as a decimal string."
           }
         }
       },

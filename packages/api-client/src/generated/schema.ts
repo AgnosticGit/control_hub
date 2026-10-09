@@ -821,6 +821,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/timeline/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["timeline_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/environments/{environment_id}/tokens": {
         parameters: {
             query?: never;
@@ -2166,6 +2182,29 @@ export interface components {
             target_entity_id?: string | null;
             trace_id: string;
         };
+        SummaryHostTrack: {
+            cpu: (number | null)[];
+            host_id: string;
+            host_name: string;
+            memory: (number | null)[];
+        };
+        SummaryServiceTrack: {
+            service_id: string;
+            service_name: string;
+            spans: number[];
+        };
+        SummarySignalBucket: {
+            /** Format: int64 */
+            error_logs: number;
+            /** Format: int64 */
+            errors: number;
+            /** Format: int64 */
+            events: number;
+            /** Format: double */
+            p95_ms?: number | null;
+            /** Format: int64 */
+            requests: number;
+        };
         /** @description The signed-in user's administrator access, for the session payload (`None` without any). */
         SystemAccessDto: {
             is_super_admin: boolean;
@@ -2203,6 +2242,19 @@ export interface components {
             logs_truncated: boolean;
             /** @description Per-signal truncation: when true, the range holds more items than returned. */
             spans_truncated: boolean;
+            to_ns: string;
+        };
+        TimelineSummary: {
+            /** @description Width of one bucket in nanoseconds as a decimal string. */
+            bucket_ns: string;
+            /** Format: int32 */
+            buckets: number;
+            /** @description Unix epoch nanoseconds as decimal strings. */
+            from_ns: string;
+            hosts: components["schemas"]["SummaryHostTrack"][];
+            services: components["schemas"]["SummaryServiceTrack"][];
+            signals: components["schemas"]["SummarySignalBucket"][];
+            /** @description Exclusive end, Unix epoch nanoseconds as a decimal string. */
             to_ns: string;
         };
         TokenDto: {
@@ -4940,6 +4992,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimelineResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    timeline_summary: {
+        parameters: {
+            query?: {
+                /** @description Start, unix epoch nanoseconds as a decimal string. Defaults to 30 days before `to`. */
+                from?: string;
+                /** @description End (exclusive), unix epoch nanoseconds as a decimal string. Defaults to now. */
+                to?: string;
+                /** @description Number of summary buckets (default 1000, max 1000). */
+                buckets?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineSummary"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             404: {

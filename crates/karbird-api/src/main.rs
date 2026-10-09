@@ -359,6 +359,7 @@ fn router(state: state::AppState) -> Router {
         .route(&format!("{scoped}/logs"), get(telemetry::logs))
         .route(&format!("{scoped}/events"), get(telemetry::events))
         .route(&format!("{scoped}/timeline"), get(telemetry::timeline))
+        .route(&format!("{scoped}/timeline/summary"), get(routes::timeline_summary::timeline_summary))
         .route(&format!("{scoped}/coverage"), get(telemetry::coverage))
         .route(&format!("{scoped}/edges/traffic"), get(routes::edge_traffic::edge_traffic))
         .route(&format!("{scoped}/infrastructure"), get(routes::infrastructure::infrastructure))
@@ -1036,6 +1037,7 @@ mod tests {
             ("/logs", "get"),
             ("/events", "get"),
             ("/timeline", "get"),
+            ("/timeline/summary", "get"),
             ("/coverage", "get"),
             ("/edges/traffic", "get"),
             ("/infrastructure", "get"),

@@ -8,7 +8,7 @@ import { scopedUrl } from "@/lib/api";
 import { NS_PER_MS, NS_PER_SEC, clampNs, nowNs, parseNs } from "@/lib/time";
 import type { AnimClock } from "@/renderer/hops";
 import { firstItemStart, playStart, replayStep } from "./timeline/range";
-import { hasFuture } from "./timeline/scale";
+import { hasFuture, rangeCoveredBy } from "./timeline/scale";
 import { asLogSource, type LogSource } from "./logs-query";
 
 export type Mode = "live" | "paused" | "replay" | "historical";
@@ -118,6 +118,8 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
   const infrastructureEnabledRef=useRef(false);
   /** Settles once every range load started so far is done (success or not). */
   const loadsRef = useRef<Promise<void>>(Promise.resolve());
+  const loadedChunksRef = useRef<Array<{ from: bigint; to: bigint }>>([]);
+  const chunkLoadsRef = useRef(new Map<string, Promise<void>>());
   const frameListeners = useRef(new Set<(f: Frame) => void>());
   const liveSignalListeners = useRef(new Set<(signals: LiveSignal[]) => void>());
   const infrastructureListeners = useRef(new Set<(snapshot: InfrastructureSnapshot) => void>());
@@ -155,6 +157,8 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     liveActionPlans.current.clear();
     recentLiveSignals.current = [];
     latestInfrastructure.current = null;
+    loadedChunksRef.current = [];
+    chunkLoadsRef.current.clear();
   }, [projectId, environmentId]);
 
   const patch = useCallback((p: Partial<EngineState>) => {
@@ -204,11 +208,15 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       loadsRef.current = Promise.all([before, settled]).then(() => undefined);
       patch({ loading: true });
       try {
-        if (opts.reset) await c.call({ kind: "evictBefore", beforeNs: EVICT_ALL.toString() });
+        if (opts.reset) {
+          loadedChunksRef.current = [];
+          await c.call({ kind: "evictBefore", beforeNs: EVICT_ALL.toString() });
+        }
         if (opts.topology) {
           await c.call({ kind: "loadTopology", url: url("topology", from, to, { ...(stateRef.current.mode === "historical" ? {} : { live: "true" }),...(infrastructureEnabledRef.current ? {at:stateRef.current.cursor.toString()}: {}) }) });
         }
         const r = await c.call({ kind: "loadTimeline", url: url("timeline", from, to, { limit: TIMELINE_LIMIT }) });
+        loadedChunksRef.current.push({ from, to });
         recordLoad(r);
         if (opts.topology) await refreshTopologyView();
         patch({ error: null });
@@ -221,6 +229,45 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     },
     [patch, url, recordLoad, refreshTopologyView],
   );
+
+  const loadTimelineChunk = useCallback(async (from: bigint, to: bigint) => {
+    if (from >= to || to - from > 7n * 86_400n * NS_PER_SEC) return;
+    const key = `${from}:${to}`;
+    const pending = chunkLoadsRef.current.get(key);
+    if (pending) return pending;
+    if (loadedChunksRef.current.some((range) => range.from <= from && range.to >= to)) return;
+    const c = clientRef.current;
+    if (!c) return;
+
+    const task = (async () => {
+      void c.call({ kind: "liveStop" });
+      patch({ mode: "paused", loading: true, error: null });
+      try {
+        await c.call({
+          kind: "loadTopology",
+          url: url("topology", from, to, {
+            live: "true",
+            ...(infrastructureEnabledRef.current ? { at: stateRef.current.cursor.toString() } : {}),
+          }),
+        });
+        const result = await c.call({ kind: "loadTimeline", url: url("timeline", from, to, { limit: TIMELINE_LIMIT }) });
+        if (c !== clientRef.current) return;
+        loadedChunksRef.current.push({ from, to });
+        recordLoad(result);
+        await refreshTopologyView();
+        const s = stateRef.current;
+        patch({ rangeFrom: from < s.rangeFrom ? from : s.rangeFrom, rangeTo: to > s.rangeTo ? to : s.rangeTo });
+        c.seek(s.cursor);
+      } catch (error) {
+        if (c === clientRef.current) patch({ error: error instanceof Error ? error.message : String(error) });
+      } finally {
+        if (c === clientRef.current) patch({ loading: false });
+        chunkLoadsRef.current.delete(key);
+      }
+    })();
+    chunkLoadsRef.current.set(key, task);
+    return task;
+  }, [patch, recordLoad, refreshTopologyView, url]);
 
   const seek = useCallback(
     (t: bigint) => {
@@ -539,6 +586,8 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       await loadRange(from, to, { reset: true, topology: true });
       clientRef.current?.seek(to);
     },
+    loadTimelineChunk,
+    hasTimelineRange: (from: bigint, to: bigint) => rangeCoveredBy(loadedChunksRef.current, { from, to }),
     /** Machines, instances and saved backend placement at the selected time. */
     loadInfrastructure: async (at: bigint, live = false) =>
       (await clientRef.current?.call({
@@ -603,7 +652,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     },
     };
     return a;
-  }, [seek, loadRange, patch, projectId, environmentId]);
+  }, [seek, loadRange, loadTimelineChunk, patch, projectId, environmentId]);
 
   return { state, actions };
 }

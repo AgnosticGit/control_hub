@@ -423,6 +423,28 @@ pub struct TimelineLogRow {
     pub ingested_at: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
+pub struct TimelineSignalBucketRow {
+    pub bucket: i64,
+    pub requests: u64,
+    pub errors: u64,
+    pub p95_ns: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
+pub struct TimelineCountBucketRow {
+    pub bucket: i64,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
+pub struct TimelineServiceBucketRow {
+    pub bucket: i64,
+    pub service_id: String,
+    pub service_name: String,
+    pub count: u64,
+}
+
 /// Logs of one service in one archive window.
 #[derive(Debug, Clone, PartialEq, Eq, Row, Serialize, Deserialize)]
 pub struct LogGroupRow {
@@ -600,6 +622,56 @@ fn infra_buckets_sql() -> String {
          GROUP BY host_id, container_id, metric_name, class, bucket
          ORDER BY host_id, container_id, metric_name, class, bucket
          LIMIT ?"
+    )
+}
+
+fn timeline_signal_sql() -> String {
+    format!(
+        "SELECT bucket, countIf(is_request) AS requests,
+                countIf(is_request AND status_code = 2) AS errors,
+                quantileIf(0.95)(toFloat64(duration_ns), is_request) AS p95_ns
+         FROM (
+             SELECT intDiv(toUnixTimestamp64Nano(start_time) - ?, ?) AS bucket,
+                    (kind IN (2, 5) OR parent_span_id = '') AS is_request, status_code, duration_ns
+             FROM spans FINAL
+             WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?)
+               AND start_time < fromUnixTimestamp64Nano(?)
+         )
+         GROUP BY bucket ORDER BY bucket LIMIT ?"
+    )
+}
+
+fn timeline_log_bucket_sql() -> String {
+    format!(
+        "SELECT intDiv(toUnixTimestamp64Nano(time) - ?, ?) AS bucket, count() AS count
+         FROM logs FINAL
+         WHERE {SCOPE_WHERE} AND time >= fromUnixTimestamp64Nano(?)
+           AND time < fromUnixTimestamp64Nano(?) AND severity_number >= 17
+         GROUP BY bucket ORDER BY bucket LIMIT ?"
+    )
+}
+
+fn timeline_event_bucket_sql() -> String {
+    format!(
+        "SELECT intDiv(toUnixTimestamp64Nano(event_time) - ?, ?) AS bucket, count() AS count
+         FROM events FINAL
+         WHERE {SCOPE_WHERE} AND event_time >= fromUnixTimestamp64Nano(?)
+           AND event_time < fromUnixTimestamp64Nano(?)
+         GROUP BY bucket ORDER BY bucket LIMIT ?"
+    )
+}
+
+fn timeline_service_bucket_sql() -> String {
+    format!(
+        "SELECT bucket, service_id, any(service_name) AS service_name, count() AS count
+         FROM (
+             SELECT intDiv(toUnixTimestamp64Nano(start_time) - ?, ?) AS bucket,
+                    service_id, service_name
+             FROM spans FINAL
+             WHERE {SCOPE_WHERE} AND start_time >= fromUnixTimestamp64Nano(?)
+               AND start_time < fromUnixTimestamp64Nano(?)
+         )
+         GROUP BY bucket, service_id ORDER BY bucket, service_id LIMIT ?"
     )
 }
 
@@ -937,6 +1009,58 @@ impl ChStore {
             EdgeSpans::ExternalClients { target } => bind_scope(q, s).bind(from).bind(to).bind(target.as_str()),
         };
         Ok(q.bind(limit).fetch_all().await?)
+    }
+
+    /// Request/error/latency buckets for a bounded timeline summary.
+    pub async fn timeline_signal_buckets(
+        &self,
+        scope: &Scope,
+        from: i64,
+        to: i64,
+        bucket_ns: i64,
+        limit: u32,
+    ) -> Result<Vec<TimelineSignalBucketRow>> {
+        let q = self.client.query(&timeline_signal_sql()).bind(from).bind(bucket_ns);
+        Ok(bind_scope(q, scope).bind(from).bind(to).bind(limit).fetch_all().await?)
+    }
+
+    /// Error log counts grouped into timeline buckets.
+    pub async fn timeline_error_log_buckets(
+        &self,
+        scope: &Scope,
+        from: i64,
+        to: i64,
+        bucket_ns: i64,
+        limit: u32,
+    ) -> Result<Vec<TimelineCountBucketRow>> {
+        let q = self.client.query(&timeline_log_bucket_sql()).bind(from).bind(bucket_ns);
+        Ok(bind_scope(q, scope).bind(from).bind(to).bind(limit).fetch_all().await?)
+    }
+
+    /// Event counts grouped into timeline buckets.
+    pub async fn timeline_event_buckets(
+        &self,
+        scope: &Scope,
+        from: i64,
+        to: i64,
+        bucket_ns: i64,
+        limit: u32,
+    ) -> Result<Vec<TimelineCountBucketRow>> {
+        let q = self.client.query(&timeline_event_bucket_sql()).bind(from).bind(bucket_ns);
+        Ok(bind_scope(q, scope).bind(from).bind(to).bind(limit).fetch_all().await?)
+    }
+
+    /// Span counts per service and timeline bucket.
+    pub async fn timeline_service_buckets(
+        &self,
+        scope: &Scope,
+        from: i64,
+        to: i64,
+        bucket_ns: i64,
+        limit: u32,
+    ) -> Result<Vec<TimelineServiceBucketRow>> {
+        let q = self.client.query(&timeline_service_bucket_sql()).bind(from).bind(bucket_ns);
+        Ok(bind_scope(q, scope).bind(from).bind(to).bind(limit).fetch_all().await?)
     }
 
     /// Durable replay of individual contributions after the chart's cursor.
@@ -1454,6 +1578,27 @@ mod tests {
             assert!(INFRA_METRIC_NAMES.contains(name), "{name} is an infrastructure metric");
             assert!(sql.contains(&format!("'{name}'")));
         }
+    }
+
+    #[test]
+    fn month_timeline_aggregate_queries_are_scoped_bounded_and_half_open() {
+        let queries = [
+            timeline_signal_sql(),
+            timeline_log_bucket_sql(),
+            timeline_event_bucket_sql(),
+            timeline_service_bucket_sql(),
+        ];
+        for sql in &queries {
+            assert_eq!(scoped_where_count(sql), 1, "{sql}");
+            assert!(sql.contains("FINAL"), "deduplicate before aggregating: {sql}");
+            assert!(sql.contains("intDiv(toUnixTimestamp64Nano("), "bucket on integer nanoseconds: {sql}");
+            assert!(sql.contains("< fromUnixTimestamp64Nano(?)"), "use exclusive range end: {sql}");
+            assert!(sql.contains("LIMIT ?"), "bound rows returned: {sql}");
+        }
+        assert_eq!(placeholders(&queries[0]), 2 + 3 + 2 + 1, "{}", queries[0]);
+        assert_eq!(placeholders(&queries[1]), 2 + 3 + 2 + 1, "{}", queries[1]);
+        assert_eq!(placeholders(&queries[2]), 2 + 3 + 2 + 1, "{}", queries[2]);
+        assert_eq!(placeholders(&queries[3]), 2 + 3 + 2 + 1, "{}", queries[3]);
     }
 
     #[test]
