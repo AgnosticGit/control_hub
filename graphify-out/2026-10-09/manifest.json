@@ -252,9 +252,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/actions/ActionsPage.tsx": {
-    "mtime": 1791209361.687992,
-    "seen": 1791211273.7315817,
-    "ast_hash": "80f0b663846505deef71f6662ab5fdc5",
+    "mtime": 1791504597.5405383,
+    "seen": 1791504898.9988704,
+    "ast_hash": "5137aa2d0fdd4eb3e49b9d09fb00e5ab",
     "semantic_hash": ""
   },
   "apps/web/src/components/admin/AdminPage.tsx": {
@@ -282,9 +282,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/integration/IntegrationPage.tsx": {
-    "mtime": 1791331744.470557,
-    "seen": 1791333025.773982,
-    "ast_hash": "da31264e395ba81618ea2b75548d8663",
+    "mtime": 1791504597.538452,
+    "seen": 1791504899.0014133,
+    "ast_hash": "6393006e5cb6cb2c1d599c6e5205afb7",
     "semantic_hash": ""
   },
   "apps/web/src/components/integration/snippets.test.ts": {
@@ -312,9 +312,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/settings/SettingsPage.tsx": {
-    "mtime": 1790791999.128237,
-    "seen": 1790864569.1666539,
-    "ast_hash": "fc10a7740b67e8d7d49886b375fd0dd2",
+    "mtime": 1791504597.5415473,
+    "seen": 1791504899.0044196,
+    "ast_hash": "32ddd47ccd2d4703241448e9da9810dd",
     "semantic_hash": ""
   },
   "apps/web/src/components/settings/matrix.test.ts": {
@@ -330,21 +330,21 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/shell/AppShell.tsx": {
-    "mtime": 1791502334.5096576,
-    "seen": 1791502400.372299,
-    "ast_hash": "8ce2d18ffc362b59d6a9d5d35033d9fa",
+    "mtime": 1791505194.5377746,
+    "seen": 1791505236.94845,
+    "ast_hash": "2ab1b0139492d1e146f20e2214856786",
     "semantic_hash": ""
   },
   "apps/web/src/components/tokens/TokensPage.tsx": {
-    "mtime": 1790791999.1381078,
-    "seen": 1790864569.1666539,
-    "ast_hash": "67846cba82f078851dcbe4d8b083b545",
+    "mtime": 1791504597.54378,
+    "seen": 1791504899.0044196,
+    "ast_hash": "28e086777c639a99fc7a61e6b6733adf",
     "semantic_hash": ""
   },
   "apps/web/src/components/ui/Icon.tsx": {
-    "mtime": 1791502334.5106578,
-    "seen": 1791502400.372299,
-    "ast_hash": "6815090e1a44283f804940cc58135ac1",
+    "mtime": 1791504555.8371632,
+    "seen": 1791504899.0044196,
+    "ast_hash": "d7e5d73e85dae524d3af375ce403e663",
     "semantic_hash": ""
   },
   "apps/web/src/components/ui/Splitter.tsx": {
@@ -426,9 +426,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/Workspace.tsx": {
-    "mtime": 1791502562.010356,
-    "seen": 1791503786.356669,
-    "ast_hash": "dd774af6c40d36aecb8c2edb66a7dcca",
+    "mtime": 1791504607.3955517,
+    "seen": 1791504899.008466,
+    "ast_hash": "dea8eb0c24d2b2a83f6e886b4ce904b2",
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/WorkspaceHost.tsx": {
@@ -1446,9 +1446,9 @@
     "semantic_hash": ""
   },
   "tests/e2e/specs/workspace.spec.ts": {
-    "mtime": 1791502334.5951662,
-    "seen": 1791502400.4000535,
-    "ast_hash": "aeb0bc1563eaee30263ef2399bdd9273",
+    "mtime": 1791505198.4191,
+    "seen": 1791505237.010668,
+    "ast_hash": "aac0b50e8a7c8f11493df8529d6e8302",
     "semantic_hash": ""
   },
   "tests/e2e/tsconfig.json": {
@@ -4083,6 +4083,18 @@
     "mtime": 1791502334.5254924,
     "seen": 1791502400.378997,
     "ast_hash": "a435631417c7b7c68dafbcd9cd28f265",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-10-09-kafka-live-fanout-plan.md": {
+    "mtime": 1791506440.8856816,
+    "seen": 1791506467.6482575,
+    "ast_hash": "508546e1fd3be4cbedf20d2a80969319",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-10-09-kafka-live-fanout-design.md": {
+    "mtime": 1791506440.8850825,
+    "seen": 1791506467.6482575,
+    "ast_hash": "3078a23acd8794415822ecd190a544f8",
     "semantic_hash": ""
   }
 }

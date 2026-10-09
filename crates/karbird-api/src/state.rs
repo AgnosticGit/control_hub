@@ -6,6 +6,8 @@ use karbird_storage::pg::PgStore;
 use tokio::sync::Semaphore;
 
 use crate::auth::LoginThrottle;
+use crate::live_hub::LiveHub;
+use crate::live_metrics::LiveMetrics;
 use crate::mail::Mailer;
 use crate::routes::oauth::{GoogleOAuthConfig, OAuthStateStore};
 use crate::routes::signup::SignupThrottle;
@@ -44,8 +46,10 @@ pub struct AppState {
     pub config: ApiConfig,
     pub login_throttle: LoginThrottle,
     pub signup_throttle: SignupThrottle,
-    /// Bounds concurrent live WebSocket connections (each polls ClickHouse once per second).
+    /// Bounds concurrent live WebSocket connections; overflow is recovered through HTTP catch-up.
     pub live_slots: Arc<Semaphore>,
+    pub live_hub: LiveHub,
+    pub live_metrics: Arc<LiveMetrics>,
     pub mailer: Arc<dyn Mailer>,
     pub public_url: String,
     pub google_oauth: Option<GoogleOAuthConfig>,
@@ -79,6 +83,8 @@ pub fn test_state(secure_cookies: bool) -> AppState {
         login_throttle: LoginThrottle::default(),
         signup_throttle: SignupThrottle::default(),
         live_slots: Arc::new(Semaphore::new(2)),
+        live_hub: LiveHub::default(),
+        live_metrics: Arc::new(LiveMetrics::default()),
         mailer: Arc::new(crate::mail::DisabledMailer),
         public_url: "http://localhost:3000".into(),
         google_oauth: None,

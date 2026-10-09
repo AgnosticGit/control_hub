@@ -319,7 +319,7 @@ fn convert_metrics(req: ExportMetricsServiceRequest, base: &MetricRow, out: &mut
     }
 }
 
-fn scope_of(env: &IngestEnvelope) -> Result<Scope, ConvertError> {
+pub fn scope_of(env: &IngestEnvelope) -> Result<Scope, ConvertError> {
     let s = env.scope.as_ref().ok_or_else(|| ConvertError::Scope("missing".into()))?;
     let err = |e: karbird_domain::IdError| ConvertError::Scope(e.to_string());
     Ok(Scope {

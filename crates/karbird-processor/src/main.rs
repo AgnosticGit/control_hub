@@ -7,26 +7,35 @@
 //! between leads to redelivery; ReplacingMergeTree keys make that idempotent
 //! (eventually, see docs/architecture/data-flow.md).
 
-mod convert;
-
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use clap::Parser;
+use karbird_convert as convert;
 use karbird_protocol::TELEMETRY_TOPIC;
 use karbird_runtime::{backoff, connect_broker, ensure_topic, init_tracing, load_local_env, shutdown_signal};
 use karbird_storage::ch::{ChConfig, ChStore};
 use karbird_storage::pg::PgStore;
-use rskafka::client::Client;
-use rskafka::client::error::{Error as KafkaError, ProtocolError};
-use rskafka::client::partition::{OffsetAt, PartitionClient, UnknownTopicHandling};
+use rdkafka::config::ClientConfig;
+use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
+use rdkafka::message::Message;
+use rdkafka::topic_partition_list::Offset;
+use rdkafka::util::Timeout;
 use tokio::sync::watch;
 
 const CONSUMER: &str = "karbird-processor";
 const MAX_DEAD_LETTER_PAYLOAD: usize = 1024 * 1024;
 const IDLE_TOUCH_INTERVAL: Duration = Duration::from_secs(5);
+
+#[derive(Debug, Default)]
+struct PartitionWatermark {
+    ready: AtomicBool,
+    earliest: AtomicI64,
+    high: AtomicI64,
+}
 
 #[derive(Debug, Parser)]
 #[command(name = "karbird-processor")]
@@ -61,6 +70,7 @@ struct Metrics {
     dead_letters: AtomicU64,
     offset_gaps: AtomicU64,
     lag: Vec<AtomicI64>,
+    watermarks: Vec<PartitionWatermark>,
 }
 
 impl Metrics {
@@ -96,14 +106,17 @@ fn now_ns() -> i64 {
     chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
 }
 
-/// Offset to resume from after a batch: one past the highest fetched record offset.
-fn next_offset(offsets: impl Iterator<Item = i64>, current: i64) -> i64 {
-    offsets.max().unwrap_or(current - 1) + 1
-}
-
 /// Dead-letter rows keep the raw record only up to `MAX_DEAD_LETTER_PAYLOAD`.
 fn dead_letter_payload(payload: &[u8]) -> Option<&[u8]> {
     (payload.len() <= MAX_DEAD_LETTER_PAYLOAD).then_some(payload)
+}
+
+fn durable_start_offset(saved: Option<i64>, earliest: i64) -> (i64, bool) {
+    match saved {
+        Some(offset) if offset < earliest => (earliest, true),
+        Some(offset) => (offset, false),
+        None => (earliest, false),
+    }
 }
 
 /// Retry `op` with backoff until it succeeds or shutdown is requested.
@@ -146,166 +159,214 @@ where
     }
 }
 
-async fn run_partition(ctx: Ctx, pc: PartitionClient) {
-    let partition = pc.partition();
-    let mut stop = ctx.stop.clone();
-    let mut offset =
-        match retry_until_ok(&ctx, "load offset", || ctx.pg.load_offset(CONSUMER, TELEMETRY_TOPIC, partition)).await {
-            Some(Some(o)) => o.next_offset,
-            Some(None) => match pc.get_offset(OffsetAt::Earliest).await {
-                Ok(o) => o,
-                Err(e) => {
-                    tracing::error!(partition, error = %e, "cannot determine earliest offset");
-                    0
-                }
-            },
-            None => return,
-        };
-    tracing::info!(partition, offset, "partition consumer started");
-    let mut idle_touched: Option<Instant> = None;
-
-    loop {
-        if *stop.borrow() {
-            break;
+async fn process_batch(
+    ctx: &Ctx,
+    consumer: &StreamConsumer,
+    messages: &[rdkafka::message::OwnedMessage],
+) -> anyhow::Result<()> {
+    let Some(first) = messages.first() else { return Ok(()) };
+    let Some(last) = messages.last() else { return Ok(()) };
+    let partition = first.partition();
+    if messages.iter().any(|message| message.partition() != partition) {
+        anyhow::bail!("processor batch contains records from multiple partitions")
+    }
+    let next = last.offset().saturating_add(1);
+    let high_watermark =
+        ctx.metrics.watermarks.get(partition as usize).map_or(next, |watermark| watermark.high.load(Ordering::Relaxed));
+    if let Some(lag) = ctx.metrics.lag.get(partition as usize) {
+        lag.store(high_watermark.saturating_sub(next), Ordering::Relaxed);
+    }
+    let ingested_at = now_ns();
+    let mut batch = convert::Converted::default();
+    let mut dead = Vec::new();
+    let mut max_received = 0_i64;
+    for msg in messages {
+        let value = msg.payload().unwrap_or_default();
+        match convert::decode_envelope(value).and_then(|env| {
+            max_received = max_received.max(env.received_time_unix_nano);
+            convert::convert(&env, ingested_at)
+        }) {
+            Ok(converted) => batch.extend(converted),
+            Err(error) => dead.push((msg.offset(), error, value.to_vec())),
         }
-        let fetched = tokio::select! {
-            r = pc.fetch_records(offset, 1..8_000_000, 500) => r,
-            _ = stop.wait_for(|v| *v) => break,
-        };
-        let (records, high_watermark) = match fetched {
-            Ok(v) => v,
-            Err(KafkaError::ServerError { protocol_error: ProtocolError::OffsetOutOfRange, .. }) => {
-                // Data expired from the broker before we processed it: make the gap visible.
-                let earliest = pc.get_offset(OffsetAt::Earliest).await.unwrap_or(offset);
-                let msg = format!(
-                    "offset {offset} out of range; resuming at {earliest}. Records in between were not processed."
-                );
-                tracing::error!(partition, "{msg}");
-                ctx.metrics.offset_gaps.fetch_add(1, Ordering::Relaxed);
-                let _ = ctx
-                    .pg
-                    .record_processing_error(
-                        CONSUMER,
-                        TELEMETRY_TOPIC,
-                        partition,
-                        offset,
-                        None,
-                        None,
-                        "offset_out_of_range",
-                        &msg,
-                        None,
-                    )
-                    .await;
-                offset = earliest.max(0);
-                continue;
-            }
-            Err(e) => {
-                tracing::warn!(partition, error = %e, "fetch failed; retrying");
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                continue;
-            }
-        };
-        if let Some(lag) = ctx.metrics.lag.get(partition as usize) {
-            lag.store(high_watermark - offset, Ordering::Relaxed);
-        }
-        if records.is_empty() {
-            // An idle, caught-up partition must still advance the completeness watermark,
-            // otherwise the API reports data as stale while nothing is pending.
-            if offset >= high_watermark && idle_touched.is_none_or(|t| t.elapsed() >= IDLE_TOUCH_INTERVAL) {
-                if let Err(e) =
-                    ctx.pg.commit_offset(CONSUMER, TELEMETRY_TOPIC, partition, offset, high_watermark, 0).await
-                {
-                    tracing::warn!(partition, error = %e, "idle watermark update failed");
-                }
-                idle_touched = Some(Instant::now());
-            }
-            continue;
-        }
-        idle_touched = None;
-
-        let ingested_at = now_ns();
-        let mut batch = convert::Converted::default();
-        let mut dead = Vec::new();
-        let mut max_received = 0i64;
-        for r in &records {
-            let value = r.record.value.as_deref().unwrap_or(&[]);
-            match convert::decode_envelope(value).and_then(|env| {
-                max_received = max_received.max(env.received_time_unix_nano);
-                convert::convert(&env, ingested_at)
-            }) {
-                Ok(c) => batch.extend(c),
-                Err(e) => dead.push((r.offset, e, value.to_vec())),
-            }
-        }
-
-        let (n_spans, n_logs, n_events) = (batch.spans.len(), batch.logs.len(), batch.events.len());
-        let (n_metrics, n_dropped) = (batch.metrics.len(), batch.dropped_points);
-        if !batch.is_empty() {
-            let ok = retry_until_ok(&ctx, "clickhouse insert", || async {
-                ctx.ch.insert_spans(&batch.spans).await?;
-                ctx.ch.insert_logs(&batch.logs).await?;
-                ctx.ch.insert_events(&batch.events).await?;
-                ctx.ch.insert_metrics(&batch.metrics).await
-            })
-            .await;
-            if ok.is_none() {
-                break; // shutdown before the batch was stored: offset NOT advanced
-            }
-        }
-        for (off, err, payload) in &dead {
-            let payload = dead_letter_payload(payload);
-            let msg = err.to_string();
-            let stored = retry_until_ok(&ctx, "dead-letter write", || {
-                ctx.pg.record_processing_error(
-                    CONSUMER,
-                    TELEMETRY_TOPIC,
-                    partition,
-                    *off,
-                    None,
-                    None,
-                    err.kind(),
-                    &msg,
-                    payload,
-                )
-            })
-            .await;
-            if stored.is_none() {
-                return;
-            }
-            ctx.metrics.dead_letters.fetch_add(1, Ordering::Relaxed);
-            tracing::error!(partition, broker_offset = off, kind = err.kind(), "record moved to dead-letter table");
-        }
-        let next = next_offset(records.iter().map(|r| r.offset), offset);
-        if retry_until_ok(&ctx, "offset commit", || {
-            ctx.pg.commit_offset(CONSUMER, TELEMETRY_TOPIC, partition, next, high_watermark, max_received)
+    }
+    let (n_records, n_spans, n_logs, n_events, n_metrics, n_dropped) = (
+        messages.len(),
+        batch.spans.len(),
+        batch.logs.len(),
+        batch.events.len(),
+        batch.metrics.len(),
+        batch.dropped_points,
+    );
+    for (offset, error, value) in &dead {
+        let payload = dead_letter_payload(value);
+        let error_text = error.to_string();
+        if retry_until_ok(ctx, "dead-letter write", || {
+            ctx.pg.record_processing_error(
+                CONSUMER,
+                TELEMETRY_TOPIC,
+                partition,
+                *offset,
+                None,
+                None,
+                error.kind(),
+                &error_text,
+                payload,
+            )
         })
         .await
         .is_none()
         {
-            break;
+            anyhow::bail!("shutdown before dead-letter record was stored")
         }
-        offset = next;
-        ctx.metrics.records.fetch_add(records.len() as u64, Ordering::Relaxed);
-        ctx.metrics.spans.fetch_add(n_spans as u64, Ordering::Relaxed);
-        ctx.metrics.logs.fetch_add(n_logs as u64, Ordering::Relaxed);
-        ctx.metrics.events.fetch_add(n_events as u64, Ordering::Relaxed);
-        ctx.metrics.metrics.fetch_add(n_metrics as u64, Ordering::Relaxed);
-        ctx.metrics.dropped_metric_points.fetch_add(n_dropped, Ordering::Relaxed);
-        if n_dropped > 0 {
-            tracing::warn!(partition, n_dropped, "metric points without a gauge/sum value were dropped");
-        }
-        tracing::debug!(partition, next, n_spans, n_logs, n_events, n_metrics, "batch stored");
+        ctx.metrics.dead_letters.fetch_add(1, Ordering::Relaxed);
+        tracing::error!(partition, broker_offset = offset, kind = error.kind(), "record moved to dead-letter table");
     }
-    tracing::info!(partition, offset, "partition consumer stopped");
+    if !batch.is_empty()
+        && retry_until_ok(ctx, "clickhouse insert", || async {
+            ctx.ch.insert_spans(&batch.spans).await?;
+            ctx.ch.insert_logs(&batch.logs).await?;
+            ctx.ch.insert_events(&batch.events).await?;
+            ctx.ch.insert_metrics(&batch.metrics).await?;
+            Ok::<(), anyhow::Error>(())
+        })
+        .await
+        .is_none()
+    {
+        anyhow::bail!("shutdown before ClickHouse accepted the record")
+    }
+    // PostgreSQL remains authoritative: update it only after CH/dead-letter persistence,
+    // then commit the Kafka group offset. If Kafka commit fails, replay is idempotent.
+    if retry_until_ok(ctx, "offset commit", || {
+        ctx.pg.commit_offset(CONSUMER, TELEMETRY_TOPIC, partition, next, high_watermark, max_received)
+    })
+    .await
+    .is_none()
+    {
+        anyhow::bail!("shutdown before PostgreSQL offset was stored")
+    }
+    let mut offsets = rdkafka::TopicPartitionList::new();
+    offsets.add_partition_offset(TELEMETRY_TOPIC, partition, Offset::Offset(next))?;
+    if let Err(error) = consumer.commit(&offsets, CommitMode::Async) {
+        // PostgreSQL is already durable; a later assignment seeks from that watermark.
+        tracing::warn!(partition, next, %error, "Kafka group offset commit enqueue failed; replay is safe");
+    }
+    ctx.metrics.records.fetch_add(n_records as u64, Ordering::Relaxed);
+    ctx.metrics.spans.fetch_add(n_spans as u64, Ordering::Relaxed);
+    ctx.metrics.logs.fetch_add(n_logs as u64, Ordering::Relaxed);
+    ctx.metrics.events.fetch_add(n_events as u64, Ordering::Relaxed);
+    ctx.metrics.metrics.fetch_add(n_metrics as u64, Ordering::Relaxed);
+    ctx.metrics.dropped_metric_points.fetch_add(n_dropped, Ordering::Relaxed);
+    if n_dropped > 0 {
+        tracing::warn!(partition, n_dropped, "metric points without a gauge/sum value were dropped");
+    }
+    tracing::debug!(partition, next, n_records, n_spans, n_logs, n_events, n_metrics, "batch stored");
+    Ok(())
 }
 
-async fn start(client: Arc<Client>, partitions: i32, ctx: Ctx) -> anyhow::Result<Vec<tokio::task::JoinHandle<()>>> {
-    let mut handles = Vec::new();
-    for p in 0..partitions {
-        let pc = client.partition_client(TELEMETRY_TOPIC.to_owned(), p, UnknownTopicHandling::Retry).await?;
-        handles.push(tokio::spawn(run_partition(ctx.clone(), pc)));
+async fn run_consumer(config: &ClientConfig, partitions: i32, ctx: Ctx) -> anyhow::Result<()> {
+    let consumer: StreamConsumer = config
+        .clone()
+        .set("group.id", CONSUMER)
+        .set("enable.auto.commit", "false")
+        .set("enable.auto.offset.store", "false")
+        .set("auto.offset.reset", "earliest")
+        .set("isolation.level", "read_committed")
+        .create()?;
+    consumer.subscribe(&[TELEMETRY_TOPIC])?;
+    tracing::info!(partitions, "processor joined Kafka consumer group");
+    let mut stop = ctx.stop.clone();
+    let mut last_watermark_refresh = Instant::now();
+    loop {
+        tokio::select! {
+            message = consumer.recv() => match message {
+                Ok(msg) => {
+                    let mut messages = vec![msg.detach()];
+                    let deadline = tokio::time::Instant::now() + Duration::from_millis(5);
+                    while messages.len() < 128 {
+                        tokio::select! {
+                            next = consumer.recv() => match next {
+                                Ok(message) => messages.push(message.detach()),
+                                Err(error) => { tracing::warn!(%error, "Kafka batch receive failed"); break; }
+                            },
+                            _ = tokio::time::sleep_until(deadline) => break,
+                        }
+                    }
+                    let mut by_partition: BTreeMap<i32, Vec<rdkafka::message::OwnedMessage>> = BTreeMap::new();
+                    for message in messages {
+                        by_partition.entry(message.partition()).or_default().push(message);
+                    }
+                    for (partition, batch) in by_partition {
+                        let Some(watermark) = ctx.metrics.watermarks.get(partition as usize) else { continue; };
+                        if !watermark.ready.load(Ordering::Acquire) {
+                            let (low, high) = consumer.fetch_watermarks(TELEMETRY_TOPIC, partition, Timeout::After(Duration::from_secs(2)))?;
+                            watermark.earliest.store(low, Ordering::Relaxed);
+                            watermark.high.store(high, Ordering::Relaxed);
+                            watermark.ready.store(true, Ordering::Release);
+                        }
+                        let low = watermark.earliest.load(Ordering::Relaxed);
+                        let saved = ctx.pg.load_offset(CONSUMER, TELEMETRY_TOPIC, partition).await?;
+                        let saved_offset = saved.map(|offset| offset.next_offset);
+                        let (expected, offset_gap) = durable_start_offset(saved_offset, low);
+                        if offset_gap {
+                            let old_offset = saved_offset.unwrap_or(low);
+                            let error_text = format!("saved offset {old_offset} is before Kafka earliest {low}; telemetry records in between were lost");
+                            ctx.metrics.offset_gaps.fetch_add(1, Ordering::Relaxed);
+                            if retry_until_ok(&ctx, "offset gap record", || ctx.pg.record_processing_error(
+                                CONSUMER, TELEMETRY_TOPIC, partition, old_offset,
+                                None, None, "offset_out_of_range", &error_text, None,
+                            )).await.is_none() { break; }
+                            if retry_until_ok(&ctx, "offset gap watermark", || ctx.pg.commit_offset(
+                                CONSUMER, TELEMETRY_TOPIC, partition, low, low, 0,
+                            )).await.is_none() { break; }
+                        }
+                        if batch.first().is_some_and(|message| message.offset() != expected) {
+                            if let Err(error) = consumer.seek(TELEMETRY_TOPIC, partition, Offset::Offset(expected), Timeout::After(Duration::from_secs(5))) {
+                                tracing::debug!(partition, expected, %error, "partition assignment changed during offset seek; retrying on next delivery");
+                            }
+                            continue;
+                        }
+                        match process_batch(&ctx, &consumer, &batch).await {
+                            Ok(()) => {}
+                            Err(error) => {
+                                ctx.metrics.write_failures.fetch_add(1, Ordering::Relaxed);
+                                tracing::warn!(partition, %error, "record batch failed; retrying from PostgreSQL watermark");
+                                tokio::time::sleep(Duration::from_millis(500)).await;
+                                let saved = ctx.pg.load_offset(CONSUMER, TELEMETRY_TOPIC, partition).await?;
+                                let offset = saved.map_or(low, |saved| saved.next_offset);
+                                if let Err(seek_error) = consumer.seek(TELEMETRY_TOPIC, partition, Offset::Offset(offset), Timeout::After(Duration::from_secs(5))) {
+                                    tracing::debug!(partition, offset, error = %seek_error, "partition reassigned before retry seek; next assignment reloads PostgreSQL watermark");
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(error) => { tracing::warn!(%error, "Kafka consumer receive failed"); tokio::time::sleep(Duration::from_millis(200)).await; }
+            },
+            changed = stop.changed() => {
+                if changed.is_err() || *stop.borrow() { break; }
+            },
+            _ = tokio::time::sleep(Duration::from_secs(1)), if last_watermark_refresh.elapsed() >= IDLE_TOUCH_INTERVAL => {
+                for partition in 0..partitions {
+                    let (low, high) = consumer.fetch_watermarks(TELEMETRY_TOPIC, partition, Timeout::After(Duration::from_secs(2)))?;
+                    if let Some(watermark) = ctx.metrics.watermarks.get(partition as usize) {
+                        watermark.earliest.store(low, Ordering::Relaxed);
+                        watermark.high.store(high, Ordering::Relaxed);
+                        watermark.ready.store(true, Ordering::Release);
+                    }
+                    let saved = ctx.pg.load_offset(CONSUMER, TELEMETRY_TOPIC, partition).await?;
+                    let next_offset = saved.map_or(low, |saved| saved.next_offset);
+                    ctx.pg.commit_offset(CONSUMER, TELEMETRY_TOPIC, partition, next_offset, high, 0).await?;
+                    if let Some(lag) = ctx.metrics.lag.get(partition as usize) {
+                        lag.store(high.saturating_sub(next_offset), Ordering::Relaxed);
+                    }
+                }
+                last_watermark_refresh = Instant::now();
+            }
+        }
     }
-    Ok(handles)
+    consumer.unsubscribe();
+    Ok(())
 }
 
 #[tokio::main]
@@ -325,10 +386,14 @@ async fn main() -> anyhow::Result<()> {
     let kafka = connect_broker(&args.brokers, Duration::from_secs(60)).await?;
     let partitions = ensure_topic(&kafka, TELEMETRY_TOPIC, args.partitions).await?;
 
-    let metrics = Arc::new(Metrics { lag: (0..partitions).map(|_| AtomicI64::new(0)).collect(), ..Metrics::default() });
+    let metrics = Arc::new(Metrics {
+        lag: (0..partitions).map(|_| AtomicI64::new(0)).collect(),
+        watermarks: (0..partitions).map(|_| PartitionWatermark::default()).collect(),
+        ..Metrics::default()
+    });
     let (stop_tx, stop_rx) = watch::channel(false);
     let ctx = Ctx { pg, ch, metrics: metrics.clone(), stop: stop_rx.clone() };
-    let handles = start(kafka, partitions, ctx).await?;
+    let kafka_config = kafka;
 
     let m = metrics.clone();
     let admin = axum::Router::new().route(
@@ -349,11 +414,13 @@ async fn main() -> anyhow::Result<()> {
     );
     tracing::info!(partitions, admin = %args.admin_addr, "karbird-processor running");
 
-    shutdown_signal().await;
-    let _ = stop_tx.send(true);
-    for h in handles {
-        let _ = tokio::time::timeout(Duration::from_secs(30), h).await;
+    tokio::select! {
+        _ = shutdown_signal() => {},
+        result = run_consumer(&kafka_config, partitions, ctx) => {
+            if let Err(error) = result { tracing::error!(%error, "processor worker stopped"); }
+        }
     }
+    let _ = stop_tx.send(true);
     let _ = admin_task.await;
     tracing::info!("karbird-processor stopped");
     Ok(())
@@ -365,14 +432,6 @@ mod tests {
     use std::sync::atomic::AtomicU32;
 
     #[test]
-    fn next_offset_is_one_past_the_highest_record() {
-        assert_eq!(next_offset([5, 6, 7].into_iter(), 5), 8);
-        assert_eq!(next_offset([9, 7, 8].into_iter(), 7), 10, "order does not matter");
-        assert_eq!(next_offset(std::iter::empty(), 42), 42, "empty batch never moves the offset");
-        assert_eq!(next_offset([0].into_iter(), 0), 1);
-    }
-
-    #[test]
     fn dead_letter_payload_is_bounded() {
         assert_eq!(dead_letter_payload(b"abc"), Some(&b"abc"[..]));
         assert_eq!(dead_letter_payload(&[]), Some(&[][..]));
@@ -380,6 +439,14 @@ mod tests {
         assert!(dead_letter_payload(&exact).is_some());
         let over = vec![0u8; MAX_DEAD_LETTER_PAYLOAD + 1];
         assert!(dead_letter_payload(&over).is_none());
+    }
+
+    #[test]
+    fn pg_offset_is_authoritative_and_retention_gaps_are_detectable() {
+        assert_eq!(durable_start_offset(None, 0), (0, false));
+        assert_eq!(durable_start_offset(None, 17), (17, false));
+        assert_eq!(durable_start_offset(Some(20), 17), (20, false));
+        assert_eq!(durable_start_offset(Some(10), 17), (17, true));
     }
 
     #[test]

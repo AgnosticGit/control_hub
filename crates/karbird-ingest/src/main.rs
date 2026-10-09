@@ -60,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
     let partitions = ensure_topic(&kafka, TELEMETRY_TOPIC, args.partitions).await?;
     let metrics = Arc::new(metrics::Metrics::default());
     let (publisher, publisher_tasks) = broker::Publisher::start(
-        kafka.clone(),
+        &kafka,
         TELEMETRY_TOPIC,
         partitions,
         broker::PublisherConfig::default(),

@@ -98,6 +98,8 @@ services:
     command: ["serve"]
     environment:
       <<: [*storage, *retention]
+      KARBIRD_KAFKA_BROKERS: kafka:19092
+      KARBIRD_LIVE_GROUP_ID: karbird-live-api
       KARBIRD_API_ADDR: 0.0.0.0:8080
       KARBIRD_API_DATABASE_URL: postgres://karbird_api:${CH_PG_API_PASSWORD:?rendered by the deploy}@${STORAGE_ADDR}:5432/karbird
       KARBIRD_API_CLICKHOUSE_USER: karbird_api

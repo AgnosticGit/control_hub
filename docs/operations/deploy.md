@@ -8,6 +8,17 @@ karbird runs on two small Linux hosts (tested target: 1/8 OCPU, 1 GB RAM, x86_64
 | `storage` | PostgreSQL, ClickHouse, SeaweedFS (S3 archive) | 22 only |
 | `app` | Kafka, ingest, processor, API, executor, archiver, web, Caddy (TLS) | 22, 80, 443 |
 
+The API live WebSocket reads from Kafka rather than polling ClickHouse every second. The current
+Compose deployment runs one API replica with the stable `karbird-live-api` consumer group. Before
+running multiple API replicas, assign a distinct stable `KARBIRD_LIVE_GROUP_ID` to each; if two
+replicas share a group, Kafka splits partitions and their WebSocket clients see partial live data.
+Each new/reconnected socket performs one bounded ClickHouse catch-up; historical ranges,
+topology refreshes, and infrastructure timeline requests remain on their existing HTTP paths.
+Aggregate live-reader and fan-out Prometheus metrics are available at `http://api:8080/metrics`
+inside the private Docker network. Caddy does not proxy this path publicly; metrics include Kafka
+lag, decode and offset-commit enqueue errors, fan-out backpressure and slow-subscriber overflow,
+with no tenant, project, or environment labels.
+
 Public URLs: `https://<domain>/` (site and `/app`), `https://<domain>/api/v1/…`, and OTLP/HTTP at
 `https://<domain>/otlp` (SDKs: `OTEL_EXPORTER_OTLP_ENDPOINT=https://<domain>/otlp`).
 

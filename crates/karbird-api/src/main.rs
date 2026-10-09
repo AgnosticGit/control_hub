@@ -4,6 +4,9 @@
 mod auth;
 mod bootstrap;
 mod error;
+mod live_consumer;
+mod live_hub;
+mod live_metrics;
 mod mail;
 mod openapi;
 mod permissions;
@@ -21,10 +24,13 @@ use axum::Router;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::routing::{get, post};
 use clap::{Parser, Subcommand};
+use karbird_protocol::TELEMETRY_TOPIC;
+use karbird_runtime::connect_broker;
 use karbird_runtime::{init_tracing, load_local_env, shutdown_signal};
 use karbird_storage::ch::{ChConfig, ChStore};
 use karbird_storage::pg::PgStore;
 use karbird_storage::retention::{self, Table};
+use rdkafka::consumer::{Consumer, StreamConsumer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::timeout::TimeoutLayer;
@@ -105,6 +111,11 @@ struct ServeArgs {
     addr: SocketAddr,
     #[arg(long, env = "KARBIRD_API_DATABASE_URL")]
     database_url: String,
+    /// Unique and stable per API replica; each replica group receives every telemetry partition.
+    #[arg(long, env = "KARBIRD_LIVE_GROUP_ID")]
+    live_group_id: Option<String>,
+    #[arg(long, env = "KARBIRD_KAFKA_BROKERS", default_value = "127.0.0.1:19092")]
+    brokers: String,
     #[arg(long, env = "KARBIRD_CLICKHOUSE_URL", default_value = "http://127.0.0.1:18123")]
     clickhouse_url: String,
     #[arg(long, env = "KARBIRD_CLICKHOUSE_DATABASE", default_value = "karbird")]
@@ -228,6 +239,8 @@ fn router(state: state::AppState) -> Router {
     Router::new()
         .route("/api/v1/health", get(routes::health))
         .route("/api/v1/ready", get(routes::ready))
+        // Scraped over the private API network; the public Caddy site does not proxy this path.
+        .route("/metrics", get(routes::metrics::metrics))
         .route("/api/v1/session/login", post(session::login))
         .route("/api/v1/session/register", post(routes::signup::register))
         .route("/api/v1/session/logout", post(session::logout))
@@ -333,6 +346,22 @@ fn api_config(args: &ServeArgs) -> state::ApiConfig {
     }
 }
 
+fn advance_live_cursor(previous: &mut i64, now: i64) -> i64 {
+    *previous = now.max(previous.saturating_add(1));
+    *previous
+}
+
+fn resolve_live_group_id(configured: Option<&str>, hostname: Option<&str>) -> anyhow::Result<String> {
+    if let Some(group) = configured {
+        anyhow::ensure!(!group.trim().is_empty(), "KARBIRD_LIVE_GROUP_ID must not be empty");
+        return Ok(group.to_owned());
+    }
+    Ok(hostname
+        .filter(|host| !host.trim().is_empty())
+        .map(|host| format!("karbird-live-{host}"))
+        .unwrap_or_else(|| "karbird-live-local".to_owned()))
+}
+
 async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let config = api_config(&args);
     let archive = archive_config(&args)?;
@@ -347,6 +376,9 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         password: args.clickhouse_password,
     });
     verify_retention(&ch, &args.retention).await?;
+    let kafka_config = connect_broker(&args.brokers, Duration::from_secs(60)).await?;
+    let hostname = std::env::var("HOSTNAME").ok();
+    let live_group_id = resolve_live_group_id(args.live_group_id.as_deref(), hostname.as_deref())?;
     if !config.secure_cookies {
         tracing::warn!("KARBIRD_ENV=dev: Secure cookie flag disabled for local http. Never use in production.");
     }
@@ -379,15 +411,28 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         login_throttle: auth::LoginThrottle::default(),
         signup_throttle: routes::signup::SignupThrottle::default(),
         live_slots: std::sync::Arc::new(tokio::sync::Semaphore::new(args.max_live_connections)),
+        live_hub: live_hub::LiveHub::default(),
+        live_metrics: std::sync::Arc::new(live_metrics::LiveMetrics::default()),
         mailer,
         public_url: args.public_url.trim_end_matches('/').to_owned(),
         google_oauth,
         oauth_states: routes::oauth::OAuthStateStore::default(),
         oauth_client: reqwest::Client::builder().timeout(Duration::from_secs(10)).build()?,
     };
+    let live_consumer: StreamConsumer = kafka_config
+        .clone()
+        .set("group.id", &live_group_id)
+        .set("enable.auto.commit", "false")
+        .set("enable.auto.offset.store", "false")
+        .set("auto.offset.reset", "latest")
+        .set("isolation.level", "read_committed")
+        .create()?;
+    live_consumer.subscribe(&[TELEMETRY_TOPIC])?;
+    let live_task = tokio::spawn(live_consumer::run(live_consumer, state.live_hub.clone(), state.live_metrics.clone()));
     let listener = tokio::net::TcpListener::bind(args.addr).await?;
     tracing::info!(addr = %args.addr, "karbird-api listening");
     axum::serve(listener, router(state)).with_graceful_shutdown(shutdown_signal()).await?;
+    live_task.abort();
     Ok(())
 }
 
@@ -967,6 +1012,23 @@ mod tests {
         ];
         argv.extend_from_slice(extra);
         super::ServeArgs::try_parse_from(argv).unwrap()
+    }
+
+    #[test]
+    fn live_cursor_remains_monotonic_for_same_timestamp_batches() {
+        let mut cursor = 100;
+        assert_eq!(super::advance_live_cursor(&mut cursor, 100), 101);
+        assert_eq!(super::advance_live_cursor(&mut cursor, 100), 102);
+        assert_eq!(super::advance_live_cursor(&mut cursor, 200), 200);
+        assert_eq!(super::advance_live_cursor(&mut cursor, 199), 201);
+    }
+
+    #[test]
+    fn live_group_id_is_stable_and_rejects_an_empty_override() {
+        assert_eq!(super::resolve_live_group_id(Some("api-1"), Some("host-a")).unwrap(), "api-1");
+        assert_eq!(super::resolve_live_group_id(None, Some("host-a")).unwrap(), "karbird-live-host-a");
+        assert_eq!(super::resolve_live_group_id(None, None).unwrap(), "karbird-live-local");
+        assert!(super::resolve_live_group_id(Some("  "), Some("host-a")).is_err());
     }
 
     #[test]

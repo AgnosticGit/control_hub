@@ -3,7 +3,7 @@
 | # | Decision | Status |
 |---|---|---|
 | [0001](0001-monorepo-layout.md) | Single Cargo + pnpm monorepo, scripts behind `just` | Accepted |
-| [0002](0002-kafka-client-rskafka.md) | Kafka client: `rskafka` (pure Rust) instead of `rdkafka` | Accepted |
+| [0002](0002-kafka-client-rskafka.md) | Historical Kafka client choice: `rskafka` | Superseded by 0023 |
 | [0003](0003-offsets-in-postgres.md) | Consumer offsets in PostgreSQL, at-least-once delivery | Accepted |
 | [0004](0004-clickhouse-dedup.md) | ClickHouse dedup via `ReplacingMergeTree(ingested_at)` | Accepted |
 | [0005](0005-wasm-engine-artifact.md) | WASM engine in a Worker; content-hashed artifact; ABI version | Accepted |
@@ -24,3 +24,4 @@
 | [0020](0020-demo-platform-actions.md) | Container restart, scaling, feature flags and rollback as typed demo actions through a demo orchestrator; per-check verification | Accepted |
 | [0021](0021-organisations-and-external-auth.md) | Organisations, explicit project assignments, Resend invitations and Google OIDC | Accepted |
 | [0022](0022-persisted-server-topology.md) | Persisted backend graphs, shared geometry, fenced refresh and atomic client updates | Accepted |
+| [0023](0023-rdkafka-and-live-fanout.md) | `rdkafka` consumer groups and Kafka-backed live WebSocket fan-out | Accepted |

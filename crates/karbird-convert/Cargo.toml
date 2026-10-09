@@ -1,0 +1,25 @@
+[package]
+name = "karbird-convert"
+description = "Pure Kafka envelope normalization shared by the processor and API live stream"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+karbird-domain.workspace = true
+karbird-protocol.workspace = true
+karbird-storage.workspace = true
+karbird-archive.workspace = true
+prost.workspace = true
+hex.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

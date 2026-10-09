@@ -29,6 +29,10 @@ const toolchain = readFileSync(join(root, "rust-toolchain.toml"), "utf8").match(
 const rustc = version("rustc");
 check("rustc", Boolean(rustc), `${rustc ?? "missing"} (pinned: ${toolchain})`);
 check("cargo", Boolean(version("cargo")), version("cargo") ?? "missing");
+const cmake = version("cmake");
+check("CMake (rdkafka)", Boolean(cmake), cmake ?? "install CMake for librdkafka's native build");
+const nativeCompiler = ["cl", "c++", "g++", "clang++"].find((cmd) => Boolean(version(cmd, cmd === "cl" ? ["/?"] : ["--version"])));
+check("C/C++ compiler (rdkafka)", Boolean(nativeCompiler), nativeCompiler ?? "install MSVC C++ Build Tools or GCC/Clang");
 const targets = version("rustup", ["target", "list", "--installed"]) === null ? "" : execFileSync("rustup", ["target", "list", "--installed"], { encoding: "utf8" });
 check("wasm32 target", targets.includes("wasm32-unknown-unknown"), targets.includes("wasm32-unknown-unknown") ? "installed" : "rustup target add wasm32-unknown-unknown");
 const bindgen = version("wasm-bindgen");

@@ -29,6 +29,7 @@ karbird-engine-core = { path = "crates/karbird-engine-core" }
 karbird-runtime = { path = "crates/karbird-runtime" }
 karbird-actions = { path = "crates/karbird-actions" }
 karbird-archive = { path = "crates/karbird-archive" }
+karbird-convert = { path = "crates/karbird-convert" }
 
 # pure / shared
 serde = { version = "1", features = ["derive"] }
@@ -64,7 +65,7 @@ flate2 = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "json", "time", "macros", "migrate"] }
 clickhouse = { version = "0.15", default-features = false, features = ["lz4"] }
 dotenvy = "0.15"
-rskafka = { version = "0.6", default-features = false, features = ["compression-lz4"] }
+rdkafka = { version = "0.39", default-features = false, features = ["cmake-build", "tokio"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 zstd = { version = "0.14", default-features = false }
 object_store = { version = "0.14", default-features = false, features = ["aws"] }

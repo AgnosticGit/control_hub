@@ -11,6 +11,9 @@ ARG RUNTIME_IMAGE=debian:12.15-slim
 FROM ${RUST_IMAGE} AS rust-build
 WORKDIR /src
 COPY . .
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends cmake build-essential pkg-config \
+ && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target,id=karbird-release-target \
     cargo build --release --locked \

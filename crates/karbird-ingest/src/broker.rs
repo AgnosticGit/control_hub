@@ -1,7 +1,7 @@
 //! Broker publisher with bounded per-partition queues and request batching.
 //!
 //! A request is acknowledged to the client only after the broker confirmed
-//! the write (`acks=all` in rskafka). The in-memory queue is only a staging
+//! the write (`acks=all` in Kafka). The in-memory queue is only a staging
 //! area: nothing in it has been acknowledged yet.
 
 use std::collections::BTreeMap;
@@ -10,9 +10,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use karbird_runtime::backoff;
-use rskafka::client::Client;
-use rskafka::client::partition::{Compression, PartitionClient, UnknownTopicHandling};
-use rskafka::record::Record;
+use rdkafka::config::ClientConfig;
+use rdkafka::message::OwnedHeaders;
+use rdkafka::producer::{FutureProducer, FutureRecord};
+use rdkafka::util::Timeout;
 use tokio::sync::{Semaphore, mpsc, oneshot};
 use tokio::task::JoinHandle;
 
@@ -56,9 +57,17 @@ impl Default for PublisherConfig {
 }
 
 struct Job {
-    record: Record,
+    record: PublishRecord,
     size: usize,
     respond: oneshot::Sender<Result<i64, PublishError>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PublishRecord {
+    pub(crate) key: Option<Vec<u8>>,
+    pub(crate) value: Option<Vec<u8>>,
+    pub(crate) headers: BTreeMap<String, Vec<u8>>,
+    timestamp_ms: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -81,19 +90,34 @@ impl std::fmt::Debug for Inner {
 
 impl Publisher {
     pub async fn start(
-        client: Arc<Client>,
+        config: &ClientConfig,
         topic: &str,
         partitions: i32,
         cfg: PublisherConfig,
         metrics: Arc<Metrics>,
     ) -> anyhow::Result<(Self, Vec<JoinHandle<()>>)> {
+        let mut producer_config = config.clone();
+        producer_config
+            .set("acks", "all")
+            .set("enable.idempotence", "true")
+            .set("compression.type", "none")
+            .set("message.timeout.ms", cfg.ack_timeout.as_millis().to_string())
+            .set("queue.buffering.max.messages", (cfg.queue_capacity * partitions.max(1) as usize).to_string())
+            .set("queue.buffering.max.kbytes", (cfg.max_queued_bytes / 1024).to_string());
+        let producer: FutureProducer = producer_config.create()?;
         let mut queues = Vec::new();
         let mut handles = Vec::new();
         for p in 0..partitions {
-            let pc = client.partition_client(topic.to_owned(), p, UnknownTopicHandling::Retry).await?;
             let (tx, rx) = mpsc::channel(cfg.queue_capacity);
             queues.push(tx);
-            handles.push(tokio::spawn(run_partition(pc, rx, cfg.clone(), metrics.clone())));
+            handles.push(tokio::spawn(run_partition(
+                producer.clone(),
+                topic.to_owned(),
+                p,
+                rx,
+                cfg.clone(),
+                metrics.clone(),
+            )));
         }
         let bytes = Arc::new(Semaphore::new(cfg.max_queued_bytes));
         Ok((Self { inner: Arc::new(Inner { queues, bytes, cfg, metrics }) }, handles))
@@ -120,11 +144,11 @@ impl Publisher {
 
         let (tx, rx) = oneshot::channel();
         let job = Job {
-            record: Record {
+            record: PublishRecord {
                 key: Some(key.as_bytes().to_vec()),
                 value: Some(value),
                 headers,
-                timestamp: chrono::Utc::now(),
+                timestamp_ms: chrono::Utc::now().timestamp_millis(),
             },
             size,
             respond: tx,
@@ -149,7 +173,14 @@ fn partition_for(key: &str, partitions: usize) -> usize {
     (h.finish() % partitions.max(1) as u64) as usize
 }
 
-async fn run_partition(pc: PartitionClient, mut rx: mpsc::Receiver<Job>, cfg: PublisherConfig, metrics: Arc<Metrics>) {
+async fn run_partition(
+    producer: FutureProducer,
+    topic: String,
+    partition: i32,
+    mut rx: mpsc::Receiver<Job>,
+    cfg: PublisherConfig,
+    metrics: Arc<Metrics>,
+) {
     while let Some(first) = rx.recv().await {
         let mut bytes = first.size;
         let mut batch = vec![first];
@@ -164,12 +195,12 @@ async fn run_partition(pc: PartitionClient, mut rx: mpsc::Receiver<Job>, cfg: Pu
             }
         }
         // Drop jobs whose caller already gave up (timeout) — they were never acknowledged.
-        let (records, responders): (Vec<Record>, Vec<_>) =
+        let (records, responders): (Vec<PublishRecord>, Vec<_>) =
             batch.into_iter().filter(|j| !j.respond.is_closed()).map(|j| (j.record, j.respond)).unzip();
         if records.is_empty() {
             continue;
         }
-        let result = produce_with_retry(&pc, records, &cfg, &metrics).await;
+        let result = produce_with_retry(&producer, &topic, partition, records, &cfg, &metrics).await;
         Metrics::inc(&metrics.publish_batches, 1);
         match result {
             Ok(offsets) => {
@@ -179,38 +210,64 @@ async fn run_partition(pc: PartitionClient, mut rx: mpsc::Receiver<Job>, cfg: Pu
             }
             Err(e) => {
                 Metrics::inc(&metrics.publish_failures, 1);
-                tracing::warn!(partition = pc.partition(), error = %e, "publish failed; clients receive a retryable error");
+                tracing::warn!(partition, error = %e, "publish failed; clients receive a retryable error");
                 for tx in responders {
                     let _ = tx.send(Err(e.clone()));
                 }
             }
         }
     }
-    tracing::info!(partition = pc.partition(), "publisher drained");
+    tracing::info!(partition, "publisher drained");
 }
 
 async fn produce_with_retry(
-    pc: &PartitionClient,
-    records: Vec<Record>,
+    producer: &FutureProducer,
+    topic: &str,
+    partition: i32,
+    records: Vec<PublishRecord>,
     cfg: &PublisherConfig,
     metrics: &Metrics,
 ) -> Result<Vec<i64>, PublishError> {
-    let mut last = String::new();
-    for attempt in 0..cfg.max_attempts {
-        if attempt > 0 {
-            Metrics::inc(&metrics.publish_retries, 1);
-            tokio::time::sleep(backoff(attempt, Duration::from_millis(100), Duration::from_secs(2))).await;
-        }
-        match tokio::time::timeout(cfg.attempt_timeout, pc.produce(records.clone(), Compression::NoCompression)).await {
-            Ok(Ok(offsets)) if offsets.len() == records.len() => return Ok(offsets),
-            Ok(Ok(offsets)) => {
-                last = format!("broker returned {} offsets for {} records", offsets.len(), records.len())
+    let mut offsets = Vec::with_capacity(records.len());
+    for record in records {
+        let mut last = String::new();
+        let key = record.key.as_deref().unwrap_or_default();
+        let payload = record.value.as_deref().unwrap_or_default();
+        for attempt in 0..cfg.max_attempts {
+            if attempt > 0 {
+                Metrics::inc(&metrics.publish_retries, 1);
+                tokio::time::sleep(backoff(attempt, Duration::from_millis(100), Duration::from_secs(2))).await;
             }
-            Ok(Err(e)) => last = e.to_string(),
-            Err(_) => last = "produce attempt timed out".into(),
+            let mut headers = OwnedHeaders::new();
+            for (name, value) in &record.headers {
+                headers = headers.insert(rdkafka::message::Header { key: name, value: Some(value.as_slice()) });
+            }
+            let kafka_record = FutureRecord::to(topic)
+                .partition(partition)
+                .key(key)
+                .payload(payload)
+                .timestamp(record.timestamp_ms)
+                .headers(headers);
+            match tokio::time::timeout(
+                cfg.attempt_timeout,
+                producer.send(kafka_record, Timeout::After(cfg.attempt_timeout)),
+            )
+            .await
+            {
+                Ok(Ok(delivery)) => {
+                    offsets.push(delivery.offset);
+                    last.clear();
+                    break;
+                }
+                Ok(Err((e, _))) => last = e.to_string(),
+                Err(_) => last = "produce acknowledgement timed out".into(),
+            }
+            if attempt + 1 == cfg.max_attempts {
+                return Err(PublishError::Unavailable(last));
+            }
         }
     }
-    Err(PublishError::Unavailable(last))
+    Ok(offsets)
 }
 
 /// In-process broker stand-in: partition workers answer jobs according to [`fake::Mode`]
@@ -233,7 +290,7 @@ pub(crate) mod fake {
     #[derive(Debug, Clone)]
     pub(crate) struct FakeBroker {
         mode: Arc<Mutex<Mode>>,
-        records: Arc<Mutex<Vec<(usize, Record)>>>,
+        records: Arc<Mutex<Vec<(usize, PublishRecord)>>>,
     }
 
     impl FakeBroker {
@@ -242,7 +299,7 @@ pub(crate) mod fake {
         }
 
         /// Records the broker acknowledged, with the partition they landed on.
-        pub fn records(&self) -> Vec<(usize, Record)> {
+        pub fn records(&self) -> Vec<(usize, PublishRecord)> {
             self.records.lock().unwrap().clone()
         }
     }

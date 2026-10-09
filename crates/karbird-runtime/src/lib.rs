@@ -1,10 +1,14 @@
 //! Process-level helpers shared by the karbird binaries.
 
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
 
-use rskafka::client::{Client, ClientBuilder};
+use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
+use rdkafka::client::DefaultClientContext;
+use rdkafka::config::ClientConfig;
+use rdkafka::consumer::{BaseConsumer, Consumer};
+use rdkafka::error::RDKafkaErrorCode;
+use rdkafka::util::Timeout;
 use tracing_subscriber::EnvFilter;
 
 /// Load `.karbird/settings.env` (the developer's own settings, e.g. retention) and
@@ -31,7 +35,7 @@ fn local_env_files(dir: &Path) -> Vec<std::path::PathBuf> {
 /// `KARBIRD_LOG_FORMAT=json`.
 pub fn init_tracing(service: &str) {
     let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(format!("info,rskafka=warn,{}=info", service.replace('-', "_"))));
+        .unwrap_or_else(|_| EnvFilter::new(format!("info,rdkafka=warn,{}=info", service.replace('-', "_"))));
     let json = std::env::var("KARBIRD_LOG_FORMAT").is_ok_and(|v| v == "json");
     let builder = tracing_subscriber::fmt().with_env_filter(filter).with_target(false);
     if json {
@@ -82,19 +86,22 @@ pub fn backoff(attempt: u32, base: Duration, max: Duration) -> Duration {
 }
 
 /// Connect to the broker, retrying until `deadline`.
-pub async fn connect_broker(brokers: &str, deadline: Duration) -> anyhow::Result<Arc<Client>> {
+pub async fn connect_broker(brokers: &str, deadline: Duration) -> anyhow::Result<ClientConfig> {
     let start = std::time::Instant::now();
     let mut attempt = 0;
     loop {
-        let list: Vec<String> = brokers.split(',').map(|s| s.trim().to_owned()).collect();
-        // rskafka retries the bootstrap connection internally without a deadline.
-        let budget = deadline.saturating_sub(start.elapsed()).max(Duration::from_secs(1));
-        let built = match tokio::time::timeout(budget, ClientBuilder::new(list).build()).await {
-            Ok(r) => r.map_err(|e| e.to_string()),
-            Err(_) => Err("connection attempt timed out".to_owned()),
-        };
-        match built {
-            Ok(c) => return Ok(Arc::new(c)),
+        let config = broker_config(brokers);
+        let probe_config = config.clone();
+        let remaining = deadline.saturating_sub(start.elapsed()).max(Duration::from_millis(1));
+        let probe_timeout = remaining.min(Duration::from_secs(3));
+        let probe = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+            let consumer: BaseConsumer = probe_config.create()?;
+            consumer.fetch_metadata(None, Timeout::After(probe_timeout)).map(|_| ()).map_err(anyhow::Error::new)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Kafka connection probe task failed: {e}"))?;
+        match probe {
+            Ok(()) => return Ok(config),
             Err(e) if start.elapsed() < deadline => {
                 tracing::warn!(error = %e, attempt, "broker not reachable yet, retrying");
                 tokio::time::sleep(backoff(attempt, Duration::from_millis(200), Duration::from_secs(3))).await;
@@ -105,25 +112,40 @@ pub async fn connect_broker(brokers: &str, deadline: Duration) -> anyhow::Result
     }
 }
 
-/// Create the topic if it does not exist yet. Returns the partition count to use.
-pub async fn ensure_topic(client: &Client, topic: &str, partitions: i32) -> anyhow::Result<i32> {
-    let existing = client.list_topics().await?;
-    if let Some(t) = existing.iter().find(|t| t.name == topic) {
-        return Ok(t.partitions.len() as i32);
-    }
-    let controller = client.controller_client()?;
-    match controller.create_topic(topic, partitions, 1, 10_000).await {
-        Ok(()) => Ok(partitions),
-        Err(e) => {
-            // Another process may have created it concurrently.
-            let existing = client.list_topics().await?;
-            existing
-                .iter()
-                .find(|t| t.name == topic)
-                .map(|t| t.partitions.len() as i32)
-                .ok_or_else(|| anyhow::anyhow!("failed to create topic {topic}: {e}"))
+pub fn broker_config(brokers: &str) -> ClientConfig {
+    let mut config = ClientConfig::new();
+    config.set("bootstrap.servers", brokers);
+    config
+}
+
+/// Create the topic if absent and return its actual partition count.
+pub async fn ensure_topic(config: &ClientConfig, topic: &str, partitions: i32) -> anyhow::Result<i32> {
+    let admin: AdminClient<DefaultClientContext> = config.create()?;
+    let new_topic = NewTopic::new(topic, partitions, TopicReplication::Fixed(1));
+    let options = AdminOptions::new().operation_timeout(Some(Timeout::After(Duration::from_secs(10))));
+    let results = admin.create_topics([&new_topic], &options).await?;
+    for result in results {
+        if let Err((name, code)) = result
+            && code != RDKafkaErrorCode::TopicAlreadyExists
+        {
+            anyhow::bail!("failed to create Kafka topic {name}: {code}");
         }
     }
+
+    let config = config.clone();
+    let topic = topic.to_owned();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<i32> {
+        let consumer: BaseConsumer = config.create()?;
+        let metadata = consumer.fetch_metadata(Some(&topic), Timeout::After(Duration::from_secs(10)))?;
+        metadata
+            .topics()
+            .iter()
+            .find(|candidate| candidate.name() == topic)
+            .map(|candidate| candidate.partitions().len() as i32)
+            .ok_or_else(|| anyhow::anyhow!("Kafka topic {topic} was not returned in metadata"))
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("Kafka topic metadata task failed: {e}"))?
 }
 
 #[cfg(test)]
@@ -131,6 +153,13 @@ mod tests {
     use super::*;
 
     const UNSET: &str = "KARBIRD_RUNTIME_TEST_SURELY_UNSET_7f3a";
+
+    #[test]
+    fn broker_config_contains_only_shared_client_options() {
+        let config = broker_config("localhost:19092");
+        assert_eq!(config.get("bootstrap.servers"), Some("localhost:19092"));
+        assert_eq!(config.get("message.timeout.ms"), None, "producer-only options belong on producers");
+    }
 
     #[test]
     fn env_or_falls_back_to_default() {

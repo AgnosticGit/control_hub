@@ -1,11 +1,7 @@
 //! WebSocket live channel for one environment.
 //!
-//! The server polls ClickHouse by *ingestion* time `(cursor, now - margin]` and pushes new
-//! timeline items, so late-arriving telemetry is delivered as well. The margin gives
-//! concurrent processor inserts time to become visible. Every message carries a `resume`
-//! cursor; a reconnect with `?resume=` continues without gaps (duplicates are harmless, the
-//! engine deduplicates by item ID). When a poll hits the size limit the server sends `gap`
-//! instead of silently dropping, and the client reloads that range over HTTP.
+//! One bounded catch-up query on connect recovers gaps from disconnects; steady-state updates
+//! arrive from the API replica's Kafka consumer through the scoped in-process live hub.
 //!
 //! Only items of the authorized environment are sent; no tenant-wide stream exists.
 
@@ -25,10 +21,10 @@ use utoipa::IntoParams;
 use super::telemetry::{event_item, external_clients_id, log_item, now_ns, parse_ns, span_item};
 use crate::auth::{CurrentUser, authorize};
 use crate::error::{ApiError, ApiResult};
+use crate::live_hub::LiveItem;
 use crate::permissions::Permission;
 use crate::state::AppState;
 
-const POLL: Duration = Duration::from_secs(1);
 const HEARTBEAT: Duration = Duration::from_secs(15);
 const SESSION_RECHECK: Duration = Duration::from_secs(30);
 /// Rows ingested within the last `VISIBILITY_MARGIN_NS` are not read yet.
@@ -37,8 +33,8 @@ const VISIBILITY_MARGIN_NS: i64 = 3_000_000_000;
 const INITIAL_OVERLAP_NS: i64 = 30_000_000_000;
 /// Only items whose event time is within this window are streamed (matches the live window).
 const EVENT_LOOKBACK_NS: i64 = 15 * 60_000_000_000;
-const MAX_ROWS_PER_KIND: u32 = 5_000;
-const MAX_QUERY_FAILURES: u32 = 5;
+const CATCHUP_OVERLAP_NS: i64 = 10_000_000_000;
+const CATCHUP_LIMIT: u32 = 5_000;
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -112,16 +108,82 @@ async fn run(
     _permit: OwnedSemaphorePermit,
 ) {
     let (mut tx, mut rx) = socket.split();
-    let mut tick = tokio::time::interval(POLL);
-    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut last_sent = Instant::now();
     let mut last_session_check = Instant::now();
-    let mut failures = 0u32;
     let clients_id = external_clients_id(&scope);
-
-    if !send(&mut tx, &ServerMessage::Hello { resume: cursor.to_string(), poll_ms: POLL.as_millis() as u64 }).await {
+    let (replay, mut updates) = match state.live_hub.subscribe(scope.clone(), cursor) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = send(&mut tx, &ServerMessage::Error { message: "live channel unavailable" }).await;
+            tracing::warn!(%error, "live subscription rejected");
+            return;
+        }
+    };
+    if !send(&mut tx, &ServerMessage::Hello { resume: cursor.to_string(), poll_ms: 0 }).await {
         return;
     }
+    // One bounded catch-up per socket handles API restarts and reconnects. The subscription is
+    // installed first, so Kafka items arriving during these queries remain queued for delivery.
+    let upto = now_ns().saturating_sub(VISIBILITY_MARGIN_NS);
+    let catchup_after = cursor.saturating_sub(CATCHUP_OVERLAP_NS);
+    if upto > catchup_after {
+        let event_from = upto.saturating_sub(EVENT_LOOKBACK_NS);
+        match tokio::try_join!(
+            state.ch.live_spans(&scope, event_from, catchup_after, upto, CATCHUP_LIMIT),
+            state.ch.live_logs(&scope, event_from, catchup_after, upto, CATCHUP_LIMIT),
+            state.ch.live_events(&scope, event_from, catchup_after, upto, CATCHUP_LIMIT),
+        ) {
+            Ok((spans, logs, events)) => {
+                let truncated = spans.len() >= CATCHUP_LIMIT as usize
+                    || logs.len() >= CATCHUP_LIMIT as usize
+                    || events.len() >= CATCHUP_LIMIT as usize;
+                let mut items = Vec::with_capacity(spans.len() + logs.len() + events.len());
+                items.extend(
+                    spans
+                        .into_iter()
+                        .map(|row| LiveItem { cursor_ns: row.ingested_at, item: span_item(row, &clients_id) }),
+                );
+                items.extend(logs.into_iter().map(|row| LiveItem { cursor_ns: row.ingested_at, item: log_item(row) }));
+                items.extend(
+                    events.into_iter().map(|row| LiveItem { cursor_ns: row.ingested_at, item: event_item(row) }),
+                );
+                items.sort_by_key(|item| item.cursor_ns);
+                let timeline: Vec<_> = items.iter().map(|item| item.item.clone()).collect();
+                let ok = if truncated {
+                    send(
+                        &mut tx,
+                        &ServerMessage::Gap { resume: upto.to_string(), from_ingested_ns: catchup_after.to_string() },
+                    )
+                    .await
+                } else if timeline.is_empty() {
+                    true
+                } else {
+                    send(&mut tx, &ServerMessage::Batch { resume: upto.to_string(), items: &timeline }).await
+                };
+                if !ok {
+                    return;
+                }
+                cursor = cursor.max(upto);
+            }
+            Err(error) => {
+                tracing::warn!(%error, "live catch-up query failed");
+                let _ = send(&mut tx, &ServerMessage::Error { message: "live catch-up unavailable" }).await;
+                return;
+            }
+        }
+    }
+    let mut pending = replay.into_iter().filter(|item| item.cursor_ns > cursor).collect::<Vec<_>>();
+    pending.sort_by_key(|item| item.cursor_ns);
+    if !pending.is_empty() {
+        cursor = pending.iter().map(|item| item.cursor_ns).max().unwrap_or(cursor);
+        let timeline: Vec<_> = pending.into_iter().map(|item| item.item).collect();
+        if !send(&mut tx, &ServerMessage::Batch { resume: cursor.to_string(), items: &timeline }).await {
+            return;
+        }
+        last_sent = Instant::now();
+    }
+    let mut heartbeat = tokio::time::interval(HEARTBEAT);
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         tokio::select! {
             incoming = rx.next() => match incoming {
@@ -129,7 +191,32 @@ async fn run(
                 // Client data is not used; pings are answered by the WebSocket layer.
                 Some(Ok(_)) => {}
             },
-            _ = tick.tick() => {
+            update = updates.recv() => {
+                let Some(mut batch) = update else {
+                    let _ = send(&mut tx, &ServerMessage::Gap { resume: cursor.to_string(), from_ingested_ns: cursor.to_string() }).await;
+                    break;
+                };
+                batch.retain(|item| item.cursor_ns > cursor);
+                if batch.is_empty() { continue; }
+                let mut items = batch;
+                cursor = items.iter().map(|item| item.cursor_ns).max().unwrap_or(cursor);
+                while items.len() < 128 {
+                    match updates.try_recv() {
+                        Ok(mut next) => {
+                            next.retain(|item| item.cursor_ns > cursor);
+                            if !next.is_empty() {
+                                cursor = next.iter().map(|item| item.cursor_ns).max().unwrap_or(cursor);
+                                items.extend(next);
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+                let timeline: Vec<_> = items.into_iter().map(|item| item.item).collect();
+                if !send(&mut tx, &ServerMessage::Batch { resume: cursor.to_string(), items: &timeline }).await { break; }
+                last_sent = Instant::now();
+            }
+            _ = heartbeat.tick() => {
                 if last_session_check.elapsed() >= SESSION_RECHECK {
                     last_session_check = Instant::now();
                     if !user.still_active(&state).await.unwrap_or(false) {
@@ -137,49 +224,10 @@ async fn run(
                         break;
                     }
                 }
-                let upto = now_ns() - VISIBILITY_MARGIN_NS;
-                if upto <= cursor {
-                    continue;
+                if last_sent.elapsed() >= HEARTBEAT {
+                    if !send(&mut tx, &ServerMessage::Heartbeat { resume: cursor.to_string() }).await { break; }
+                    last_sent = Instant::now();
                 }
-                let event_from = upto - EVENT_LOOKBACK_NS;
-                let fetched = tokio::try_join!(
-                    state.ch.live_spans(&scope, event_from, cursor, upto, MAX_ROWS_PER_KIND),
-                    state.ch.live_logs(&scope, event_from, cursor, upto, MAX_ROWS_PER_KIND),
-                    state.ch.live_events(&scope, event_from, cursor, upto, MAX_ROWS_PER_KIND),
-                );
-                let (spans, logs, events) = match fetched {
-                    Ok(v) => { failures = 0; v }
-                    Err(e) => {
-                        failures += 1;
-                        tracing::warn!(error = %e, failures, "live query failed");
-                        if failures >= MAX_QUERY_FAILURES {
-                            let _ = send(&mut tx, &ServerMessage::Error { message: "live query failing" }).await;
-                            break;
-                        }
-                        continue;
-                    }
-                };
-                let limit = MAX_ROWS_PER_KIND as usize;
-                let from = cursor;
-                cursor = upto;
-                let ok = if spans.len() >= limit || logs.len() >= limit || events.len() >= limit {
-                    send(&mut tx, &ServerMessage::Gap { resume: cursor.to_string(), from_ingested_ns: from.to_string() }).await
-                } else if spans.is_empty() && logs.is_empty() && events.is_empty() {
-                    if last_sent.elapsed() < HEARTBEAT {
-                        continue;
-                    }
-                    send(&mut tx, &ServerMessage::Heartbeat { resume: cursor.to_string() }).await
-                } else {
-                    let mut items = Vec::with_capacity(spans.len() + logs.len() + events.len());
-                    items.extend(spans.into_iter().map(|s| span_item(s, &clients_id)));
-                    items.extend(logs.into_iter().map(log_item));
-                    items.extend(events.into_iter().map(event_item));
-                    send(&mut tx, &ServerMessage::Batch { resume: cursor.to_string(), items: &items }).await
-                };
-                if !ok {
-                    break;
-                }
-                last_sent = Instant::now();
             }
         }
     }
@@ -211,8 +259,8 @@ mod tests {
     fn control_messages_have_the_documented_shape() {
         let j = |m: &ServerMessage<'_>| serde_json::to_string(m).unwrap();
         assert_eq!(
-            j(&ServerMessage::Hello { resume: "1".into(), poll_ms: 1000 }),
-            r#"{"type":"hello","resume":"1","poll_ms":1000}"#
+            j(&ServerMessage::Hello { resume: "1".into(), poll_ms: 0 }),
+            r#"{"type":"hello","resume":"1","poll_ms":0}"#
         );
         assert_eq!(
             j(&ServerMessage::Gap { resume: "9".into(), from_ingested_ns: "3".into() }),

@@ -12,6 +12,8 @@ karbird-domain.workspace = true
 karbird-storage.workspace = true
 karbird-runtime.workspace = true
 karbird-actions.workspace = true
+karbird-convert.workspace = true
+karbird-protocol.workspace = true
 karbird-engine-core = { workspace = true, features = ["openapi"] }
 anyhow.workspace = true
 axum.workspace = true
@@ -31,6 +33,7 @@ tower-http.workspace = true
 tracing.workspace = true
 utoipa.workspace = true
 uuid.workspace = true
+rdkafka.workspace = true
 
 [dev-dependencies]
 tower = { workspace = true, features = ["util"] }

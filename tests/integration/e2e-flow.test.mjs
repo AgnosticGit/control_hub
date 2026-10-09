@@ -251,6 +251,22 @@ test('live WebSocket requires session, allowed Origin and project access', async
   assert.equal(await handshake(API, path, { cookie: admin.cookieHeader(), origin: ORIGIN }), 101);
 });
 
+test('API metrics expose aggregate live pipeline health without tenant labels', async () => {
+  const response = await fetch(`${API}/metrics`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') ?? '', /text\/plain.*version=0\.0\.4/);
+  const body = await response.text();
+  for (const metric of [
+    'karbird_live_kafka_records_total',
+    'karbird_live_kafka_decode_errors_total',
+    'karbird_live_consumer_lag_messages',
+    'karbird_live_hub_subscriber_overflows_total',
+  ]) assert.match(body, new RegExp(`^${metric} \\d+$`, 'm'));
+  assert.doesNotMatch(body, /tenant_id|project_id|environment_id/);
+  const publicResponse = await fetch(`${WEB}/metrics`);
+  assert.equal(publicResponse.status, 404, 'the public web entry point must not proxy internal API metrics');
+});
+
 for (const [name, base] of [
   ['API', API],
   ['web proxy', WEB],
