@@ -86,10 +86,10 @@ export function PeoplePage() {
 
   return (
     <AccountShell active="people" title="People" description="Organization membership and project access are managed separately.">
-      <label className="grid max-w-sm gap-1.5 text-sm font-medium">
-        Organization
+      <label className="grid max-w-sm gap-1.5">
+        <span className="label">Organization</span>
         <select
-          className="input h-10"
+          className="select w-full"
           value={selectedOrganizationId}
           onChange={(event) => {
             setOrganizationId(event.target.value);
@@ -106,17 +106,17 @@ export function PeoplePage() {
           Email
           <input className="input h-10" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
         </label>
-        <label className="grid gap-1.5 text-sm font-medium">
-          Organization role
-          <select className="input h-10" value={organizationRole} onChange={(event) => setOrganizationRole(event.target.value)}>
+        <label className="grid gap-1.5">
+          <span className="label">Organization role</span>
+          <select className="select w-full" value={organizationRole} onChange={(event) => setOrganizationRole(event.target.value)}>
             <option value="member">Member</option>
             <option value="admin">Admin</option>
           </select>
         </label>
-        <label className="grid gap-1.5 text-sm font-medium">
-          Project
+        <label className="grid gap-1.5">
+          <span className="label">Project</span>
           <select
-            className="input h-10"
+            className="select w-full"
             value={selectedProjectId}
             onChange={(event) => {
               setProjectId(event.target.value);
@@ -128,9 +128,9 @@ export function PeoplePage() {
           </select>
         </label>
         {selectedProjectId ? (
-          <label className="grid gap-1.5 text-sm font-medium">
-            Project role
-            <select className="input h-10" value={selectedRoleId} onChange={(event) => setRoleId(event.target.value)} required>
+          <label className="grid gap-1.5">
+            <span className="label">Project role</span>
+            <select className="select w-full" value={selectedRoleId} onChange={(event) => setRoleId(event.target.value)} required>
               {(roles.data ?? []).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
             </select>
           </label>

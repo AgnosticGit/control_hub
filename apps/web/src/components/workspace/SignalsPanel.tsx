@@ -32,10 +32,11 @@ interface Props {
   onTab: (t: Tab) => void;
   traceId: string | null;
   onTrace: (id: string | null) => void;
+  onSelectRecord: (serviceName: string, time: bigint) => void;
 }
 
 /** Logs, traces and events for the 5 minutes up to the selected time (side panel). */
-export function SignalsPanel({ projectId, environmentId, state, selectedId, tab, onTab, traceId, onTrace }: Props) {
+export function SignalsPanel({ projectId, environmentId, state, selectedId, tab, onTab, traceId, onTrace, onSelectRecord }: Props) {
   const [onlySelected, setOnlySelected] = useState(true);
   // Quantize to 1 s and debounce so scrubbing/replay does not flood the API.
   const cursorSec = useDebounced(state.cursor / NS_PER_SEC, state.mode === "replay" ? 800 : 250);
@@ -85,9 +86,9 @@ export function SignalsPanel({ projectId, environmentId, state, selectedId, tab,
         ) : null}
       </div>
       <div className="min-h-0 flex-1" role="tabpanel">
-        {tab === "logs" ? <LogsPanel scope={scope} onTrace={showTrace} /> : null}
+        {tab === "logs" ? <LogsPanel scope={scope} onTrace={showTrace} onSelectRecord={onSelectRecord} /> : null}
         {tab === "traces" ? <TracesPanel scope={scope} traceId={traceId} onTrace={onTrace} /> : null}
-        {tab === "events" ? <EventsPanel scope={scope} onTrace={showTrace} /> : null}
+        {tab === "events" ? <EventsPanel scope={scope} onTrace={showTrace} onSelectRecord={onSelectRecord} /> : null}
       </div>
     </section>
   );

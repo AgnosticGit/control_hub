@@ -55,6 +55,26 @@ test("the account home shows the user and their projects; the profile name can b
   expect(errors).toEqual([]);
 });
 
+test("account selects share the same styled control and profile fields have even spacing", async ({ page }) => {
+  await register(page);
+  for (const route of ["/app/account/projects", "/app/account/people"]) {
+    await page.goto(route);
+    const select = page.getByRole("combobox").first();
+    await expect(select).toBeVisible();
+    const style = await select.evaluate((element) => {
+      const computed = getComputedStyle(element);
+      return { height: computed.height, radius: computed.borderRadius, paddingRight: computed.paddingRight };
+    });
+    expect(style).toEqual({ height: "36px", radius: "8px", paddingRight: "36px" });
+  }
+  await page.goto("/app/account/profile");
+  for (const name of ["Display name", "Email"]) {
+    const input = page.getByLabel(name);
+    const spacing = await input.evaluate((element) => getComputedStyle(element.parentElement ?? element).rowGap);
+    expect(spacing).toBe("6px");
+  }
+});
+
 test("security: other sessions can be signed out and the password changed", async ({ page, browser }) => {
   const email = await register(page);
   const other = await signIn(browser, email, PASSWORD);

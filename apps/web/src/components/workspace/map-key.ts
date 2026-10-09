@@ -2,15 +2,16 @@
 // exactly what the map draws.
 
 import { ACCENT, EDGE_ERROR, EDGE_INFERRED, EDGE_OK, EDGE_WARN, EXTERNAL_COLOR, STATUS_COLORS, hex } from "@/renderer/map-colors";
+import { colorAt, cssColor } from "@/renderer/service-colors";
 
 /** Sample service colour for marks drawn in "the service's colour". */
-export const SAMPLE_SERVICE = "#a78bfa";
+export const SAMPLE_SERVICE = cssColor(colorAt(0));
 
 export type Swatch =
   | { kind: "dot"; color: string; size?: "small" | "normal" | "large"; halo?: string; faded?: boolean }
   | { kind: "ring"; color: string }
   | { kind: "line"; color: string; dashed?: boolean; thick?: boolean }
-  | { kind: "card"; color: string; dashed?: boolean; glow?: string; faded?: boolean; outline?: string };
+  | { kind: "card"; color: string; dashed?: boolean; glow?: string; faded?: boolean; outline?: string; corner?: string };
 
 export interface KeyItem {
   id: string;
@@ -114,9 +115,9 @@ export const MAP_KEY: KeySection[] = [
     items: [
       {
         id: "service",
-        swatch: { kind: "card", color: SAMPLE_SERVICE },
-        label: "Framed card",
-        meaning: "A service, framed in its own colour. The small dot in its corner shows its health.",
+        swatch: { kind: "card", color: SAMPLE_SERVICE, corner: HEALTHY ?? hex(ACCENT) },
+        label: "Service card",
+        meaning: "Solid rounded card. Its border and icon use the service colour; the small corner dot shows data health.",
       },
       {
         id: "healthy",

@@ -296,7 +296,6 @@ export function MapView({
         </div>
         <AnimationNote
           mode={mode}
-          speed={speed}
           summary={summary}
           infrastructure={infrastructure}
           onInfrastructureChange={onInfrastructureChange}
@@ -323,27 +322,29 @@ export function MapView({
         onKeyDown={onKeyDown}
         className="absolute inset-0 overflow-hidden outline-none"
       />
-      <div className="pointer-events-none absolute inset-x-3 bottom-3 flex flex-wrap-reverse items-end justify-between gap-2">
-        <div className="pointer-events-auto flex gap-1.5">
-          {ZOOM_BUTTONS.map((b) => (
-            <button
-              key={b.label}
-              type="button"
-              aria-label={b.label}
-              title={b.label}
-              onClick={() => zoomControl(b.action)}
-              className="btn btn-icon bg-surface/90 backdrop-blur"
-            >
-              <Icon name={b.icon} className="h-4 w-4" />
-            </button>
-          ))}
+      <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2">
+        <div className="pointer-events-auto flex flex-col gap-1.5">
+          <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-surface/95 shadow-lg backdrop-blur" role="group" aria-label="Map zoom">
+            {ZOOM_BUTTONS.map((b, index) => (
+              <button
+                key={b.label}
+                type="button"
+                aria-label={b.label}
+                title={b.label}
+                onClick={() => zoomControl(b.action)}
+                className={`flex h-9 w-9 items-center justify-center text-muted transition-colors hover:bg-surface-2 hover:text-text ${index === 1 ? "border-t border-border" : ""}`}
+              >
+                <Icon name={b.icon} className="h-4 w-4" />
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             aria-label={fullscreen ? "Exit full screen" : "Full screen"}
             title={fullscreen ? "Exit full screen (Esc)" : "Full screen"}
             aria-pressed={fullscreen}
             onClick={onToggleFullscreen}
-            className="btn btn-icon bg-surface/90 backdrop-blur"
+            className="btn btn-icon bg-surface/95 shadow-lg backdrop-blur"
           >
             <Icon name={fullscreen ? "minimize" : "maximize"} className="h-4 w-4" />
           </button>
@@ -375,7 +376,6 @@ export function MapView({
       </div>
       <AnimationNote
         mode={mode}
-        speed={speed}
         summary={summary}
         infrastructure={infrastructure}
         onInfrastructureChange={onInfrastructureChange}
@@ -426,7 +426,6 @@ function Legend() {
 /** States exactly what the moving dots show, so nobody mistakes them for decoration. */
 function AnimationNote({
   mode,
-  speed,
   summary,
   infrastructure,
   onInfrastructureChange,
@@ -439,7 +438,6 @@ function AnimationNote({
   availability,
 }: {
   mode: Mode;
-  speed: Speed;
   summary: FrameSummary | null;
   infrastructure: boolean;
   onInfrastructureChange: (enabled: boolean) => void;
@@ -455,7 +453,7 @@ function AnimationNote({
     mode === "live"
       ? `${LIVE_ANIM_DELAY_MS / 1000} s behind live (telemetry is delivered in batches)`
       : mode === "replay"
-        ? `replay at ${speed}×${speed <= 0.001 ? " — 1 ms of recorded time per second" : ""}`
+        ? "replay at a readable pace"
         : "frozen at the selected time";
   const capped = summary && summary.hops_shown < summary.hops_in_window ? `Showing ${summary.hops_shown} of ${summary.hops_in_window} requests` : null;
   return (

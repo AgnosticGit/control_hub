@@ -13,7 +13,6 @@ import {
   type ContainerEvent,
   type InfraTimeline,
 } from "./machines";
-import { futureShare, withFuture } from "./scale";
 
 const S = 1_000_000_000n;
 const FROM = 1_800_000_000n * S;
@@ -97,13 +96,6 @@ describe("machine timeline", () => {
   it("uses a fixed bucket count so viewport size cannot change the request", () => {
     const view = { from: FROM + 3n * S, to: FROM + 903n * S };
     expect(machineWindow(view)?.buckets).toBe(MACHINE_TIMELINE_BUCKETS);
-  });
-
-  it("excludes the visual future stretch from the request window", () => {
-    const data = { from: FROM, to: FROM + 900n * S };
-    const narrow = withFuture(data, futureShare(480));
-    const wide = withFuture(data, futureShare(1440));
-    expect(machineWindow(narrow, data)).toEqual(machineWindow(wide, data));
   });
 
   it("keeps the window within what the API accepts", () => {

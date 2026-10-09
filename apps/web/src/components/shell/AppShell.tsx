@@ -56,9 +56,6 @@ export function AppShell({ projectId, environmentId, active, status, children }:
             <Logo />
             karbird
           </Link>
-          <button type="button" className="btn btn-icon btn-sm" aria-label="Hide sidebar" title="Hide sidebar" onClick={() => writePersisted(SIDEBAR_KEY, "true")}>
-            <Icon name="chevronLeft" className="h-4 w-4" />
-          </button>
         </div>
 
         <div className="mx-3 grid gap-2 rounded-xl border border-border bg-surface/70 p-3">
@@ -130,8 +127,16 @@ export function AppShell({ projectId, environmentId, active, status, children }:
         </div>
       </aside>
 
+      <button
+        type="button"
+        className={`absolute top-1/2 z-50 flex h-12 w-5 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-border bg-surface-2 text-muted shadow-lg transition-[left,color,background] hover:bg-surface-3 hover:text-text ${sidebarHidden ? "left-0" : "left-[228px]"}`}
+        aria-label={sidebarHidden ? "Show sidebar" : "Hide sidebar"}
+        title={sidebarHidden ? "Show sidebar" : "Hide sidebar"}
+        onClick={() => writePersisted(SIDEBAR_KEY, sidebarHidden ? "false" : "true")}
+      >
+        <Icon name={sidebarHidden ? "panelLeft" : "chevronLeft"} className="h-3.5 w-3.5" />
+      </button>
       <div className="flex min-h-0 min-w-0 flex-col">
-        {sidebarHidden ? <button type="button" className="btn btn-icon absolute left-3 top-3 z-40 shadow-lg" aria-label="Show sidebar" title="Show sidebar" onClick={() => writePersisted(SIDEBAR_KEY, "false")}><Icon name="panelLeft" className="h-4 w-4" /></button> : null}
         <div className="min-h-0 flex-1">{children}</div>
       </div>
     </div>

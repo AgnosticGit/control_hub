@@ -15,7 +15,7 @@ export default function FeaturesPage() {
         <li>Durable pipeline: ingestion acknowledges only after the broker confirms the write.</li>
         <li>Service map with observed calls and inferred dependencies (with reasons).</li>
         <li>Trace list and waterfall, correlated logs and events, virtualized log view.</li>
-        <li>Timeline: live, paused and historical modes, seek, step between events, playback speeds.</li>
+        <li>Timeline: live, paused and historical modes, seek, step between events and readable playback.</li>
         <li>State reconstruction in a Rust engine compiled to WebAssembly, running in a Web Worker.</li>
         <li>Tenant/project/environment isolation, cookie sessions with CSRF protection.</li>
         <li>

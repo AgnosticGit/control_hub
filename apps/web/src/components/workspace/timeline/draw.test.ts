@@ -1,6 +1,6 @@
 import type { TimelineTracks } from "@karbird/web-engine";
 import { describe, expect, it } from "vitest";
-import { FUTURE_EDGE, FUTURE_FILL, RULER_H, actionColor, bucketGeometry, draw, drawRuler, rowTop, totalHeight, withAlpha, type DrawInput, type Row } from "./draw";
+import { RULER_H, actionColor, bucketGeometry, draw, drawRuler, rowTop, totalHeight, withAlpha, type DrawInput, type Row } from "./draw";
 import type { View } from "./scale";
 
 interface Call {
@@ -110,13 +110,13 @@ describe("bucketGeometry", () => {
 
 describe("actionColor", () => {
   it("colours plans by state", () => {
-    expect(actionColor("succeeded")).toBe("#22c55e");
+    expect(actionColor("succeeded")).toBe("#18d889");
     expect(actionColor("failed")).toBe("#ef4444");
     expect(actionColor("verification_failed")).toBe("#ef4444");
     expect(actionColor("running")).toBe("#f59e0b");
     expect(actionColor("approved")).toBe("#f59e0b");
-    expect(actionColor("pending_approval")).toBe("#9a9fa6");
-    expect(actionColor("")).toBe("#9a9fa6");
+    expect(actionColor("pending_approval")).toBe("#91a5bd");
+    expect(actionColor("")).toBe("#91a5bd");
   });
 });
 
@@ -142,7 +142,7 @@ describe("draw", () => {
   it("shades alternate rows", () => {
     const { ctx, calls } = fakeCtx();
     draw(ctx, input({ rows: [row("a", "group", 10), row("b", "group", 15), row("c", "group", 20)] }));
-    const alt = calls.filter((c) => c.name === "fillRect" && c.fillStyle === "rgba(39, 41, 45, 0.5)");
+    const alt = calls.filter((c) => c.name === "fillRect" && c.fillStyle === "rgba(18, 35, 56, 0.58)");
     expect(alt.map((c) => c.args)).toEqual([[0, 10, WIDTH, 15]]);
   });
 
@@ -293,7 +293,7 @@ describe("draw", () => {
       }),
     );
     const fills = calls.filter((c) => c.name === "fill");
-    expect(fills.map((f) => f.fillStyle)).toContain("#22c55e");
+    expect(fills.map((f) => f.fillStyle)).toContain("#18d889");
     expect(fills.map((f) => f.fillStyle)).not.toContain("#ef4444");
     expect(named("fillText").map((c) => c.args[0])).toEqual(["Restart · orders"]);
   });
@@ -302,12 +302,12 @@ describe("draw", () => {
     const { ctx, calls } = fakeCtx();
     const rows = [row("g", "group", 40)];
     draw(ctx, input({ rows, range: { from: 250_000_000n, to: 750_000_000n }, cursor: -10n }));
-    const shade = calls.filter((c) => c.name === "fillRect" && c.fillStyle === "rgba(6, 10, 19, 0.55)");
+    const shade = calls.filter((c) => c.name === "fillRect" && c.fillStyle === "rgba(4, 12, 21, 0.6)");
     expect(shade.map((c) => c.args)).toEqual([
       [0, 0, 250, 40],
       [750, 0, 250, 40],
     ]);
-    const edges = calls.filter((c) => c.name === "fillRect" && c.fillStyle === "rgba(34, 211, 238, 0.8)");
+    const edges = calls.filter((c) => c.name === "fillRect" && c.fillStyle === "rgba(25, 212, 238, 0.8)");
     expect(edges.map((c) => c.args[0])).toEqual([249.5, 749.5]);
   });
 
@@ -320,34 +320,17 @@ describe("draw", () => {
   it("draws the cursor only when it is in view", () => {
     const inView = fakeCtx();
     draw(inView.ctx, input({ rows: [row("g", "group", 40)], cursor: 500_000_000n }));
-    expect(inView.calls.some((c) => c.name === "fillRect" && c.fillStyle === "#22d3ee")).toBe(true);
+    expect(inView.calls.some((c) => c.name === "fillRect" && c.fillStyle === "#19d4ee")).toBe(true);
     const outside = fakeCtx();
     draw(outside.ctx, input({ rows: [row("g", "group", 40)], cursor: 5_000_000_000n }));
-    expect(outside.calls.some((c) => c.name === "fillRect" && c.fillStyle === "#22d3ee")).toBe(false);
+    expect(outside.calls.some((c) => c.name === "fillRect" && c.fillStyle === "#19d4ee")).toBe(false);
   });
 
-  it("tints the time after the data ends and marks the edge", () => {
+  it("does not draw a separate future zone", () => {
     const { ctx, calls } = fakeCtx();
-    draw(ctx, input({ rows: [row("g", "group", 40)], future: 800_000_000n, cursor: 900_000_000n }));
-    const tint = calls.filter((c) => c.name === "fillRect" && c.fillStyle === FUTURE_FILL);
-    expect(tint.map((c) => c.args)).toEqual([[800, 0, 200, 40]]);
-    const edge = calls.filter((c) => c.name === "fillRect" && c.fillStyle === FUTURE_EDGE);
-    expect(edge.length).toBeGreaterThan(0);
-    for (const e of edge) expect(e.args[0]).toBe(800);
-    expect(calls.some((c) => c.name === "fillRect" && c.fillStyle === "#22d3ee")).toBe(true);
-  });
-
-  it("tints the whole view when it lies after the data, and nothing when it lies before", () => {
-    const after = fakeCtx();
-    draw(after.ctx, input({ rows: [row("g", "group", 40)], future: -5n }));
-    expect(after.calls.filter((c) => c.name === "fillRect" && c.fillStyle === FUTURE_FILL).map((c) => c.args)).toEqual([[0, 0, WIDTH, 40]]);
-    expect(after.calls.some((c) => c.fillStyle === FUTURE_EDGE)).toBe(false);
-
-    for (const future of [null, undefined, 2_000_000_000n]) {
-      const none = fakeCtx();
-      draw(none.ctx, input({ rows: [row("g", "group", 40)], future }));
-      expect(none.calls.some((c) => c.fillStyle === FUTURE_FILL || c.fillStyle === FUTURE_EDGE)).toBe(false);
-    }
+    draw(ctx, input({ rows: [row("g", "group", 40)], cursor: 900_000_000n }));
+    expect(calls.some((c) => c.fillStyle === "rgba(100, 116, 139, 0.13)" || c.fillStyle === "rgba(148, 163, 184, 0.55)")).toBe(false);
+    expect(calls.some((c) => c.name === "fillRect" && c.fillStyle === "#19d4ee")).toBe(true);
   });
 });
 
@@ -367,12 +350,9 @@ describe("drawRuler", () => {
     expect(named("fillText").map((c) => c.args[0])).not.toContain("A");
   });
 
-  it("tints the future on the ruler too and keeps tick labels out of it", () => {
-    const { ctx, calls, named } = fakeCtx();
-    drawRuler(ctx, { width: WIDTH, view: VIEW, cursor: 0n, markA: null, hoverX: null, range: null, future: 750_000_000n });
-    expect(calls.filter((c) => c.name === "fillRect" && c.fillStyle === FUTURE_FILL).map((c) => c.args)).toEqual([[750, 0, 250, RULER_H]]);
-    const labelXs = named("fillText").map((c) => Number(c.args[1]));
-    expect(labelXs.length).toBeGreaterThan(0);
-    for (const x of labelXs) expect(x).toBeLessThan(750);
+  it("keeps normal tick labels across the ruler", () => {
+    const { ctx, named } = fakeCtx();
+    drawRuler(ctx, { width: WIDTH, view: VIEW, cursor: 0n, markA: null, hoverX: null, range: null });
+    expect(named("fillText").length).toBeGreaterThan(2);
   });
 });

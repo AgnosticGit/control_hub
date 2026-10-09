@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { TimelineTracksView } from "./timeline/TimelineTracksView";
 import { timelineArchiveNote } from "./logs-query";
 import { formatSpan, type View } from "./timeline/scale";
 import type { WorkspaceMemory } from "./workspace-memory";
-import { SPEED_MAX, SPEED_MIN, SPEED_SLIDER_STEPS, formatSpeed, sliderPositionForSpeed, speedFromSlider, type EngineState, type Mode, type WorkspaceActions } from "./useWorkspaceEngine";
-import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime, nowNs } from "@/lib/time";
+import type { EngineState, Mode, WorkspaceActions } from "./useWorkspaceEngine";
+import { NS_PER_MS, formatClock, formatDateTime, nowNs } from "@/lib/time";
 
 const MODE_STYLE: Record<Mode, string> = {
   live: "bg-ok/10 text-ok border-ok/40",
@@ -40,18 +40,31 @@ interface Props {
   onMarkA: (t: bigint | null) => void;
   onCompare: (a: bigint, b: bigint) => void;
   memory?: WorkspaceMemory;
+  onContentHeight: (height: number) => void;
 }
 
-export function TimelineBar({ projectId, environmentId, filterKey, muted, onMuted, focus = null, height, state, actions, markA, onMarkA, onCompare, memory }: Props) {
+export function TimelineBar({ projectId, environmentId, filterKey, muted, onMuted, focus = null, height, state, actions, markA, onMarkA, onCompare, memory, onContentHeight }: Props) {
   const [showRange, setShowRange] = useState(false);
+  const [trackContentHeight, setTrackContentHeight] = useState(0);
+  const [controlsHeight, setControlsHeight] = useState(32);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const element = controlsRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => setControlsHeight(Math.ceil(element.getBoundingClientRect().height)));
+    observer.observe(element);
+    setControlsHeight(Math.ceil(element.getBoundingClientRect().height));
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (trackContentHeight > 0) onContentHeight(trackContentHeight + controlsHeight + 28);
+  }, [trackContentHeight, controlsHeight, onContentHeight]);
   const playing = state.mode === "replay";
   const summary = state.summary;
-  const fine = state.speed < 0.1 && state.mode !== "live";
-  const speedPosition = sliderPositionForSpeed(state.speed);
 
   return (
     <section className="card relative flex min-h-0 shrink-0 flex-col gap-2 px-3 pt-2 pb-3" style={{ height }} aria-label="Timeline">
-      <div className="flex flex-wrap items-center gap-2">
+      <div ref={controlsRef} className="flex flex-wrap items-center gap-2">
         <span
           className={`w-20 rounded-md border px-2 py-0.5 text-center text-[11px] font-bold tracking-widest uppercase ${MODE_STYLE[state.mode]}`}
           aria-live="polite"
@@ -81,37 +94,6 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
             <Icon name="skipForward" className="h-4 w-4" />
           </button>
         </div>
-        <div
-          className="flex items-center gap-2 rounded-lg border border-border bg-bg/50 px-2 py-1"
-          role="group"
-          aria-label="Replay speed control"
-          title={state.mode === "live" ? "Speed applies to replay; live always follows the wall clock." : "Choose from 1,001 replay speeds."}
-        >
-          <span className="text-xs text-muted">Speed</span>
-          <output className="min-w-12 rounded-md bg-surface px-1.5 py-0.5 text-center font-mono text-xs font-semibold tabular-nums text-text" aria-live="polite">
-            {formatSpeed(state.speed)}×
-          </output>
-          <div className="flex w-36 flex-col gap-0.5">
-            <input
-              type="range"
-              min={0}
-              max={SPEED_SLIDER_STEPS}
-              step={1}
-              value={speedPosition}
-              aria-label="Replay speed"
-              aria-valuetext={`${formatSpeed(state.speed)}×`}
-              aria-describedby="replay-speed-range"
-              onChange={(event) => {
-                actions.setSpeed(speedFromSlider(Number(event.target.value)));
-              }}
-              className="h-4 w-full cursor-pointer accent-accent"
-            />
-            <span id="replay-speed-range" className="flex justify-between text-[9px] leading-none text-muted">
-              <span>{SPEED_MIN}×</span>
-              <span>{SPEED_MAX}×</span>
-            </span>
-          </div>
-        </div>
         {state.mode === "live" ? (
           <button type="button" className="btn btn-sm" onClick={actions.pause}>
             <Icon name="pause" className="h-3.5 w-3.5" />
@@ -124,8 +106,7 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
           </button>
         )}
         <span className="rounded-lg border border-border bg-bg/60 px-2.5 py-0.5 font-mono text-sm tabular-nums" title={formatDateTime(state.cursor)}>
-          {fine ? formatClockMicros(state.cursor) : formatClock(state.cursor)}
-          {fine ? <span className="ml-1 text-[10px] text-muted">µs</span> : null}
+          {formatClock(state.cursor)}
         </span>
         {state.loop ? (
           <span
@@ -141,9 +122,6 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
             </button>
           </span>
         ) : null}
-        <span className="hidden font-mono text-[11px] text-muted lg:inline" title="At the selected time; counts are for the 30 s window ending there">
-          {summary ? `${summary.total_active} active · ${summary.window_requests} req · ${summary.window_errors} err` : ""}
-        </span>
         {state.load?.truncated ? <span className="text-[11px] text-warn">Loaded data is truncated: tracks may be incomplete.</span> : null}
         {timelineArchiveNote(state.load?.logsSource) ? (
           <span
@@ -154,9 +132,11 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
           </span>
         ) : null}
         <div className="ml-auto flex items-center gap-2">
-          <span className="hidden text-[11px] text-muted 2xl:inline">Ruler: move in time · Drag tracks: replay range · Ctrl+wheel: zoom</span>
+          <button type="button" className="btn btn-icon btn-sm" title="Drag the ruler to move in time. Drag the playhead across a track to move it; drag elsewhere to select a replay range. Ctrl+wheel zooms." aria-label="Ruler help">
+            <Icon name="info" className="h-3.5 w-3.5" />
+          </button>
           {markA === null ? (
-            <button type="button" className="btn btn-sm" onClick={() => onMarkA(state.cursor)} title="Mark this moment as A for comparison">
+          <button type="button" className="btn btn-sm" onClick={() => onMarkA(state.cursor)} title="Save this time as point A, then move to another time to compare">
               <Icon name="swap" className="h-3.5 w-3.5" />
               Mark A
             </button>
@@ -171,15 +151,16 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
               </button>
             </>
           )}
-          <button type="button" className="btn btn-sm" onClick={() => setShowRange((v) => !v)} aria-expanded={showRange}>
+          <button type="button" className="btn btn-sm" onClick={() => setShowRange((v) => !v)} aria-expanded={showRange} title="Choose a historical time range to load">
             <Icon name="calendar" className="h-3.5 w-3.5" />
-            Range…
+            Range
           </button>
         </div>
       </div>
 
       {showRange ? (
         <RangePicker
+          onClose={() => setShowRange(false)}
           onPick={(from, to) => {
             setShowRange(false);
             void actions.loadHistorical(from, to);
@@ -198,6 +179,7 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
         onMuted={onMuted}
         focus={focus}
         memory={memory}
+        onContentHeight={setTrackContentHeight}
       />
     </section>
   );
@@ -209,13 +191,18 @@ function toLocalInput(ns: bigint) {
   return new Date(d.getTime() - off).toISOString().slice(0, 16);
 }
 
-function RangePicker({ onPick }: { onPick: (from: bigint, to: bigint) => void }) {
+function RangePicker({ onPick, onClose }: { onPick: (from: bigint, to: bigint) => void; onClose: () => void }) {
   const now = nowNs();
   const [from, setFrom] = useState(toLocalInput(now - 3_600_000n * NS_PER_MS));
   const [to, setTo] = useState(toLocalInput(now));
   const [error, setError] = useState<string | null>(null);
   return (
-    <div className="absolute right-3 bottom-full z-30 mb-2 flex flex-wrap items-end gap-3 rounded-xl border border-border-strong bg-surface-2 p-3 text-xs shadow-2xl">
+    <div className="absolute right-3 bottom-full z-30 mb-2 w-[min(28rem,calc(100%-1.5rem))] rounded-xl border border-border-strong bg-surface-2 p-3 text-xs shadow-2xl">
+      <div className="mb-3 flex items-center">
+        <span className="flex-1 text-sm font-semibold">Load a time range</span>
+        <button type="button" className="btn btn-icon btn-sm" aria-label="Close range picker" onClick={onClose}><Icon name="x" className="h-3.5 w-3.5" /></button>
+      </div>
+      <div className="mb-3 flex flex-wrap gap-2">
       {PRESETS.map((p) => (
         <button
           key={p.label}
@@ -229,14 +216,18 @@ function RangePicker({ onPick }: { onPick: (from: bigint, to: bigint) => void })
           {p.label}
         </button>
       ))}
-      <label className="flex flex-col gap-1 text-muted">
+      </div>
+      <div className="grid grid-cols-2 items-end gap-2">
+      <label className="grid min-w-0 gap-1 text-muted">
         From
-        <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} className="input h-8" />
+        <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} className="input h-8 w-full min-w-0 px-2 text-xs" />
       </label>
-      <label className="flex flex-col gap-1 text-muted">
+      <label className="grid min-w-0 gap-1 text-muted">
         To
-        <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} className="input h-8" />
+        <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} className="input h-8 w-full min-w-0 px-2 text-xs" />
       </label>
+      <p className="col-span-2 text-[11px] text-muted">Up to 7 days at a time. Logs older than about two weeks come from the archive; traces and events are not archived.</p>
+      {error ? <span role="alert" className="col-span-2 text-error">{error}</span> : null}
       <button
         type="button"
         className="btn btn-primary btn-sm"
@@ -256,15 +247,7 @@ function RangePicker({ onPick }: { onPick: (from: bigint, to: bigint) => void })
       >
         Load range
       </button>
-      <p className="basis-full text-[11px] text-muted">
-        Up to 7 days at a time. Logs older than about two weeks come from the archive (kept for a year); traces and events
-        are not archived.
-      </p>
-      {error ? (
-        <span role="alert" className="text-error">
-          {error}
-        </span>
-      ) : null}
+      </div>
     </div>
   );
 }

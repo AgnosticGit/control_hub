@@ -1,11 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { mapLayer, collectErrors, login, setReplaySpeed } from "./helpers";
+import { mapLayer, collectErrors, login } from "./helpers";
 
 const WORKSPACE = "/app/demo/local-demo";
-/** Outside a fixed historical range the last 72 px of the timeline are the future stretch. */
-const FUTURE_PX = 72;
-/** Slider value (0 = start of the loaded data, 100 = now) at a share of a `width` px timeline. */
-const dataPercent = (share: number, width: number) => ((share * width) / (width - FUTURE_PX)) * 100;
+/** Slider value (0 = start of the loaded data, 100 = now) at a share of the timeline. */
+const dataPercent = (share: number) => share * 100;
 
 test.describe("workspace on demo data", () => {
   test.beforeEach(async ({ page }) => {
@@ -291,7 +289,6 @@ test.describe("workspace on demo data", () => {
     await next.click();
     await expect(timeline.getByText("paused", { exact: true })).toBeVisible();
 
-    await setReplaySpeed(page, "2");
     await timeline.getByRole("button", { name: "Play replay" }).click();
     await expect(timeline.getByText("replay", { exact: true })).toBeVisible();
     await timeline.getByRole("button", { name: "Pause", exact: true }).click();
@@ -389,7 +386,7 @@ test.describe("workspace on demo data", () => {
     const y = box.y + 30;
     await page.mouse.move(box.x + box.width * 0.3, y);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.32, y, { steps: 10 });
+    await page.mouse.move(box.x + box.width * 0.305, y, { steps: 10 });
     await page.mouse.up();
 
     const chip = timeline.getByLabel("Replay range", { exact: true });
@@ -398,16 +395,14 @@ test.describe("workspace on demo data", () => {
     await expect(timeline.getByRole("button", { name: "Whole range" })).toHaveAttribute("aria-pressed", "false");
 
     const ruler = timeline.getByLabel("Selected time");
-    await setReplaySpeed(page, "10");
     await timeline.getByRole("button", { name: "Play replay" }).click();
     await expect(timeline.getByText("replay", { exact: true })).toBeVisible();
-    // 2% of the screen is a bit over 2% of the 15-minute live window, about 20 s: at 10x one pass
-    // takes about 2 s, so staying inside the range while still replaying for 3.6 s means it wrapped.
-    for (let i = 0; i < 12; i++) {
+    // A short range should loop at the fixed readable replay pace.
+    for (let i = 0; i < 20; i++) {
       await page.waitForTimeout(300);
       const at = Number(await ruler.getAttribute("aria-valuenow"));
-      expect(at).toBeGreaterThanOrEqual(dataPercent(0.3, box.width) - 1);
-      expect(at).toBeLessThanOrEqual(dataPercent(0.32, box.width) + 1);
+      expect(at).toBeGreaterThanOrEqual(dataPercent(0.3) - 1);
+      expect(at).toBeLessThanOrEqual(dataPercent(0.305) + 1);
     }
     await expect(timeline.getByText("replay", { exact: true })).toBeVisible();
 
@@ -415,7 +410,6 @@ test.describe("workspace on demo data", () => {
     await expect(chip).toHaveCount(0);
     await expect(timeline.getByRole("button", { name: "Whole range" })).toHaveAttribute("aria-pressed", "true");
     await timeline.getByRole("button", { name: "Pause", exact: true }).click();
-    await setReplaySpeed(page, "1");
   });
 
   test("a click on the tracks moves the cursor and the tooltip sits above the pointer", async ({ page }) => {
@@ -428,7 +422,7 @@ test.describe("workspace on demo data", () => {
     if (!box) return;
     await page.mouse.click(box.x + box.width * 0.5, box.y + 60);
     const at = Number(await ruler.getAttribute("aria-valuenow"));
-    expect(Math.abs(at - dataPercent(0.5, box.width))).toBeLessThanOrEqual(2);
+    expect(Math.abs(at - dataPercent(0.5))).toBeLessThanOrEqual(2);
     await expect(timeline.getByLabel("Replay range")).toHaveCount(0);
 
     // Requests row, right edge: the tooltip must stay on screen and above the pointer.
@@ -446,7 +440,44 @@ test.describe("workspace on demo data", () => {
     expect(t.x).toBeGreaterThanOrEqual(0);
   });
 
-  test("the FUTURE stretch sits right of now; moving the cursor into it goes back to live", async ({ page }) => {
+  test("dragging the playhead from the middle of a track scrubs instead of selecting a range", async ({ page }) => {
+    const timeline = page.getByRole("region", { name: "Timeline" });
+    await timeline.getByRole("button", { name: "Pause live" }).click();
+    const ruler = timeline.getByRole("slider", { name: "Selected time" });
+    const rows = timeline.locator('[data-area="rows"]');
+    const rulerBox = await ruler.boundingBox();
+    const rowsBox = await rows.boundingBox();
+    expect(rulerBox).not.toBeNull();
+    expect(rowsBox).not.toBeNull();
+    if (!rulerBox || !rowsBox) return;
+    const before = await ruler.getAttribute("aria-valuenow");
+    const x = rulerBox.x + rulerBox.width - 72;
+    const y = rowsBox.y + rowsBox.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 48, y, { steps: 5 });
+    await page.mouse.up();
+    await expect(ruler).not.toHaveAttribute("aria-valuenow", before ?? "");
+    await expect(timeline.getByRole("button", { name: "Clear replay range" })).toHaveCount(0);
+  });
+
+  test("the timeline can grow to its rows but does not retain blank height", async ({ page }) => {
+    const timeline = page.getByRole("region", { name: "Timeline" });
+    const splitter = page.getByRole("separator", { name: "Resize bottom dock" });
+    await expect(timeline.getByRole("list", { name: "Tracks" })).toBeVisible();
+    const max = Number(await splitter.getAttribute("aria-valuemax"));
+    expect(max).toBeLessThan(640);
+    await splitter.focus();
+    await page.keyboard.press("End");
+    const tracks = timeline.getByRole("list", { name: "Tracks" });
+    const sizes = await tracks.evaluate((element) => {
+      const scroller = element.parentElement?.parentElement;
+      return { scrollHeight: scroller?.scrollHeight ?? 0, clientHeight: scroller?.clientHeight ?? 0 };
+    });
+    expect(sizes.scrollHeight).toBeLessThanOrEqual(sizes.clientHeight + 1);
+  });
+
+  test("the timeline has no future section and can return to live", async ({ page }) => {
     const timeline = page.getByLabel("Timeline");
     const ruler = timeline.getByRole("slider", { name: "Selected time" });
     const live = timeline.getByText("live", { exact: true });
@@ -455,9 +486,9 @@ test.describe("workspace on demo data", () => {
     await expect(live).toBeVisible();
     await expect(ruler).toHaveAttribute("aria-valuemax", "100");
     await expect(ruler).toHaveAttribute("aria-valuenow", "100");
-    await expect(timeline.getByText("FUTURE", { exact: true })).toBeVisible();
+    await expect(timeline.getByText("FUTURE", { exact: true })).toHaveCount(0);
 
-    // Leave live, then drag the cursor into the future: it snaps back to live and keeps playing.
+    // Move inside the loaded time range, then return explicitly to the current live point.
     let box = await ruler.boundingBox();
     expect(box).not.toBeNull();
     if (!box) return;
@@ -468,19 +499,12 @@ test.describe("workspace on demo data", () => {
     const y = box.y + box.height / 2;
     await page.mouse.move(box.x + box.width * 0.5, y);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width - FUTURE_PX / 3, y, { steps: 8 });
+    await page.mouse.move(box.x + box.width * 0.75, y, { steps: 8 });
     await page.mouse.up();
-    await expect(live).toBeVisible();
-    await expect(timeline.getByRole("button", { name: "Pause live" })).toBeVisible();
-    await expect(ruler).toHaveAttribute("aria-valuenow", "100");
-
-    // A plain click there does the same.
-    await timeline.getByRole("button", { name: "Pause live" }).click();
     await expect(paused).toBeVisible();
-    box = await ruler.boundingBox();
-    if (!box) return;
-    await page.mouse.click(box.x + box.width - 10, box.y + box.height / 2);
+    await timeline.getByRole("button", { name: "Return to live" }).click();
     await expect(live).toBeVisible();
+    await expect(ruler).toHaveAttribute("aria-valuenow", "100");
 
     // And so does the keyboard: one step right of the end.
     await timeline.getByRole("button", { name: "Pause live" }).click();
@@ -499,7 +523,7 @@ test.describe("workspace on demo data", () => {
   });
 
   // Regression: zoomed in, cursor after "now", Play crashed the timeline with "Too many re-renders".
-  test("zoomed in, the future returns to live and Play from the end starts over", async ({ page }) => {
+  test("zoomed in, moving beyond the end returns to live and Play from the end starts over", async ({ page }) => {
     const errors = collectErrors(page);
     const timeline = page.getByLabel("Timeline");
     const ruler = timeline.getByRole("slider", { name: "Selected time" });
@@ -534,7 +558,6 @@ test.describe("workspace on demo data", () => {
     };
     await expect(page.getByText("Starting engine…")).toBeHidden();
     await timeline.getByRole("button", { name: "Pause live" }).click();
-    await setReplaySpeed(page, "0.001");
 
     await ruler.focus();
     await page.keyboard.press("Home");
@@ -550,9 +573,8 @@ test.describe("workspace on demo data", () => {
     await timeline.getByRole("button", { name: "Play replay" }).click();
     await expect(timeline.getByText("replay", { exact: true })).toBeVisible();
     await timeline.getByRole("button", { name: "Pause", exact: true }).click();
-    // 0.001x: well under a millisecond of recorded time passes between Play and Pause.
-    await expect.poll(async () => Math.abs((await clockMs()) - first)).toBeLessThanOrEqual(2);
-    await setReplaySpeed(page, "1");
+    // Playback restarts from the first recorded item at its default readable pace.
+    await expect.poll(async () => Math.abs((await clockMs()) - first)).toBeLessThanOrEqual(5_000);
   });
 
   test("the paused badge is not the degraded (amber) colour", async ({ page }) => {

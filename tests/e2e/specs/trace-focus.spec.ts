@@ -55,6 +55,7 @@ test.describe("service colours and request focus on demo data", () => {
     await expect(entry("Red halo")).toContainText("call failed");
     await expect(entry("Dashed line")).toContainText("Inferred");
     await expect(entry("Dashed card")).toContainText("Outside the project");
+    await expect(entry("Service card")).toContainText("corner dot shows data health");
     // Everything fits on screen: nothing to scroll, readable text.
     const fits = await key.evaluate((el) => {
       const r = el.getBoundingClientRect();

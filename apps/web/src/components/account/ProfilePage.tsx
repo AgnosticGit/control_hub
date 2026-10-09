@@ -17,7 +17,7 @@ function ProfileForm({ initialName, email, since }: { initialName: string; email
 
   return (
     <form onSubmit={submit} className="card space-y-4 p-5 text-sm">
-      <label className="block">
+      <label className="grid gap-1.5">
         <span className="label">Display name</span>
         <input
           value={name}
@@ -28,14 +28,14 @@ function ProfileForm({ initialName, email, since }: { initialName: string; email
           required
           maxLength={100}
           autoComplete="name"
-          className="input mt-1.5 h-10 w-full max-w-md"
+          className="input h-10 w-full max-w-md"
         />
-        <span className="mt-1 block text-xs text-muted">Shown to other members of your projects.</span>
+        <span className="text-xs text-muted">Shown to other members of your projects.</span>
       </label>
-      <label className="block">
+      <label className="grid gap-1.5">
         <span className="label">Email</span>
-        <input value={email} readOnly className="input mt-1.5 h-10 w-full max-w-md opacity-70" />
-        <span className="mt-1 block text-xs text-muted">Your sign-in address. It cannot be changed yet.</span>
+        <input value={email} readOnly className="input h-10 w-full max-w-md opacity-70" />
+        <span className="text-xs text-muted">Your sign-in address. It cannot be changed yet.</span>
       </label>
       <p className="text-xs text-muted">Member since {since ? new Date(since).toLocaleDateString() : "—"}.</p>
       {update.error ? (

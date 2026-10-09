@@ -61,7 +61,7 @@ test("an open historical map adopts telemetry processed after its snapshot was c
     return {from:input(from ?? 0),to:input(to ?? 0)};
   },[fromMs,toMs]);
   const timeline=page.getByLabel("Timeline");
-  await timeline.getByRole("button",{name:"Range…"}).click();
+  await timeline.getByRole("button",{name:"Range"}).click();
   await timeline.getByLabel("From",{exact:true}).fill(dates.from);
   await timeline.getByLabel("To",{exact:true}).fill(dates.to);
   await timeline.getByRole("button",{name:"Load range"}).click();

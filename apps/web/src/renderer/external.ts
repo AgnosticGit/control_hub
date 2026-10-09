@@ -30,7 +30,9 @@ export function externalExplanation(kind: EntityKindDto | undefined): string | n
 
 export function nodeSubLabel(external: boolean, active: number, requests: number): string {
   const base = active > 0 ? `${active} active · ${requests} req/30s` : `${requests} req/30s`;
-  return external ? `external · ${base}` : base;
+  // The dashed border and title already identify external nodes; repeating it in the
+  // subtitle wastes the small label area, especially on External clients.
+  return base;
 }
 
 /** Dashes (flat x, y pairs) around a rectangle, for the border of an external card. */

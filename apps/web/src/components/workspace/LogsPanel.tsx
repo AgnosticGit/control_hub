@@ -32,11 +32,12 @@ function severityClass(n: number) {
   return "text-muted";
 }
 
-export function LogsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (id: string) => void }) {
+export function LogsPanel({ scope, onTrace, onSelectRecord }: { scope: PanelScope; onTrace: (id: string) => void; onSelectRecord: (serviceName: string, time: bigint) => void }) {
   const [minSeverity, setMinSeverity] = useState(0);
   const [text, setText] = useState("");
   const [source, setSource] = useState<LogSourceChoice>("auto");
   const [like, setLike] = useState<{ id: string; body: string } | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const q = useDebounced(text.trim(), 300);
 
   const filters: LogFilters = {
@@ -82,7 +83,7 @@ export function LogsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (id:
   const virtualizer = useVirtualizer({
     count: logs.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 24,
+    estimateSize: () => 88,
     overscan: 20,
   });
 
@@ -131,7 +132,7 @@ export function LogsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (id:
         ) : null}
         <span className="ml-auto text-muted">
           {query.isFetching ? "Loading… " : ""}
-          {logs.length} logs
+          {logs.length} {logs.length === 1 ? "log" : "logs"}
         </span>
       </div>
       {like ? (
@@ -150,43 +151,77 @@ export function LogsPanel({ scope, onTrace }: { scope: PanelScope; onTrace: (id:
           Failed to load logs: {query.error.message}
         </p>
       ) : logs.length === 0 && !query.isPending && !query.hasNextPage ? (
-        <p className="p-3 text-xs text-muted">No logs in this window.</p>
+        <div className="m-3 rounded-xl border border-border bg-surface-2 p-4 text-sm">
+          <p className="font-medium">{q || minSeverity || like ? "No logs match these filters" : "No logs in this time range"}</p>
+          <p className="mt-1 text-xs text-muted">Try a broader time range, clear the search or lower the severity filter.</p>
+        </div>
       ) : (
-        <div ref={parentRef} className="min-h-0 flex-1 overflow-auto font-mono text-xs" aria-label="Log records">
-          <div role="list" style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+        <div ref={parentRef} className="min-h-0 flex-1 overflow-auto px-2 py-1" aria-label="Log records">
+          <div role="list" aria-label="Log entries" style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((row) => {
               const l = logs[row.index];
               if (!l) return null;
               const t = parseNs(l.time_ns);
+              const expanded = expandedId === l.id;
+              const traceId = l.trace_id;
               return (
                 <div
                   key={l.id}
                   role="listitem"
-                  className="absolute left-0 flex w-full items-center gap-2 whitespace-nowrap px-3 hover:bg-surface-2 @xl:gap-3"
-                  style={{ top: row.start, height: row.size }}
+                  ref={virtualizer.measureElement}
+                  data-index={row.index}
+                  className="absolute left-0 w-full px-1 pb-2"
+                  style={{ top: row.start }}
                 >
-                  <span className="text-muted tabular-nums">{t === null ? "?" : formatClock(t)}</span>
-                  <span className={`w-10 shrink-0 @xl:w-12 ${severityClass(l.severity_number)}`}>{l.severity_text || l.severity_number}</span>
-                  <span className="w-20 shrink-0 truncate text-accent-2 @xl:w-28">{l.service_name}</span>
-                  <span className="min-w-0 flex-1 truncate" title={l.body}>
-                    {l.body}
-                  </span>
-                  {hasTemplate(l) && like?.id !== l.template_id ? (
-                    <button
-                      type="button"
-                      className="text-muted hover:text-accent hover:underline"
-                      title="Show only lines of this kind (same text with different numbers and IDs)"
-                      aria-label="Show lines like this"
-                      onClick={() => setLike({ id: l.template_id, body: l.body })}
-                    >
-                      like
-                    </button>
-                  ) : null}
-                  {l.trace_id ? (
-                    <button type="button" className="text-accent hover:underline" onClick={() => l.trace_id && onTrace(l.trace_id)}>
-                      trace
-                    </button>
-                  ) : null}
+                  <article className={`rounded-xl border bg-surface px-3 py-2 transition-colors ${expanded ? "border-accent/50 bg-surface-2" : "border-border hover:border-border-strong hover:bg-surface-2"}`}>
+                    <div className="flex items-start gap-2">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left"
+                        aria-expanded={expanded}
+                        aria-label={`${l.severity_text || `Severity ${l.severity_number}`} log from ${l.service_name} at ${t === null ? "unknown time" : formatClock(t)}`}
+                        onClick={() => {
+                          setExpandedId(expanded ? null : l.id);
+                          if (t !== null) onSelectRecord(l.service_name, t);
+                        }}
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted">{t === null ? "?" : formatClock(t)}</span>
+                          <span className={`rounded-md border border-current/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase ${severityClass(l.severity_number)}`}>
+                            {l.severity_text || `Level ${l.severity_number}`}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-[11px] text-accent-2">{l.service_name}</span>
+                          <span className="shrink-0 text-[10px] text-muted">{expanded ? "Hide details" : "Details"}</span>
+                        </span>
+                        <span className={`mt-1 block text-xs leading-5 text-text ${expanded ? "whitespace-pre-wrap break-words" : "line-clamp-2 break-words"}`}>{l.body}</span>
+                      </button>
+                      <div className="flex shrink-0 flex-col gap-1">
+                        {hasTemplate(l) && like?.id !== l.template_id ? (
+                          <button type="button" aria-label="Show lines like this" className="btn btn-sm px-2" onClick={() => setLike({ id: l.template_id, body: l.body })} title="Show records with this message pattern">
+                            Similar
+                          </button>
+                        ) : null}
+                        {traceId ? <button type="button" className="btn btn-sm px-2 text-accent" onClick={() => onTrace(traceId)}>Open trace</button> : null}
+                      </div>
+                    </div>
+                    {expanded ? (
+                      <div className="mt-2 border-t border-border pt-2 text-xs">
+                        <p className="mb-1 text-[10px] font-semibold tracking-wide text-muted uppercase">Log details</p>
+                        <p className="whitespace-pre-wrap break-words">{l.body}</p>
+                        {Object.keys(l.attributes).length > 0 ? (
+                          <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+                            {Object.entries(l.attributes).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => (
+                              <div key={key} className="contents"><dt className="text-muted">{key}</dt><dd className="min-w-0 break-all">{value}</dd></div>
+                            ))}
+                          </dl>
+                        ) : <p className="mt-2 text-muted">No additional attributes.</p>}
+                        {traceId || l.span_id ? <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-[10px]">
+                          {traceId ? <><dt className="text-muted">Trace ID</dt><dd className="break-all">{traceId}</dd></> : null}
+                          {l.span_id ? <><dt className="text-muted">Span ID</dt><dd className="break-all">{l.span_id}</dd></> : null}
+                        </dl> : null}
+                      </div>
+                    ) : null}
+                  </article>
                 </div>
               );
             })}

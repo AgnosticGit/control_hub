@@ -48,6 +48,7 @@ function SwatchIcon({ s }: { s: Swatch }) {
             strokeOpacity={s.faded ? 0.4 : 0.9}
             strokeDasharray={s.dashed ? "3 2" : undefined}
           />
+          {s.corner ? <circle cx="25" cy="5" r="1.8" fill={s.corner} /> : null}
         </>
       )}
     </svg>
@@ -55,7 +56,7 @@ function SwatchIcon({ s }: { s: Swatch }) {
 }
 
 interface Props {
-  /** What the moving dots show right now (live delay, replay speed). */
+  /** What the moving dots show right now (live delay or readable replay pace). */
   animation: string;
   /** Set when not every request in the window is drawn. */
   capped: string | null;

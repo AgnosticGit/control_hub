@@ -32,6 +32,7 @@ const SIDE_MIN = 320;
 const SIDE_MAX = 760;
 const DOCK_MIN = 150;
 const DOCK_MAX = 640;
+const DOCK_MAP_RESERVE = 360;
 
 interface MapLayers {
   infrastructure: boolean;
@@ -101,11 +102,29 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const [side, setSide] = useState<SideTab>("signals");
   const [sideWidth, setSideWidth] = usePersistedSize("karbird.workspace.sideWidth", 400, SIDE_MIN, SIDE_MAX);
   const [dockHeight, setDockHeight] = usePersistedSize("karbird.workspace.timelineHeight", 220, DOCK_MIN, DOCK_MAX);
+  const [dockContentHeight, setDockContentHeight] = useState(DOCK_MAX);
+  const [dockAvailableHeight, setDockAvailableHeight] = useState(DOCK_MAX);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const dockMax = Math.max(DOCK_MIN, Math.min(DOCK_MAX, dockContentHeight, dockAvailableHeight));
   const selectedNode = state.topology?.nodes.find((n) => n.id === selectedId) ?? null;
   const infra = useInfrastructure(actions, state.phase === "ready", layerPrefs.infrastructure, state.cursor);
   const infraSnapshot = layerPrefs.infrastructure ? infra.snapshot : null;
   const changeLayer = (layer: keyof MapLayers, enabled: boolean) =>
     writePersisted(layerPrefsKey, JSON.stringify({ ...layerPrefs, [layer]: enabled }));
+
+  useEffect(() => {
+    const element = workspaceRef.current;
+    if (!element) return;
+    const resize = () => setDockAvailableHeight(Math.max(DOCK_MIN, element.clientHeight - DOCK_MAP_RESERVE));
+    const observer = new ResizeObserver(resize);
+    observer.observe(element);
+    resize();
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (dockHeight > dockMax) setDockHeight(dockMax);
+  }, [dockHeight, dockMax, setDockHeight]);
 
   useEffect(() => {
     const syncFullscreen = () => setMapFullscreen(document.fullscreenElement === mapPanelRef.current);
@@ -230,7 +249,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
 
   return (
     <AppShell projectId={projectId} environmentId={environmentId} active="overview" status={status}>
-      <div className="flex h-full min-h-0 flex-col p-3">
+      <div ref={workspaceRef} className="flex h-full min-h-0 flex-col p-3">
         <KpiRow state={state} actions={actions} />
 
         <div className="flex min-h-0 flex-1">
@@ -383,12 +402,18 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                 onTab={setTab}
                 traceId={traceId}
                 onTrace={selectTrace}
+                onSelectRecord={(serviceName, time) => {
+                  if (state.mode === "live" || state.mode === "replay") actions.pause();
+                  const service = state.topology?.nodes.find((node) => node.kind === "service" && node.name === serviceName);
+                  if (service) setSelectedId(service.id);
+                  actions.seek(time);
+                }}
               />
             )}
           </div>
         </div>
 
-        <Splitter axis="row" label="Resize bottom dock" value={dockHeight} min={DOCK_MIN} max={DOCK_MAX} onChange={setDockHeight} />
+        <Splitter axis="row" label="Resize bottom dock" value={dockHeight} min={DOCK_MIN} max={dockMax} onChange={setDockHeight} />
 
         <TimelineBar
           projectId={projectId}
@@ -399,6 +424,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
           focus={traceFocus}
           height={dockHeight}
           memory={memory}
+          onContentHeight={setDockContentHeight}
           state={state}
           actions={actions}
           markA={markA}
@@ -442,15 +468,16 @@ function KpiRow({ state, actions }: { state: EngineState; actions: WorkspaceActi
   const s = state.summary;
   const services = state.topology?.nodes.filter((n) => n.kind === "service").length ?? 0;
   const req = s?.window_requests ?? 0;
+  const active = s?.total_active ?? 0;
   const err = s?.window_errors ?? 0;
   const unhealthy = health.degraded + health.failing;
   const rate = req > 0 ? (err / req) * 100 : 0;
   return (
     <div className="mb-3 grid shrink-0 grid-cols-2 gap-3 xl:grid-cols-4">
-      <Kpi icon="server" tone="ok" label="Services" value={String(services)} sub={unhealthy > 0 ? `${unhealthy} unhealthy` : "all healthy or idle"} subTone={unhealthy > 0 ? "error" : "muted"} />
-      <Kpi icon="activity" tone="accent" label="Requests / min" value={String(req * 2)} sub={`${req} in the last 30 s`} />
-      <Kpi icon="alert" tone="error" label="Error rate" value={`${rate.toFixed(1)}%`} sub={`${err} failed in the last 30 s`} subTone={err > 0 ? "error" : "muted"} />
-      <Kpi icon="radio" tone="violet" label="Active requests" value={String(s?.total_active ?? 0)} sub="in flight at the selected time" />
+      <Kpi icon="server" tone="ok" label="Services" value={String(services)} sub={unhealthy > 0 ? `${unhealthy} unhealthy` : "all healthy or idle"} subTone={unhealthy > 0 ? "error" : "muted"} progress={services ? ((services - unhealthy) / services) * 100 : 0} />
+      <Kpi icon="activity" tone="accent" label="Requests / min" value={String(req * 2)} sub={`${req} in the last 30 s`} progress={Math.min(100, (req * 2 / 2_000) * 100)} />
+      <Kpi icon="alert" tone="error" label="Error rate" value={`${rate.toFixed(1)}%`} sub={`${err} failed in the last 30 s`} subTone={err > 0 ? "error" : "muted"} progress={Math.min(100, rate * 10)} />
+      <Kpi icon="radio" tone="violet" label="Active requests" value={String(active)} sub={state.mode === "live" ? "completed spans available at cursor" : "in flight at the selected time"} progress={Math.min(100, active * 12.5)} title="Calculated from spans that cross the selected timestamp. SDKs export spans after completion, so short requests usually arrive after they have ended; this does not measure requests currently executing on a live service." />
     </div>
   );
 }
@@ -469,6 +496,8 @@ function Kpi({
   value,
   sub,
   subTone = "muted",
+  progress,
+  title,
 }: {
   icon: IconName;
   tone: keyof typeof TONE;
@@ -476,9 +505,12 @@ function Kpi({
   value: string;
   sub: string;
   subTone?: "muted" | "error";
+  progress: number;
+  title?: string;
 }) {
+  const ringColor = { ok: "var(--color-ok)", accent: "var(--color-accent)", error: "var(--color-error)", violet: "var(--color-violet)" }[tone];
   return (
-    <div className="card flex items-center gap-3 px-3 py-2">
+    <div className="card flex items-center gap-3 px-3 py-2" title={title}>
       <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${TONE[tone]}`}>
         <Icon name={icon} className="h-4 w-4" />
       </span>
@@ -489,6 +521,13 @@ function Kpi({
           <span className={`truncate text-[11px] ${subTone === "error" ? "text-error" : "text-muted"}`}>{sub}</span>
         </div>
       </div>
+      <span
+        className="relative h-9 w-9 shrink-0 rounded-full"
+        style={{ background: `conic-gradient(${ringColor} ${Math.max(0, Math.min(100, progress))}%, var(--color-surface-3) 0)` }}
+        aria-hidden
+      >
+        <span className="absolute inset-[5px] rounded-full bg-surface" />
+      </span>
     </div>
   );
 }

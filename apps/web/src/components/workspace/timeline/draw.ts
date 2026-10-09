@@ -43,8 +43,6 @@ export interface DrawInput {
   hoverX: number | null;
   /** Replay range (or the one being dragged out). */
   range: View | null;
-  /** Where the loaded data ends ("now" when live): everything after it has not happened yet. */
-  future?: bigint | null;
   /** Machine CPU and memory for machine rows. */
   machines?: InfraTimeline | null;
 }
@@ -56,7 +54,6 @@ export interface RulerInput {
   markA: bigint | null;
   hoverX: number | null;
   range: View | null;
-  future?: bigint | null;
 }
 
 const DIMMED_ROW_ALPHA = 0.28;
@@ -64,33 +61,17 @@ const DIMMED_ROW_ALPHA = 0.28;
 const COUNT_REFERENCE_MAX = 100;
 const LATENCY_REFERENCE_MAX_MS = 1_000;
 
-export const FUTURE_FILL = "rgba(100, 116, 139, 0.13)";
-export const FUTURE_EDGE = "rgba(148, 163, 184, 0.55)";
-
-/** Tints the time after `from` (no data there yet) and marks where it starts. */
-function futureBand(ctx: CanvasRenderingContext2D, from: bigint | null | undefined, view: View, width: number, height: number) {
-  if (from === null || from === undefined) return;
-  const x = xOf(from, view, width);
-  if (x >= width) return;
-  const x0 = Math.max(0, x);
-  ctx.fillStyle = FUTURE_FILL;
-  ctx.fillRect(x0, 0, width - x0, height);
-  if (x < 0) return;
-  ctx.fillStyle = FUTURE_EDGE;
-  for (let y = 0; y < height; y += 6) ctx.fillRect(Math.round(x), y, 1, Math.min(3, height - y));
-}
-
 /** Shades the time outside the replay range and marks its edges. */
 function rangeBand(ctx: CanvasRenderingContext2D, range: View | null, view: View, width: number, height: number, handles: boolean) {
   if (!range) return;
   const x1 = Math.max(-2, Math.min(width + 2, xOf(range.from, view, width)));
   const x2 = Math.max(-2, Math.min(width + 2, xOf(range.to, view, width)));
-  ctx.fillStyle = "rgba(6, 10, 19, 0.55)";
+  ctx.fillStyle = "rgba(4, 12, 21, 0.6)";
   if (x1 > 0) ctx.fillRect(0, 0, x1, height);
   if (x2 < width) ctx.fillRect(x2, 0, width - x2, height);
-  ctx.fillStyle = "rgba(34, 211, 238, 0.06)";
+  ctx.fillStyle = "rgba(25, 212, 238, 0.06)";
   ctx.fillRect(x1, 0, x2 - x1, height);
-  ctx.fillStyle = "rgba(34, 211, 238, 0.8)";
+  ctx.fillStyle = "rgba(25, 212, 238, 0.8)";
   for (const x of [x1, x2]) {
     if (x < 0 || x > width) continue;
     ctx.fillRect(Math.round(x) - 0.5, 0, 1.5, height);
@@ -103,16 +84,16 @@ function rangeBand(ctx: CanvasRenderingContext2D, range: View | null, view: View
 export const RULER_H = 24;
 
 const C = {
-  grid: "rgba(67, 71, 77, 0.6)",
-  rowAlt: "rgba(39, 41, 45, 0.5)",
-  text: "#eceef0",
-  muted: "#9a9fa6",
+  grid: "rgba(48, 74, 100, 0.58)",
+  rowAlt: "rgba(18, 35, 56, 0.58)",
+  text: "#eaf2fc",
+  muted: "#91a5bd",
   accent: "#3b82f6",
-  accent2: "#22d3ee",
+  accent2: "#19d4ee",
   violet: "#a855f7",
   warn: "#f59e0b",
   error: "#ef4444",
-  ok: "#22c55e",
+  ok: "#18d889",
 };
 
 /** `rgba(...)` of a `#rrggbb` colour. */
@@ -315,14 +296,11 @@ export function drawRuler(ctx: CanvasRenderingContext2D, d: RulerInput) {
     const x = Math.round(xOf(t, view, width)) + 0.5;
     ctx.fillStyle = C.grid;
     ctx.fillRect(x, RULER_H - 7, 1, 7);
-    // The future stretch carries its own label; tick labels there would run into it.
-    if (d.future !== null && d.future !== undefined && t >= d.future) continue;
     ctx.fillStyle = C.muted;
     ctx.fillText(formatTick(t, step), x + 4, RULER_H / 2 - 2);
   }
   ctx.fillStyle = C.grid;
   ctx.fillRect(0, RULER_H - 1, width, 1);
-  futureBand(ctx, d.future, view, width, RULER_H);
   rangeBand(ctx, d.range, view, width, RULER_H, false);
 
   if (d.hoverX !== null) {
@@ -403,7 +381,7 @@ export function draw(ctx: CanvasRenderingContext2D, d: DrawInput) {
         ctx.fill();
         ctx.globalAlpha = 1;
         if (x2 - x1 > 60) {
-          ctx.fillStyle = "#17181a";
+          ctx.fillStyle = "#07111c";
           ctx.fillText(`${a.title} · ${a.target}`, Math.max(x1, 0) + 4, y + r.height / 2);
         }
       }
@@ -411,7 +389,7 @@ export function draw(ctx: CanvasRenderingContext2D, d: DrawInput) {
     }
     if (!t || !g) return;
     if (r.kind === "events") {
-      bars(ctx, t.events, y, r.height, g, width, "rgba(34, 211, 238, 0.55)");
+      bars(ctx, t.events, y, r.height, g, width, "rgba(25, 212, 238, 0.55)");
       for (const m of t.markers) {
         const x = g.x0 + m.time_ms * 1e6 * g.pxPerNs;
         if (x < -4 || x > width + 4) continue;
@@ -439,7 +417,6 @@ export function draw(ctx: CanvasRenderingContext2D, d: DrawInput) {
     }
   });
   ctx.globalAlpha = 1;
-  futureBand(ctx, d.future, view, width, height);
   rangeBand(ctx, d.range, view, width, height, true);
 
   if (d.markA !== null) {

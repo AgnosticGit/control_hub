@@ -59,7 +59,7 @@ export function ProjectsPage() {
       <form onSubmit={submit} className="card flex flex-wrap items-end gap-3 p-5 text-sm" aria-label="New project">
         <label className="flex flex-col gap-1.5">
           <span className="label">Organization</span>
-          <select value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} required className="input h-9 w-52">
+          <select value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} required className="select w-52">
             <option value="">Choose an organization</option>
             {organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}
           </select>

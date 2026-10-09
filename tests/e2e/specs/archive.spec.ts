@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 import { ingestLog, login, randomHex, root } from "./helpers";
 
 // The log archive as a user sees it (ADR-0015): an hour older than the API's hot window (13 days),
-// archived by `karbird-archiver once`, opened through Range… on the timeline. Writes only into
+// archived by `karbird-archiver once`, opened through Range on the timeline. Writes only into
 // the isolation tenant's `isolation-test` environment.
 
 const WORKSPACE = "/app/isolation/isolation-test";
@@ -54,7 +54,7 @@ test("logs older than the hot window open from the archive, labelled, filterable
   expect(archived.status, archived.stderr).toBe(0);
 
   const timeline = page.getByLabel("Timeline");
-  await timeline.getByRole("button", { name: "Range…" }).click();
+  await timeline.getByRole("button", { name: "Range", exact: true }).click();
   await expect(timeline.getByText(/Logs older than about two weeks come from the archive/)).toBeVisible();
   await timeline.getByLabel("From", { exact: true }).fill(localInput(start));
   await timeline.getByLabel("To", { exact: true }).fill(localInput(end));

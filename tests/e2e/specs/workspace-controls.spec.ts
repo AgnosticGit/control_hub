@@ -57,17 +57,14 @@ test.describe("workspace controls on demo data", () => {
     await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
   });
 
-  test("replay speed slider moves in fine steps and labels its limits", async ({ page }) => {
-    const speed = page.getByRole("slider", { name: "Replay speed" });
-    await expect(speed).toHaveAttribute("aria-valuetext", "1×");
-    await speed.focus();
-    await page.keyboard.press("ArrowRight");
-    await expect(speed).toHaveValue("751");
-    await expect(speed).toHaveAttribute("aria-valuetext", "1.009×");
-    await page.keyboard.press("Home");
-    await expect(speed).toHaveAttribute("aria-valuetext", "0.001×");
-    await expect(speed).toHaveAttribute("min", "0");
-    await expect(speed).toHaveAttribute("max", "1000");
+  test("replay controls keep a readable pace without exposing a speed setting", async ({ page }) => {
+    await expect(page.getByRole("slider", { name: "Replay speed" })).toHaveCount(0);
+    await expect(page.getByText("Speed", { exact: true })).toHaveCount(0);
+    const timeline = page.getByRole("region", { name: "Timeline" });
+    await timeline.getByRole("button", { name: "Pause live" }).click();
+    await timeline.getByRole("button", { name: "Play replay" }).click();
+    await expect(timeline.getByText("replay", { exact: true })).toBeVisible();
+    await timeline.getByRole("button", { name: "Pause", exact: true }).click();
   });
 
   test("KPI row summarises services, request rate, error rate and active requests", async ({ page }) => {
@@ -76,7 +73,8 @@ test.describe("workspace controls on demo data", () => {
     await expect(kpi("Requests / min")).toContainText(/Requests \/ min\s*[1-9]\d*/);
     await expect(kpi("Requests / min")).toContainText(/in the last 30 s/);
     await expect(kpi("Error rate")).toContainText(/\d+\.\d%/);
-    await expect(kpi("Active requests")).toContainText("in flight at the selected time");
+    await expect(kpi("Active requests")).toContainText("completed spans available at cursor");
+    await expect(kpi("Active requests")).toHaveAttribute("title", /export spans after completion/);
   });
 
   test("removes map search and exposes map labels as searchable page text", async ({ page }) => {
@@ -194,11 +192,15 @@ test.describe("workspace controls on demo data", () => {
     const panel = page.getByRole("region", { name: "Signals" });
     const records = panel.getByLabel("Log records");
     await expect(records).toBeVisible();
-    const rows = records.locator(":scope > div > div");
-    const cells = (i: number) => rows.evaluateAll((els, n) => els.map((e) => e.children[n]?.textContent?.trim() ?? ""), i);
+    const rows = records.getByRole("listitem");
+    const texts = () => rows.allTextContents();
+    const entryLabels = () => rows.getByRole("button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? ""));
 
     await panel.getByLabel("Search log text").fill("order");
-    await expect.poll(async () => (await cells(3)).length > 0 && (await cells(3)).every((b) => /order/i.test(b))).toBe(true);
+    await expect.poll(async () => {
+      const values = await texts();
+      return values.length > 0 && values.every((value) => /order/i.test(value));
+    }).toBe(true);
     await panel.getByLabel("Search log text").fill("");
 
     const severity = panel.getByRole("group", { name: "Minimum severity" });
@@ -206,10 +208,16 @@ test.describe("workspace controls on demo data", () => {
     await severity.getByRole("button", { name: "Warn+" }).click();
     await expect(severity.getByRole("button", { name: "Warn+" })).toHaveAttribute("aria-pressed", "true");
     await expect(severity.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "false");
-    await expect.poll(async () => (await cells(1)).every((s) => !/^(info|debug|trace)/i.test(s))).toBe(true);
+    await expect.poll(async () => (await entryLabels()).every((label) => !/^(info|debug|trace)\b/i.test(label))).toBe(true);
     await severity.getByRole("button", { name: "Error+" }).click();
-    await expect.poll(async () => (await cells(1)).every((s) => /^(error|fatal|1[7-9]|2\d)/i.test(s))).toBe(true);
+    await expect.poll(async () => (await entryLabels()).every((label) => /^(error|fatal)\b/i.test(label))).toBe(true);
     await severity.getByRole("button", { name: "All" }).click();
+
+    const cursor = page.getByRole("slider", { name: "Selected time" });
+    const before = await cursor.getAttribute("aria-valuetext");
+    await rows.getByRole("button").first().click();
+    await expect(rows.first().getByText("Log details")).toBeVisible();
+    await expect(cursor).not.toHaveAttribute("aria-valuetext", before ?? "");
 
     // Selecting a service narrows the panel to it; the toggle widens it again.
     const table = await openTable(page);
@@ -218,17 +226,20 @@ test.describe("workspace controls on demo data", () => {
     const only = panel.getByRole("checkbox", { name: "Only orders" });
     await expect(only).toBeChecked();
     await expect.poll(async () => {
-      const s = await cells(2);
-      return s.length > 0 && s.every((x) => x === "orders");
+      const values = await texts();
+      return values.length > 0 && values.every((value) => value.includes("orders"));
     }).toBe(true);
     await only.uncheck();
-    await expect.poll(async () => new Set(await cells(2)).size).toBeGreaterThan(1);
+    await expect.poll(async () => {
+      const labels = await entryLabels();
+      return new Set(labels.map((label) => label.match(/\blog from ([^ ]+)/)?.[1])).size;
+    }).toBeGreaterThan(1);
   });
 
   test("a trace link in the logs opens the trace waterfall; span details show attributes", async ({ page }) => {
     const panel = page.getByRole("region", { name: "Signals" });
     const records = panel.getByLabel("Log records");
-    await records.getByRole("button", { name: "trace" }).first().click();
+    await records.getByRole("button", { name: "Open trace" }).first().click();
     await expect(panel.getByRole("tab", { name: "Traces" })).toHaveAttribute("aria-selected", "true");
     const waterfall = panel.getByRole("list", { name: "Span waterfall" });
     await expect(waterfall).toBeVisible();
@@ -262,10 +273,14 @@ test.describe("workspace controls on demo data", () => {
     const panel = page.getByRole("region", { name: "Signals" });
     await panel.getByRole("tab", { name: "Events" }).click();
     await expect(panel.getByRole("tab", { name: "Events" })).toHaveAttribute("aria-selected", "true");
-    const table = panel.getByRole("table");
-    await expect(table.getByRole("columnheader", { name: "Type" })).toBeVisible();
-    await expect(table.getByText(/request\.(started|completed)/).first()).toBeVisible();
-    const open = table.getByRole("button", { name: "open" }).first();
+    const events = panel.getByRole("list", { name: "Events" });
+    await expect(events.getByText(/request\.(started|completed)/).first()).toBeVisible();
+    await expect(panel.getByLabel("Search events")).toBeVisible();
+    await expect(panel.getByLabel("Event type")).toBeVisible();
+    const firstEvent = events.getByRole("button").first();
+    await firstEvent.click();
+    await expect(events.getByText("Event details")).toBeVisible();
+    const open = events.getByRole("button", { name: "Open trace" }).first();
     if ((await open.count()) > 0) {
       await open.click();
       await expect(panel.getByRole("tab", { name: "Traces" })).toHaveAttribute("aria-selected", "true");
@@ -288,11 +303,12 @@ test.describe("workspace controls on demo data", () => {
     await expect(page.getByLabel("Live transport")).toHaveText("Live: WebSocket");
   });
 
-  test("Range… validates the range and loads a valid one", async ({ page }) => {
+  test("Range validates the range, closes and loads a valid one", async ({ page }) => {
     const timeline = page.getByLabel("Timeline");
-    const toggle = timeline.getByRole("button", { name: "Range…" });
+    const toggle = timeline.getByRole("button", { name: "Range", exact: true });
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(timeline.getByRole("button", { name: "Close range picker" })).toBeVisible();
     const from = timeline.getByLabel("From", { exact: true });
     const to = timeline.getByLabel("To", { exact: true });
     const load = timeline.getByRole("button", { name: "Load range" });

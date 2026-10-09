@@ -55,7 +55,6 @@ export function TraceFocusBar({ projectId, environmentId, traceId, traceOnly, on
     onFocus(range);
   }, [range, traceId, actions, onFocus]);
 
-  const speed = range ? speedFor(range.to - range.from) : null;
   return (
     <div
       role="region"
@@ -81,7 +80,7 @@ export function TraceFocusBar({ projectId, environmentId, traceId, traceOnly, on
         <input type="checkbox" className="switch" checked={traceOnly} onChange={(e) => onTraceOnly(e.target.checked)} />
         Only this request
       </label>
-      <button type="button" className="btn btn-sm" disabled={!range} onClick={play} title={speed ? `Loop the request at ${speed}×` : undefined}>
+      <button type="button" className="btn btn-sm" disabled={!range} onClick={play} title="Replay the request at a readable pace">
         <Icon name="play" className="h-3.5 w-3.5" />
         Replay request
       </button>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EDGE_ERROR, EDGE_INFERRED, EDGE_OK, EDGE_WARN, EXTERNAL_COLOR, STATUS_COLORS, hex } from "@/renderer/map-colors";
-import { MAP_KEY, type KeyItem } from "./map-key";
+import { MAP_KEY, SAMPLE_SERVICE, type KeyItem } from "./map-key";
+import { colorAt, cssColor } from "@/renderer/service-colors";
 
 const items = MAP_KEY.flatMap((s) => s.items);
 const byId = (id: string): KeyItem => {
@@ -38,6 +39,8 @@ describe("map key", () => {
   });
 
   it("uses the renderer's colours", () => {
+    expect(SAMPLE_SERVICE).toBe(cssColor(colorAt(0)));
+    expect(byId("service").swatch).toMatchObject({ kind: "card", color: SAMPLE_SERVICE, corner: hex(STATUS_COLORS[1]) });
     expect(byId("observed").swatch).toMatchObject({ kind: "line", color: hex(EDGE_OK) });
     expect(byId("inferred").swatch).toMatchObject({ kind: "line", color: hex(EDGE_INFERRED), dashed: true });
     expect(byId("warn-line").swatch).toMatchObject({ color: hex(EDGE_WARN) });

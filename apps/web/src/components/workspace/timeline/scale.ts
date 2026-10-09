@@ -64,35 +64,18 @@ export function panBy(v: View, deltaNs: bigint, bounds: View): View {
   return clampView({ from: v.from + deltaNs, to: v.to + deltaNs }, bounds);
 }
 
-/** Width (px) of the free stretch right of "now": the word FUTURE with room on both sides. */
-export const FUTURE_PX = 72;
-
-/** Share of a `width` px timeline taken by the free stretch; none when it would crowd the data. */
-export function futureShare(width: number): number {
-  return width >= FUTURE_PX * 4 ? FUTURE_PX / width : 0;
-}
-
-/** `data` extended to the right so that `data.to` ("now") sits `share` of the width from the right edge. */
-export function withFuture(data: View, share: number): View {
-  if (share <= 0 || share >= 1) return data;
-  const pad = BigInt(Math.round((Number(span(data)) * share) / (1 - share)));
-  return { from: data.from, to: data.to + pad };
-}
-
-/** Everything but a fixed historical range can still grow, so it gets the free stretch. */
+/** Everything but a fixed historical range can continue advancing with live data. */
 export function hasFuture(mode: string): boolean {
   return mode !== "historical";
 }
 
 /**
- * Live: keeps `now` at most `1 - share` into the view. Once it gets there (or is out of view)
- * the window moves with it, so the free space on the right stays the same.
+ * Live: keeps the playhead at the right edge when it leaves the current view.
  */
-export function followLive(v: View, t: bigint, bounds: View, share: number): View {
+export function followLive(v: View, t: bigint, bounds: View): View {
   const now = inside(t, bounds);
-  const lead = BigInt(Math.round(Number(span(v)) * (1 - share)));
-  if (now >= v.from && (now <= v.from + lead || (now <= v.to && v.to >= bounds.to))) return v;
-  const from = now - lead;
+  if (now >= v.from && now <= v.to) return v;
+  const from = now - span(v);
   return clampView({ from, to: from + span(v) }, bounds);
 }
 

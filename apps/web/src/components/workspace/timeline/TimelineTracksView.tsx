@@ -20,11 +20,8 @@ import {
   follow,
   followLive,
   formatSpan,
-  futureShare,
-  hasFuture,
   panBy,
   timeAt,
-  withFuture,
   xOf,
   zoomAt,
   zoomCentered,
@@ -56,6 +53,7 @@ interface Props {
   focus?: View | null;
   /** Keeps the zoom while the timeline is unmounted. */
   memory?: WorkspaceMemory;
+  onContentHeight: (height: number) => void;
 }
 
 function isoNs(iso: string | null | undefined): bigint | null {
@@ -116,14 +114,11 @@ interface Hover {
   clientY: number;
 }
 
-export function TimelineTracksView({ projectId, environmentId, state, actions, markA, filterKey, muted, onMuted, focus = null, memory }: Props) {
+export function TimelineTracksView({ projectId, environmentId, state, actions, markA, filterKey, muted, onMuted, focus = null, memory, onContentHeight }: Props) {
   /** What is loaded; replay ranges stay inside it. */
   const data = useMemo<View>(() => ({ from: state.rangeFrom, to: state.rangeTo }), [state.rangeFrom, state.rangeTo]);
   const [width, setWidth] = useState(0);
-  const share = hasFuture(state.mode) ? futureShare(width) : 0;
-  /** What can be shown: after live data, a short stretch that has not happened yet. */
-  const bounds = useMemo<View>(() => withFuture(data, share), [data, share]);
-  const future = share > 0 ? data.to : null;
+  const bounds = data;
   const [userView, setUserView] = useState<View | null>(() => memory?.timelineView() ?? null);
   useEffect(() => memory?.saveTimelineView(userView), [memory, userView]);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -143,6 +138,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const range = draft ?? state.loop;
   const hostRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const wheelRef = useRef<HTMLDivElement | null>(null);
   const rulerRef = useRef<HTMLCanvasElement | null>(null);
   const rowsRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -152,7 +148,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     // stretch on the right, replay pages along.
     const next =
       state.mode === "live"
-        ? followLive(view, state.cursor, bounds, share)
+        ? followLive(view, state.cursor, bounds)
         : state.mode === "replay" && (state.cursor < view.from || state.cursor > view.to)
           ? follow(view, state.cursor, bounds)
           : view;
@@ -253,6 +249,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     );
   }, [tracks?.services, infra?.hosts, nodeIds, mutedSet, colors]);
   const height = totalHeight(rows);
+  useEffect(() => onContentHeight(height + RULER_H), [height, onContentHeight]);
   const groupAt = rows.findIndex((r) => r.kind === "group" || r.kind === "heading");
   const markers = useMemo(() => (infra && width > 0 ? eventMarkers(infra, view, width) : []), [infra, view, width]);
   const hostRowTop = (host: number) => {
@@ -282,13 +279,13 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const hoverX = hover?.x ?? null;
   useEffect(() => {
     const ctx = setupCanvas(rulerRef.current, width, RULER_H);
-    if (ctx) drawRuler(ctx, { width, view, cursor: state.cursor, markA, hoverX, range, future });
-  }, [width, view, state.cursor, markA, hoverX, range, future]);
+    if (ctx) drawRuler(ctx, { width, view, cursor: state.cursor, markA, hoverX, range });
+  }, [width, view, state.cursor, markA, hoverX, range]);
 
   useEffect(() => {
     const ctx = setupCanvas(rowsRef.current, width, height);
-    if (ctx) draw(ctx, { width, rows, view, tracks, actions: actionBars, cursor: state.cursor, markA, hoverX, range, future, machines: infra });
-  }, [width, height, rows, view, tracks, actionBars, state.cursor, markA, hoverX, range, future, infra]);
+    if (ctx) draw(ctx, { width, rows, view, tracks, actions: actionBars, cursor: state.cursor, markA, hoverX, range, machines: infra });
+  }, [width, height, rows, view, tracks, actionBars, state.cursor, markA, hoverX, range, infra]);
 
   // Wheel and drag need the latest values without re-binding listeners.
   const live = useRef({ view, bounds, width, setView });
@@ -297,14 +294,14 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   });
 
   useEffect(() => {
-    const scroller = scrollRef.current;
+    const scroller = wheelRef.current;
     const host = hostRef.current;
     if (!scroller || !host) return;
     const onWheel = (e: WheelEvent) => {
       const { view: v, bounds: b, width: w, setView: set } = live.current;
       const x = e.clientX - host.getBoundingClientRect().left;
       if (x < 0 || w <= 0) return;
-      const overRuler = e.target === rulerRef.current;
+      const overRuler = hostRef.current?.contains(e.target as Node) ?? false;
       if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
         e.preventDefault();
         const d = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
@@ -364,7 +361,12 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
       hostRef.current?.focus({ preventScroll: true });
       const x = localX(e.clientX);
       const fixed = edgeNear(x);
-      drag.current = fixed !== null ? { mode: "edge", fixed } : { mode: "select", x: e.clientX, t: timeAt(x, view, width), moved: false };
+      const playheadX = xOf(state.cursor, view, width);
+      drag.current = fixed !== null
+        ? { mode: "edge", fixed }
+        : Math.abs(x - playheadX) <= 8
+          ? { mode: "scrub" }
+          : { mode: "select", x: e.clientX, t: timeAt(x, view, width), moved: false };
     } else {
       drag.current = { mode: "scrub" };
       scrubTo(e.clientX);
@@ -445,20 +447,17 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   };
 
   const percent = data.to > data.from ? Math.round(xOf(state.cursor, data, 100)) : 100;
-  const futureX = future !== null && width > 0 ? xOf(future, view, width) : null;
   const tip =
     hover && hover.y !== null && !dragging
-      ? future !== null && width > 0 && timeAt(hover.x, view, width) > future
-        ? ["Future", "Nothing has happened here yet. Move the cursor here to go back to live."]
-        : describe({ x: hover.x, y: hover.y }, rows, view, width, tracks, actionBars, infra, markers)
+      ? describe({ x: hover.x, y: hover.y }, rows, view, width, tracks, actionBars, infra, markers)
       : null;
 
   return (
     <div
-      ref={scrollRef}
-      className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-bg/50 select-none"
+      ref={wheelRef}
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-bg/50 select-none"
     >
-      <div className="sticky top-0 z-20 flex border-b border-border bg-surface">
+      <div className="z-20 flex shrink-0 border-b border-border bg-surface">
         <div className="flex shrink-0 items-center gap-0.5 border-r border-border px-1" style={{ width: LABEL_W, height: RULER_H }}>
           <button type="button" className="tl-btn" aria-label="Zoom out time" title="Zoom out (Ctrl+wheel)" onClick={() => zoomButton(2)}>
             <Icon name="minus" className="h-3 w-3" />
@@ -496,17 +495,10 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
           {...pointer}
         >
           <canvas ref={rulerRef} aria-hidden className="absolute inset-0" style={{ width, height: RULER_H }} />
-          {futureX !== null && futureX < width - 40 ? (
-            <span
-              className="pointer-events-none absolute inset-y-0 right-0 flex items-center justify-center text-[10px] font-semibold tracking-[0.18em] text-text/70"
-              style={{ left: Math.max(0, futureX) }}
-            >
-              FUTURE
-            </span>
-          ) : null}
         </div>
       </div>
 
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
       <div className="flex">
         <ul aria-label="Tracks" className="shrink-0 border-r border-border text-[11px]" style={{ width: LABEL_W }}>
           {rows.map((r) => {
@@ -619,6 +611,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
           ) : null}
         </div>
         {tip && hover ? <CursorTooltip x={hover.clientX} y={hover.clientY} lines={tip} /> : null}
+      </div>
       </div>
     </div>
   );

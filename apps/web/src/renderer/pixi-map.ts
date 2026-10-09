@@ -58,7 +58,7 @@ export interface MapCallbacks {
 
 /** How close (screen px) a click must land to a line to select it. */
 const EDGE_HIT_PX = 7;
-const EDGE_SELECTED = 0x22d3ee;
+const EDGE_SELECTED = 0x19d4ee;
 
 const MIN_SCALE = MIN_MAP_SCALE;
 const MAX_SCALE = 4;
@@ -71,9 +71,9 @@ const ROUTE_BOX = { ...CARD_BOX, portSpan: CARD_H - 12 };
 const LINE_STYLE = { join: "round", cap: "round" } as const;
 /** Opacity of switched-off services and everything attached to them. */
 const DIM_ALPHA = 0.22;
-const GRID_COLOR = 0x94a3b8;
-const GRID_MINOR_ALPHA = 0.04;
-const GRID_MAJOR_ALPHA = 0.08;
+const GRID_COLOR = 0x6284a7;
+const GRID_MINOR_ALPHA = 0.06;
+const GRID_MAJOR_ALPHA = 0.12;
 
 interface EdgeGeom {
   path: EdgePath;

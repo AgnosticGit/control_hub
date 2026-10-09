@@ -40,8 +40,7 @@ export const MACHINE_TIMELINE_BUCKETS = 180;
  * independent of viewport width: resizing only redraws the canvas.
  */
 export function machineWindow(view: View, data: View = view): { from: bigint; to: bigint; buckets: number } | null {
-  // `view` may include the visual FUTURE tail, whose pixel width changes on resize. Metrics only
-  // exist in the loaded data range, so clip it before deriving the query key.
+  // Metrics only exist in the loaded data range, so clip it before deriving the query key.
   const visible = { from: view.from > data.from ? view.from : data.from, to: view.to < data.to ? view.to : data.to };
   const span = visible.to - visible.from;
   if (span <= 0n) return null;

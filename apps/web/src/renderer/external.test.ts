@@ -33,9 +33,9 @@ describe("external systems", () => {
     }
   });
 
-  it("marks the card subtitle as external", () => {
-    expect(nodeSubLabel(true, 0, 12)).toBe("external · 12 req/30s");
-    expect(nodeSubLabel(true, 2, 12)).toBe("external · 2 active · 12 req/30s");
+  it("keeps external status in the title instead of repeating it in the subtitle", () => {
+    expect(nodeSubLabel(true, 0, 12)).toBe("12 req/30s");
+    expect(nodeSubLabel(true, 2, 12)).toBe("2 active · 12 req/30s");
     expect(nodeSubLabel(false, 0, 3)).toBe("3 req/30s");
   });
 
