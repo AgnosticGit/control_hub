@@ -20,6 +20,7 @@ import {
   follow,
   followLive,
   formatSpan,
+  isNearPlayhead,
   panBy,
   timeAt,
   xOf,
@@ -276,10 +277,17 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const soloService = (id: string) => onMuted(serviceIds.filter((s) => s !== id));
 
   useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    const ro = new ResizeObserver(() => setWidth(Math.max(0, Math.floor(host.clientWidth))));
-    ro.observe(host);
+    const wheel = wheelRef.current;
+    const scroll = scrollRef.current;
+    if (!wheel || !scroll) return;
+    const measure = () => {
+      const scrollbarWidth = scroll.offsetWidth - scroll.clientWidth;
+      setWidth(Math.max(0, Math.floor(wheel.clientWidth - LABEL_W - scrollbarWidth)));
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(wheel);
+    ro.observe(scroll);
+    measure();
     return () => ro.disconnect();
   }, []);
 
@@ -496,8 +504,8 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
           aria-valuenow={Math.max(0, Math.min(100, percent))}
           aria-valuetext={formatDateTime(state.cursor)}
           onKeyDown={onKeyDown}
-          className="relative min-w-0 flex-1 cursor-ew-resize touch-none outline-none focus-visible:ring-1 focus-visible:ring-accent"
-          style={{ height: RULER_H }}
+          className={`relative shrink-0 touch-none outline-none focus-visible:ring-1 focus-visible:ring-accent ${hover && isNearPlayhead(hover.x, state.cursor, view, width) ? "cursor-col-resize" : "cursor-ew-resize"}`}
+          style={{ width, height: RULER_H }}
           title="Drag to move through time · Wheel: zoom"
           {...pointer}
         >
@@ -591,7 +599,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
           })}
         </ul>
         <div
-          className={`relative min-w-0 flex-1 touch-none ${hover && edgeNear(hover.x) !== null ? "cursor-col-resize" : "cursor-crosshair"}`}
+          className={`relative min-w-0 flex-1 touch-none ${hover && (edgeNear(hover.x) !== null || isNearPlayhead(hover.x, state.cursor, view, width)) ? "cursor-col-resize" : "cursor-crosshair"}`}
           style={{ height }}
           data-area="rows"
           {...pointer}

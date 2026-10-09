@@ -8,12 +8,14 @@
 //! (eventually, see docs/architecture/data-flow.md).
 
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use clap::Parser;
+use futures::{FutureExt, StreamExt, TryStreamExt};
 use karbird_convert as convert;
 use karbird_protocol::{EDGE_CHANGES_TOPIC, EdgeChange, TELEMETRY_TOPIC};
 use karbird_runtime::{backoff, connect_broker, ensure_topic, init_tracing, load_local_env, shutdown_signal};
@@ -29,7 +31,39 @@ use tokio::sync::watch;
 
 const CONSUMER: &str = "karbird-processor";
 const MAX_DEAD_LETTER_PAYLOAD: usize = 1024 * 1024;
+const MAX_BATCH_RECORDS: usize = 128;
+const MAX_BATCH_BYTES: usize = 8 * 1024 * 1024;
+const MAX_CONCURRENT_EDGE_PUBLISHES: usize = 32;
 const IDLE_TOUCH_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Drain only records already ready in the consumer; this batches storage work without adding
+/// a timer delay. The single record that crosses the byte budget is retained, never discarded.
+fn drain_ready_batch<T>(
+    first: T,
+    max_records: usize,
+    max_bytes: usize,
+    mut size_of: impl FnMut(&T) -> usize,
+    mut next_ready: impl FnMut() -> Option<T>,
+) -> Vec<T> {
+    let mut bytes = size_of(&first);
+    let mut batch = Vec::with_capacity(max_records.max(1));
+    batch.push(first);
+    while batch.len() < max_records.max(1) && bytes < max_bytes {
+        let Some(next) = next_ready() else { break };
+        bytes = bytes.saturating_add(size_of(&next));
+        batch.push(next);
+    }
+    batch
+}
+
+async fn bounded_try_for_each<T, F, Fut>(items: Vec<T>, concurrency: usize, operation: F) -> anyhow::Result<()>
+where
+    F: FnMut(T) -> Fut,
+    Fut: Future<Output = anyhow::Result<()>>,
+{
+    futures::stream::iter(items).map(operation).buffer_unordered(concurrency.max(1)).try_collect::<Vec<_>>().await?;
+    Ok(())
+}
 
 #[derive(Debug, Default)]
 struct PartitionWatermark {
@@ -377,9 +411,10 @@ async fn process_batch(
         edge_facts.extend(rows);
     }
     let edge_changes = edge_changes(&edge_facts, &changed_keys);
-    for change in &edge_changes {
-        publish_edge_change(ctx, change).await?;
-    }
+    bounded_try_for_each(edge_changes, MAX_CONCURRENT_EDGE_PUBLISHES, |change| async move {
+        publish_edge_change(ctx, &change).await
+    })
+    .await?;
     // PostgreSQL remains authoritative: update it only after CH/dead-letter persistence,
     // then commit the Kafka group offset. If Kafka commit fails, replay is idempotent.
     if retry_until_ok(ctx, "offset commit", || {
@@ -426,7 +461,20 @@ async fn run_consumer(config: &ClientConfig, partitions: i32, ctx: Ctx) -> anyho
         tokio::select! {
             message = consumer.recv() => match message {
                 Ok(msg) => {
-                    let messages = vec![msg.detach()];
+                    let messages = drain_ready_batch(
+                        msg.detach(),
+                        MAX_BATCH_RECORDS,
+                        MAX_BATCH_BYTES,
+                        |message| message.payload().map_or(0, <[u8]>::len),
+                        || match consumer.recv().now_or_never() {
+                            Some(Ok(message)) => Some(message.detach()),
+                            Some(Err(error)) => {
+                                tracing::warn!(%error, "Kafka consumer receive failed while draining ready messages");
+                                None
+                            }
+                            None => None,
+                        },
+                    );
                     let mut by_partition: BTreeMap<i32, Vec<rdkafka::message::OwnedMessage>> = BTreeMap::new();
                     for message in messages {
                         by_partition.entry(message.partition()).or_default().push(message);
@@ -667,6 +715,47 @@ mod tests {
             fact.trace_id.clone(),
             fact.span_id.clone(),
         )
+    }
+
+    #[test]
+    fn ready_messages_are_batched_with_record_and_byte_limits() {
+        let mut queued = std::collections::VecDeque::from([4_usize, 5, 2]);
+        let batch = drain_ready_batch(3, 8, 6, |size| *size, || queued.pop_front());
+        assert_eq!(batch, [3, 4]);
+        assert_eq!(queued, std::collections::VecDeque::from([5_usize, 2]));
+
+        let mut queued = std::collections::VecDeque::from([1_usize, 1, 1]);
+        let batch = drain_ready_batch(0, 2, 16, |_| 1, || queued.pop_front());
+        assert_eq!(batch, [0, 1]);
+        assert_eq!(queued, std::collections::VecDeque::from([1_usize, 1]));
+    }
+
+    #[tokio::test]
+    async fn bounded_work_keeps_concurrency_within_limit() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let active = Arc::new(AtomicUsize::new(0));
+        let max_active = Arc::new(AtomicUsize::new(0));
+        let items = (0..12).collect::<Vec<_>>();
+        bounded_try_for_each(items, 3, {
+            let active = Arc::clone(&active);
+            let max_active = Arc::clone(&max_active);
+            move |_| {
+                let active = Arc::clone(&active);
+                let max_active = Arc::clone(&max_active);
+                async move {
+                    let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_active.fetch_max(current, Ordering::SeqCst);
+                    tokio::task::yield_now().await;
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    Ok::<(), anyhow::Error>(())
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(max_active.load(Ordering::SeqCst), 3);
+        assert_eq!(active.load(Ordering::SeqCst), 0);
     }
 
     #[test]

@@ -462,21 +462,21 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/timeline/TimelineTracksView.tsx": {
-    "mtime": 1791562209.509888,
-    "seen": 1791562254.463187,
-    "ast_hash": "64159318b10d7f29c05a0255f6370d2b",
+    "mtime": 1791564088.439694,
+    "seen": 1791564346.6665835,
+    "ast_hash": "8f837e616f941104714aac1470813014",
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/timeline/draw.test.ts": {
-    "mtime": 1791515211.8231847,
-    "seen": 1791515477.2479405,
-    "ast_hash": "cf2776a7266f324f8b2be65a52a399f4",
+    "mtime": 1791564355.2258453,
+    "seen": 1791565114.000911,
+    "ast_hash": "9282172bb4cd48a1a0e8971d9b12ffa5",
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/timeline/draw.ts": {
-    "mtime": 1791515141.6548157,
-    "seen": 1791515477.2479405,
-    "ast_hash": "bbc504ad427a4db1f05b3f3e8f0a55ae",
+    "mtime": 1791564088.4154563,
+    "seen": 1791564346.6665835,
+    "ast_hash": "a8dc62961873fd1cb048488613826e1f",
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/timeline/range.test.ts": {
@@ -492,15 +492,15 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/timeline/scale.test.ts": {
-    "mtime": 1791515350.0229564,
-    "seen": 1791515477.2479405,
-    "ast_hash": "7f8775889c5b0db8fab65ac24c4cf780",
+    "mtime": 1791564108.5003803,
+    "seen": 1791564346.6665835,
+    "ast_hash": "b888efa99ee22b2e461a187a9216bc0f",
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/timeline/scale.ts": {
-    "mtime": 1791515284.803776,
-    "seen": 1791515477.2479405,
-    "ast_hash": "bb5035ddf6ae0b19bc2aff45a003da0f",
+    "mtime": 1791564088.3941426,
+    "seen": 1791564346.6665835,
+    "ast_hash": "ed5ee980763e40c0a745ef9e7fbaaf31",
     "semantic_hash": ""
   },
   "apps/web/src/components/workspace/trace-focus.test.ts": {
@@ -1446,9 +1446,9 @@
     "semantic_hash": ""
   },
   "tests/e2e/specs/workspace.spec.ts": {
-    "mtime": 1791515489.808784,
-    "seen": 1791515522.4854512,
-    "ast_hash": "ad5e373f33671e9dd5f3d3529d43b3bd",
+    "mtime": 1791564355.2264974,
+    "seen": 1791565114.026365,
+    "ast_hash": "48348685903e4df6c2e887e432acf321",
     "semantic_hash": ""
   },
   "tests/e2e/tsconfig.json": {
@@ -3696,9 +3696,9 @@
     "semantic_hash": ""
   },
   "tests/integration/edge-traffic.test.mjs": {
-    "mtime": 1791170529.389599,
-    "seen": 1791172293.1458755,
-    "ast_hash": "a815f88e14c95ab9750a9053133b46c4",
+    "mtime": 1791563012.7821128,
+    "seen": 1791563082.4797232,
+    "ast_hash": "ed64c487be7963a15b561386b81a98eb",
     "semantic_hash": ""
   },
   "docs/adr/0019-edge-traffic.md": {
@@ -4158,9 +4158,9 @@
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-10-09-websocket-only-live-updates.md": {
-    "mtime": 1791562828.0421233,
-    "seen": 1791562966.1085176,
-    "ast_hash": "da933084c901247ae724ccadc4b4947a",
+    "mtime": 1791563057.1116052,
+    "seen": 1791563082.4901066,
+    "ast_hash": "f505a7093d6eb6679e73673ee5caabe1",
     "semantic_hash": ""
   },
   "docs/superpowers/specs/2026-10-09-websocket-only-live-updates-design.md": {

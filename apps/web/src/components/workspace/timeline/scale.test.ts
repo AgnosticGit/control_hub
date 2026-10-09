@@ -5,6 +5,7 @@ import {
   followLive,
   formatSpan,
   formatTick,
+  isNearPlayhead,
   panBy,
   tickStep,
   ticks,
@@ -18,6 +19,14 @@ const MS = 1_000_000n;
 const SEC = 1_000_000_000n;
 const T0 = 1_790_000_000n * SEC;
 const bounds = { from: T0, to: T0 + 900n * SEC };
+
+describe("playhead hit area", () => {
+  it("detects the playhead within eight pixels", () => {
+    const view = { from: 0n, to: 1_000_000_000n };
+    expect(isNearPlayhead(496, 500_000_000n, view, 1000)).toBe(true);
+    expect(isNearPlayhead(509, 500_000_000n, view, 1000)).toBe(false);
+  });
+});
 
 describe("followLive", () => {
   const v = { from: T0 + 100n * SEC, to: T0 + 200n * SEC };

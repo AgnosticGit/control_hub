@@ -101,6 +101,11 @@ export function xOf(t: bigint, v: View, width: number): number {
   return w > 0n ? (Number(t - v.from) / Number(w)) * width : 0;
 }
 
+/** The playhead's interactive hit target, shared by the ruler and every track row. */
+export function isNearPlayhead(x: number, cursor: bigint, view: View, width: number, tolerance = 8): boolean {
+  return width > 0 && Math.abs(x - xOf(cursor, view, width)) <= tolerance;
+}
+
 export function timeAt(x: number, v: View, width: number): bigint {
   if (width <= 0) return v.from;
   return v.from + BigInt(Math.round((Number(span(v)) * x) / width));

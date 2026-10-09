@@ -354,6 +354,26 @@ test.describe("workspace on demo data", () => {
     await expect(dock).toHaveAttribute("aria-valuenow", String(height + 24));
   });
 
+  test("timeline ruler ends at the scroll viewport and marks the playhead as draggable", async ({ page }) => {
+    const timeline = page.getByRole("region", { name: "Timeline" });
+    await timeline.getByRole("button", { name: "Pause live" }).click();
+    const ruler = timeline.getByRole("slider", { name: "Selected time" });
+    const rows = timeline.locator('[data-area="rows"]');
+    const rulerBox = await ruler.boundingBox();
+    const rowsBox = await rows.boundingBox();
+    expect(rulerBox).not.toBeNull();
+    expect(rowsBox).not.toBeNull();
+    if (!rulerBox || !rowsBox) return;
+    expect(rulerBox.width).toBeCloseTo(rowsBox.width, 0);
+
+    await page.mouse.click(rulerBox.x + rulerBox.width / 2, rulerBox.y + rulerBox.height / 2);
+    await page.mouse.move(rulerBox.x + rulerBox.width / 2, rulerBox.y + rulerBox.height / 2);
+    await expect.poll(() => ruler.evaluate((element) => getComputedStyle(element).cursor)).toBe("col-resize");
+    const x = rowsBox.x + rowsBox.width / 2;
+    await page.mouse.move(x, rowsBox.y + 8);
+    await expect.poll(() => rows.evaluate((element) => getComputedStyle(element).cursor)).toBe("col-resize");
+  });
+
   test("services can be switched off on the timeline, all at once or all but one", async ({ page }) => {
     const tracks = page.getByLabel("Timeline").getByRole("list", { name: "Tracks" });
     const orders = tracks.getByRole("checkbox", { name: "Show orders" });

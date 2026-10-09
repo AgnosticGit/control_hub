@@ -1688,6 +1688,7 @@ dependencies = [
  "axum",
  "chrono",
  "clap",
+ "futures",
  "hex",
  "karbird-archive",
  "karbird-convert",

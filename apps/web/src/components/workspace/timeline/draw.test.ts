@@ -355,4 +355,24 @@ describe("drawRuler", () => {
     drawRuler(ctx, { width: WIDTH, view: VIEW, cursor: 0n, markA: null, hoverX: null, range: null });
     expect(named("fillText").length).toBeGreaterThan(2);
   });
+
+  it("highlights the playhead handle when the pointer is close", () => {
+    const { ctx, named } = fakeCtx();
+    drawRuler(ctx, { width: WIDTH, view: VIEW, cursor: 500_000_000n, markA: null, hoverX: 502, range: null });
+    expect(named("fillRect")).toContainEqual(expect.objectContaining({
+      args: [496, 0, 8, RULER_H],
+      fillStyle: "rgba(25, 212, 238, 0.18)",
+    }));
+  });
+});
+
+describe("playhead hover", () => {
+  it("highlights the vertical playhead when the pointer is close", () => {
+    const { ctx, named } = fakeCtx();
+    draw(ctx, input({ rows: [row("requests", "requests", 24)], hoverX: 502 }));
+    expect(named("fillRect")).toContainEqual(expect.objectContaining({
+      args: [496, 0, 8, 24],
+      fillStyle: "rgba(25, 212, 238, 0.18)",
+    }));
+  });
 });

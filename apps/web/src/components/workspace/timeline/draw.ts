@@ -2,7 +2,7 @@
 
 import type { TimelineTracks } from "@karbird/web-engine";
 import { machineGeometry, type InfraTimeline, type MachineGeometry } from "./machines";
-import { formatTick, tickStep, ticks, xOf, type View } from "./scale";
+import { formatTick, isNearPlayhead, tickStep, ticks, xOf, type View } from "./scale";
 
 export type RowKind = "actions" | "events" | "errors" | "requests" | "latency" | "group" | "service" | "heading" | "machine";
 
@@ -304,8 +304,13 @@ export function drawRuler(ctx: CanvasRenderingContext2D, d: RulerInput) {
   rangeBand(ctx, d.range, view, width, RULER_H, false);
 
   if (d.hoverX !== null) {
-    ctx.fillStyle = "rgba(230, 236, 245, 0.35)";
-    ctx.fillRect(Math.round(d.hoverX), 0, 1, RULER_H);
+    if (isNearPlayhead(d.hoverX, d.cursor, view, width)) {
+      ctx.fillStyle = "rgba(25, 212, 238, 0.18)";
+      ctx.fillRect(Math.round(xOf(d.cursor, view, width)) - 4, 0, 8, RULER_H);
+    } else {
+      ctx.fillStyle = "rgba(230, 236, 245, 0.35)";
+      ctx.fillRect(Math.round(d.hoverX), 0, 1, RULER_H);
+    }
   }
   if (d.markA !== null) {
     const x = xOf(d.markA, view, width);
@@ -428,8 +433,13 @@ export function draw(ctx: CanvasRenderingContext2D, d: DrawInput) {
   }
 
   if (d.hoverX !== null) {
-    ctx.fillStyle = "rgba(230, 236, 245, 0.25)";
-    ctx.fillRect(Math.round(d.hoverX), 0, 1, height);
+    if (isNearPlayhead(d.hoverX, d.cursor, view, width)) {
+      ctx.fillStyle = "rgba(25, 212, 238, 0.18)";
+      ctx.fillRect(Math.round(xOf(d.cursor, view, width)) - 4, 0, 8, height);
+    } else {
+      ctx.fillStyle = "rgba(230, 236, 245, 0.25)";
+      ctx.fillRect(Math.round(d.hoverX), 0, 1, height);
+    }
   }
 
   const px = xOf(d.cursor, view, width);
