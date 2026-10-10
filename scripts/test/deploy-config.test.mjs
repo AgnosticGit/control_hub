@@ -171,18 +171,30 @@ test('every variable a production compose file reads is rendered for its host or
   for (const [, name] of caddy.matchAll(/\{\$([A-Z0-9_]+)\}/g)) assert.ok(name in app, `Caddyfile reads ${name}`);
 });
 
-test('storage deployment mounts bounded ClickHouse thread pool settings', () => {
+test('storage deployment restores ClickHouse defaults and disables internal system log tables', () => {
   const compose = readFileSync(join(deployDir, 'compose.storage.yaml'), 'utf8');
   const workflow = readFileSync(join(deployDir, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
-  const settings = readFileSync(join(deployDir, 'clickhouse-low-resource.xml'), 'utf8');
+  const settings = readFileSync(join(deployDir, 'clickhouse-system-logs.xml'), 'utf8');
 
-  assert.match(compose, /\.\/clickhouse-low-resource\.xml:\/etc\/clickhouse-server\/config\.d\/karbird-low-resource\.xml:ro/);
+  assert.match(compose, /\.\/clickhouse-system-logs\.xml:\/etc\/clickhouse-server\/config\.d\/karbird-system-logs\.xml:ro/);
   assert.match(compose, /karbird\.clickhouse-config-sha: \$\{KARBIRD_CLICKHOUSE_CONFIG_SHA:-local\}/);
-  assert.match(workflow, /deploy\/clickhouse-low-resource\.xml/);
-  assert.match(workflow, /KARBIRD_CLICKHOUSE_CONFIG_SHA=.*sha256sum clickhouse-low-resource\.xml/);
-  assert.match(settings, /<background_schedule_pool_size>8<\/background_schedule_pool_size>/);
-  assert.match(settings, /<background_schedule_pool_initial_size>4<\/background_schedule_pool_initial_size>/);
-  assert.match(settings, /<max_thread_pool_size>64<\/max_thread_pool_size>/);
+  assert.match(workflow, /deploy\/clickhouse-system-logs\.xml/);
+  assert.match(workflow, /KARBIRD_CLICKHOUSE_CONFIG_SHA=.*sha256sum clickhouse-system-logs\.xml/);
+  assert.doesNotMatch(settings, /<background_schedule_pool_size>|<background_schedule_pool_initial_size>|<max_thread_pool_size>/);
+  for (const log of ['query_log', 'query_thread_log', 'query_metric_log', 'processors_profile_log', 'text_log', 'trace_log', 'metric_log', 'asynchronous_metric_log', 'part_log', 'error_log', 'crash_log']) {
+    assert.match(settings, new RegExp(`<${log} remove="1"\\s*\\/>`), `${log} is disabled`);
+  }
+});
+
+test('full data reset is opt-in and removes Compose volumes on both hosts before deployment', () => {
+  const workflow = readFileSync(join(deployDir, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
+
+  assert.match(workflow, /reset_data:\s*\n\s*description:.*(reset|delete|clear).*(data|volumes)/i);
+  assert.match(workflow, /reset_data:\s*\n\s*description:[^\n]*\n\s*type: boolean\n\s*default: false/);
+  assert.match(workflow, /name: Reset Karbird data\n\s+if: inputs\.reset_data/);
+  assert.match(workflow, /ssh app .*docker compose -f compose\.app\.yaml down --volumes --remove-orphans/);
+  assert.match(workflow, /ssh storage .*docker compose -f compose\.storage\.yaml down --volumes --remove-orphans/);
+  assert.ok(workflow.indexOf('name: Reset Karbird data') < workflow.indexOf('name: Storage host'));
 });
 
 test('rejects missing or malformed inputs with the variable name', () => {

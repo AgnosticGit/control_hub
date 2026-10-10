@@ -16,6 +16,10 @@ on:
         description: "Confirm a retention decrease that deletes stored telemetry"
         type: boolean
         default: false
+      reset_data:
+        description: "DELETE ALL Karbird databases, Kafka data and archives on both hosts"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -131,6 +135,13 @@ jobs:
             ssh "$h" 'bash /tmp/karbird-host-setup.sh && rm /tmp/karbird-host-setup.sh'
           done
 
+      - name: Reset Karbird data
+        if: inputs.reset_data
+        run: |
+          # Stop app services first so they cannot write while storage volumes are removed.
+          ssh app 'if [ -f /opt/karbird/compose.app.yaml ]; then cd /opt/karbird && docker compose -f compose.app.yaml down --volumes --remove-orphans; else echo "No existing app stack to reset"; fi'
+          ssh storage 'if [ -f /opt/karbird/compose.storage.yaml ]; then cd /opt/karbird && docker compose -f compose.storage.yaml down --volumes --remove-orphans; else echo "No existing storage stack to reset"; fi'
+
       - name: Registry login on the hosts
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -141,13 +152,13 @@ jobs:
 
       - name: Storage host (databases, object storage, migrations)
         run: |
-          scp deploy/compose.storage.yaml deploy/clickhouse-low-resource.xml "$OUT/storage/.env" "$OUT/storage/owner.env" "$OUT/storage/seaweedfs-s3.json" storage:/opt/karbird/
+          scp deploy/compose.storage.yaml deploy/clickhouse-system-logs.xml "$OUT/storage/.env" "$OUT/storage/owner.env" "$OUT/storage/seaweedfs-s3.json" storage:/opt/karbird/
           # shellcheck disable=SC2029 # SHRINK is the runner's input, expanded before ssh on purpose
           ssh storage "SHRINK='$SHRINK' bash -s" <<'EOF'
           set -euo pipefail
           cd /opt/karbird
           chmod 600 .env owner.env seaweedfs-s3.json
-          export KARBIRD_CLICKHOUSE_CONFIG_SHA="$(sha256sum clickhouse-low-resource.xml | cut -c1-16)"
+          export KARBIRD_CLICKHOUSE_CONFIG_SHA="$(sha256sum clickhouse-system-logs.xml | cut -c1-16)"
           dc() { docker compose -f compose.storage.yaml "$@"; }
           dc pull --quiet
           dc up -d --wait --wait-timeout 900 --remove-orphans

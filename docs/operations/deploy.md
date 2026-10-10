@@ -71,6 +71,11 @@ Public URLs: `https://<domain>/` (site and `/app`), `https://<domain>/api/v1/…
    reviewers there to gate deploys). Registry access uses the job's own `GITHUB_TOKEN`.
 7. **First deploy:** Actions → Deploy → Run workflow, tick `setup_hosts`. It installs Docker and
    the Compose plugin, adds 2 GB swap and creates `/opt/karbird` on both hosts, then deploys.
+   For a deliberate clean start, `reset_data` stops the app and storage stacks and deletes their
+   Compose volumes before deploying. This permanently removes PostgreSQL, ClickHouse, Kafka,
+   SeaweedFS archives and Caddy certificates. Leave it unchecked for normal deployments. The
+   ClickHouse system diagnostic tables are disabled; ClickHouse server process logs remain
+   available through Docker logs.
 
 ## Releases and rollback
 
@@ -82,6 +87,9 @@ Public URLs: `https://<domain>/` (site and `/app`), `https://<domain>/api/v1/…
   the schema compatible with the previous one.
 - Shortening retention deletes data: the deploy stops with the number of affected rows; rerun
   with `shrink_retention` ticked to confirm.
+- A full clean deployment is available through `reset_data` on manual workflow runs. It deletes
+  all volumes belonging to the `karbird` Compose stacks on both hosts; it does not remove host
+  configuration files or unrelated Docker projects.
 
 ## Moving hosts deployed under the previous project name
 
