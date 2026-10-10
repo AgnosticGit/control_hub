@@ -1,0 +1,7 @@
+<clickhouse>
+    <!-- Keep startup and background scheduling within the small storage VPS budget. -->
+    <background_schedule_pool_size>16</background_schedule_pool_size>
+    <background_schedule_pool_initial_size>4</background_schedule_pool_initial_size>
+    <!-- Keep the global pool bounded while leaving headroom above the schedule pool. -->
+    <max_thread_pool_size>128</max_thread_pool_size>
+</clickhouse>

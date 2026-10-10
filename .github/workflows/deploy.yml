@@ -141,7 +141,7 @@ jobs:
 
       - name: Storage host (databases, object storage, migrations)
         run: |
-          scp deploy/compose.storage.yaml "$OUT/storage/.env" "$OUT/storage/owner.env" "$OUT/storage/seaweedfs-s3.json" storage:/opt/karbird/
+          scp deploy/compose.storage.yaml deploy/clickhouse-low-resource.xml "$OUT/storage/.env" "$OUT/storage/owner.env" "$OUT/storage/seaweedfs-s3.json" storage:/opt/karbird/
           # shellcheck disable=SC2029 # SHRINK is the runner's input, expanded before ssh on purpose
           ssh storage "SHRINK='$SHRINK' bash -s" <<'EOF'
           set -euo pipefail

@@ -171,6 +171,18 @@ test('every variable a production compose file reads is rendered for its host or
   for (const [, name] of caddy.matchAll(/\{\$([A-Z0-9_]+)\}/g)) assert.ok(name in app, `Caddyfile reads ${name}`);
 });
 
+test('storage deployment mounts bounded ClickHouse thread pool settings', () => {
+  const compose = readFileSync(join(deployDir, 'compose.storage.yaml'), 'utf8');
+  const workflow = readFileSync(join(deployDir, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
+  const settings = readFileSync(join(deployDir, 'clickhouse-low-resource.xml'), 'utf8');
+
+  assert.match(compose, /\.\/clickhouse-low-resource\.xml:\/etc\/clickhouse-server\/config\.d\/karbird-low-resource\.xml:ro/);
+  assert.match(workflow, /deploy\/clickhouse-low-resource\.xml/);
+  assert.match(settings, /<background_schedule_pool_size>16<\/background_schedule_pool_size>/);
+  assert.match(settings, /<background_schedule_pool_initial_size>4<\/background_schedule_pool_initial_size>/);
+  assert.match(settings, /<max_thread_pool_size>128<\/max_thread_pool_size>/);
+});
+
 test('rejects missing or malformed inputs with the variable name', () => {
   assert.throws(() => render({ ...input, SECRET_SEED: '' }), /missing: SECRET_SEED/);
   assert.throws(() => render({ ...input, SECRET_SEED: 'short' }), /SECRET_SEED must be at least 32/);
