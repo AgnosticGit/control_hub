@@ -177,7 +177,9 @@ test('storage deployment mounts bounded ClickHouse thread pool settings', () => 
   const settings = readFileSync(join(deployDir, 'clickhouse-low-resource.xml'), 'utf8');
 
   assert.match(compose, /\.\/clickhouse-low-resource\.xml:\/etc\/clickhouse-server\/config\.d\/karbird-low-resource\.xml:ro/);
+  assert.match(compose, /karbird\.clickhouse-config-sha: \$\{KARBIRD_CLICKHOUSE_CONFIG_SHA:-local\}/);
   assert.match(workflow, /deploy\/clickhouse-low-resource\.xml/);
+  assert.match(workflow, /KARBIRD_CLICKHOUSE_CONFIG_SHA=.*sha256sum clickhouse-low-resource\.xml/);
   assert.match(settings, /<background_schedule_pool_size>8<\/background_schedule_pool_size>/);
   assert.match(settings, /<background_schedule_pool_initial_size>4<\/background_schedule_pool_initial_size>/);
   assert.match(settings, /<max_thread_pool_size>64<\/max_thread_pool_size>/);

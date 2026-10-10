@@ -147,6 +147,7 @@ jobs:
           set -euo pipefail
           cd /opt/karbird
           chmod 600 .env owner.env seaweedfs-s3.json
+          export KARBIRD_CLICKHOUSE_CONFIG_SHA="$(sha256sum clickhouse-low-resource.xml | cut -c1-16)"
           dc() { docker compose -f compose.storage.yaml "$@"; }
           dc pull --quiet
           dc up -d --wait --wait-timeout 900 --remove-orphans

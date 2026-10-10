@@ -29,6 +29,8 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:25.8
     restart: unless-stopped
+    labels:
+      karbird.clickhouse-config-sha: ${KARBIRD_CLICKHOUSE_CONFIG_SHA:-local}
     environment:
       CLICKHOUSE_DB: karbird
       CLICKHOUSE_USER: ${CH_CH_ADMIN_USER:?rendered by the deploy}
