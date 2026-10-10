@@ -74,8 +74,8 @@ Public URLs: `https://<domain>/` (site and `/app`), `https://<domain>/api/v1/…
    For a deliberate clean start, `reset_data` stops the app and storage stacks and deletes their
    Compose volumes before deploying. This permanently removes PostgreSQL, ClickHouse, Kafka,
    SeaweedFS archives and Caddy certificates. Leave it unchecked for normal deployments. The
-   ClickHouse system diagnostic tables are disabled; ClickHouse server process logs remain
-   available through Docker logs.
+   ClickHouse thread pools are bounded for the 1/8 OCPU storage host, and its system diagnostic
+   tables are disabled; ClickHouse server process logs remain available through Docker logs.
 
 ## Releases and rollback
 
@@ -129,8 +129,10 @@ Memory limits are not tuned for 1 GB yet. Measured idle: app host ≈ 400 MB (Ka
 storage host ≈ 560 MB (ClickHouse ≈ 430 MB). On 1/8 OCPU Kafka runs a single-core JVM (serial
 GC) with KRaft heartbeats every 10 s instead of 2 s; with the defaults the broker misses its own
 heartbeats and never becomes ready. Under load both use the swap from `host-setup.sh`;
-expect slower queries rather than crashes. Reducing Kafka heap and ClickHouse caches is a separate
-step.
+expect slower queries rather than crashes. ClickHouse background scheduling is limited to 8
+threads (4 created initially) and its global thread pool to 64; without this, its default attempts
+to create 512 schedule threads and aborts on this host. ClickHouse diagnostic system tables are
+disabled, while process logs remain available through Docker.
 
 ## Karbird agent (machine and container metrics)
 
