@@ -1,4 +1,7 @@
 <clickhouse>
+    <!-- Prevent the default schedule pool from exhausting threads on the small Oracle host. -->
+    <background_schedule_pool_size>8</background_schedule_pool_size>
+    <background_schedule_pool_initial_size>4</background_schedule_pool_initial_size>
     <!-- Karbird telemetry is stored separately; these ClickHouse diagnostic tables are not needed. -->
     <asynchronous_metric_log remove="1"/>
     <asynchronous_insert_log remove="1"/>
