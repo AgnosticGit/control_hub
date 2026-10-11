@@ -77,6 +77,7 @@ pub struct VisibleState {
 struct NodeRec {
     id: String,
     name: String,
+    lowercase_name: String,
     kind: EntityKind,
     provenance: Provenance,
 }
@@ -105,6 +106,7 @@ pub struct Engine {
     unresolved_parents: u32,
     viewport: Option<Viewport>,
     filters: Filters,
+    lowercase_search: String,
     current_time: Option<i64>,
     last_generation: u64,
     last_status: Vec<u8>,
@@ -212,6 +214,7 @@ impl Engine {
             unresolved_parents: 0,
             viewport: None,
             filters: Filters::default(),
+            lowercase_search: String::new(),
             current_time: None,
             last_generation: 0,
             last_status: Vec::new(),
@@ -326,7 +329,9 @@ impl Engine {
                     let key = (s.trace_id.clone(), s.span_id.clone());
                     match self.spans.get(&key) {
                         None => {
-                            self.pending.push(ItemKey::Span(key.clone()));
+                            if self.timeline.is_some() {
+                                self.pending.push(ItemKey::Span(key.clone()));
+                            }
                             self.spans.insert(key, s);
                             self.hops = None;
                         }
@@ -346,7 +351,9 @@ impl Engine {
                     }
                     match self.logs.get(&l.id) {
                         None => {
-                            self.pending.push(ItemKey::Log(l.id.clone()));
+                            if self.timeline.is_some() {
+                                self.pending.push(ItemKey::Log(l.id.clone()));
+                            }
                             self.logs.insert(l.id.clone(), l);
                         }
                         Some(old) => {
@@ -367,7 +374,9 @@ impl Engine {
                     }
                     match self.events.get(&e.id) {
                         None => {
-                            self.pending.push(ItemKey::Event(e.id.clone()));
+                            if self.timeline.is_some() {
+                                self.pending.push(ItemKey::Event(e.id.clone()));
+                            }
                             self.events.insert(e.id.clone(), e);
                         }
                         Some(old) => {
@@ -420,6 +429,7 @@ impl Engine {
     pub fn set_filters(&mut self, filters: Filters) {
         let toggled = filters.infrastructure != self.filters.infrastructure;
         let problems_toggled = filters.only_problems != self.filters.only_problems;
+        self.lowercase_search = filters.search.to_lowercase();
         self.filters = filters;
         if toggled {
             self.refresh_infra();
@@ -528,7 +538,7 @@ impl Engine {
         }
 
         let (now, past) = self.states_at(self.current_time);
-        let window = self.window_for(&now, &past);
+        let window = self.window_for(&now, &past, false);
         let problem_nodes: HashSet<u32> = self
             .nodes
             .iter()
@@ -664,10 +674,10 @@ impl Engine {
         self.ensure_timeline();
         let t = self.current_time;
         let (now, past) = self.states_at(t);
-        let window = self.window_for(&now, &past);
+        let window = self.window_for(&now, &past, false);
 
         let highlight = self.trace_highlight();
-        let search = self.filters.search.to_lowercase();
+        let search = &self.lowercase_search;
         let lod = match self.viewport.map(|v| v.scale) {
             Some(s) if s < 0.45 => 0,
             Some(s) if s > 1.6 => 2,
@@ -702,7 +712,7 @@ impl Engine {
             if self.filters.hide_inferred && n.provenance == Provenance::Inferred {
                 continue;
             }
-            if !search.is_empty() && !n.name.to_lowercase().contains(&search) && !n.id.contains(&search) {
+            if !search.is_empty() && !n.lowercase_name.contains(search) && !n.id.contains(search) {
                 continue;
             }
             let problem = matches!(m.status, HealthStatus::Degraded | HealthStatus::Failing);
@@ -963,7 +973,7 @@ impl Engine {
         let idx = *self.node_index.get(node_id)? as usize;
         let t = at.or(self.current_time);
         let (now, past) = self.states_at(t);
-        let window = self.window_for(&now, &past);
+        let window = self.window_for(&now, &past, true);
         let m = window.get(idx)?;
         let n = self.nodes.get(idx)?;
         Some(m.to_metrics(n))
@@ -1018,12 +1028,13 @@ impl Engine {
             }
         }
 
-        let (status, status_reason) = match classify(calls, errors, &self.config) {
-            (HealthStatus::Unknown, _) if active > 0 => {
+        let status = classify_status(calls, errors, &self.config);
+        let (status, status_reason) = match status {
+            HealthStatus::Unknown if active > 0 => {
                 (HealthStatus::Healthy, format!("{active} call(s) in flight, none started in window"))
             }
-            (HealthStatus::Unknown, _) => (HealthStatus::Unknown, "no calls in window".into()),
-            other => other,
+            HealthStatus::Unknown => (HealthStatus::Unknown, "no calls in window".into()),
+            status => (status, classify_reason(calls, errors)),
         };
         let source = self.nodes.get(s as usize)?;
         let target = self.nodes.get(t as usize)?;
@@ -1055,8 +1066,8 @@ impl Engine {
         self.ensure_timeline();
         let (na, pa) = self.states_at(Some(a_ns));
         let (nb, pb) = self.states_at(Some(b_ns));
-        let wa = self.window_for(&na, &pa);
-        let wb = self.window_for(&nb, &pb);
+        let wa = self.window_for(&na, &pa, true);
+        let wb = self.window_for(&nb, &pb, true);
         self.nodes
             .iter()
             .zip(wa.iter().zip(wb.iter()))
@@ -1154,8 +1165,8 @@ impl Engine {
         if self.filters.hide_inferred && n.provenance == Provenance::Inferred {
             return false;
         }
-        let search = self.filters.search.to_lowercase();
-        search.is_empty() || n.name.to_lowercase().contains(&search) || n.id.contains(&search)
+        let search = &self.lowercase_search;
+        search.is_empty() || n.lowercase_name.contains(search) || n.id.contains(search)
     }
 
     fn in_viewport(&self, x: f32, y: f32, r: f32) -> bool {
@@ -1190,7 +1201,13 @@ impl Engine {
             return i;
         }
         let i = self.nodes.len() as u32;
-        self.nodes.push(NodeRec { id: id.to_owned(), name: name.to_owned(), kind, provenance });
+        self.nodes.push(NodeRec {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            lowercase_name: name.to_lowercase(),
+            kind,
+            provenance,
+        });
         self.node_index.insert(id.to_owned(), i);
         self.topology_revision += 1;
         self.layout_dirty = true;
@@ -1430,7 +1447,7 @@ impl Engine {
         }
     }
 
-    fn window_for(&self, now: &StateVec, past: &StateVec) -> Vec<WindowMetrics> {
+    fn window_for(&self, now: &StateVec, past: &StateVec, include_reasons: bool) -> Vec<WindowMetrics> {
         let d = |n: usize, f: usize| now.node(n, f).wrapping_sub(past.node(n, f));
         let mut incoming: Vec<(i64, i64, i64)> = vec![(0, 0, 0); self.nodes.len()];
         let mut outgoing: Vec<(i64, i64, i64)> = vec![(0, 0, 0); self.nodes.len()];
@@ -1473,30 +1490,42 @@ impl Engine {
                     m.started = calls_in;
                     m.completed = calls_in;
                     m.errors = errors_in;
-                    (m.status, m.reason) = classify(calls_in, errors_in, &self.config);
-                    if m.status != HealthStatus::Unknown {
-                        m.reason.push_str(if client {
-                            " — derived from spans of the services it calls; the client itself is not instrumented"
+                    m.status = classify_status(calls_in, errors_in, &self.config);
+                    if include_reasons {
+                        if m.status != HealthStatus::Unknown {
+                            m.reason.push_str(&classify_reason(calls_in, errors_in));
+                            m.reason.push_str(if client {
+                                " — derived from spans of the services it calls; the client itself is not instrumented"
+                            } else {
+                                " — derived from caller spans; resource itself is not instrumented"
+                            });
+                        } else if client {
+                            m.reason = "not instrumented; no requests from it in window".into();
                         } else {
-                            " — derived from caller spans; resource itself is not instrumented"
-                        });
-                    } else if client {
-                        m.reason = "not instrumented; no requests from it in window".into();
-                    } else {
-                        m.reason = "not instrumented; no caller activity in window".into();
+                            m.reason = "not instrumented; no caller activity in window".into();
+                        }
                     }
                 } else if m.completed > 0 {
-                    (m.status, m.reason) = classify(m.completed, m.errors, &self.config);
+                    m.status = classify_status(m.completed, m.errors, &self.config);
+                    if include_reasons {
+                        m.reason = classify_reason(m.completed, m.errors);
+                    }
                 } else if m.active > 0 {
                     m.status = HealthStatus::Healthy;
-                    m.reason = format!("{} request(s) in flight, none completed in window", m.active);
+                    if include_reasons {
+                        m.reason = format!("{} request(s) in flight, none completed in window", m.active);
+                    }
                 } else if m.error_logs > 0 {
                     m.status = HealthStatus::Degraded;
-                    m.reason = format!("{} error log(s) in window, no completed requests", m.error_logs);
-                } else if m.logs > 0 || m.any_spans > 0 || m.events > 0 {
-                    m.reason = "activity seen but no request spans completed in window".into();
-                } else {
-                    m.reason = "no data in window".into();
+                    if include_reasons {
+                        m.reason = format!("{} error log(s) in window, no completed requests", m.error_logs);
+                    }
+                } else if include_reasons {
+                    if m.logs > 0 || m.any_spans > 0 || m.events > 0 {
+                        m.reason = "activity seen but no request spans completed in window".into();
+                    } else {
+                        m.reason = "no data in window".into();
+                    }
                 }
                 m
             })
@@ -1593,19 +1622,26 @@ fn latency_stats(durations: &mut [i64]) -> Option<EdgeLatency> {
     })
 }
 
-fn classify(completed: i64, errors: i64, cfg: &EngineConfig) -> (HealthStatus, String) {
+fn classify_status(completed: i64, errors: i64, cfg: &EngineConfig) -> HealthStatus {
     if completed <= 0 {
-        return (HealthStatus::Unknown, String::new());
+        return HealthStatus::Unknown;
     }
     let ratio = errors as f32 / completed as f32;
-    let reason = format!("{errors}/{completed} failed ({:.1}%)", ratio * 100.0);
     if ratio >= cfg.failing_error_ratio {
-        (HealthStatus::Failing, reason)
+        HealthStatus::Failing
     } else if ratio >= cfg.degraded_error_ratio {
-        (HealthStatus::Degraded, reason)
+        HealthStatus::Degraded
     } else {
-        (HealthStatus::Healthy, reason)
+        HealthStatus::Healthy
     }
+}
+
+fn classify_reason(completed: i64, errors: i64) -> String {
+    if completed <= 0 {
+        return String::new();
+    }
+    let ratio = errors as f32 / completed as f32;
+    format!("{errors}/{completed} failed ({:.1}%)", ratio * 100.0)
 }
 
 #[cfg(test)]

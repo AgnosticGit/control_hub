@@ -102,6 +102,7 @@ use crate::routes;
     ),
     modifiers(&BearerAuth)
 )]
+#[derive(Debug)]
 pub struct ApiDoc;
 
 /// Documents both credentials: the browser session cookie and read-only bearer API tokens.

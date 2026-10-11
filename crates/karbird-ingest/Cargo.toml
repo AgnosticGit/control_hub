@@ -32,7 +32,12 @@ uuid.workspace = true
 opentelemetry-proto.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "sanitize"
+harness = false
 
 [lints]
 workspace = true

@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[lib]
+test = false
+
 [dependencies]
 karbird-domain.workspace = true
 karbird-storage.workspace = true
@@ -37,9 +40,14 @@ uuid.workspace = true
 rdkafka.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 tower = { workspace = true, features = ["util"] }
 proptest.workspace = true
 argon2.workspace = true
+
+[[bench]]
+name = "infrastructure"
+harness = false
 
 [lints]
 workspace = true

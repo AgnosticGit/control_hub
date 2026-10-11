@@ -141,16 +141,16 @@ fn delta(row: &InfraSeriesRow) -> Option<f64> {
     (row.last_time > row.first_time && dv >= 0.0).then_some(dv)
 }
 
+fn finite(v: Option<f64>) -> Option<f64> {
+    v.filter(|v| v.is_finite())
+}
+
 fn sum_some(values: impl Iterator<Item = Option<f64>>) -> Option<f64> {
     values.fold(None, |acc, v| match (acc, v) {
         (a, None) => a,
         (None, Some(v)) => Some(v),
         (Some(a), Some(v)) => Some(a + v),
     })
-}
-
-fn finite(v: Option<f64>) -> Option<f64> {
-    v.filter(|v| v.is_finite())
 }
 
 fn by_name<'a>(rows: &'a [&'a InfraSeriesRow], name: &'a str) -> impl Iterator<Item = &'a InfraSeriesRow> + 'a {
@@ -160,8 +160,6 @@ fn by_name<'a>(rows: &'a [&'a InfraSeriesRow], name: &'a str) -> impl Iterator<I
 fn host_metrics(id: &str, rows: &[&InfraSeriesRow]) -> HostDto {
     let named = |n: &'static str| by_name(rows, n);
     let name = rows.iter().map(|r| r.host_name.as_str()).find(|n| !n.is_empty()).unwrap_or(id).to_owned();
-
-    // CPU: busy share of all CPU time in the window, else the utilization gauge.
     let (mut busy, mut total) = (0.0, 0.0);
     let mut cpus = std::collections::BTreeSet::new();
     for r in named("system.cpu.time") {
@@ -197,7 +195,6 @@ fn host_metrics(id: &str, rows: &[&InfraSeriesRow]) -> HostDto {
         .reduce(f64::max)
         .or_else(|| sum_some(named("system.memory.usage").map(|r| Some(r.last_value))));
 
-    // Disk: the root filesystem, else the largest one.
     let mut fs: BTreeMap<&str, (f64, f64)> = BTreeMap::new();
     for r in named("system.filesystem.usage") {
         let mount = attr(r, "mountpoint").unwrap_or("");
@@ -238,7 +235,6 @@ fn container_metrics(id: &str, rows: &[&InfraSeriesRow], host: &HostDto) -> Cont
     let named = |n: &'static str| by_name(rows, n);
     let name =
         rows.iter().map(|r| r.container_name.trim_start_matches('/')).find(|n| !n.is_empty()).unwrap_or(id).to_owned();
-    // Nanoseconds of CPU per second = cores in use; docker_stats' utilization is % of one core.
     let cpu_cores = sum_some(named("container.cpu.usage.total").map(|r| rate(r).map(|ns| ns / NS_PER_SEC as f64)))
         .or_else(|| named("container.cpu.utilization").map(|r| r.last_value / 100.0).reduce(f64::max));
     let cpu_share = match (cpu_cores, host.cpu_cores) {

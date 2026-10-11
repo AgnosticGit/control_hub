@@ -6,7 +6,7 @@
 //! before they could be archived are recorded as `lost` and counted, never skipped silently.
 
 mod job;
-mod plan;
+use karbird_archiver::plan::{PlanInput, align_down, first_safe_start, plan};
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -22,7 +22,6 @@ use karbird_storage::retention::{self, Table};
 use tokio::sync::watch;
 
 use crate::job::{Ctx, Metrics, Summary, archive_window, parse_scope};
-use crate::plan::{PlanInput, align_down, first_safe_start, plan};
 
 const NS: i64 = 1_000_000_000;
 const RECHECK_BATCH: i64 = 24;

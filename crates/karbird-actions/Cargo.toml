@@ -12,7 +12,12 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "policy"
+harness = false
 
 [lints]
 workspace = true

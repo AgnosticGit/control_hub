@@ -21,5 +21,12 @@ tracing.workspace = true
 uuid.workspace = true
 ureq = { version = "3", default-features = false, features = ["json"] }
 
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "verification"
+harness = false
+
 [lints]
 workspace = true

@@ -1,6 +1,8 @@
 //! Server-side redaction applied at ingestion as a second line of defence.
 //! SDKs must already avoid collecting sensitive data at the source.
 
+use std::borrow::Cow;
+
 use crate::model::limits;
 
 /// Attribute keys (lowercased substrings) whose values are never stored.
@@ -35,7 +37,11 @@ pub enum AttributeDecision {
 }
 
 pub fn classify_key(key: &str) -> AttributeDecision {
-    let lower = key.to_ascii_lowercase();
+    let lower = if key.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        Cow::Owned(key.to_ascii_lowercase())
+    } else {
+        Cow::Borrowed(key)
+    };
     if DROPPED_KEYS.iter().any(|k| *k == lower) {
         return AttributeDecision::Drop;
     }
@@ -89,22 +95,29 @@ pub fn sanitize_attribute(key: &str, value: &str) -> (String, bool) {
     (v, false)
 }
 
-/// First `scheme` occurrence followed by a space or tab: `(index, scheme length)`.
-fn find_scheme(lower: &str, scheme: &str) -> Option<(usize, usize)> {
-    lower
-        .match_indices(scheme)
-        .map(|(i, _)| i)
-        .find(|&i| matches!(lower.as_bytes().get(i + scheme.len()), Some(b' ' | b'\t')))
-        .map(|i| (i, scheme.len()))
+/// First ASCII-case-insensitive `scheme` followed by a space or tab.
+fn find_scheme(text: &str, scheme: &str) -> Option<(usize, usize)> {
+    let bytes = text.as_bytes();
+    let scheme = scheme.as_bytes();
+    bytes.windows(scheme.len()).enumerate().find_map(|(i, candidate)| {
+        let matches = candidate.iter().zip(scheme).all(|(a, b)| a.eq_ignore_ascii_case(b));
+        (matches && matches!(bytes.get(i + scheme.len()), Some(b' ' | b'\t'))).then_some((i, scheme.len()))
+    })
+}
+
+fn find_next_scheme(text: &str) -> Option<(usize, usize)> {
+    ["bearer", "basic"].iter().filter_map(|scheme| find_scheme(text, scheme)).min_by_key(|(i, _)| *i)
 }
 
 /// Mask `Bearer <token>` / `Basic <token>` fragments in free text (log bodies, messages).
 pub fn mask_bearer(text: &str) -> String {
+    let mut hit = find_next_scheme(text);
+    if hit.is_none() {
+        return text.to_owned();
+    }
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     loop {
-        let lower = rest.to_ascii_lowercase();
-        let hit = ["bearer", "basic"].iter().filter_map(|p| find_scheme(&lower, p)).min_by_key(|(i, _)| *i);
         match hit {
             Some((i, plen)) => {
                 let after = &rest[i + plen..];
@@ -117,6 +130,7 @@ pub fn mask_bearer(text: &str) -> String {
                     out.push_str(REDACTED);
                 }
                 rest = &after[tok_len..];
+                hit = find_next_scheme(rest);
             }
             None => {
                 out.push_str(rest);

@@ -218,26 +218,42 @@ fn hash_bytes(h: &mut u64, bytes: &[u8]) {
     }
 }
 
-fn hash_attrs(h: &mut u64, attrs: &[KeyValue]) {
-    let mut sorted: Vec<&KeyValue> = attrs.iter().collect();
+fn sorted_attrs(attrs: &[KeyValue]) -> Vec<&KeyValue> {
+    let mut sorted = attrs.iter().collect::<Vec<_>>();
     sorted.sort_by(|a, b| a.key.cmp(&b.key));
-    for kv in sorted {
-        hash_bytes(h, kv.key.as_bytes());
-        match kv.value.as_ref().and_then(|v| v.value.as_ref()) {
-            Some(Value::StringValue(s)) => hash_bytes(h, s.as_bytes()),
-            other => hash_bytes(h, format!("{other:?}").as_bytes()),
-        }
+    sorted
+}
+
+fn hash_attribute(h: &mut u64, kv: &KeyValue) {
+    hash_bytes(h, kv.key.as_bytes());
+    match kv.value.as_ref().and_then(|v| v.value.as_ref()) {
+        Some(Value::StringValue(s)) => hash_bytes(h, s.as_bytes()),
+        other => hash_bytes(h, format!("{other:?}").as_bytes()),
     }
+}
+
+fn hash_sorted_attrs(h: &mut u64, sorted: &[&KeyValue]) {
+    for kv in sorted {
+        hash_attribute(h, kv);
+    }
+}
+
+fn hash_attrs(h: &mut u64, attrs: &[KeyValue]) {
+    hash_sorted_attrs(h, &sorted_attrs(attrs));
+}
+
+fn series_key_with_sorted_resource(name: &str, resource: &[&KeyValue], point: &[KeyValue]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    hash_bytes(&mut h, name.as_bytes());
+    hash_sorted_attrs(&mut h, resource);
+    hash_bytes(&mut h, b"|");
+    hash_attrs(&mut h, point);
+    h
 }
 
 /// Identity of one time series: metric name, resource and point attributes (FNV-1a).
 pub fn series_key(name: &str, resource: &[KeyValue], point: &[KeyValue]) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    hash_bytes(&mut h, name.as_bytes());
-    hash_attrs(&mut h, resource);
-    hash_bytes(&mut h, b"|");
-    hash_attrs(&mut h, point);
-    h
+    series_key_with_sorted_resource(name, &sorted_attrs(resource), point)
 }
 
 fn valid_point(p: &NumberDataPoint) -> bool {
@@ -260,6 +276,9 @@ pub fn sanitize_metrics(req: &mut ExportMetricsServiceRequest, admit: &mut dyn F
             sanitize_attrs(&mut r.attributes, &mut attr_stats, 0);
         }
         let resource: Vec<KeyValue> = rm.resource.as_ref().map(|r| r.attributes.clone()).unwrap_or_default();
+        // Resource attributes are shared by every point in this ResourceMetrics group.
+        // Sort once here instead of allocating and sorting the same keys for each point.
+        let sorted_resource = sorted_attrs(&resource);
         for sm in &mut rm.scope_metrics {
             if let Some(scope) = sm.scope.as_mut() {
                 sanitize_attrs(&mut scope.attributes, &mut attr_stats, 0);
@@ -298,7 +317,7 @@ pub fn sanitize_metrics(req: &mut ExportMetricsServiceRequest, admit: &mut dyn F
                         return false;
                     }
                     sanitize_attrs(&mut p.attributes, &mut attr_stats, 0);
-                    if !admit(series_key(&name, &resource, &p.attributes)) {
+                    if !admit(series_key_with_sorted_resource(&name, &sorted_resource, &p.attributes)) {
                         st.over_limit += 1;
                         return false;
                     }
@@ -862,6 +881,43 @@ mod tests {
         assert_ne!(a, series_key("n", &[kv("host.name", "h"), kv("x", "1")], &[kv("cpu", "0"), kv("state", "idle")]));
         // Resource and point attributes are separated: moving a key across changes the series.
         assert_ne!(series_key("m", &[kv("a", "1")], &[]), series_key("m", &[], &[kv("a", "1")]));
+    }
+
+    #[test]
+    fn series_key_matches_the_original_hash_for_small_and_large_attribute_sets() {
+        fn reference_hash_attrs(h: &mut u64, attrs: &[KeyValue]) {
+            let mut sorted: Vec<&KeyValue> = attrs.iter().collect();
+            sorted.sort_by(|a, b| a.key.cmp(&b.key));
+            for kv in sorted {
+                hash_bytes(h, kv.key.as_bytes());
+                match kv.value.as_ref().and_then(|v| v.value.as_ref()) {
+                    Some(Value::StringValue(s)) => hash_bytes(h, s.as_bytes()),
+                    other => hash_bytes(h, format!("{other:?}").as_bytes()),
+                }
+            }
+        }
+
+        fn reference_series_key(name: &str, resource: &[KeyValue], point: &[KeyValue]) -> u64 {
+            let mut h = 0xcbf2_9ce4_8422_2325;
+            hash_bytes(&mut h, name.as_bytes());
+            reference_hash_attrs(&mut h, resource);
+            hash_bytes(&mut h, b"|");
+            reference_hash_attrs(&mut h, point);
+            h
+        }
+
+        for resource_len in [0, 1, 4, 8, 9, 64] {
+            for point_len in [0, 1, 4, 8, 9, 64] {
+                let resource =
+                    (0..resource_len).map(|i| kv(&format!("r{}", i % 5), &format!("v{i}"))).collect::<Vec<_>>();
+                let point = (0..point_len).map(|i| kv(&format!("p{}", i % 7), &format!("v{i}"))).collect::<Vec<_>>();
+                assert_eq!(
+                    series_key("system.cpu.utilization", &resource, &point),
+                    reference_series_key("system.cpu.utilization", &resource, &point),
+                    "resource attrs: {resource_len}, point attrs: {point_len}"
+                );
+            }
+        }
     }
 
     #[test]

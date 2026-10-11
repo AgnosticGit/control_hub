@@ -22,7 +22,12 @@ tracing.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "schedule"
+harness = false
 
 [lints]
 workspace = true

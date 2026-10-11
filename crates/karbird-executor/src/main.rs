@@ -15,8 +15,9 @@ mod adapter;
 use std::time::Duration;
 
 use clap::Parser;
-use karbird_actions::{self as actions, Action, Observed, PolicyInput, Verification};
+use karbird_actions::{self as actions, Action, Observed, PolicyInput};
 use karbird_domain::{EnvironmentId, ProjectId, Scope, TenantId};
+use karbird_executor::verification::verification_record;
 use karbird_runtime::{init_tracing, load_local_env, shutdown_signal};
 use karbird_storage::actions::ActionPlanRow;
 use karbird_storage::ch::{ChConfig, ChStore};
@@ -56,22 +57,6 @@ fn scope_of(row: &ActionPlanRow) -> anyhow::Result<Scope> {
 
 fn now_ns() -> i64 {
     (time::OffsetDateTime::now_utc().unix_timestamp_nanos()) as i64
-}
-
-/// The judgement and the stored verification record. Fields a check does not use are null.
-fn verification_record(v: &Verification, o: &Observed, from_ns: i64, to_ns: i64) -> (bool, Value) {
-    let (passed, detail) = v.judge(o);
-    (
-        passed,
-        json!({
-            "service": v.service, "instance": v.instance, "expected_version": v.expect_version,
-            "window_from_ns": from_ns.to_string(), "window_to_ns": to_ns.to_string(),
-            "requests": o.requests, "errors": o.errors, "max_error_ratio": v.max_error_ratio,
-            "instances": o.instances, "expected_instances": v.expect_instances,
-            "other_version_requests": o.other_version_requests,
-            "passed": passed, "detail": detail,
-        }),
-    )
 }
 
 struct Executor {

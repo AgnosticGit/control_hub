@@ -24,6 +24,7 @@ use axum::Router;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::routing::{get, post};
 use clap::{Parser, Subcommand};
+use karbird_api::advance_live_cursor;
 use karbird_domain::{EnvironmentId, ProjectId, Scope, TenantId};
 use karbird_protocol::TELEMETRY_TOPIC;
 use karbird_runtime::connect_broker;
@@ -409,11 +410,6 @@ fn api_config(args: &ServeArgs) -> state::ApiConfig {
         session_ttl: time::Duration::hours(12),
         signup: state::SignupPolicy { open: args.signup == "open", per_hour: args.signup_per_hour },
     }
-}
-
-fn advance_live_cursor(previous: &mut i64, now: i64) -> i64 {
-    *previous = now.max(previous.saturating_add(1));
-    *previous
 }
 
 fn resolve_live_group_id(configured: Option<&str>, hostname: Option<&str>) -> anyhow::Result<String> {

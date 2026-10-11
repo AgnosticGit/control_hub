@@ -14,8 +14,13 @@ sha2.workspace = true
 hex.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 serde_json.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "redaction"
+harness = false
 
 [lints]
 workspace = true

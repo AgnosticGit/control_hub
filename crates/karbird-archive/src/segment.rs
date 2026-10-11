@@ -160,15 +160,14 @@ fn put_id(w: &mut Writer, s: &str) {
         w.u8(0);
     } else if is_lower_hex(s) {
         w.u8(1);
-        let raw: Vec<u8> = s
-            .as_bytes()
-            .chunks(2)
-            .map(|p| {
-                let nib = |b: u8| if b.is_ascii_digit() { b - b'0' } else { b - b'a' + 10 };
-                (nib(p[0]) << 4) | nib(p[1])
-            })
-            .collect();
-        w.bytes(&raw);
+        let bytes = s.as_bytes();
+        w.uvar((bytes.len() / 2) as u64);
+        let (pairs, _) = bytes.as_chunks::<2>();
+        for pair in pairs {
+            let high = if pair[0].is_ascii_digit() { pair[0] - b'0' } else { pair[0] - b'a' + 10 };
+            let low = if pair[1].is_ascii_digit() { pair[1] - b'0' } else { pair[1] - b'a' + 10 };
+            w.u8((high << 4) | low);
+        }
     } else {
         w.u8(2);
         w.str(s);
@@ -372,25 +371,34 @@ pub fn decode(bytes: &[u8], dict: Option<&Dictionary>) -> Result<Vec<LogRecord>>
         .filter(|n| *n <= cols[ROW_TEMPLATE].remaining())
         .ok_or(ArchiveError::Corrupt("row count exceeds data"))?;
 
+    let template_slots: Vec<Vec<bool>> = templates.iter().map(|tpl| template::slots(tpl).collect()).collect();
+    let mut last_int: Vec<Vec<i64>> =
+        template_slots.iter().map(|slots| vec![0; slots.iter().filter(|is_int| **is_int).count()]).collect();
     let mut out = Vec::with_capacity(rows);
-    let mut last_int: HashMap<(u64, usize), i64> = HashMap::new();
+    let mut vars = Vec::new();
     let mut prev_time = 0i64;
     for _ in 0..rows {
         let t = cols[ROW_TEMPLATE].uvar()?;
-        let tpl = lookup(&templates, t)?;
+        let template_index = usize::try_from(t)
+            .ok()
+            .filter(|index| *index < templates.len())
+            .ok_or(ArchiveError::Corrupt("index out of range"))?;
+        let tpl = &templates[template_index];
         let time = prev_time.wrapping_add(cols[TIME].ivar()?);
         prev_time = time;
         let observed_time = time.wrapping_add(cols[OBSERVED].ivar()?);
         let ingested_at = time.wrapping_add(cols[INGESTED].ivar()?);
         let severity_number = cols[SEVERITY].u8()?;
         let severity_text = lookup(&strings, cols[SEVERITY].uvar()?)?.clone();
-        let mut vars = Vec::new();
+        vars.clear();
         let mut slot = 0;
-        for is_int in template::slots(tpl) {
+        let last_values =
+            last_int.get_mut(template_index).ok_or(ArchiveError::Corrupt("template index out of range"))?;
+        for &is_int in &template_slots[template_index] {
             if is_int {
-                let last = last_int.get(&(t, slot)).copied().unwrap_or(0);
+                let last = last_values.get_mut(slot).ok_or(ArchiveError::Corrupt("integer slot out of range"))?;
                 let v = last.wrapping_add(cols[INTS].ivar()?);
-                last_int.insert((t, slot), v);
+                *last = v;
                 vars.push(Var::Int(v));
                 slot += 1;
             } else {

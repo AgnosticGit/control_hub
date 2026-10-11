@@ -27,5 +27,12 @@ sqlx.workspace = true
 clickhouse.workspace = true
 tokio.workspace = true
 
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "retention"
+harness = false
+
 [lints]
 workspace = true

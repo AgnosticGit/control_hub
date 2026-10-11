@@ -1,5 +1,7 @@
 //! Normalisation of broker envelopes into ClickHouse rows.
 
+use std::collections::HashMap;
+
 use karbird_domain::{EntityId, EnvironmentId, ProjectId, Scope, ServiceId, TenantId};
 use karbird_protocol::ENVELOPE_SCHEMA_VERSION;
 use karbird_protocol::otlp::collector::logs::v1::ExportLogsServiceRequest;
@@ -230,22 +232,35 @@ fn url_authority(url: &str) -> Option<(String, Option<String>)> {
     Some((host, port.map(str::to_owned)))
 }
 
-/// Stable series identity: metric name, resource and point attributes, order-independent.
-fn series_id(name: &str, resource: &[(String, String)], attributes: &[(String, String)]) -> u64 {
+fn hash_field(h: &mut Sha256, bytes: &[u8]) {
+    h.update((bytes.len() as u64).to_le_bytes());
+    h.update(bytes);
+}
+
+fn sorted_attr_refs(attrs: &[(String, String)]) -> Vec<&(String, String)> {
+    let mut sorted: Vec<_> = attrs.iter().collect();
+    sorted.sort();
+    sorted
+}
+
+fn series_id_prefix(name: &str, sorted_resource: &[&(String, String)]) -> Sha256 {
     let mut h = Sha256::new();
-    let mut field = |b: &[u8]| {
-        h.update((b.len() as u64).to_le_bytes());
-        h.update(b);
-    };
-    field(name.as_bytes());
-    for group in [resource, attributes] {
-        let mut sorted: Vec<&(String, String)> = group.iter().collect();
-        sorted.sort();
-        field(&(sorted.len() as u64).to_le_bytes());
-        for (k, v) in sorted {
-            field(k.as_bytes());
-            field(v.as_bytes());
-        }
+    hash_field(&mut h, name.as_bytes());
+    hash_field(&mut h, &(sorted_resource.len() as u64).to_le_bytes());
+    for (key, value) in sorted_resource {
+        hash_field(&mut h, key.as_bytes());
+        hash_field(&mut h, value.as_bytes());
+    }
+    h
+}
+
+fn series_id_with_prefix(prefix: &Sha256, attributes: &[(String, String)]) -> u64 {
+    let sorted_attributes = sorted_attr_refs(attributes);
+    let mut h = prefix.clone();
+    hash_field(&mut h, &(sorted_attributes.len() as u64).to_le_bytes());
+    for (key, value) in sorted_attributes {
+        hash_field(&mut h, key.as_bytes());
+        hash_field(&mut h, value.as_bytes());
     }
     let digest = h.finalize();
     let mut first = [0u8; 8];
@@ -263,6 +278,7 @@ fn point_value(p: &NumberDataPoint) -> Option<f64> {
 fn convert_metrics(req: ExportMetricsServiceRequest, base: &MetricRow, out: &mut Converted) {
     for rm in req.resource_metrics {
         let resource = rm.resource.map(|r| flatten(&r.attributes)).unwrap_or_default();
+        let sorted_resource = sorted_attr_refs(&resource);
         let get = |k: &str| attr(&resource, k).unwrap_or("").to_owned();
         let host_name = get("host.name");
         let host_id = attr(&resource, "host.id").map_or_else(|| host_name.clone(), str::to_owned);
@@ -297,6 +313,7 @@ fn convert_metrics(req: ExportMetricsServiceRequest, base: &MetricRow, out: &mut
                     }
                     None => continue,
                 };
+                let id_prefix = series_id_prefix(&m.name, &sorted_resource);
                 for p in points {
                     let Some(value) = point_value(&p).filter(|_| p.time_unix_nano > 0) else {
                         out.dropped_points += 1;
@@ -307,7 +324,7 @@ fn convert_metrics(req: ExportMetricsServiceRequest, base: &MetricRow, out: &mut
                         metric_name: m.name.clone(),
                         kind,
                         unit: m.unit.clone(),
-                        series_id: series_id(&m.name, &resource, &attributes),
+                        series_id: series_id_with_prefix(&id_prefix, &attributes),
                         attributes,
                         value,
                         time: clamp_ns(p.time_unix_nano),
@@ -451,8 +468,15 @@ pub fn convert(env: &IngestEnvelope, ingested_at: i64) -> Result<Converted, Conv
             convert_metrics(req, &base, &mut out);
         }
         Payload::CustomEvents(batch) => {
+            out.events.reserve(batch.events.len());
+            let mut service_ids = HashMap::<(&str, &str), String>::new();
             for ev in &batch.events {
-                let service_id = ServiceId::derive(&scope, &ev.service_namespace, &ev.service_name).to_string();
+                let namespace = ev.service_namespace.as_str();
+                let name = ev.service_name.as_str();
+                let service_id = service_ids
+                    .entry((namespace, name))
+                    .or_insert_with(|| ServiceId::derive(&scope, namespace, name).to_string())
+                    .clone();
                 let mut attributes: Vec<(String, String)> =
                     ev.attributes.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 attributes.sort();
@@ -1042,6 +1066,22 @@ mod tests {
     }
 
     #[test]
+    fn custom_events_keep_service_identity_when_services_repeat_interleaved() {
+        let event = |id: &str, service: &str| CustomEvent {
+            event_id: id.into(),
+            service_namespace: "shop".into(),
+            service_name: service.into(),
+            ..Default::default()
+        };
+        let converted =
+            convert(&events_env(vec![event("a", "orders"), event("b", "payments"), event("c", "orders")]), 1).unwrap();
+
+        assert_eq!(converted.events[0].service_id, ServiceId::derive(&scope(), "shop", "orders").to_string());
+        assert_eq!(converted.events[1].service_id, ServiceId::derive(&scope(), "shop", "payments").to_string());
+        assert_eq!(converted.events[2].service_id, converted.events[0].service_id);
+    }
+
+    #[test]
     fn event_observed_time_defaults_to_receive_time() {
         let ev = CustomEvent { event_id: "e".into(), event_time_unix_nano: 1, ..Default::default() };
         assert_eq!(convert(&events_env(vec![ev]), 1).unwrap().events[0].observed_time, 777);
@@ -1220,6 +1260,46 @@ mod tests {
         assert_ne!(a, id(vec![kv("host.name", "h2"), kv("x", "1")], vec![kv("cpu", "0"), kv("state", "idle")], "t1"));
         assert_ne!(a, id(vec![kv("host.name", "h"), kv("x", "1")], vec![kv("cpu", "1"), kv("state", "idle")], "t1"));
         assert_ne!(id(vec![kv("a", "1")], vec![], "t1"), id(vec![], vec![kv("a", "1")], "t1"));
+    }
+
+    #[test]
+    fn series_id_keeps_the_existing_digest_for_varied_attribute_counts() {
+        fn reference_series_id(name: &str, resource: &[(String, String)], attributes: &[(String, String)]) -> u64 {
+            let mut h = Sha256::new();
+            let mut field = |bytes: &[u8]| {
+                h.update((bytes.len() as u64).to_le_bytes());
+                h.update(bytes);
+            };
+            field(name.as_bytes());
+            for group in [resource, attributes] {
+                let mut sorted: Vec<&(String, String)> = group.iter().collect();
+                sorted.sort();
+                field(&(sorted.len() as u64).to_le_bytes());
+                for (key, value) in sorted {
+                    field(key.as_bytes());
+                    field(value.as_bytes());
+                }
+            }
+            let digest = h.finalize();
+            let mut first = [0u8; 8];
+            first.copy_from_slice(&digest[..8]);
+            u64::from_le_bytes(first)
+        }
+
+        for resource_len in [0, 1, 4, 8, 9, 64] {
+            for point_len in [0, 1, 4, 8, 9, 64] {
+                let resource = (0..resource_len).map(|i| (format!("r{}", i % 5), format!("v{i}"))).collect::<Vec<_>>();
+                let attributes = (0..point_len).map(|i| (format!("p{}", i % 7), format!("v{i}"))).collect::<Vec<_>>();
+                assert_eq!(
+                    series_id_with_prefix(
+                        &series_id_prefix("system.cpu.utilization", &sorted_attr_refs(&resource)),
+                        &attributes,
+                    ),
+                    reference_series_id("system.cpu.utilization", &resource, &attributes),
+                    "resource attrs: {resource_len}, point attrs: {point_len}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -97,9 +97,9 @@ test-php-sdk:
     php packages/sdk-php/test/bootstrap_test.php
     php packages/sdk-php/test/autoload_test.php
 
-# Reproducible engine benchmark on synthetic data
-bench:
-    cargo run --release -p karbird-engine-core --example bench
+# Criterion benchmarks across the Rust workspace (statistical, optimized profile)
+bench *ARGS:
+    cargo bench --workspace {{ARGS}}
 
 # Stop infrastructure containers; data volumes are kept
 down:

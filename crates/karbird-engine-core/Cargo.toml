@@ -22,7 +22,12 @@ karbird-domain.workspace = true
 ts-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
+criterion.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "engine"
+harness = false
 
 [lints]
 workspace = true

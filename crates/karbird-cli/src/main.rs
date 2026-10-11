@@ -10,7 +10,7 @@
 
 mod client;
 mod context;
-mod discover;
+use karbird_cli::discover;
 mod doctor;
 mod mcp;
 mod plan;

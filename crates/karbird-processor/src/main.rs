@@ -17,6 +17,9 @@ use std::time::{Duration, Instant};
 use clap::Parser;
 use futures::{FutureExt, StreamExt, TryStreamExt};
 use karbird_convert as convert;
+#[cfg(test)]
+use karbird_processor::batching::MAX_DEAD_LETTER_PAYLOAD;
+use karbird_processor::batching::{dead_letter_payload, drain_ready_batch};
 use karbird_protocol::{EDGE_CHANGES_TOPIC, EdgeChange, TELEMETRY_TOPIC};
 use karbird_runtime::{backoff, connect_broker, ensure_topic, init_tracing, load_local_env, shutdown_signal};
 use karbird_storage::ch::{ChConfig, ChStore};
@@ -30,31 +33,10 @@ use rdkafka::util::Timeout;
 use tokio::sync::watch;
 
 const CONSUMER: &str = "karbird-processor";
-const MAX_DEAD_LETTER_PAYLOAD: usize = 1024 * 1024;
 const MAX_BATCH_RECORDS: usize = 128;
 const MAX_BATCH_BYTES: usize = 8 * 1024 * 1024;
 const MAX_CONCURRENT_EDGE_PUBLISHES: usize = 32;
 const IDLE_TOUCH_INTERVAL: Duration = Duration::from_secs(5);
-
-/// Drain only records already ready in the consumer; this batches storage work without adding
-/// a timer delay. The single record that crosses the byte budget is retained, never discarded.
-fn drain_ready_batch<T>(
-    first: T,
-    max_records: usize,
-    max_bytes: usize,
-    mut size_of: impl FnMut(&T) -> usize,
-    mut next_ready: impl FnMut() -> Option<T>,
-) -> Vec<T> {
-    let mut bytes = size_of(&first);
-    let mut batch = Vec::with_capacity(max_records.max(1));
-    batch.push(first);
-    while batch.len() < max_records.max(1) && bytes < max_bytes {
-        let Some(next) = next_ready() else { break };
-        bytes = bytes.saturating_add(size_of(&next));
-        batch.push(next);
-    }
-    batch
-}
 
 async fn bounded_try_for_each<T, F, Fut>(items: Vec<T>, concurrency: usize, operation: F) -> anyhow::Result<()>
 where
@@ -253,11 +235,6 @@ async fn publish_edge_change(ctx: &Ctx, change: &EdgeChange) -> anyhow::Result<(
             }
         }
     }
-}
-
-/// Dead-letter rows keep the raw record only up to `MAX_DEAD_LETTER_PAYLOAD`.
-fn dead_letter_payload(payload: &[u8]) -> Option<&[u8]> {
-    (payload.len() <= MAX_DEAD_LETTER_PAYLOAD).then_some(payload)
 }
 
 fn durable_start_offset(saved: Option<i64>, earliest: i64) -> (i64, bool) {

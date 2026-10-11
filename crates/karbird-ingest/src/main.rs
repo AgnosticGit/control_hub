@@ -8,7 +8,7 @@ mod grpc;
 mod http;
 mod metrics;
 mod pipeline;
-mod sanitize;
+use karbird_ingest::sanitize;
 mod series;
 #[cfg(test)]
 mod testing;

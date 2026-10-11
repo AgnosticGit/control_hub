@@ -16,5 +16,12 @@ dotenvy.workspace = true
 rdkafka.workspace = true
 rand.workspace = true
 
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "backoff"
+harness = false
+
 [lints]
 workspace = true

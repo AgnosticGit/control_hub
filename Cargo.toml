@@ -81,6 +81,7 @@ js-sys = "0.3"
 # testing
 proptest = "1"
 ts-rs = { version = "12", features = ["serde-compat"] }
+criterion = "0.8"
 
 [profile.release]
 lto = "thin"

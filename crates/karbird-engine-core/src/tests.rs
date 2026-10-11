@@ -59,6 +59,15 @@ fn engine_with(items: Vec<TimelineItem>) -> Engine {
 }
 
 #[test]
+fn batch_before_first_timeline_build_does_not_retain_merge_keys() {
+    let mut engine = Engine::new(EngineConfig::default());
+    engine.apply_batch(Batch { items: demo_items() }).unwrap();
+
+    assert!(engine.timeline.is_none());
+    assert!(engine.pending.is_empty(), "a future timeline rebuild reads the item maps directly");
+}
+
+#[test]
 fn reconstructs_state_and_observed_edge() {
     let mut e = engine_with(demo_items());
     assert_eq!(e.seek(BASE + 5 * SEC, 1), SeekOutcome::Applied);
