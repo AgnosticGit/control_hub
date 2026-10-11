@@ -119,12 +119,12 @@ pub(crate) async fn admin_pg() -> anyhow::Result<PgStore> {
     PgStore::connect(&pg_admin_url, 2).await.context("connect postgres as admin")
 }
 
-fn admin_ch() -> anyhow::Result<ChStore> {
+fn admin_ch(database: &str) -> anyhow::Result<ChStore> {
     let host = std::env::var("CH_CLICKHOUSE_HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let port = std::env::var("CH_CLICKHOUSE_HTTP_PORT").unwrap_or_else(|_| "18123".into());
     Ok(ChStore::new(&ChConfig {
         url: format!("http://{host}:{port}"),
-        database: "karbird".into(),
+        database: database.into(),
         user: env_required("CH_CH_ADMIN_USER")?,
         password: env_required("CH_CH_ADMIN_PASSWORD")?,
     }))
@@ -233,7 +233,9 @@ async fn prepare_storage(retention: &[(Table, u32)], allow_shrink: bool) -> anyh
     )
     .await?;
 
-    let ch = admin_ch()?;
+    let ch_admin = admin_ch("default")?;
+    ch_admin.ensure_database("karbird").await.context("ensure ClickHouse database")?;
+    let ch = admin_ch("karbird")?;
     let applied = ch.migrate(CH_MIGRATIONS).await.context("clickhouse migrations")?;
     tracing::info!(?applied, "clickhouse migrations applied");
     apply_retention(&ch, retention, allow_shrink).await?;

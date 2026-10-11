@@ -798,6 +798,14 @@ impl ChStore {
         Ok(())
     }
 
+    /// Create a database while connected to ClickHouse's `default` database. This is needed
+    /// for persistent volumes that were initialized before `CLICKHOUSE_DB` was configured.
+    pub async fn ensure_database(&self, database: &str) -> Result<()> {
+        let sql = database_creation_sql(database)?;
+        self.client.query(&sql).execute().await?;
+        Ok(())
+    }
+
     /// Apply `infra/migrations/clickhouse/*.sql` in order, tracking applied files.
     pub async fn migrate(&self, migrations: &[(&str, &str)]) -> Result<Vec<String>> {
         self.client
@@ -1420,6 +1428,13 @@ impl ChStore {
     }
 }
 
+fn database_creation_sql(database: &str) -> Result<String> {
+    if database.is_empty() || !database.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+        return Err(StorageError::Other("invalid ClickHouse database name".into()));
+    }
+    Ok(format!("CREATE DATABASE IF NOT EXISTS `{database}`"))
+}
+
 const TIMELINE_SPAN_COLUMNS: &str = "trace_id, span_id, parent_span_id, service_id, service_name, target_entity_id, \
      name, kind, start_time, end_time, status_code, ingested_at";
 const TIMELINE_LOG_COLUMNS: &str = "log_id, service_id, service_name, time, severity_number, trace_id, ingested_at";
@@ -1461,6 +1476,12 @@ mod tests {
         let s = split_statements(sql);
         assert_eq!(s.len(), 2);
         assert!(s[1].starts_with("CREATE TABLE b"));
+    }
+
+    #[test]
+    fn database_creation_sql_quotes_only_safe_identifiers() {
+        assert_eq!(database_creation_sql("karbird").unwrap(), "CREATE DATABASE IF NOT EXISTS `karbird`");
+        assert!(database_creation_sql("karbird; DROP DATABASE default").is_err());
     }
 
     #[test]
