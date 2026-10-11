@@ -1,6 +1,6 @@
 // Where this process runs: host.name, container.id and process.pid on the resource, so
 // karbird can tie the service's spans to the machine and container metrics the Karbird
-// agent reports. Nothing else is read from the host (no command line, no environment dump).
+// Collector reports. Nothing else is read from the host (no command line, no environment dump).
 
 import { readFileSync } from 'node:fs';
 import { hostname } from 'node:os';

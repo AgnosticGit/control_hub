@@ -175,8 +175,8 @@ describe("hostLabel", () => {
     expect(hostLabel(host("vps-app"))).toBe("vps-app · CPU 92% · RAM 870/1024 MB");
   });
 
-  it("says when a machine has no agent metrics", () => {
-    expect(hostLabel(host("edge-1", { has_metrics: false, cpu_utilization: null }))).toBe("edge-1 · no agent metrics");
+  it("says when a machine has no collector metrics", () => {
+    expect(hostLabel(host("edge-1", { has_metrics: false, cpu_utilization: null }))).toBe("edge-1 · no collector metrics");
   });
 
   it("leaves out unknown values and falls back to the ID", () => {
@@ -266,7 +266,7 @@ describe("resourceWhere", () => {
   it("says external or unknown without inventing a machine", () => {
     const ext = resourceWhere(snap, "res_managed");
     expect(ext?.host).toBeNull();
-    expect(ext && resourceHeadline(ext)).toBe("External: no Karbird agent there");
+    expect(ext && resourceHeadline(ext)).toBe("External: no Karbird Collector there");
     const unknown = resourceWhere(snap, "res_unknown");
     expect(unknown && resourceHeadline(unknown)).toBe("Location unknown");
   });

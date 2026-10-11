@@ -1586,7 +1586,7 @@ export interface components {
              */
             disk_used_bytes: number | null;
             /**
-             * @description False for a machine known only from span `host.name` (no Karbird agent on it).
+             * @description False for a machine known only from span `host.name` (no Karbird Collector on it).
              * @default false
              */
             has_metrics: boolean;
@@ -1715,7 +1715,7 @@ export interface components {
             /** @default [] */
             instances: components["schemas"]["InstanceDto"][];
             /**
-             * @description What could not be determined (no agent metrics, unmatched instances, truncation).
+             * @description What could not be determined (no collector metrics, unmatched instances, truncation).
              * @default []
              */
             notes: string[];

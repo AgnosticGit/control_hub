@@ -19,7 +19,7 @@ export default function FeaturesPage() {
         <li>State reconstruction in a Rust engine compiled to WebAssembly, running in a Web Worker.</li>
         <li>Tenant/project/environment isolation, cookie sessions with CSRF protection.</li>
         <li>
-          Infrastructure layer: machine and container metrics from the Karbird agent (OTLP gauges and sums), services grouped
+          Infrastructure layer: machine and container metrics from the Karbird Collector (OTLP gauges and sums), services grouped
           into the machines they run on, and a deterministic noisy-neighbour hint.
         </li>
       </ul>

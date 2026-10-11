@@ -228,7 +228,7 @@ export function HostCard({ host, snapshot, cursor, onClose, onSelect, onSelectCo
           </dl>
         ) : (
           <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted">
-            No Karbird agent reports from this machine. It is known only from the host.name of its services&apos; spans, so
+            No Karbird Collector reports from this machine. It is known only from the host.name of its services&apos; spans, so
             CPU, memory, disk and containers are unknown.
           </p>
         )}

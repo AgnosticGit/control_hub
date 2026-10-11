@@ -22,6 +22,13 @@ describe("edgePath", () => {
     }
   });
 
+  it("supports different source and target card bounds", () => {
+    const target = { hw: 114, hh: 56 };
+    const p = edgePath("curved", 0, 0, 300, 100, BOX, target);
+    expect(p).not.toBeNull();
+    expect(p?.pts.slice(-2)).toEqual([186, 62]);
+  });
+
   it("square routes use only horizontal and vertical segments outside the rounded corners", () => {
     const p = edgePath("orthogonal", 0, 0, 400, 200, BOX);
     expect(p).not.toBeNull();

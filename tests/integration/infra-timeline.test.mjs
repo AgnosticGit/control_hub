@@ -81,7 +81,7 @@ function agentExport() {
 const timeline = (query, scope = ISO, session = iso) => session.json(`${scope}/infrastructure/timeline?${query}`);
 const WINDOW = `from=${FROM}&to=${AT}&buckets=60`;
 
-test('agent metrics become machine CPU and memory over time and container events', async () => {
+test('collector metrics become machine CPU and memory over time and container events', async () => {
   const r = await otlpHttp('metrics', agentExport());
   assert.equal(r.status, 200);
   assert.equal(r.body.length, 0, 'no partial_success: every point accepted');

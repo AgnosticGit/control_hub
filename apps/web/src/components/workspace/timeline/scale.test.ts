@@ -3,7 +3,10 @@ import {
   MIN_VIEW_NS,
   MAX_VIEW_NS,
   MAX_DETAIL_RANGE_NS,
+  clampRangeToNow,
   detailChunkFor,
+  defaultLiveView,
+  needsTimelineSummary,
   rangeCoveredBy,
   follow,
   followLive,
@@ -83,6 +86,35 @@ describe("detailChunkFor", () => {
     const chunk = detailChunkFor(view);
     expect(chunk.to - chunk.from).toBe(MAX_DETAIL_RANGE_NS);
     expect(chunk.from + (chunk.to - chunk.from) / 2n).toBe(T0 - 5n * 86_400n * SEC);
+  });
+
+  it("does not request detail data beyond the supplied live-time ceiling", () => {
+    const now = T0 + 123n;
+    const chunk = detailChunkFor({ from: now - 1n, to: now }, now);
+    expect(chunk.to).toBe(now);
+    expect(chunk.from).toBe(now - MAX_DETAIL_RANGE_NS);
+  });
+});
+
+describe("defaultLiveView", () => {
+  it("opens on the latest hour and ends exactly at now", () => {
+    const now = T0 + 123n;
+    expect(defaultLiveView(now)).toEqual({ from: now - 3_600n * SEC, to: now });
+  });
+});
+
+describe("needsTimelineSummary", () => {
+  it("uses the summary for wider views and raw rows at detail zoom", () => {
+    expect(needsTimelineSummary({ from: T0 - 60n * SEC, to: T0 })).toBe(false);
+    expect(needsTimelineSummary({ from: T0 - 3_600n * SEC, to: T0 })).toBe(true);
+  });
+});
+
+describe("clampRangeToNow", () => {
+  it("clamps the requested end to now and rejects future-only windows", () => {
+    const now = T0 + 100n;
+    expect(clampRangeToNow({ from: now - 10n, to: now + 50n }, now)).toEqual({ from: now - 10n, to: now });
+    expect(clampRangeToNow({ from: now + 1n, to: now + 20n }, now)).toBeNull();
   });
 });
 

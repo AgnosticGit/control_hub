@@ -137,7 +137,7 @@ export function startKarbird(options = {}) {
         exporter: new OTLPLogExporter({ url: `${endpoint}/v1/logs`, headers }),
       }),
     ],
-    // Machine and container metrics come from the Karbird agent, not from the SDK;
+    // Machine and container metrics come from the Karbird Collector, not from the SDK;
     // without an explicit empty list NodeSDK would start a default OTLP metrics exporter from env.
     metricReaders: [],
     instrumentations: [

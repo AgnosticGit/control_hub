@@ -1,4 +1,4 @@
-# Karbird agent: language-agnostic OpenTelemetry Collector (contrib) that reports this machine and its Docker
+# Karbird Collector: language-agnostic OpenTelemetry Collector (contrib) that reports this machine and its Docker
 # containers to karbird ingest. Only the metrics the infrastructure layer reads are exported;
 # no logs, no process command lines, no container environment. Per container: ID, name,
 # hostname, image name and the Docker Compose service label, so databases and queues the
@@ -42,6 +42,10 @@ receivers:
       container.memory.usage.total:
         enabled: true
       container.memory.usage.limit:
+        enabled: true
+      container.network.io.usage.rx_bytes:
+        enabled: true
+      container.network.io.usage.tx_bytes:
         enabled: true
 
 processors:

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildResources, createHostState, parsePlacement, stepHost, syntheticSample } from '../src/infra-agent.mjs';
+import { buildResources, createHostState, parsePlacement, stepHost, syntheticSample } from '../src/infra-collector.mjs';
 import { encodeMetrics } from '../src/otlp-metrics.mjs';
 import { captureServer, cleanEnv, runNode, src, startNode } from './helpers.mjs';
 
@@ -114,7 +114,7 @@ test('a machine is never busier than its cores, and a hog shows as a full machin
   assert.ok(s.rxBytes > s.txBytes && s.txBytes > 0);
 });
 
-test('resources carry host and container metrics under the agent metric names', () => {
+test('resources carry host and container metrics under the collector metric names', () => {
   const states = placement().map(createHostState);
   stepHost(states[0], 10, 9);
   const samples = new Map([[ID('b'), { cpuMicros: 9_000_000, rssBytes: 2000 * MIB }]]);
@@ -131,6 +131,11 @@ test('resources carry host and container metrics under the agent metric names', 
   assert.equal(inventory.attributes['container.hostname'], ID('b').slice(0, 12));
   assert.equal(inventory.metrics[0].name, 'container.cpu.usage.total');
   assert.equal(inventory.metrics[0].points[0].value, 9_000_000_000, 'CPU time in nanoseconds');
+  assert.deepEqual(inventory.metrics.slice(-2).map((m) => m.name), [
+    'container.network.io.usage.rx_bytes',
+    'container.network.io.usage.tx_bytes',
+  ]);
+  assert.ok(inventory.metrics.at(-2).points[0].value > inventory.metrics.at(-1).points[0].value);
 });
 
 test('the encoder writes a decodable ExportMetricsServiceRequest', () => {
@@ -148,7 +153,7 @@ test('the encoder writes a decodable ExportMetricsServiceRequest', () => {
   const [attr] = fields(resource)[1];
   assert.equal(fields(attr)[1][0].toString(), 'host.name');
   const [sm] = fields(rm)[2];
-  assert.equal(fields(fields(sm)[1][0])[1][0].toString(), 'karbird-demo-infra-agent');
+  assert.equal(fields(fields(sm)[1][0])[1][0].toString(), 'karbird-demo-infra-collector');
   const [sum, gauge] = fields(sm)[2].map(fields);
   assert.equal(sum[1][0].toString(), 'system.cpu.time');
   assert.equal(sum[3][0].toString(), 's');
@@ -161,13 +166,13 @@ test('the encoder writes a decodable ExportMetricsServiceRequest', () => {
   assert.equal(fields(fields(gauge[5][0])[1][0])[4][0].readDoubleLE(), 2);
 });
 
-test('the agent polls the services and exports OTLP metrics with the ingest token', async () => {
+test('the collector polls the services and exports OTLP metrics with the ingest token', async () => {
   const cap = await captureServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(req.url === '/__demo/resources' ? JSON.stringify({ pid: 1, cpuMicros: 1234, rssBytes: 50 * MIB, cpuHog: 0 }) : '');
   });
-  const agent = await startNode(
-    src('infra-agent.mjs'),
+  const collector = await startNode(
+    src('infra-collector.mjs'),
     cleanEnv({
       KARBIRD_OTLP_ENDPOINT: cap.url,
       KARBIRD_INGEST_TOKEN: 'demo-token',
@@ -184,13 +189,13 @@ test('the agent polls the services and exports OTLP metrics with the ingest toke
     assert.ok(exports[0].body.includes('system.cpu.time') && exports[0].body.includes(ID('a')));
     assert.equal(cap.requests.filter((r) => r.url === '/__demo/resources').length, 2);
   } finally {
-    await agent.stop();
+    await collector.stop();
     await cap.close();
   }
 });
 
-test('the agent refuses to start without a token', async () => {
-  const r = await runNode(src('infra-agent.mjs'), [], cleanEnv({ DEMO_INFRA_PLACEMENT: JSON.stringify(placement()) }));
+test('the collector refuses to start without a token', async () => {
+  const r = await runNode(src('infra-collector.mjs'), [], cleanEnv({ DEMO_INFRA_PLACEMENT: JSON.stringify(placement()) }));
   assert.equal(r.code, 1);
   assert.match(r.stderr, /KARBIRD_INGEST_TOKEN is required/);
 });

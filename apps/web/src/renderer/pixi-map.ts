@@ -22,10 +22,11 @@ import {
   NODE_STRIDE,
   type EntityKindDto,
   type Frame,
+  type InfrastructureSnapshot,
   type InfraView,
   type TopologyView,
 } from "@karbird/web-engine";
-import { FRAME_HEADER, NOISY_LINK, chipAt, frameAt, frameHeaderAt, frameLook, linkArc, linkLabelAt } from "./infra-layer";
+import { FRAME_HEADER, NOISY_LINK, frameAt, frameHeaderAt, frameLook, linkArc, linkLabelAt } from "./infra-layer";
 import { DEFAULT_EDGE_STYLE, build, zoomInvariantDashes, edgePath, endDirection, pointAt, type EdgePath, type EdgeStyle } from "./edge-path";
 import { edgeAt, midpoint } from "./edge-hit";
 import { routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
@@ -36,6 +37,11 @@ import { fitCamera, MIN_MAP_SCALE, overlayInset, zoomCamera } from "./fit";
 import { gridLines } from "./grid";
 import { animTimeMs, hopPhase, type AnimClock } from "./hops";
 import { serviceColors } from "./service-colors";
+import { cardGeometry, COMPACT_CARD_SIZE, EXPANDED_CARD_SIZE, routeBoxForCard } from "./map-card-geometry";
+import { displayMapPoint, displayTopologyForMetrics, mapDisplayScale, sourceMapPoint } from "./map-display-layout";
+import { deriveServiceCardMetrics, formatBytes, formatBytesPerSecond, type ServiceCardMetrics } from "@/components/workspace/service-card-metrics";
+import { serviceMetricPresentation } from "@/components/workspace/service-card-presentation";
+import { metricBar, METRIC_BAR_COLORS } from "./service-metric-bars";
 import { edgeFadeAlpha, frameFocused, incidentEdgeIndices, incidentGlowWidth, nodeFocused, SELECTION_DIM_ALPHA, selectionAlpha, type MapSelection } from "./selection-style";
 
 /** Pan (screen px) and zoom of the map. */
@@ -62,12 +68,8 @@ const EDGE_SELECTED = 0x19d4ee;
 
 const MIN_SCALE = MIN_MAP_SCALE;
 const MAX_SCALE = 4;
-/** Node card size in world units (layout spacing is 300 × 140). */
-const CARD_W = 172;
-const CARD_H = 56;
-const CARD_BOX = { hw: CARD_W / 2 + 4, hh: CARD_H / 2 + 4 };
-// Ports use the whole card side but its rounded corners, so many edges stay apart.
-const ROUTE_BOX = { ...CARD_BOX, portSpan: CARD_H - 12 };
+/** Backend layout reserves the expanded bounds even while cards are compact. */
+const MAX_CARD_SIZE = EXPANDED_CARD_SIZE;
 const LINE_STYLE = { join: "round", cap: "round" } as const;
 /** Opacity of switched-off services and everything attached to them. */
 const DIM_ALPHA = 0.22;
@@ -99,6 +101,17 @@ interface ReplicaText extends NodeText {
   count: Text;
 }
 
+interface MetricCardText {
+  cpuLabel: Text;
+  cpuValue: Text;
+  memoryLabel: Text;
+  memoryValue: Text;
+  receive: Text;
+  transmit: Text;
+  incoming: Text;
+  outgoing: Text;
+}
+
 export class PixiMap {
   private app: Application | null = null;
   private latestTopologyRevision = -1;
@@ -120,11 +133,17 @@ export class PixiMap {
   private readonly replicaTextPool = new Map<string, ReplicaText>();
   private readonly labels = new Container();
   private readonly textPool = new Map<number, NodeText>();
+  private readonly metricTextPool = new Map<string, MetricCardText>();
+  private readonly metricCache = new Map<string, ServiceCardMetrics>();
+  private metricCacheFrame: Frame | null = null;
   /** Infrastructure layer: machine frames below the cards, links and badges above them. */
   private readonly infraBack = new Graphics();
   private readonly infraFront = new Graphics();
   private readonly infraLabels = new Container();
   private infraView: InfraView | null = null;
+  private serviceMetricSnapshot: InfrastructureSnapshot | null = null;
+  private serviceMetricsEnabled = false;
+  private serviceMetricsLoading = false;
   private selectedHost: string | null = null;
   private readonly frameStyle = new TextStyle({
     fill: 0xc4b5fd,
@@ -151,6 +170,7 @@ export class PixiMap {
     fontSize: 11,
     fontFamily: "Inter, 'Segoe UI', system-ui, sans-serif",
   });
+  private readonly metricStyle = new TextStyle({ fill: 0xcbd5e1, fontSize: 9, fontFamily: "'JetBrains Mono', ui-monospace, monospace" });
   private frame: Frame | null = null;
   private frameTimeUs = 0;
   private frameArrivedAt = 0;
@@ -159,10 +179,12 @@ export class PixiMap {
   private edgeStyle: EdgeStyle = DEFAULT_EDGE_STYLE;
   private routeNodes: RouteNode[] = [];
   private routeEdges: RouteEdge[] = [];
+  private topology: TopologyView | null = null;
   private readonly selectedIncidentEdges = new Set<number>();
   private readonly hostByNode = new Map<number, string>();
   private routes = new Map<number, Route>();
   private names: string[] = [];
+  private ids: string[] = [];
   private kinds: EntityKindDto[] = [];
   private colors = new Map<number, number>();
   private selectedIndex: number | null = null;
@@ -258,18 +280,23 @@ export class PixiMap {
   setTopology(topology: TopologyView | null) {
     if (topology && topology.revision < this.latestTopologyRevision) return;
     if (topology) this.latestTopologyRevision = topology.revision;
-    this.host?.setAttribute("data-layout-nodes", JSON.stringify(topology?.nodes.map(n=>({id:n.id,name:n.name,x:n.x,y:n.y})) ?? []));
-    const nodes = topology?.nodes ?? [];
+    const displayTopology = topology ? displayTopologyForMetrics(topology, this.serviceMetricsEnabled) : null;
+    this.host?.setAttribute("data-layout-nodes", JSON.stringify(displayTopology?.nodes.map(n=>({id:n.id,name:n.name,x:n.x,y:n.y})) ?? []));
+    const nodes = displayTopology?.nodes ?? [];
     const names: string[] = [];
+    const ids: string[] = [];
     const kinds: EntityKindDto[] = [];
     for (const n of nodes) {
       names[n.index] = n.name;
+      ids[n.index] = n.id;
       kinds[n.index] = n.kind;
     }
+    this.topology = topology;
+    this.ids = ids;
     this.kinds = kinds;
     this.colors = serviceColors(nodes);
     const nextNodes = nodes.map((n) => ({ index: n.index, x: n.x, y: n.y }));
-    const nextEdges = (topology?.edges ?? []).map((e) => ({ index: e.index, source: e.source, target: e.target, points: e.points }));
+    const nextEdges = (displayTopology?.edges ?? []).map((e) => ({ index: e.index, source: e.source, target: e.target, points: e.points }));
     const reroute = nextNodes.length !== this.routeNodes.length || nextEdges.length !== this.routeEdges.length
       || nextNodes.some((n,i)=>{const old=this.routeNodes[i];return !old || n.index!==old.index || n.x!==old.x || n.y!==old.y;})
       || nextEdges.some((e,i)=>{const old=this.routeEdges[i];return !old || e.index!==old.index || e.source!==old.source || e.target!==old.target || e.points.length!==old.points.length || e.points.some((p,j)=>p[0]!==old.points[j]?.[0] || p[1]!==old.points[j]?.[1]);});
@@ -279,7 +306,7 @@ export class PixiMap {
     const selectedRoute = this.routeEdges.find((edge) => edge.index === this.selectedEdge);
     this.selectedEdgeNodes = selectedRoute ? [selectedRoute.source, selectedRoute.target] : null;
     if (reroute) this.reroute();
-    const infra = topology?.infra ?? null;
+    const infra = displayTopology?.infra ?? null;
     // Server revisions change geometry without resetting the user's camera.
     this.infraView = infra;
     if (this.frame?.nodeIndices.length) {
@@ -374,9 +401,9 @@ export class PixiMap {
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
+    const displayScale = mapDisplayScale(this.serviceMetricsEnabled);
     for (let i = 0; i < f.nodeIndices.length; i++) {
-      const x = f.nodeData[i * NODE_STRIDE] ?? 0;
-      const y = f.nodeData[i * NODE_STRIDE + 1] ?? 0;
+      const [x, y] = displayMapPoint(f.nodeData[i * NODE_STRIDE] ?? 0, f.nodeData[i * NODE_STRIDE + 1] ?? 0, displayScale);
       minX = Math.min(minX, x);
       minY = Math.min(minY, y);
       maxX = Math.max(maxX, x);
@@ -403,10 +430,10 @@ export class PixiMap {
       {
         width: app.screen.width,
         height: app.screen.height,
-        padX: CARD_W,
-        padY: CARD_H * 2,
+        padX: this.serviceMetricsEnabled ? MAX_CARD_SIZE.width / 2 : COMPACT_CARD_SIZE.width / 2,
+        padY: (this.serviceMetricsEnabled ? MAX_CARD_SIZE.height : COMPACT_CARD_SIZE.height) * 2,
         topInset: this.topInset,
-        insetGap: CARD_H,
+        insetGap: this.serviceMetricsEnabled ? MAX_CARD_SIZE.height : COMPACT_CARD_SIZE.height,
         minScale: MIN_SCALE,
         maxScale: 1.3,
       },
@@ -417,7 +444,8 @@ export class PixiMap {
     this.reportViewport();
     this.cameraIsFit = true;
     // Screen y of the top card edge after a fit, for tests: it must stay below any overlay.
-    this.host?.setAttribute("data-fit-top", String(cam.y + (minY - CARD_H / 2) * cam.scale));
+    const cardHeight = this.serviceMetricsEnabled ? MAX_CARD_SIZE.height : COMPACT_CARD_SIZE.height;
+    this.host?.setAttribute("data-fit-top", String(cam.y + (minY - cardHeight / 2) * cam.scale));
   }
 
   /** Highlights the frame of the machine open in the inspector. */
@@ -426,6 +454,56 @@ export class PixiMap {
     this.selectedHost = hostId;
     this.syncSelectionFade();
     this.drawInfra();
+  }
+
+  setServiceMetricsEnabled(enabled: boolean) {
+    if (enabled === this.serviceMetricsEnabled) return;
+    this.serviceMetricsEnabled = enabled;
+    this.metricCache.clear();
+    this.setTopology(this.topology);
+  }
+
+  setServiceMetricsLoading(loading: boolean) {
+    if (loading === this.serviceMetricsLoading) return;
+    this.serviceMetricsLoading = loading;
+    this.refreshCardGeometry();
+  }
+
+  setServiceMetricSnapshot(snapshot: InfrastructureSnapshot | null) {
+    if (snapshot === this.serviceMetricSnapshot) return;
+    this.serviceMetricSnapshot = snapshot;
+    this.metricCache.clear();
+    this.refreshCardGeometry();
+  }
+
+  private refreshCardGeometry() {
+    if (this.frame) {
+      if (this.cameraIsFit) this.fit();
+      else this.refreshZoomFloor();
+      this.draw(this.frame);
+      this.drawHops();
+    }
+  }
+
+  private cardSizeForNode(node: number) {
+    return cardGeometry(this.serviceMetricsEnabled && this.kinds[node] === "service");
+  }
+
+  private routeBoxForNode(node: number) {
+    return routeBoxForCard(this.cardSizeForNode(node));
+  }
+
+  private metricsForService(serviceId: string, frame: Frame): ServiceCardMetrics | null {
+    if (!this.serviceMetricsEnabled || !this.serviceMetricSnapshot || !this.topology) return null;
+    if (this.metricCacheFrame !== frame) {
+      this.metricCache.clear();
+      this.metricCacheFrame = frame;
+    }
+    const cached = this.metricCache.get(serviceId);
+    if (cached) return cached;
+    const metrics = deriveServiceCardMetrics(serviceId, this.topology, frame, this.serviceMetricSnapshot);
+    this.metricCache.set(serviceId, metrics);
+    return metrics;
   }
 
   /** Keeps `fit` clear of an overlay this many screen pixels tall; refits a fitted camera. */
@@ -493,7 +571,7 @@ export class PixiMap {
 
   /** Routes are recomputed only when the topology or the line style changes, not per frame. */
   private reroute() {
-    const paths = routeEdges(this.edgeStyle, this.routeNodes, this.routeEdges, ROUTE_BOX);
+    const paths = routeEdges(this.edgeStyle, this.routeNodes, this.routeEdges, (node) => this.routeBoxForNode(node));
     const pos = new Map<number, RouteNode>();
     for (const n of this.routeNodes) pos.set(n.index, n);
     const routes = new Map<number, Route>();
@@ -513,8 +591,11 @@ export class PixiMap {
     const s = this.world.scale.x;
     if (this.searchWorld) this.searchWorld.style.transform = `translate(${this.world.x}px, ${this.world.y}px) scale(${s})`;
     this.host?.setAttribute("data-camera",JSON.stringify({x:this.world.x,y:this.world.y,scale:s}));
-    const r = cullRect({ x: -this.world.x / s, y: -this.world.y / s, width: app.screen.width / s, height: app.screen.height / s }, CARD_W / 2 + 8);
-    this.callbacks.onViewport(r.x, r.y, r.width, r.height, s);
+    const cardSize = this.serviceMetricsEnabled ? MAX_CARD_SIZE : COMPACT_CARD_SIZE;
+    const r = cullRect({ x: -this.world.x / s, y: -this.world.y / s, width: app.screen.width / s, height: app.screen.height / s }, cardSize.width / 2 + 8);
+    const displayScale = mapDisplayScale(this.serviceMetricsEnabled);
+    const [x, y] = sourceMapPoint(r.x, r.y, displayScale);
+    this.callbacks.onViewport(x, y, r.width / displayScale.x, r.height / displayScale.y, s);
     this.publishEdgeAnchors();
     this.publishReplicaAnchors();
   }
@@ -552,20 +633,28 @@ export class PixiMap {
   /** Clicks anywhere on a card select it; the engine picks by the node centre. */
   private pickAt(wx: number, wy: number) {
     const f = this.frame;
+    const displayScale = mapDisplayScale(this.serviceMetricsEnabled);
     if (f) {
       for (let i = 0; i < f.nodeIndices.length; i++) {
-        const x = f.nodeData[i * NODE_STRIDE] ?? 0;
-        const y = f.nodeData[i * NODE_STRIDE + 1] ?? 0;
-        if (Math.abs(wx - x) <= CARD_W / 2 && Math.abs(wy - y) <= CARD_H / 2) {
-          this.callbacks.onPick(x, y);
+        const [x, y] = displayMapPoint(f.nodeData[i * NODE_STRIDE] ?? 0, f.nodeData[i * NODE_STRIDE + 1] ?? 0, displayScale);
+        const size = this.cardSizeForNode(f.nodeIndices[i] ?? 0);
+        if (Math.abs(wx - x) <= size.width / 2 && Math.abs(wy - y) <= size.height / 2) {
+          const [sourceX, sourceY] = sourceMapPoint(x, y, displayScale);
+          this.callbacks.onPick(sourceX, sourceY);
           return;
         }
       }
     }
-    const chip = chipAt(this.infraView, wx, wy);
+    const chip = this.infraView?.chips.find((candidate) => {
+      const size = this.cardSizeForNode(candidate.node);
+      return Math.abs(candidate.x - wx) <= size.width / 2 && Math.abs(candidate.y - wy) <= size.height / 2;
+    });
     if (chip) {
       if (this.callbacks.onPickInstance) this.callbacks.onPickInstance(chip.instance_id, chip.host_id, chip.service_id);
-      else this.callbacks.onPick(chip.x, chip.y);
+      else {
+        const [sourceX, sourceY] = sourceMapPoint(chip.x, chip.y, displayScale);
+        this.callbacks.onPick(sourceX, sourceY);
+      }
       return;
     }
     const header = frameHeaderAt(this.infraView, wx, wy);
@@ -586,7 +675,8 @@ export class PixiMap {
       this.callbacks.onPickHost(machine.host_id);
       return;
     }
-    this.callbacks.onPick(wx, wy);
+    const [sourceX, sourceY] = sourceMapPoint(wx, wy, displayScale);
+    this.callbacks.onPick(sourceX, sourceY);
   }
 
   /** Static per topology: redrawn only when the layout or the snapshot changes. */
@@ -638,8 +728,9 @@ export class PixiMap {
       if (localCount <= 1) continue;
       const t = new Text({ text: `×${localCount}`, style: this.chipStyle });
       const w = t.width + 14;
-      const x = n.x + CARD_W / 2 - w + 6;
-      const y = n.y - CARD_H / 2 - 11;
+      const size = this.cardSizeForNode(b.node);
+      const x = n.x + size.width / 2 - w + 6;
+      const y = n.y - size.height / 2 - 11;
       const fade = nodeFocused(b.node, this.hostForNode(b.node), selection) ? 1 : SELECTION_DIM_ALPHA;
       front.roundRect(x, y, w, 20, 10).fill({ color: 0x4c1d95, alpha: 0.95 * fade }).stroke({ color: 0xa78bfa, width: 1, alpha: fade });
       t.alpha = fade;
@@ -733,6 +824,16 @@ export class PixiMap {
   }
 
   private draw(f: Frame) {
+    for (const text of this.metricTextPool.values()) {
+      text.cpuLabel.visible = false;
+      text.cpuValue.visible = false;
+      text.memoryLabel.visible = false;
+      text.memoryValue.visible = false;
+      text.receive.visible = false;
+      text.transmit.visible = false;
+      text.incoming.visible = false;
+      text.outgoing.visible = false;
+    }
     this.drawEdges(f);
     this.drawNodes(f);
     this.drawReplicaCards(f);
@@ -760,16 +861,17 @@ export class PixiMap {
       const fade = focused ? 1 : SELECTION_DIM_ALPHA;
       const key = `${c.service_id}@${c.host_id}`;
       seen.add(key);
-      const left = c.x - CARD_W / 2;
-      const top = c.y - CARD_H / 2;
+      const size = this.cardSizeForNode(c.node);
+      const left = c.x - size.width / 2;
+      const top = c.y - size.height / 2;
       const g = this.replicaCards;
-      if (status > 0) g.roundRect(left - 3, top - 3, CARD_W + 6, CARD_H + 6, 15).stroke({ color, width: 6, alpha: (status >= 2 ? 0.22 : 0.1) * fade });
-      g.roundRect(left, top, CARD_W, CARD_H, 12).fill({ color: CARD_BG, alpha: 0.96 * fade }).stroke({ color, width: 1.5, alpha: 0.85 * fade });
-      if ((flags & FLAG_HIGHLIGHT) !== 0) g.roundRect(left - 5, top - 5, CARD_W + 10, CARD_H + 10, 16).stroke({ color: ACCENT, width: 2 });
-      if (c.node === this.selectedIndex) g.roundRect(left - 8, top - 8, CARD_W + 16, CARD_H + 16, 18).stroke({ color: 0xffffff, width: 2, alpha: 0.9 });
+      if (status > 0) g.roundRect(left - 3, top - 3, size.width + 6, size.height + 6, 15).stroke({ color, width: 6, alpha: (status >= 2 ? 0.22 : 0.1) * fade });
+      g.roundRect(left, top, size.width, size.height, 12).fill({ color: CARD_BG, alpha: 0.96 * fade }).stroke({ color, width: 1.5, alpha: 0.85 * fade });
+      if ((flags & FLAG_HIGHLIGHT) !== 0) g.roundRect(left - 5, top - 5, size.width + 10, size.height + 10, 16).stroke({ color: ACCENT, width: 2 });
+      if (c.node === this.selectedIndex) g.roundRect(left - 8, top - 8, size.width + 16, size.height + 16, 18).stroke({ color: 0xffffff, width: 2, alpha: 0.9 });
       g.roundRect(left + 12, c.y - 15, 30, 30, 9).fill({ color, alpha: 0.14 });
       drawKindIcon(g, this.kinds[c.node], (flags & FLAG_RESOURCE) !== 0, left + 27, c.y, color);
-      g.circle(left + CARD_W - 12, top + 12, 3.5).fill({ color: statusColor, alpha: status > 0 ? 1 : 0.6 });
+      g.circle(left + size.width - 12, top + 12, 3.5).fill({ color: statusColor, alpha: status > 0 ? 1 : 0.6 });
       let pooled = this.replicaTextPool.get(key);
       if (!pooled) {
         pooled = {
@@ -792,6 +894,16 @@ export class PixiMap {
       pooled.sub.position.set(left + 52, c.y + 2);
       pooled.name.alpha = 0;
       pooled.sub.alpha = fade;
+      const metrics = this.kinds[c.node] === "service" ? this.metricsForService(c.service_id, f) : null;
+      if (metrics) {
+        pooled.sub.visible = false;
+        this.drawServiceMetricCard(g, key, c.service_id, metrics, left, top, fade);
+      } else {
+        pooled.sub.visible = !this.serviceMetricsEnabled;
+        if (this.serviceMetricsEnabled && serviceMetricPresentation(null, this.serviceMetricsLoading).loading) {
+          this.drawServiceMetricSkeleton(g, left, top, fade);
+        }
+      }
       let searchLabel = this.replicaSearchLabels.get(key);
       if (!searchLabel) {
         searchLabel = this.createSearchLabel();
@@ -799,15 +911,25 @@ export class PixiMap {
       }
       const searchName = this.names[c.node] ?? c.label;
       if (searchLabel.textContent !== searchName) searchLabel.textContent = searchName;
+      if (metrics) {
+        const description = this.metricDescription(metrics);
+        searchLabel.title = description;
+        searchLabel.setAttribute("aria-label", `Service replica ${searchName}. ${description}`);
+      } else {
+        searchLabel.title = "";
+        searchLabel.setAttribute("aria-label", this.serviceMetricsLoading && this.serviceMetricsEnabled
+          ? `Service replica ${searchName}. Loading service metrics`
+          : `Service replica ${searchName}`);
+      }
       searchLabel.style.left = `${left + 52}px`;
-      searchLabel.style.top = `${c.y - 17}px`;
+      searchLabel.style.top = `${top + 10}px`;
       searchLabel.style.opacity = String(fade);
       searchLabel.style.visibility = "visible";
       if (c.instance_ids.length > 1) {
         pooled.count.text = `×${c.instance_ids.length}`;
         pooled.count.visible = true;
         const width = pooled.count.width + 12;
-        const x = left + CARD_W - width - 6;
+        const x = left + size.width - width - 6;
         const y = top + 5;
         g.roundRect(x, y, width, 18, 9).fill({ color: 0x4c1d95, alpha: 0.95 * fade }).stroke({ color: 0xa78bfa, width: 1, alpha: fade });
         pooled.count.position.set(x + 6, y + 2);
@@ -825,7 +947,7 @@ export class PixiMap {
         if (searchLabel) searchLabel.style.visibility = "hidden";
       } else {
         text.name.visible = true;
-        text.sub.visible = true;
+        text.sub.visible = !this.serviceMetricsEnabled;
       }
     }
   }
@@ -855,8 +977,9 @@ export class PixiMap {
       }
       if (label.textContent !== node.name) label.textContent = node.name;
       label.dataset.nodeId = node.id;
-      label.style.left = `${node.x - CARD_W / 2 + 52}px`;
-      label.style.top = `${node.y - 17}px`;
+      const size = this.cardSizeForNode(node.index);
+      label.style.left = `${node.x - size.width / 2 + 52}px`;
+      label.style.top = `${node.y - size.height / 2 + 10}px`;
     }
     for (const [index, label] of this.searchLabels) {
       if (!present.has(index)) {
@@ -868,6 +991,8 @@ export class PixiMap {
 
   private createSearchLabel(): HTMLDivElement {
     const label = document.createElement("div");
+    label.setAttribute("role", "img");
+    label.setAttribute("aria-label", "Service card");
     Object.assign(label.style, {
       position: "absolute",
       width: "110px",
@@ -883,6 +1008,111 @@ export class PixiMap {
     return label;
   }
 
+  private metricText(key: string): MetricCardText {
+    const existing = this.metricTextPool.get(key);
+    if (existing) return existing;
+    const make = () => new Text({ text: "", style: this.metricStyle });
+    const text = {
+      cpuLabel: make(), cpuValue: make(), memoryLabel: make(), memoryValue: make(),
+      receive: make(), transmit: make(), incoming: make(), outgoing: make(),
+    };
+    this.metricTextPool.set(key, text);
+    this.labels.addChild(text.cpuLabel, text.cpuValue, text.memoryLabel, text.memoryValue, text.receive, text.transmit, text.incoming, text.outgoing);
+    return text;
+  }
+
+  private metricDescription(metrics: ServiceCardMetrics): string {
+    const percent = (ratio: number | null) => ratio === null ? "unavailable" : `${(ratio * 100).toFixed(1)}%`;
+    const coverage = (metric: ServiceCardMetrics["cpu"]) => `${metric.measured}/${metric.total} replicas measured`;
+    const parts: string[] = [];
+    if (metrics.cpu.usage !== null) {
+      parts.push(metrics.cpu.capacity === null
+        ? `CPU ${metrics.cpu.usage.toFixed(2)} host logical cores`
+        : `CPU ${metrics.cpu.usage.toFixed(2)}/${metrics.cpu.capacity.toFixed(2)} host logical cores (${percent(metrics.cpu.ratio)}; ${coverage(metrics.cpu)})`);
+    }
+    if (metrics.memory.usage !== null) {
+      parts.push(metrics.memory.capacity === null
+        ? `RAM ${formatBytes(metrics.memory.usage)}`
+        : `RAM ${formatBytes(metrics.memory.usage)}/${formatBytes(metrics.memory.capacity)} (${metrics.memory.denominator ?? "capacity unknown"}; ${percent(metrics.memory.ratio)})`);
+    }
+    if (metrics.network.receiveBytesPerSecond !== null) parts.push(`RX ${formatBytesPerSecond(metrics.network.receiveBytesPerSecond)}`);
+    if (metrics.network.transmitBytesPerSecond !== null) parts.push(`TX ${formatBytesPerSecond(metrics.network.transmitBytesPerSecond)}`);
+    if (metrics.requests.incomingPerMinute !== null) parts.push(`Requests IN ${this.formatPerMinute(metrics.requests.incomingPerMinute)} per minute`);
+    if (metrics.requests.outgoingPerMinute !== null) parts.push(`Requests OUT ${this.formatPerMinute(metrics.requests.outgoingPerMinute)} per minute`);
+    return parts.join("; ") || "No service metrics collected";
+  }
+
+  private formatPerMinute(value: number | null): string {
+    if (value === null || !Number.isFinite(value) || value < 0) return "—";
+    if (value >= 10_000) return `${(value / 1000).toFixed(0)}k`;
+    if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+    return `${Math.round(value)}`;
+  }
+
+  private drawServiceMetricCard(
+    graphics: Graphics,
+    key: string,
+    _serviceId: string,
+    metrics: ServiceCardMetrics,
+    left: number,
+    top: number,
+    fade: number,
+  ) {
+    const text = this.metricText(key);
+    const presentation = serviceMetricPresentation(metrics, false);
+    const visible = new Set(presentation.rows);
+    text.cpuLabel.visible = visible.has("cpu");
+    text.cpuValue.visible = visible.has("cpu");
+    text.memoryLabel.visible = visible.has("memory");
+    text.memoryValue.visible = visible.has("memory");
+    text.receive.visible = visible.has("receive");
+    text.transmit.visible = visible.has("transmit");
+    text.incoming.visible = visible.has("incoming");
+    text.outgoing.visible = visible.has("outgoing");
+    const percent = (ratio: number | null) => ratio === null ? "—" : `${Math.round(ratio * 100)}%`;
+    const cpuPartial = metrics.cpu.measured < metrics.cpu.total ? ` ${metrics.cpu.measured}/${metrics.cpu.total}` : "";
+    const memoryPartial = metrics.memory.measured < metrics.memory.total ? ` ${metrics.memory.measured}/${metrics.memory.total}` : "";
+    text.cpuLabel.text = "CPU";
+    text.cpuValue.text = `${metrics.cpu.ratio === null ? `${metrics.cpu.usage ?? 0} cores` : percent(metrics.cpu.ratio)}${cpuPartial}`;
+    text.memoryLabel.text = "RAM";
+    text.memoryValue.text = `${metrics.memory.ratio === null ? formatBytes(metrics.memory.usage) : percent(metrics.memory.ratio)}${memoryPartial}`;
+    text.receive.text = `RX ${formatBytesPerSecond(metrics.network.receiveBytesPerSecond)}`;
+    text.transmit.text = `TX ${formatBytesPerSecond(metrics.network.transmitBytesPerSecond)}`;
+    text.incoming.text = `IN ${this.formatPerMinute(metrics.requests.incomingPerMinute)}/m`;
+    text.outgoing.text = `OUT ${this.formatPerMinute(metrics.requests.outgoingPerMinute)}/m`;
+    text.cpuLabel.position.set(left + 12, top + 29);
+    text.cpuValue.position.set(left + 142, top + 29);
+    text.memoryLabel.position.set(left + 12, top + 47);
+    text.memoryValue.position.set(left + 142, top + 47);
+    text.receive.position.set(left + 12, top + 68);
+    text.transmit.position.set(left + 112, top + 68);
+    text.incoming.position.set(left + 12, top + 85);
+    text.outgoing.position.set(left + 112, top + 85);
+    const drawBar = (y: number, ratio: number | null) => {
+      const model = metricBar(ratio);
+      const segmentGap = 2;
+      const segmentWidth = 7;
+      for (let segment = 0; segment < model.segments; segment += 1) {
+        const color = segment < model.filled ? model.color ?? METRIC_BAR_COLORS.empty : METRIC_BAR_COLORS.empty;
+        graphics.roundRect(left + 43 + segment * (segmentWidth + segmentGap), y, segmentWidth, 6, 2)
+          .fill({ color, alpha: fade });
+      }
+    };
+    if (visible.has("cpu") && metrics.cpu.ratio !== null) drawBar(top + 34, metrics.cpu.ratio);
+    if (visible.has("memory") && metrics.memory.ratio !== null) drawBar(top + 52, metrics.memory.ratio);
+  }
+
+  private drawServiceMetricSkeleton(graphics: Graphics, left: number, top: number, fade: number) {
+    const pulse = 0.35 + (Math.sin(performance.now() / 420) + 1) * 0.12;
+    const line = (x: number, y: number, width: number, height = 5) => {
+      graphics.roundRect(left + x, top + y, width, height, height / 2).fill({ color: 0x8492a6, alpha: pulse * fade });
+    };
+    line(12, 30, 23); line(43, 30, 84); line(142, 30, 40);
+    line(12, 48, 23); line(43, 48, 84); line(142, 48, 40);
+    line(12, 68, 70); line(112, 68, 78);
+    line(12, 85, 70); line(112, 85, 78);
+  }
+
   /** Logical service cards belong to exactly one machine frame in infrastructure mode. */
   private hostForNode(node: number): string | null {
     return this.hostByNode.get(node) ?? null;
@@ -893,12 +1123,11 @@ export class PixiMap {
     this.edgesDim.clear();
     this.edgeGeom.clear();
     const selection = this.selection();
+    const displayScale = mapDisplayScale(this.serviceMetricsEnabled);
     for (let i = 0; i < f.edgeIndices.length; i++) {
       const o = i * EDGE_STRIDE;
-      const sx = f.edgeData[o] ?? 0;
-      const sy = f.edgeData[o + 1] ?? 0;
-      const tx = f.edgeData[o + 2] ?? 0;
-      const ty = f.edgeData[o + 3] ?? 0;
+      const [sx, sy] = displayMapPoint(f.edgeData[o] ?? 0, f.edgeData[o + 1] ?? 0, displayScale);
+      const [tx, ty] = displayMapPoint(f.edgeData[o + 2] ?? 0, f.edgeData[o + 3] ?? 0, displayScale);
       const calls = f.edgeData[o + 5] ?? 0;
       const ratio = f.edgeData[o + 6] ?? 0;
       const flags = f.edgeData[o + 7] ?? 0;
@@ -923,7 +1152,10 @@ export class PixiMap {
       const route = this.routes.get(index);
       // A route is only valid for the positions it was computed for (topology may lag a frame).
       const fresh = route && near(route.sx, sx) && near(route.sy, sy) && near(route.tx, tx) && near(route.ty, ty);
-      const path = fresh ? route.path : edgePath(this.edgeStyle, sx, sy, tx, ty, CARD_BOX);
+      const routeSpec = this.routeEdges[index] && this.routeEdges[index]?.index === index ? this.routeEdges[index] : this.routeEdges.find((candidate) => candidate.index === index);
+      const sourceBox = routeSpec ? this.routeBoxForNode(routeSpec.source) : routeBoxForCard(MAX_CARD_SIZE);
+      const targetBox = routeSpec ? this.routeBoxForNode(routeSpec.target) : sourceBox;
+      const path = fresh ? route.path : edgePath(this.edgeStyle, sx, sy, tx, ty, sourceBox, targetBox);
       if (!path) continue;
       this.edgeGeom.set(index, { path, color });
       const width = highlight ? 2.5 : 1.25 + Math.min(1.5, Math.log10(1 + calls) * 0.6);
@@ -954,18 +1186,20 @@ export class PixiMap {
     this.nodesDim.clear();
     for (const label of this.searchLabels.values()) label.style.visibility = "hidden";
     const seen = new Set<number>();
-    const hw = CARD_W / 2;
-    const hh = CARD_H / 2;
+    const metricDescriptions: Record<string, string> = {};
     const selection = this.selection();
+    const displayScale = mapDisplayScale(this.serviceMetricsEnabled);
     for (let i = 0; i < f.nodeIndices.length; i++) {
       const o = i * NODE_STRIDE;
-      const x = f.nodeData[o] ?? 0;
-      const y = f.nodeData[o + 1] ?? 0;
+      const [x, y] = displayMapPoint(f.nodeData[o] ?? 0, f.nodeData[o + 1] ?? 0, displayScale);
       const status = f.nodeData[o + 3] ?? 0;
       const active = f.nodeData[o + 4] ?? 0;
       const requests = f.nodeData[o + 5] ?? 0;
       const flags = f.nodeData[o + 6] ?? 0;
       const idx = f.nodeIndices[i] ?? 0;
+      const size = this.cardSizeForNode(idx);
+      const hw = size.width / 2;
+      const hh = size.height / 2;
       const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS[0] ?? 0x64748b;
       const external = (flags & FLAG_EXTERNAL) !== 0;
       // A service keeps its own colour unless it is degraded or failing.
@@ -979,27 +1213,27 @@ export class PixiMap {
       const top = y - hh;
 
       if (status > 0) {
-        n.roundRect(left - 3, top - 3, CARD_W + 6, CARD_H + 6, 15).stroke({ color, width: 6, alpha: (status >= 2 ? 0.22 : 0.1) * fade });
+        n.roundRect(left - 3, top - 3, size.width + 6, size.height + 6, 15).stroke({ color, width: 6, alpha: (status >= 2 ? 0.22 : 0.1) * fade });
       }
       if (external) {
         // Outside the project: dashed border, no solid frame, so it never reads as one of our services.
-        n.roundRect(left, top, CARD_W, CARD_H, 4).fill({ color: CARD_BG, alpha: 0.9 * fade });
-        for (const dash of dashedRect(left, top, CARD_W, CARD_H)) line(n, dash);
+        n.roundRect(left, top, size.width, size.height, 4).fill({ color: CARD_BG, alpha: 0.9 * fade });
+        for (const dash of dashedRect(left, top, size.width, size.height)) line(n, dash);
         n.stroke({ color, width: 1.75, alpha: 0.9 * fade, ...LINE_STYLE });
       } else {
-        n.roundRect(left, top, CARD_W, CARD_H, 12)
+        n.roundRect(left, top, size.width, size.height, 12)
           .fill({ color: CARD_BG, alpha: 0.96 * fade })
           .stroke({ color, width: 1.5, alpha: (inferred ? 0.45 : 0.85) * fade });
       }
-      if ((flags & FLAG_HIGHLIGHT) !== 0) n.roundRect(left - 5, top - 5, CARD_W + 10, CARD_H + 10, 16).stroke({ color: ACCENT, width: 2 });
-      if (idx === this.selectedIndex) n.roundRect(left - 8, top - 8, CARD_W + 16, CARD_H + 16, 18).stroke({ color: 0xffffff, width: 2, alpha: 0.9 });
+      if ((flags & FLAG_HIGHLIGHT) !== 0) n.roundRect(left - 5, top - 5, size.width + 10, size.height + 10, 16).stroke({ color: ACCENT, width: 2 });
+      if (idx === this.selectedIndex) n.roundRect(left - 8, top - 8, size.width + 16, size.height + 16, 18).stroke({ color: 0xffffff, width: 2, alpha: 0.9 });
 
       const ix = left + 12;
       const iy = y - 15;
       n.roundRect(ix, iy, 30, 30, 9).fill({ color, alpha: 0.14 });
       const resource = (flags & FLAG_RESOURCE) !== 0;
       drawKindIcon(n, this.kinds[idx], resource, ix + 15, iy + 15, color);
-      n.circle(left + CARD_W - 12, top + 12, 3.5).fill({ color: statusColor, alpha: status > 0 ? 1 : 0.6 });
+      n.circle(left + size.width - 12, top + 12, 3.5).fill({ color: statusColor, alpha: status > 0 ? 1 : 0.6 });
 
       // Labels live in world space: zooming out shrinks them with their card instead of hiding them.
       seen.add(idx);
@@ -1017,11 +1251,33 @@ export class PixiMap {
         t.subValue = subValue;
       }
       t.name.visible = true;
-      t.sub.visible = true;
+      const metrics = this.kinds[idx] === "service" ? this.metricsForService(this.ids[idx] ?? "", f) : null;
+      t.sub.visible = !(this.serviceMetricsEnabled && this.kinds[idx] === "service");
       t.name.alpha = 0;
       t.sub.alpha = (dimmed ? DIM_ALPHA + 0.1 : 1) * fade;
-      t.name.position.set(left + 52, y - 17);
+      t.name.position.set(left + 52, top + 10);
       t.sub.position.set(left + 52, y + 2);
+      if (metrics && this.serviceMetricsEnabled) {
+        this.drawServiceMetricCard(n, `service:${idx}`, this.ids[idx] ?? "", metrics, left, top, (dimmed ? DIM_ALPHA + 0.1 : 1) * fade);
+        const description = this.metricDescription(metrics);
+        metricDescriptions[this.ids[idx] ?? String(idx)] = description;
+        const searchLabel = this.searchLabels.get(idx);
+        if (searchLabel) {
+          searchLabel.title = description;
+          searchLabel.setAttribute("aria-label", `Service ${this.names[idx] ?? ""}. ${description}`);
+        }
+      } else {
+        if (this.serviceMetricsEnabled && this.kinds[idx] === "service" && serviceMetricPresentation(null, this.serviceMetricsLoading).loading) {
+          this.drawServiceMetricSkeleton(n, left, top, (dimmed ? DIM_ALPHA + 0.1 : 1) * fade);
+        }
+        const searchLabel = this.searchLabels.get(idx);
+        if (searchLabel) {
+          searchLabel.title = "";
+          searchLabel.setAttribute("aria-label", this.serviceMetricsLoading && this.serviceMetricsEnabled && this.kinds[idx] === "service"
+            ? `Service ${this.names[idx] ?? ""}. Loading service metrics`
+            : `Service ${this.names[idx] ?? ""}`);
+        }
+      }
       const searchLabel = this.searchLabels.get(idx);
       if (searchLabel) {
         searchLabel.style.opacity = String((dimmed ? DIM_ALPHA + 0.1 : 1) * fade);
@@ -1036,6 +1292,7 @@ export class PixiMap {
     }
     // Which cards carry a visible label, for tests (node indices).
     this.host?.setAttribute("data-labelled-nodes", Array.from(seen).join(","));
+    this.host?.setAttribute("data-service-metrics", JSON.stringify(metricDescriptions));
   }
 
   /**

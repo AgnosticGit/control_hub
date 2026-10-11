@@ -1,4 +1,4 @@
-// Infrastructure layer end to end: OTLP metrics (Karbird agent) and spans (SDK) go through
+// Infrastructure layer end to end: OTLP metrics (Karbird Collector) and spans (SDK) go through
 // ingest -> Kafka -> processor -> ClickHouse and come back from GET …/infrastructure as
 // machines, containers, matched instances and a noisy-neighbour hint. Writes only into the
 // isolation tenant with unique names, so reruns and the demo map are unaffected.
@@ -81,7 +81,7 @@ async function snapshot(scope = ISO, session = iso, at = AT) {
   return session.json(`${scope}/infrastructure?at=${at}`);
 }
 
-test('agent metrics and SDK spans become a machine, containers, instances and a noisy-neighbour hint', async () => {
+test('collector metrics and SDK spans become a machine, containers, instances and a noisy-neighbour hint', async () => {
   const before = await ingestMetrics();
   const m = await otlpHttp('metrics', agentExport());
   assert.equal(m.status, 200);

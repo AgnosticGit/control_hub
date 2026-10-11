@@ -30,8 +30,8 @@ const CURVE_STEPS = 24;
 const CORNER_STEPS = 6;
 const MIN_LENGTH = 8;
 
-export function edgePath(style: EdgeStyle, sx: number, sy: number, tx: number, ty: number, box: CardBox): EdgePath | null {
-  const pts = style === "curved" ? curvedPoints(sx, sy, tx, ty, box) : routedPoints(style, sx, sy, tx, ty, box);
+export function edgePath(style: EdgeStyle, sx: number, sy: number, tx: number, ty: number, box: CardBox, targetBox: CardBox = box): EdgePath | null {
+  const pts = style === "curved" ? curvedPoints(sx, sy, tx, ty, box, targetBox) : routedPoints(style, sx, sy, tx, ty, box, targetBox);
   if (!pts) return null;
   const path = build(pts);
   return path.length < MIN_LENGTH ? null : path;
@@ -120,9 +120,9 @@ function cardExit(cx: number, cy: number, tx: number, ty: number, box: CardBox):
 }
 
 /** Gently bowed quadratic curve; opposite directions bow to opposite sides. */
-function curvedPoints(sx: number, sy: number, tx: number, ty: number, box: CardBox): number[] | null {
-  const [ax, ay] = cardExit(sx, sy, tx, ty, box);
-  const [bx, by] = cardExit(tx, ty, sx, sy, box);
+function curvedPoints(sx: number, sy: number, tx: number, ty: number, sourceBox: CardBox, targetBox: CardBox): number[] | null {
+  const [ax, ay] = cardExit(sx, sy, tx, ty, sourceBox);
+  const [bx, by] = cardExit(tx, ty, sx, sy, targetBox);
   const len = Math.hypot(bx - ax, by - ay);
   if (len < MIN_LENGTH) return null;
   const bow = Math.min(40, len * 0.12);
@@ -142,18 +142,20 @@ function curvedPoints(sx: number, sy: number, tx: number, ty: number, box: CardB
  * the target along the dominant axis, turns once in the middle and enters the target from
  * the opposite side.
  */
-function routedPoints(style: EdgeStyle, sx: number, sy: number, tx: number, ty: number, box: CardBox): number[] | null {
-  const gapX = Math.abs(tx - sx) - 2 * box.hw;
-  const gapY = Math.abs(ty - sy) - 2 * box.hh;
+function routedPoints(style: EdgeStyle, sx: number, sy: number, tx: number, ty: number, sourceBox: CardBox, targetBox: CardBox): number[] | null {
+  const gapX = Math.abs(tx - sx) - sourceBox.hw - targetBox.hw;
+  const gapY = Math.abs(ty - sy) - sourceBox.hh - targetBox.hh;
   if (gapX < 0 && gapY < 0) return null;
   // Route along the axis with the wider free gap between the two cards.
   const horizontal = gapX >= gapY;
   // Work in a frame where the main axis is x; swap back at the end.
-  const [s0, s1, t0, t1, half] = horizontal ? [sx, sy, tx, ty, box.hw] : [sy, sx, ty, tx, box.hh];
+  const [s0, s1, t0, t1, sourceHalf, targetHalf] = horizontal
+    ? [sx, sy, tx, ty, sourceBox.hw, targetBox.hw]
+    : [sy, sx, ty, tx, sourceBox.hh, targetBox.hh];
   const dir = t0 >= s0 ? 1 : -1;
   const lane = horizontal ? dir * LANE : -dir * LANE;
-  const a0 = s0 + dir * half;
-  const b0 = t0 - dir * half;
+  const a0 = s0 + dir * sourceHalf;
+  const b0 = t0 - dir * targetHalf;
   const a1 = s1 + lane;
   const b1 = t1 + lane;
   const mid = (a0 + b0) / 2;

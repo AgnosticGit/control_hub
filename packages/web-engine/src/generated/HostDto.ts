@@ -3,7 +3,7 @@ import type { ContainerDto } from "./ContainerDto";
 
 export type HostDto = { id: string, name: string, 
 /**
- * False for a machine known only from span `host.name` (no Karbird agent on it).
+ * False for a machine known only from span `host.name` (no Karbird Collector on it).
  */
 has_metrics: boolean, 
 /**

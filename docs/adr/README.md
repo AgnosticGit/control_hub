@@ -19,7 +19,7 @@
 | [0015](0015-log-archive.md) | Log archive: templates, columnar segments, per-service dictionaries, separate archiver | Accepted |
 | [0016](0016-retention-config.md) | ClickHouse retention from one setting per signal, applied by bootstrap, checked at startup | Accepted |
 | [0017](0017-two-host-deploy.md) | Prebuilt GHCR images, two-host Compose deploy from GitHub Actions, `migrate` instead of `bootstrap` | Accepted |
-| [0018](0018-infrastructure-metrics.md) | Machine and container metrics (gauges/sums) from the Karbird agent; Infrastructure layer and noisy-neighbour rule | Accepted |
+| [0018](0018-infrastructure-metrics.md) | Machine and container metrics (gauges/sums) from the Karbird Collector; Infrastructure layer and noisy-neighbour rule | Accepted |
 | [0019](0019-edge-traffic.md) | Link statistics from the engine; data flow from declared HTTP body sizes (unknown is not zero) | Accepted |
 | [0020](0020-demo-platform-actions.md) | Container restart, scaling, feature flags and rollback as typed demo actions through a demo orchestrator; per-check verification | Accepted |
 | [0021](0021-organisations-and-external-auth.md) | Organisations, explicit project assignments, Resend invitations and Google OIDC | Accepted |

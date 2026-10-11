@@ -102,7 +102,7 @@ test("a database in a container on our machine runs there; a managed one is exte
   await expect(inspector.getByRole("heading", { name: orders, exact: true })).toBeVisible();
   await inspector.getByRole("region", { name: "Relations" }).getByRole("button", { name: `postgresql: ${managedDb}`, exact: true }).click();
   await expect(inspector.getByRole("heading", { name: `postgresql: ${managedDb}`, exact: true })).toBeVisible();
-  await expect(runsOn).toContainText("External: no Karbird agent there");
+  await expect(runsOn).toContainText("External: no Karbird Collector there");
   await expect(runsOn).toContainText(managed);
   await expect(runsOn.getByRole("button", { name: host })).toHaveCount(0);
 

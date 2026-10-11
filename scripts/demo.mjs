@@ -2,7 +2,7 @@
 // Start the demo system (demo Postgres, gateway, auth, catalog, orders, inventory, payments,
 // notifications, an uninstrumented payment provider stand-in and a load generator)
 // sending telemetry to a locally running karbird (`just dev`). Catalog runs as three replicas,
-// and a demo infra agent reports the services as containers on two small virtual machines.
+// and a demo infra collector reports the services as containers on two small virtual machines.
 // Fault injection is enabled here because this is the demo environment only. A loopback-only
 // orchestrator (`scripts/demo-control.mjs`) restarts, scales and releases the services for the
 // executor's demo actions.
@@ -81,9 +81,9 @@ const supervisor = supervise([
   { name: "provider", cmd: node, args: ["src/provider.mjs"], cwd, env: {} },
   ...services.map((s) => s.proc),
   {
-    name: "infra-agent",
+    name: "infra-collector",
     cmd: node,
-    args: ["src/infra-agent.mjs"],
+    args: ["src/infra-collector.mjs"],
     cwd,
     env: {
       KARBIRD_OTLP_ENDPOINT: demo.KARBIRD_OTLP_ENDPOINT,

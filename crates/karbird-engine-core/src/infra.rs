@@ -6,13 +6,13 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use crate::layout::{BandSpec, COLUMN_SPACING, Layout};
 use crate::types::{InfraBadge, InfraChip, InfraFrame, InfraLink, InfraView, InfrastructureSnapshot, ResourceLocation};
 
-pub const CHIP_W: f32 = 172.0;
-pub const CHIP_H: f32 = 56.0;
-const CHIP_PITCH_Y: f32 = 68.0;
+pub const CHIP_W: f32 = 220.0;
+pub const CHIP_H: f32 = 104.0;
+const CHIP_PITCH_Y: f32 = 116.0;
 /// Space between the lowest card or corridor of a machine and its first replica card.
 const CHIP_GAP: f32 = 18.0;
-/// Half the width of a card in the renderer (172 px).
-const CARD_HALF_W: f32 = 86.0;
+/// Half the width of the maximum service card in the renderer (220 px).
+const CARD_HALF_W: f32 = 110.0;
 const PAD: f32 = 28.0;
 const HEADER: f32 = 44.0;
 const MIN_INNER_W: f32 = 260.0;
@@ -54,7 +54,7 @@ fn mb(bytes: f64) -> i64 {
 pub fn frame_label(h: &crate::types::HostDto) -> String {
     let name = if h.name.is_empty() { h.id.as_str() } else { h.name.as_str() };
     if !h.has_metrics {
-        return format!("{name} · no agent metrics");
+        return format!("{name} · no collector metrics");
     }
     let mut label = name.to_owned();
     if let Some(cpu) = h.cpu_utilization {
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn frame_labels_match_the_spec() {
         assert_eq!(frame_label(&host("vps-app", Some(0.92))), "vps-app · CPU 92% · RAM 870/1024 MB");
-        assert_eq!(frame_label(&host("edge", None)), "edge · no agent metrics");
+        assert_eq!(frame_label(&host("edge", None)), "edge · no collector metrics");
         let cpu_only = HostDto { memory_total_bytes: None, ..host("h", Some(0.054)) };
         assert_eq!(frame_label(&cpu_only), "h · CPU 5%");
         let unnamed = HostDto { name: String::new(), ..host("i-0abc", Some(1.0)) };
@@ -424,6 +424,8 @@ mod tests {
         }
         assert_eq!(CHIP_W, CARD_HALF_W * 2.0, "a replica uses the service card width");
         assert_eq!(CHIP_H, CARD_HALF_H * 2.0, "a replica uses the service card height");
+        assert_eq!(CHIP_W, 220.0, "expanded service metric cards reserve 220 px width");
+        assert_eq!(CHIP_H, 104.0, "expanded service metric cards reserve 104 px height");
         assert_eq!(l.chip_at(-1000.0, -1000.0), None);
     }
 
@@ -587,7 +589,7 @@ mod tests {
         let l = compute(&nodes(), &EDGES, &s);
         let edge = l.view.frames.iter().find(|f| f.host_id == "edge").unwrap();
         assert!(!edge.has_metrics && !edge.hot);
-        assert_eq!(edge.label, "edge · no agent metrics");
+        assert_eq!(edge.label, "edge · no collector metrics");
     }
 
     #[test]

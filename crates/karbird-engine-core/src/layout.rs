@@ -21,12 +21,12 @@
 use std::collections::HashMap;
 
 pub(crate) const COLUMN_SPACING: f32 = 300.0;
-/// Centre distance between two cards in one column (cards are 56 px tall).
+/// Centre distance between two cards in one column (expanded cards are 104 px tall).
 pub(crate) const ROW_SPACING: f32 = 120.0;
-/// Half the height of a card.
-pub(crate) const CARD_HALF_H: f32 = 28.0;
-/// Centre distance between a card and a corridor: 28 px half-card plus 36 px clearance.
-pub(crate) const CARD_TO_CORRIDOR: f32 = 64.0;
+/// Half the height of the maximum service card (220 × 104 px).
+pub(crate) const CARD_HALF_H: f32 = 52.0;
+/// Centre distance between a card and a corridor: 52 px half-card plus 36 px clearance.
+pub(crate) const CARD_TO_CORRIDOR: f32 = 88.0;
 /// Distance between two corridors in one column.
 const CORRIDOR_SPACING: f32 = 22.0;
 /// Vertical gap between two stacked bands (outside their reserved frame space).

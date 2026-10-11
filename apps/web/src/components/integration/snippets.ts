@@ -50,7 +50,7 @@ export function phpSdkEnv(i: SnippetInput): string {
   return [
     `KARBIRD_SERVICE_NAME=${safeServiceName(i.serviceName)}`,
     `KARBIRD_ENVIRONMENT=<environment-name>`,
-    `KARBIRD_HOST_NAME=<same-host-name-as-karbird-agent>`,
+    `KARBIRD_HOST_NAME=<same-host-name-as-karbird-collector>`,
     `KARBIRD_OTLP_ENDPOINT=${i.endpoint}`,
     `KARBIRD_INGEST_TOKEN=${token(i)}`,
   ].join("\n");

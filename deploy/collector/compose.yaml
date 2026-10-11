@@ -1,16 +1,16 @@
-# Karbird agent for one machine: machine and container metrics -> karbird ingest.
+# Karbird Collector for one machine: machine and container metrics -> karbird ingest.
 # Run on every machine whose services you want on the map's Infrastructure layer:
 #   KARBIRD_OTLP_ENDPOINT=https://karbird.example.com/otlp KARBIRD_INGEST_TOKEN=... KARBIRD_HOST_NAME=vps-app \
 #     docker compose -f compose.yaml up -d
 # The services' karbird SDK must report the same host.name (KARBIRD_HOST_NAME) to be matched.
 
-name: karbird-agent
+name: karbird-collector
 
 services:
-  agent:
+  collector:
     image: otel/opentelemetry-collector-contrib:0.120.0
     restart: unless-stopped
-    command: ["--config=/etc/karbird/agent.yaml"]
+    command: ["--config=/etc/karbird/collector.yaml"]
     # Reads the Docker socket for container stats; the host filesystem is mounted read-only.
     user: "0:0"
     environment:
@@ -18,7 +18,7 @@ services:
       KARBIRD_INGEST_TOKEN: ${KARBIRD_INGEST_TOKEN:?ingest token with the metrics signal}
       KARBIRD_HOST_NAME: ${KARBIRD_HOST_NAME:?machine name shown on the map}
     volumes:
-      - ./karbird-agent.yaml:/etc/karbird/agent.yaml:ro
+      - ./karbird-collector.yaml:/etc/karbird/collector.yaml:ro
       - /:/hostfs:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     mem_limit: 128m

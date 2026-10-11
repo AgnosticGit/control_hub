@@ -12,9 +12,9 @@ and containers are resource gauges; spans cannot provide them.
 - **Who sends what.** The karbird SDK keeps exporting traces, logs and events only, and adds
   `host.name`, `container.id` and `process.pid` to the resource (`KARBIRD_HOST_NAME`,
   `KARBIRD_CONTAINER_ID`, else the OS hostname and `/proc/self/cgroup` / `mountinfo`). Machine and
-  container metrics come from the **Karbird agent**: a pinned OpenTelemetry Collector (contrib) with
+  container metrics come from the **Karbird Collector**: a pinned OpenTelemetry Collector (contrib) with
   `hostmetrics` and `docker_stats`, filtered to the metric names the API reads
-  (`deploy/agent/`). One process per machine, not per service, so no service pays for it.
+  (`deploy/collector/`). One process per machine, not per service, so no service pays for it.
 - **Ingest.** `POST /v1/metrics` and the gRPC `MetricsService` accept OTLP **gauges and sums**
   (cumulative or delta). Histograms, exponential histograms and summaries are rejected per point
   and reported in `partial_success`, as are invalid names and points over the per-request budget
@@ -38,18 +38,18 @@ and containers are resource gauges; spans cannot provide them.
   rate). Instances come from request spans of the last 5 minutes and are matched to machines in
   this order: span `container.id` = metrics container ID (or its 12-hex short ID); span
   `host.name` = `container.hostname` or a short container ID; `host.id` / `host.name` = a machine
-  with metrics; otherwise the machine is taken from `host.name` unverified (shown as "no agent
+  with metrics; otherwise the machine is taken from `host.name` unverified (shown as "no collector
   metrics"), else unknown.
 - **Noisy-neighbour rule** (deterministic, no LLM): an instance is flagged when its p95 over the
   last 5 minutes is at least 1.5× the p95 of the 30 minutes before **and** at least 20 ms higher,
-  with at least 20 requests in each window, **and** on the same machine (with agent metrics) another
+  with at least 20 requests in each window, **and** on the same machine (with collector metrics) another
   container — not its own, not the same service — uses at least 80 % of the machine's CPU, or the
   machine is at least 90 % busy and that top consumer uses at least 50 %. The hint states which
   thresholds fired.
 - **Timeline.** `GET …/environments/{env}/infrastructure/timeline?from=&to=&buckets=` (range up
   to 7 days, 1–1000 buckets, default 200) returns per machine the CPU busy share (increase of
   `system.cpu.time` busy vs idle; fallback `system.cpu.utilization`) and memory used share per
-  bucket, plus container events derived from the same metrics — the agent needs no Docker events.
+  bucket, plus container events derived from the same metrics — the collector needs no Docker events.
   Rules (deterministic, no LLM; 3 minutes before `from` are read so containers already running are
   not reported as started):
   - *started*: the container's first point is more than 90 s after its machine's first point;
@@ -64,7 +64,7 @@ and containers are resource gauges; spans cannot provide them.
   a "Machines" group with one row per machine (CPU bars on a fixed 0–100 % scale, red from 90 %,
   memory as a line; a value holds up to 90 s between exports) and a marker per event that moves the
   cursor there.
-- **Databases and queues on our machines** (automatic, no manual binding, no LLM). The agent
+- **Databases and queues on our machines** (automatic, no manual binding, no LLM). The collector
   also reports each container's image (`container.image.name`) and its Docker Compose service
   (label `com.docker.compose.service` → `docker.compose.service`); no other labels and no
   environment. They are configuration names, not user data, and stored in `metrics`
@@ -75,14 +75,14 @@ and containers are resource gauges; spans cannot provide them.
   address is lowercased, its trailing dot and IPv6 brackets dropped; addresses over 253
   characters are ignored. Per address, first match wins:
   1. `localhost`, `*.localhost`, `127.0.0.0/8`, `::1`, `host.docker.internal` → the caller's
-     machine (only if the agent reports it), and on it the one container whose image runs that
+     machine (only if the collector reports it), and on it the one container whose image runs that
      system (`postgresql`: postgres, postgis, timescale, pgvector; `mysql`: mysql, mariadb,
      percona; `redis`: redis, valkey, keydb, dragonfly; `mongodb`: mongo; `kafka`: kafka,
      redpanda; `elasticsearch`: elasticsearch, opensearch; `cassandra`: cassandra, scylla;
      otherwise the system's own name in the image's repository name);
   2. the Compose service of a container, then a container name, then a container hostname or
      short ID — on the caller's machine first, else unique across all machines;
-  3. a machine's name or ID (with agent metrics) → that machine, container by image as in 1.
+  3. a machine's name or ID (with collector metrics) → that machine, container by image as in 1.
 
   Over all addresses of a resource: none matched but some exist → **external** (a managed or
   foreign database: Yandex Managed, Supabase, RDS, another network); matches on one machine →
@@ -92,21 +92,21 @@ and containers are resource gauges; spans cannot provide them.
   (location, machine, container, rule, up to 5 addresses, a reason) and links the container
   (`resource_id`). The map puts internal resources into their machine's frame and draws external
   ones as external while the Infrastructure layer is on; the inspector shows "Runs on" for them.
-  Matching by IP of the machine is not done: the agent does not report machine addresses.
+  Matching by IP of the machine is not done: the collector does not report machine addresses.
 - **Map.** The engine lays out the Infrastructure layer itself (machine frames around the service
   cards, a chip per instance of multi-instance services, `×N` badges, links from the slowed
   service to the noisy neighbour), so picking, culling and edges keep working. The UI shows the
   machine list, the hint, the machine card and the service → instance → container → machine chain.
 
 ## Consequences
-- Machines without the agent still appear (from span `host.name`) but without numbers.
-- To have its own databases shown as internal, a client runs the agent (`deploy/agent/`) on
+- Machines without the collector still appear (from span `host.name`) but without numbers.
+- To have its own databases shown as internal, a client runs the Collector (`deploy/collector/`) on
   every machine that hosts them and lets services connect by Compose service name, container
   name or `localhost`. A database reached by a public IP or DNS name of the same machine stays
   external until IP matching exists.
-- The demo agent adds a synthetic `postgres:16-alpine` container on `vps-app`; orders and
+- The demo collector adds a synthetic `postgres:16-alpine` container on `vps-app`; orders and
   inventory reach the demo Postgres over `127.0.0.1`, so the loopback rule places it there.
-- `just demo` runs a demo agent that reports the demo services as containers on two virtual
+- `just demo` runs a demo collector that reports the demo services as containers on two virtual
   machines from their real process CPU time and memory; `fault.mjs inventory --cpu-hog 0.95`
   reproduces a noisy neighbour.
 - Application metrics (custom counters, histograms) are still out of scope; adding them needs

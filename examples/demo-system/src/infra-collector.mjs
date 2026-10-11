@@ -1,7 +1,7 @@
-// Demo stand-in for the Karbird agent (OpenTelemetry Collector with hostmetrics + docker_stats).
-// The demo services all run on this computer, so the agent pretends they are placed on small
+// Demo stand-in for the Karbird Collector (OpenTelemetry Collector with hostmetrics + docker_stats).
+// The demo services all run on this computer, so the collector pretends they are placed on small
 // virtual machines (DEMO_INFRA_PLACEMENT) and reports, under the same metric names as the
-// real agent:
+// real collector:
 // - per container: the real CPU time and RSS of the service process (`/__demo/resources`);
 //   the demo database container reports a steady synthetic load, image and Compose service;
 // - per machine: CPU time = the sum of its containers plus a small base load, capped by the
@@ -49,7 +49,7 @@ export function parsePlacement(text) {
   return hosts;
 }
 
-/** Cumulative CPU and RSS of a synthetic container `elapsedSeconds` after the agent started. */
+/** Cumulative CPU and RSS of a synthetic container `elapsedSeconds` after the collector started. */
 export function syntheticSample(load, elapsedSeconds) {
   return { cpuMicros: Math.round(load.cores * Math.max(0, elapsedSeconds) * 1e6), rssBytes: load.rssMb * MIB };
 }
@@ -127,6 +127,8 @@ export function buildResources(states, samples, startNs, timeNs) {
           sum('container.cpu.usage.total', 'ns', true, [pt(s.cpuMicros * 1000)]),
           gauge('container.memory.usage.total', 'By', [pt(s.rssBytes, {}, false)]),
           gauge('container.memory.usage.limit', 'By', [pt(memTotal, {}, false)]),
+          sum('container.network.io.usage.rx_bytes', 'By', true, [pt(s.cpuMicros / 1e6 * NET_BYTES_PER_CPU_SECOND, { interface: 'eth0' })]),
+          sum('container.network.io.usage.tx_bytes', 'By', true, [pt(s.cpuMicros / 1e6 * NET_BYTES_PER_CPU_SECOND * 0.6, { interface: 'eth0' })]),
         ],
       });
     }
@@ -148,7 +150,7 @@ async function main() {
   const endpoint = (process.env.KARBIRD_OTLP_ENDPOINT ?? 'http://127.0.0.1:4318').replace(/\/$/, '');
   const token = process.env.KARBIRD_INGEST_TOKEN;
   if (!token) {
-    console.error('infra-agent: KARBIRD_INGEST_TOKEN is required');
+    console.error('infra-collector: KARBIRD_INGEST_TOKEN is required');
     process.exit(1);
   }
   const placement = parsePlacement(process.env.DEMO_INFRA_PLACEMENT ?? '[]');
@@ -195,21 +197,21 @@ async function main() {
         signal: AbortSignal.timeout(5000),
       });
       await res.arrayBuffer();
-      if (!res.ok) console.error(`infra-agent: export failed (HTTP ${res.status})`);
-      else console.log(`infra-agent: exported ${samples.size} containers on ${states.length} machines`);
+      if (!res.ok) console.error(`infra-collector: export failed (HTTP ${res.status})`);
+      else console.log(`infra-collector: exported ${samples.size} containers on ${states.length} machines`);
     } catch (e) {
-      console.error(`infra-agent: export failed: ${e.message}`);
+      console.error(`infra-collector: export failed: ${e.message}`);
     }
   };
 
-  console.log(`infra-agent: ${states.length} machines, every ${intervalMs} ms`);
+  console.log(`infra-collector: ${states.length} machines, every ${intervalMs} ms`);
   await tick();
   setInterval(() => void tick(), intervalMs);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((e) => {
-    console.error(`infra-agent: ${e.message}`);
+    console.error(`infra-collector: ${e.message}`);
     process.exit(1);
   });
 }

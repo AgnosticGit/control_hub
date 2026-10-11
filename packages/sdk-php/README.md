@@ -1,8 +1,8 @@
 # Karbird SDK for PHP
 
 `karbird/sdk-php` configures the official OpenTelemetry PHP SDK to export traces and logs to
-Karbird using OTLP/HTTP protobuf. The machine/container agent is separate: run the existing
-`deploy/agent/` Collector once on each Docker host; it reports host and container CPU, memory,
+Karbird using OTLP/HTTP protobuf. The machine/container Collector is separate: run the existing
+`deploy/collector/` Collector once on each Docker host; it reports host and container CPU, memory,
 disk and network metrics no matter which language runs in those containers.
 
 Automatic framework instrumentation requires PHP 8+, Composer autoloading and the
@@ -64,16 +64,16 @@ owns. No process arguments, environment dump, request headers/body or SQL are co
 bootstrap.
 
 The SDK exports OTLP/HTTP protobuf to `<KARBIRD_OTLP_ENDPOINT>/v1/traces` and `/v1/logs`, with
-`Authorization: Bearer <token>`. Metrics remain the responsibility of the host agent; automatic
+`Authorization: Bearer <token>`. Metrics remain the responsibility of the host collector; automatic
 application metrics are not currently stored by Karbird.
 
 ## Machine and container data
 
-Copy `deploy/agent/` to each machine and run the Collector as documented in
+Copy `deploy/collector/` to each machine and run the Collector as documented in
 [`docs/operations/deploy.md`](../../docs/operations/deploy.md). Give it the metrics-signal ingest
 token and the same `KARBIRD_HOST_NAME` configured for the PHP service. It reads host metrics and
 Docker stats through the existing read-only mounts and sends them directly to OTLP ingest. There is
-no PHP-specific agent process or per-PHP-service collector.
+no PHP-specific collector process or per-PHP-service collector.
 
 ## Test
 

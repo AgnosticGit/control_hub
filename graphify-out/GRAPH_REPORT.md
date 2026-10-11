@@ -1,17 +1,17 @@
 # Graph Report - control_hub  (2026-10-11)
 
 ## Corpus Check
-- 715 files · ~777,458 words
+- 715 files · ~777,462 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 29 file(s) not represented in the graph (top: (none) 13, .mdc 4, .toml 3)
 
 ## Summary
-- 9506 nodes · 23603 edges · 417 communities (366 shown, 51 thin omitted)
+- 9506 nodes · 23603 edges · 418 communities (367 shown, 51 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 575 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `36124701`
+- Built from commit: `5e817249`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -26,7 +26,7 @@
 - useWorkspaceEngine.ts
 - PgStore
 - karbird-api/src/main.rs
-- infra-agent.test.mjs
+- infra-collector.test.mjs
 - infra_timeline.rs
 - broker.rs
 - scripts/lib.mjs
@@ -299,7 +299,7 @@
 - .github/skills/impeccable/scripts/live-browser-ignores.js
 - MCP observability expansion
 - live_consumer.rs
-- Session
+- admin.test.mjs
 - bodySizeAttributes
 - Impeccable Documenter
 - helpers.mjs
@@ -307,7 +307,7 @@
 - Impeccable Documenter
 - enableInlineEdit
 - Heuristics Scoring Guide
-- ref_node_http
+- api-surface.test.mjs
 - Heuristics Scoring Guide
 - invites.spec.ts
 - ADR-0015: Log archive: templates, columnar segments, per-service dictionaries, separate archiver
@@ -403,6 +403,7 @@
 - main
 - sanitize_traces
 - InviteAccept
+- apiServe
 - LiveSubscriber
 - .build_hops
 
@@ -434,7 +435,7 @@
 - 1-file cycle: `crates/karbird-api/src/system_permissions.rs -> crates/karbird-api/src/system_permissions.rs`
 - 1-file cycle: `crates/karbird-api/src/permissions.rs -> crates/karbird-api/src/permissions.rs`
 
-## Communities (417 total, 51 thin omitted)
+## Communities (418 total, 51 thin omitted)
 
 ### Community 0 - ".pool"
 Cohesion: 0.11
@@ -476,7 +477,7 @@ Nodes (10): AccountRow, an_empty_role_prefix_is_refused_before_touching_the_data
 Cohesion: 0.06
 Nodes (34): account_mutations(), account_project_and_invite_mutations_need_a_session_and_never_accept_api_tokens(), admin_mutations(), admin_routes_need_a_session_and_never_accept_api_tokens(), api_tokens_can_never_mutate(), bearer_values_that_are_not_api_tokens_are_401(), error_responses_carry_security_headers_too(), every_protected_route_requires_a_credential() (+26 more)
 
-### Community 10 - "infra-agent.test.mjs"
+### Community 10 - "infra-collector.test.mjs"
 Cohesion: 0.20
 Nodes (23): buildResources(), createHostState(), main(), nowNs(), parsePlacement(), positive(), sample(), stepHost() (+15 more)
 
@@ -737,8 +738,8 @@ Cohesion: 0.06
 Nodes (86): applyParamDefaults(), applyParamValue(), applyPlaceholderDimensions(), applySavedSessionMeta(), clampVariantIndex(), clearHandled(), clearSession(), closedClipPath() (+78 more)
 
 ### Community 76 - "integration/lib.mjs"
-Cohesion: 0.05
-Nodes (68): service(), archiveOnce(), archiver(), bin, logs, ADR-0015, oldLogs, oldRun (+60 more)
+Cohesion: 0.04
+Nodes (78): service(), login(), signup(), archiveOnce(), archiver(), bin, logs, ADR-0015 (+70 more)
 
 ### Community 77 - "setLiveState"
 Cohesion: 0.09
@@ -1548,9 +1549,9 @@ Nodes (22): Absolute windows, API reuse, Constraints, Deep links, Documentation,
 Cohesion: 0.13
 Nodes (4): consumer_lag(), edge_scope(), run(), runtime()
 
-### Community 287 - "Session"
-Cohesion: 0.06
-Nodes (31): login(), signup(), ALL, AUDITOR, created, createProject(), member, plainOwner (+23 more)
+### Community 287 - "admin.test.mjs"
+Cohesion: 0.20
+Nodes (9): ALL, AUDITOR, created, createProject(), member, plainOwner, superAdmin, sysAdmin (+1 more)
 
 ### Community 289 - "bodySizeAttributes"
 Cohesion: 0.54
@@ -1580,9 +1581,9 @@ Nodes (5): collectEditableTextRows(), visit(), enableInlineEdit(), onInlineInput
 Cohesion: 0.50
 Nodes (4): Heuristics Scoring Guide, Issue Severity (P0–P3), Reference Material, Score Summary
 
-### Community 296 - "ref_node_http"
-Cohesion: 0.12
-Nodes (8): port, server, fixture, SECRETS, http, port, server, postOversized()
+### Community 296 - "api-surface.test.mjs"
+Cohesion: 0.08
+Nodes (16): port, server, fixture, SECRETS, http, port, server, FAKE_TRACE (+8 more)
 
 ### Community 297 - "Heuristics Scoring Guide"
 Cohesion: 0.50
@@ -1618,7 +1619,7 @@ Nodes (7): log(), Data flow, Delivery guarantees, Timeline and time machine, Top
 
 ### Community 309 - "Production deploy: two hosts from GitHub Actions"
 Cohesion: 0.12
-Nodes (15): Infrastructure agent, Install from this checkout, Instrument a PHP service, Karbird agent (machine and container metrics), Memory, Moving hosts deployed under the previous project name, On the hosts, One-time setup (+7 more)
+Nodes (15): Infrastructure Collector, Install from this checkout, Instrument a PHP service, Karbird Collector (machine and container metrics), Memory, Moving hosts deployed under the previous project name, On the hosts, One-time setup (+7 more)
 
 ### Community 310 - "WebSocket-only Live Updates and Idempotent Traffic Aggregates"
 Cohesion: 0.17
@@ -1891,6 +1892,10 @@ Nodes (8): every_span_attribute_location_is_sanitized(), redacts_and_rejects(), 
 ### Community 408 - "InviteAccept"
 Cohesion: 0.50
 Nodes (4): InviteAccept, AlreadyMember, Gone, Joined
+
+### Community 409 - "apiServe"
+Cohesion: 0.67
+Nodes (4): apiServe(), archiverOnce(), exe(), start()
 
 ### Community 411 - "LiveSubscriber"
 Cohesion: 0.29

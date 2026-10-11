@@ -45,7 +45,7 @@ export function formatRate(bytesPerSec: number | null | undefined): string {
 /** Same text as the machine frame on the map: `vps-app · CPU 92% · RAM 870/1024 MB`. */
 export function hostLabel(h: HostDto): string {
   const name = h.name || h.id;
-  if (!h.has_metrics) return `${name} · no agent metrics`;
+  if (!h.has_metrics) return `${name} · no collector metrics`;
   let label = name;
   if (h.cpu_utilization !== null) label += ` · CPU ${Math.round(h.cpu_utilization * 100)}%`;
   if (h.memory_used_bytes !== null && h.memory_total_bytes !== null) {
@@ -74,7 +74,7 @@ export const MATCH_TEXT: Record<InstanceMatch, string> = {
   container_id: "matched by container ID",
   container_hostname: "matched by container hostname",
   host_name: "matched by machine name",
-  unverified: "machine from the span's host.name; no agent metrics to confirm it",
+  unverified: "machine from the span's host.name; no collector metrics to confirm it",
   unknown: "the service reports neither container.id nor host.name",
 };
 
@@ -162,7 +162,7 @@ export function resourceWhere(snap: InfrastructureSnapshot | null, nodeId: strin
 /** One line for the inspector: `vps-app · container postgres` / `External` / `Unknown`. */
 export function resourceHeadline(w: ResourceWhere): string {
   const { placement, host, container } = w;
-  if (placement.location === "external") return "External: no Karbird agent there";
+  if (placement.location === "external") return "External: no Karbird Collector there";
   if (placement.location === "unknown") return "Location unknown";
   const machine = host ? host.name || host.id : (placement.host_id ?? "unknown machine");
   return container ? `${machine} · container ${container.name}` : machine;

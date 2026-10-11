@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { NS_PER_MS } from "@/lib/time";
-import { LIVE_ANIM_DELAY_MS, SPEEDS, animClockFor, asCompleteness, hopWindowFor, seeksIntoFuture, sliderPositionForSpeed, speedFromSlider, type Mode } from "./useWorkspaceEngine";
+import { LIVE_ANIM_DELAY_MS, SPEEDS, animClockFor, asCompleteness, hopWindowFor, infrastructureFeedQuery, seeksIntoFuture, sliderPositionForSpeed, speedFromSlider, type Mode } from "./useWorkspaceEngine";
+
+describe("infrastructureFeedQuery", () => {
+  it("subscribes to live infrastructure snapshots only when a map layer needs them", () => {
+    expect(infrastructureFeedQuery(true)).toEqual({ infrastructure: "true" });
+    expect(infrastructureFeedQuery(false)).toEqual({});
+  });
+});
 
 describe("seeksIntoFuture", () => {
   it("is a seek past the loaded data of a range that still grows (it returns to live)", () => {

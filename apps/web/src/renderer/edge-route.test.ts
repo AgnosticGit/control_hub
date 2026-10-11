@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EDGE_STYLES } from "./edge-path";
 import { orderedLanes, portOffsets, routeEdges, type RouteEdge, type RouteNode } from "./edge-route";
+import { EXPANDED_CARD_SIZE, routeBoxForCard } from "./map-card-geometry";
 
 const CARD_W = 172;
 const CARD_H = 56;
@@ -30,8 +31,8 @@ it("uses the backend corridor for backward links instead of crossing intermediat
   expect(path?.pts).toEqual([600+BOX.hw,0,750,0,750,120,-150,120,-150,0,-BOX.hw,0]);
 });
 
-function insideAnyCard(x: number, y: number, except: number[]): boolean {
-  return nodes.some((n) => !except.includes(n.index) && Math.abs(x - n.x) < CARD_W / 2 && Math.abs(y - n.y) < CARD_H / 2);
+function insideAnyCard(x: number, y: number, except: number[], width = CARD_W, height = CARD_H): boolean {
+  return nodes.some((n) => !except.includes(n.index) && Math.abs(x - n.x) < width / 2 && Math.abs(y - n.y) < height / 2);
 }
 
 describe("portOffsets", () => {
@@ -134,6 +135,27 @@ describe("fan-out into targets far below", () => {
 });
 
 describe("routeEdges", () => {
+  it("routes between compact and expanded card bounds independently", () => {
+    const compact = { hw: CARD_W / 2 + 4, hh: CARD_H / 2 + 4, portSpan: CARD_H - 12 };
+    const expanded = routeBoxForCard(EXPANDED_CARD_SIZE);
+    const paths = routeEdges("orthogonal", nodes, edges, (index) => index === 1 || index === 3 ? expanded : compact);
+    const edge = edges[0];
+    const first = edge ? paths.get(edge.index)?.pts : undefined;
+    expect(first?.[0]).toBe(CARD_W / 2 + 4);
+    expect(first?.[1]).toBeGreaterThanOrEqual(-CARD_H / 2 + 4);
+  });
+
+  it("routes around expanded service cards using expanded hit geometry", () => {
+    const box = routeBoxForCard(EXPANDED_CARD_SIZE);
+    const paths = routeEdges("orthogonal", nodes, edges, box);
+    for (const edge of edges) {
+      const points = paths.get(edge.index)?.pts ?? [];
+      for (let i = 0; i + 1 < points.length; i += 2) {
+        expect(insideAnyCard(points[i] ?? 0, points[i + 1] ?? 0, [edge.source, edge.target], EXPANDED_CARD_SIZE.width, EXPANDED_CARD_SIZE.height)).toBe(false);
+      }
+    }
+  });
+
   for (const style of EDGE_STYLES) {
     it(`${style}: no route passes through a card other than its own ends`, () => {
       const paths = routeEdges(style, nodes, edges, BOX);

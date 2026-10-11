@@ -14,6 +14,20 @@ const MIN = 60n * SEC;
 const HOUR = 60n * MIN;
 const DAY = 24n * HOUR;
 
+/** Opening live view: one hour of summarized history, while the engine keeps its smaller raw window. */
+export const DEFAULT_LIVE_VIEW_NS = HOUR;
+export const LIVE_DETAIL_WINDOW_NS = 15n * MIN;
+
+export function defaultLiveView(now: bigint): View {
+  return { from: now - DEFAULT_LIVE_VIEW_NS, to: now };
+}
+
+/** Reject future-only windows and clamp requests that cross the present. */
+export function clampRangeToNow(view: View, now: bigint): View | null {
+  if (view.from >= now) return null;
+  return { from: view.from, to: view.to > now ? now : view.to };
+}
+
 /** Narrowest view: one millisecond. */
 export const MIN_VIEW_NS = MS;
 /** Widest view: one month. Navigation can continue through adjacent ranges. */
@@ -22,17 +36,23 @@ export const MAX_VIEW_NS = 30n * DAY;
 export const MAX_DETAIL_RANGE_NS = 7n * DAY;
 
 /** Pick the raw-data window needed for a close zoom into a broader view. */
-export function detailChunkFor(view: View): View {
+export function detailChunkFor(view: View, maxTo?: bigint): View {
   const width = span(view);
   if (width > MAX_DETAIL_RANGE_NS) {
     const middle = view.from + width / 2n;
     const from = middle - MAX_DETAIL_RANGE_NS / 2n;
-    return { from, to: from + MAX_DETAIL_RANGE_NS };
+    return capChunk({ from, to: from + MAX_DETAIL_RANGE_NS }, maxTo);
   }
   // Align detail windows so small pans reuse a previous seven-day fetch.
   let from = (view.from / MAX_DETAIL_RANGE_NS) * MAX_DETAIL_RANGE_NS;
   if (view.to > from + MAX_DETAIL_RANGE_NS) from = view.to - MAX_DETAIL_RANGE_NS;
-  return { from, to: from + MAX_DETAIL_RANGE_NS };
+  return capChunk({ from, to: from + MAX_DETAIL_RANGE_NS }, maxTo);
+}
+
+function capChunk(chunk: View, maxTo?: bigint): View {
+  if (maxTo === undefined || chunk.to <= maxTo) return chunk;
+  const to = maxTo;
+  return { from: to - MAX_DETAIL_RANGE_NS, to };
 }
 
 /** True when one or more loaded intervals continuously cover the requested view. */
@@ -57,6 +77,11 @@ const TICK_STEPS: bigint[] = [
 ];
 
 const span = (v: View) => v.to - v.from;
+
+/** Aggregated timeline data keeps wider windows complete without enlarging the engine's raw buffer. */
+export function needsTimelineSummary(view: View): boolean {
+  return span(view) > LIVE_DETAIL_WINDOW_NS;
+}
 
 /** Keeps `v` inside `bounds` without changing its width (unless wider than the bounds). */
 export function clampView(v: View, bounds: View): View {

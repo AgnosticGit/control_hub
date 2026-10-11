@@ -1374,12 +1374,15 @@ proptest! {
 }
 #[test]
 fn server_geometry_is_authoritative_and_repeated_snapshots_are_noops() {
-    let json = r#"{"nodes":[{"id":"svc","name":"service","kind":"service","provenance":"observed"}],"edges":[],"geometry":{"version":2,"revision":42,"plain":{"revision":42,"nodes":[{"index":0,"id":"svc","name":"service","kind":"service","provenance":"observed","x":123,"y":456}],"edges":[],"infra":null},"infrastructure":null}}"#;
+    let json = format!(
+        r#"{{"nodes":[{{"id":"svc","name":"service","kind":"service","provenance":"observed"}}],"edges":[],"geometry":{{"version":{},"revision":42,"plain":{{"revision":42,"nodes":[{{"index":0,"id":"svc","name":"service","kind":"service","provenance":"observed","x":123,"y":456}}],"edges":[],"infra":null}},"infrastructure":null}}}}"#,
+        SERVER_LAYOUT_VERSION
+    );
     let mut engine = Engine::new(EngineConfig::default());
-    engine.load_topology_json(json).unwrap();
+    engine.load_topology_json(&json).unwrap();
     let first = engine.topology();
     assert_eq!((first.nodes[0].x, first.nodes[0].y), (123.0, 456.0));
-    engine.load_topology_json(json).unwrap();
+    engine.load_topology_json(&json).unwrap();
     assert_eq!(engine.topology(), first);
     engine.set_viewport(Viewport { x: 100_000.0, y: 100_000.0, width: 100.0, height: 100.0, scale: 1.0 });
     assert_eq!(engine.visible_state().summary.visible_nodes, 0);

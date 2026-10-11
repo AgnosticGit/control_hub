@@ -15,7 +15,7 @@ export const SETTINGS_TEMPLATE = `# Local karbird settings. Yours to edit; \`jus
 KARBIRD_LOGS_RETENTION_DAYS=14
 KARBIRD_SPANS_RETENTION_DAYS=14
 KARBIRD_EVENTS_RETENTION_DAYS=30
-# Machine and container metrics from the Karbird agent (Infrastructure layer of the map).
+# Machine and container metrics from the Karbird Collector (Infrastructure layer of the map).
 KARBIRD_METRICS_RETENTION_DAYS=14
 `;
 

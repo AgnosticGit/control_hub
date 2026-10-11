@@ -19,6 +19,6 @@ window_ns: string, hosts: Array<HostDto>, instances: Array<InstanceDto>, hints: 
  */
 resources: Array<ResourcePlacementDto>, 
 /**
- * What could not be determined (no agent metrics, unmatched instances, truncation).
+ * What could not be determined (no collector metrics, unmatched instances, truncation).
  */
 notes: Array<string>, };

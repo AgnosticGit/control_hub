@@ -1,7 +1,7 @@
 //! Persistable geometry computed natively and consumed unchanged by WASM.
 use crate::*;
 
-pub const SERVER_LAYOUT_VERSION: u32 = 2;
+pub const SERVER_LAYOUT_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -440,7 +440,7 @@ mod tests {
         let frame = &engine.topology().infra.unwrap().frames[0];
         assert!(!frame.hot);
         assert!(!frame.has_metrics);
-        assert!(frame.label.contains("no agent metrics"));
+        assert!(frame.label.contains("no collector metrics"));
     }
 
     #[test]

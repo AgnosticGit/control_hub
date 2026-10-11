@@ -15,6 +15,7 @@ import type { OpenSignals } from "./InfraInspector";
 import { InfraOverlay } from "./InfraOverlay";
 import type { ContainerRef } from "./infrastructure";
 import { MapView } from "./MapView";
+import { DEFAULT_MAP_LAYERS, needsInfrastructureSnapshot, parseMapLayers, type MapLayers } from "./map-layers";
 import { useInfrastructure } from "./useInfrastructure";
 import { SignalsPanel, type Tab } from "./SignalsPanel";
 import { TimelineBar } from "./TimelineBar";
@@ -33,39 +34,6 @@ const SIDE_MAX = 760;
 const DOCK_MIN = 150;
 const DOCK_MAX = 640;
 const DOCK_MAP_RESERVE = 360;
-
-interface MapLayers {
-  infrastructure: boolean;
-  onlyProblems: boolean;
-  hideInferred: boolean;
-  tableView: boolean;
-}
-
-const DEFAULT_MAP_LAYERS: MapLayers = { infrastructure: false, onlyProblems: false, hideInferred: false, tableView: false };
-
-function parseMapLayers(raw: string): MapLayers | null {
-  try {
-    const value: unknown = JSON.parse(raw);
-    if (typeof value !== "object" || value === null) return null;
-    const record = value as Record<string, unknown>;
-    if (
-      typeof record.infrastructure !== "boolean" ||
-      typeof record.onlyProblems !== "boolean" ||
-      typeof record.hideInferred !== "boolean" ||
-      typeof record.tableView !== "boolean"
-    ) {
-      return null;
-    }
-    return {
-      infrastructure: record.infrastructure,
-      onlyProblems: record.onlyProblems,
-      hideInferred: record.hideInferred,
-      tableView: record.tableView,
-    };
-  } catch {
-    return null;
-  }
-}
 
 /** A remembered panel size in px, clamped to [min, max]. */
 function usePersistedSize(key: string, fallback: number, min: number, max: number): [number, (v: number) => void] {
@@ -107,8 +75,9 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const dockMax = Math.max(DOCK_MIN, Math.min(DOCK_MAX, dockContentHeight, dockAvailableHeight));
   const selectedNode = state.topology?.nodes.find((n) => n.id === selectedId) ?? null;
-  const infra = useInfrastructure(actions, `${projectId}/${environmentId}`, state.phase === "ready", layerPrefs.infrastructure, state.mode, state.cursor);
+  const infra = useInfrastructure(actions, `${projectId}/${environmentId}`, state.phase === "ready", needsInfrastructureSnapshot(layerPrefs), state.mode, state.cursor);
   const infraSnapshot = layerPrefs.infrastructure ? infra.snapshot : null;
+  const serviceMetricSnapshot = layerPrefs.serviceMetrics ? infra.snapshot : null;
   const changeLayer = (layer: keyof MapLayers, enabled: boolean) =>
     writePersisted(layerPrefsKey, JSON.stringify({ ...layerPrefs, [layer]: enabled }));
 
@@ -201,6 +170,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
 
   useEffect(() => {
     if (state.phase !== "ready") return;
+    actions.setInfrastructureFeedEnabled(needsInfrastructureSnapshot(layerPrefs));
     actions.setFilters({
       search: "",
       hide_inferred: layerPrefs.hideInferred,
@@ -283,6 +253,9 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                   selectedEdge={selectedEdge}
                   topInset={layerPrefs.infrastructure && !layerPrefs.tableView ? overlayBottom : 0}
                   infrastructure={layerPrefs.infrastructure}
+                  serviceMetrics={layerPrefs.serviceMetrics}
+                  serviceMetricSnapshot={serviceMetricSnapshot}
+                  serviceMetricsLoading={layerPrefs.serviceMetrics && infra.loading}
                   onInfrastructureChange={(enabled) => {
                     changeLayer("infrastructure", enabled);
                     if (!enabled) {
@@ -290,6 +263,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                       setSelectedContainer(null);
                     }
                   }}
+                  onServiceMetricsChange={(enabled) => changeLayer("serviceMetrics", enabled)}
                   onlyProblems={layerPrefs.onlyProblems}
                   onOnlyProblemsChange={(enabled) => changeLayer("onlyProblems", enabled)}
                   hideInferred={layerPrefs.hideInferred}

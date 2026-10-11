@@ -39,7 +39,12 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   const gauge = (name: string, unit: string, value: number): MetricInput => ({ name, unit, kind: "gauge", points: [{ value, timeNs: t2 }] });
   const container = (id: string, name: string, cores: number) => ({
     attributes: { "host.name": host, "host.id": host, "container.id": id, "container.name": name },
-    metrics: [sum("container.cpu.usage.total", "ns", [[{}, 1e12, 1e12 + cores * 80e9]]), gauge("container.memory.usage.total", "By", 200 * MIB)],
+    metrics: [
+      sum("container.cpu.usage.total", "ns", [[{}, 1e12, 1e12 + cores * 80e9]]),
+      gauge("container.memory.usage.total", "By", 200 * MIB),
+      sum("container.network.io.usage.rx_bytes", "By", [[{ interface: "eth0" }, 0, 800_000]]),
+      sum("container.network.io.usage.tx_bytes", "By", [[{ interface: "eth0" }, 0, 400_000]]),
+    ],
   });
   // One core 95 % busy over 80 s; inventory takes 0.95 of it.
   await ingestMetrics([
@@ -81,14 +86,29 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   const errors = collectErrors(page);
   await login(page, "isolation@karbird.local", WORKSPACE);
   await expect(page.getByText("Starting engine…")).toBeHidden();
+  await expect(page.getByText("1 h", { exact: true })).toBeVisible();
 
   const toggle = await mapLayer(page, "Infrastructure");
   await expect(toggle).not.toBeChecked();
   await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
+  const returnToLive = page.getByRole("button", { name: "Return to live" });
+  if (await returnToLive.isVisible()) await returnToLive.click();
   await expect(page.getByRole("button", { name: "Pause live" })).toBeVisible();
   // Keep the point containing both counter samples fixed; otherwise a slow browser
   // run ages the first sample out of the two-minute metrics window while asserting it.
   await page.getByRole("button", { name: "Pause live" }).click();
+  const map = page.getByRole("application", { name: /Service map/ });
+  await (await mapLayer(page, "Service metrics")).check();
+  await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
+  await expect
+    .poll(async () => {
+      const raw = await map.getAttribute("data-service-metrics");
+      return raw ? Object.values(JSON.parse(raw) as Record<string, string>).some((value) => value.includes("host logical cores") && value.includes("RAM")) : false;
+    }, { timeout: 60_000 })
+    .toBe(true);
+  await expect(map.getByRole("img", { name: /CPU .*host logical cores.*RAM/ }).first()).toBeVisible();
+  await expect(map.getByRole("img", { name: new RegExp(`Service ${orders}.*RX .*; TX `) })).toBeVisible();
+  await expect(map).toHaveAttribute("data-drawn-nodes", /[0-9]/);
   await (await mapLayer(page, "Infrastructure")).check();
 
   const machines = page.getByRole("region", { name: "Machines" });
@@ -101,7 +121,6 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   const banner = page.getByRole("status", { name: "Noisy neighbour" }).filter({ hasText: orders });
   await expect(banner).toBeVisible({ timeout: 30_000 });
   await expect(banner).toContainText(`${inventory} used 95% of CPU on ${host}`);
-  const map = page.getByRole("application", { name: /Service map/ });
   const mapKey = page.getByRole("button", { name: "Show map key" });
   await mapKey.hover();
   await expect(page.getByRole("dialog", { name: "Map key" })).toHaveCount(0);
@@ -110,7 +129,8 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   await page.getByRole("button", { name: "Close map key" }).press("Enter");
 
   // Fit to screen keeps every card below the machines panel and the hints.
-  await page.getByRole("button", { name: "Fit to screen" }).click();
+  await map.focus();
+  await map.press("0");
   await expect(map).toHaveAttribute("data-fit-top");
   await expect
     .poll(async () => {
@@ -213,6 +233,16 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
   await expect(map).toHaveAttribute("data-infra-selected", "");
   await expect(map).toHaveAttribute("data-selection-dimmed", "false");
+  await expect(await mapLayer(page, "Service metrics")).toBeChecked();
+  await page.reload();
+  await expect(page.getByText("Starting engine…")).toBeHidden();
+  await expect(await mapLayer(page, "Service metrics")).toBeChecked();
+  await expect.poll(async () => (await map.getAttribute("data-drawn-nodes"))?.length ?? 0).toBeGreaterThan(0);
+  // Metrics in this fixture are deliberately more than two minutes old by this
+  // point. The topology must render immediately after reload, while expired
+  // metrics stay absent instead of showing stale or fabricated values.
+  await expect(map).toHaveAttribute("data-service-metrics", /No service metrics collected/);
+  await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -254,7 +284,8 @@ test("with many machines the list scrolls and fit to screen keeps every card bel
   await last.scrollIntoViewIfNeeded();
   await expect(last).toBeInViewport();
 
-  await page.getByRole("button", { name: "Fit to screen" }).click();
+  await map.focus();
+  await map.press("0");
   await expect
     .poll(async () => {
       const [box, hostBox, top] = await Promise.all([machines.boundingBox(), map.boundingBox(), map.getAttribute("data-fit-top")]);

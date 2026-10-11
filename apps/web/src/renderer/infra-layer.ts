@@ -3,10 +3,11 @@
 
 import type { InfraChip, InfraFrame, InfraView } from "@karbird/web-engine";
 import { MACHINE_FRAME_COLORS } from "./map-colors";
+import { EXPANDED_CARD_SIZE, type CardSize } from "./map-card-geometry";
 
 /** Must match `CHIP_W` / `CHIP_H` in engine-core `infra.rs`. */
-export const CHIP_W = 172;
-export const CHIP_H = 56;
+export const CHIP_W = EXPANDED_CARD_SIZE.width;
+export const CHIP_H = EXPANDED_CARD_SIZE.height;
 /** Height of a frame's title strip (engine `HEADER`). */
 export const FRAME_HEADER = 44;
 
@@ -39,8 +40,8 @@ export function frameLook(f: InfraFrame, selected: boolean): FrameLook {
   return { color: frameColor(f), fillAlpha: 0.05, strokeWidth: 1.5, strokeAlpha: f.hot ? 0.9 : 0.55, headerAlpha: 0.1, halo: 0 };
 }
 
-export function chipAt(view: InfraView | null | undefined, x: number, y: number): InfraChip | null {
-  return view?.chips.find((c) => Math.abs(c.x - x) <= CHIP_W / 2 && Math.abs(c.y - y) <= CHIP_H / 2) ?? null;
+export function chipAt(view: InfraView | null | undefined, x: number, y: number, size: CardSize = EXPANDED_CARD_SIZE): InfraChip | null {
+  return view?.chips.find((c) => Math.abs(c.x - x) <= size.width / 2 && Math.abs(c.y - y) <= size.height / 2) ?? null;
 }
 
 /**

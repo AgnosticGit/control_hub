@@ -95,10 +95,18 @@ export function routeEdges(
   style: EdgeStyle,
   nodes: ReadonlyArray<RouteNode>,
   edges: ReadonlyArray<RouteEdge>,
-  box: RouteBox,
+  box: RouteBox | ((node: number) => RouteBox),
 ): Map<number, EdgePath> {
   const pos = new Map<number, RouteNode>();
   for (const n of nodes) pos.set(n.index, n);
+  const boxFor = typeof box === "function" ? box : () => box;
+  const boxes = new Map(nodes.map((node) => [node.index, boxFor(node.index)]));
+  const maxBox = [...boxes.values()].reduce<RouteBox>((max, current) => ({
+    hw: Math.max(max.hw, current.hw),
+    hh: Math.max(max.hh, current.hh),
+    portSpan: Math.max(max.portSpan, current.portSpan),
+  }), { hw: 0, hh: 0, portSpan: 0 });
+  const boxAt = (node: number) => boxes.get(node) ?? maxBox;
   const out = new Map<number, EdgePath>();
 
   // Stations of each forward edge: centre of the source, corridor points, centre of the target.
@@ -107,9 +115,11 @@ export function routeEdges(
     const s = pos.get(e.source);
     const t = pos.get(e.target);
     if (!s || !t || e.source === e.target) continue;
+    const sourceBox = boxAt(e.source);
+    const targetBox = boxAt(e.target);
     if (t.x <= s.x) {
-      const points=[s.x+box.hw,s.y,...e.points.flatMap(([x,y])=>[x,y]),t.x-box.hw,t.y];
-      const p = e.points.length>0 ? build(style==="orthogonal" ? points : rounded(points,12)) : edgePath(style, s.x, s.y, t.x, t.y, box);
+      const points=[s.x+sourceBox.hw,s.y,...e.points.flatMap(([x,y])=>[x,y]),t.x-targetBox.hw,t.y];
+      const p = e.points.length>0 ? build(style==="orthogonal" ? points : rounded(points,12)) : edgePath(style, s.x, s.y, t.x, t.y, sourceBox, targetBox);
       if (p) out.set(e.index, p);
       continue;
     }
@@ -129,7 +139,8 @@ export function routeEdges(
     }
     for (const g of groups.values()) {
       g.sort((a, b) => neighbour(a) - neighbour(b) || a.e.index - b.e.index);
-      const offs = portOffsets(g.length, box.portSpan);
+      const node = g[0] ? key(g[0]) : -1;
+      const offs = portOffsets(g.length, boxAt(node).portSpan);
       g.forEach((f, k) => into.set(f.e.index, offs[k] ?? 0));
     }
   };
@@ -150,15 +161,17 @@ export function routeEdges(
   for (const { e, stations } of forward) {
     const list: Array<[number, number, number, number]> = [];
     const last = stations.length - 1;
+    const sourceBox = boxAt(e.source);
+    const targetBox = boxAt(e.target);
     stations.forEach(([x, y], k) => {
       if (k === 0) {
         const py = y + (outPort.get(e.index) ?? 0);
-        list.push([x + box.hw, py, x + box.hw, py]);
+        list.push([x + sourceBox.hw, py, x + sourceBox.hw, py]);
       } else if (k === last) {
         const py = y + (inPort.get(e.index) ?? 0);
-        list.push([x - box.hw, py, x - box.hw, py]);
+        list.push([x - targetBox.hw, py, x - targetBox.hw, py]);
       } else {
-        list.push([x - box.hw, y, x + box.hw, y]);
+        list.push([x - maxBox.hw, y, x + maxBox.hw, y]);
       }
     });
     runs.set(e.index, list);

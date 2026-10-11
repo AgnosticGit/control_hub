@@ -134,19 +134,19 @@ threads (4 created initially) to avoid exhausting the host's thread limit; its g
 uses the default. ClickHouse diagnostic system tables are disabled, while process logs remain
 available through Docker.
 
-## Karbird agent (machine and container metrics)
+## Karbird Collector (machine and container metrics)
 
-The map's Infrastructure layer needs the Karbird agent on every machine that runs observed
+The map's Infrastructure layer needs the Karbird Collector on every machine that runs observed
 services (ADR-0018). It is not part of the two-host deploy: it belongs to the machines you
 observe, which may include these two. Create an ingest token with the `metrics` signal for the
-target environment, copy `deploy/agent/` to the machine and run:
+target environment, copy `deploy/collector/` to the machine and run:
 
 ```sh
 KARBIRD_OTLP_ENDPOINT=https://<domain>/otlp KARBIRD_INGEST_TOKEN=chi_… KARBIRD_HOST_NAME=vps-app \
   docker compose -f compose.yaml up -d
 ```
 
-The agent (pinned `otel/opentelemetry-collector-contrib`, ≤ 128 MB) reads the host filesystem and
+The Collector (pinned `otel/opentelemetry-collector-contrib`, ≤ 128 MB) reads the host filesystem and
 the Docker socket read-only and exports only the metrics the API reads. Give the services' SDK the
 same `KARBIRD_HOST_NAME`; in containers the SDK reads `container.id` from cgroups, so instances are
 matched to their container automatically. Metrics are kept `KARBIRD_METRICS_RETENTION_DAYS` (14).

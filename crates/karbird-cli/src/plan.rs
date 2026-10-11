@@ -276,7 +276,7 @@ pub fn build(root: &Path, args: &PlanArgs) -> anyhow::Result<Plan> {
     } else {
         plan.steps.extend(composer_json_step(root, args)?);
         manual.push(
-            "Enable the PHP extension ext-opentelemetry and install auto-instrumentation Composer packages for the framework and clients in use (for example open-telemetry/opentelemetry-auto-laravel). The Karbird agent collects machine/container metrics independently of the PHP runtime.".into(),
+            "Enable the PHP extension ext-opentelemetry and install auto-instrumentation Composer packages for the framework and clients in use (for example open-telemetry/opentelemetry-auto-laravel). The Karbird Collector collects machine/container metrics independently of the PHP runtime.".into(),
         );
         manual.push(
             "Load vendor/karbird/sdk-php/src/Bootstrap.php and call Karbird\\Sdk\\Bootstrap::configure() before vendor/autoload.php in the PHP entry point (or use an application-owned auto_prepend_file); this configures the standard OpenTelemetry OTLP exporter and host/container resource attributes.".into(),

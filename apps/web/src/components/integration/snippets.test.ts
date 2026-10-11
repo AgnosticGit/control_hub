@@ -56,7 +56,7 @@ describe("integration snippets", () => {
     expect(envMap(phpSdkEnv(input))).toEqual({
       KARBIRD_SERVICE_NAME: "orders-api",
       KARBIRD_ENVIRONMENT: "<environment-name>",
-      KARBIRD_HOST_NAME: "<same-host-name-as-karbird-agent>",
+      KARBIRD_HOST_NAME: "<same-host-name-as-karbird-collector>",
       KARBIRD_OTLP_ENDPOINT: "https://ch.example/otlp",
       KARBIRD_INGEST_TOKEN: "chi_secret",
     });

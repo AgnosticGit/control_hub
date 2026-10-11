@@ -1,4 +1,4 @@
-//! Infrastructure view (ADR-0018): machines and containers from the Karbird agent's metrics,
+//! Infrastructure view (ADR-0018): machines and containers from the Karbird Collector's metrics,
 //! joined with service instances from spans, plus the deterministic noisy-neighbour rule.
 //! Everything below the handler is a pure function of the query rows.
 
@@ -21,7 +21,7 @@ use crate::routes::telemetry::{now_ns, parse_ns};
 use crate::state::AppState;
 
 const NS_PER_SEC: i64 = 1_000_000_000;
-/// Machine metrics are read from `[at - METRICS_WINDOW, at]` (agents export every 10–60 s).
+/// Machine metrics are read from `[at - METRICS_WINDOW, at]` (collectors export every 10–60 s).
 pub const METRICS_WINDOW_NS: i64 = 120 * NS_PER_SEC;
 /// Latency "now" is `[at - 5 min, at)`, the baseline the 30 minutes before.
 pub const RECENT_NS: i64 = 300 * NS_PER_SEC;
@@ -410,7 +410,7 @@ pub fn build_snapshot(
     let mut notes = Vec::new();
     if !hosts.iter().any(|h| h.has_metrics) {
         notes.push(
-            "No machine metrics in this window: run the Karbird agent on each machine to see CPU, memory and containers."
+            "No machine metrics in this window: run the Karbird Collector on each machine to see CPU, memory and containers."
                 .to_owned(),
         );
     }
@@ -423,7 +423,7 @@ pub fn build_snapshot(
     let unverified = instances.iter().filter(|(_, m)| m.reason == InstanceMatch::Unverified).count();
     if unverified > 0 {
         notes.push(format!(
-            "{unverified} instance(s) are placed only by their own host.name; no agent confirms that machine."
+            "{unverified} instance(s) are placed only by their own host.name; no collector confirms that machine."
         ));
     }
     if truncated {
@@ -467,7 +467,7 @@ pub fn build_snapshot(
 
 // ---------------------------------------------------------------- databases and queues → machines
 
-/// A container as the agent identifies it, with the names other containers can reach it by.
+/// A container as the collector identifies it, with the names other containers can reach it by.
 struct Ctr<'a> {
     host: &'a str,
     id: &'a str,
@@ -614,7 +614,7 @@ fn evidence(how: ResourceMatch, address: &str) -> String {
 }
 
 /// Places every database and queue services called in the window: inside a container or on a
-/// machine the agent reports (internal), nowhere the agent sees (external), or undecided.
+/// machine the collector reports (internal), nowhere the collector sees (external), or undecided.
 pub fn place_resources(snap: &mut InfrastructureSnapshot, series: &[InfraSeriesRow], addresses: &[ResourceAddressRow]) {
     let ctrs = containers_of(series);
     let hostnames: HashMap<String, (String, String)> = series
@@ -672,7 +672,7 @@ pub fn place_resources(snap: &mut InfrastructureSnapshot, series: &[InfraSeriesR
             [] => {
                 placement.location = ResourceLocation::External;
                 placement.reason = format!(
-                    "No machine with the Karbird agent answers to {}: a managed or external {}.",
+                    "No machine with the Karbird Collector answers to {}: a managed or external {}.",
                     placement.addresses.join(", "),
                     if placement.kind == "queue" { "queue" } else { "database" }
                 );
@@ -739,7 +739,7 @@ pub fn place_resources(snap: &mut InfrastructureSnapshot, series: &[InfraSeriesR
 
 /// The rule (ADR-0018), evaluated per instance:
 /// 1. p95 of the last 5 min ≥ 1.5 × the 30 min before it and ≥ 20 ms more, both from ≥ 20 requests;
-/// 2. on the same machine (with agent metrics) another container uses ≥ 80 % of the machine's CPU,
+/// 2. on the same machine (with collector metrics) another container uses ≥ 80 % of the machine's CPU,
 ///    or the machine is ≥ 90 % busy and that container is the top consumer with ≥ 50 % of it.
 fn noisy_neighbor(row: &InstanceLatencyRow, m: &Matched, hosts: &[HostDto]) -> Option<NoisyNeighborHint> {
     if row.requests < MIN_SAMPLES || row.baseline_requests < MIN_SAMPLES {
@@ -857,6 +857,14 @@ mod tests {
                 0.0,
                 600.0,
             ),
+            series(
+                "vps-app",
+                "0dd123456789abc",
+                "container.network.io.usage.tx_bytes",
+                &[("interface", "eth0")],
+                0.0,
+                300.0,
+            ),
         ]
     }
 
@@ -917,6 +925,7 @@ mod tests {
         assert_eq!(c[0].service_id.as_deref(), Some("svc_inventory"));
         assert_eq!(c[1].service_name.as_deref(), Some("orders"));
         assert_eq!(c[1].network_rx_bytes_per_sec, Some(10.0));
+        assert_eq!(c[1].network_tx_bytes_per_sec, Some(5.0));
     }
 
     #[test]
@@ -1013,9 +1022,9 @@ mod tests {
     }
 
     #[test]
-    fn without_agent_metrics_the_gap_is_explained() {
+    fn without_collector_metrics_the_gap_is_explained() {
         let s = build_snapshot(T, &[], &[latency("orders", "o", "", "vps-app", 1.0, 1.0)], true);
-        assert!(s.notes.iter().any(|n| n.contains("Karbird agent")));
+        assert!(s.notes.iter().any(|n| n.contains("Karbird Collector")));
         assert!(s.notes.iter().any(|n| n.contains("incomplete")));
         assert_eq!(s.hosts.len(), 1);
         assert!(!s.hosts[0].has_metrics);

@@ -1,4 +1,4 @@
--- Machine and container metrics (ADR-0018): gauges and sums from the Karbird agent
+-- Machine and container metrics (ADR-0018): gauges and sums from the Karbird Collector
 -- (hostmetrics + docker_stats). One row per data point; `series_id` identifies the time series
 -- (metric name + resource + point attributes), so a broker redelivery collapses on merge.
 -- Retention: the TTL below is only the initial value; `karbird-api bootstrap` sets it from

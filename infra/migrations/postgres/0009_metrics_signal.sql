@@ -1,4 +1,4 @@
--- OTLP metrics (gauges and sums from the Karbird agent, ADR-0018) are a regular ingest signal.
+-- OTLP metrics (gauges and sums from the Karbird Collector, ADR-0018) are a regular ingest signal.
 -- New tokens get it by default; tokens that already carried every signal of the old default get
 -- it too, tokens deliberately narrowed to fewer signals stay as they are.
 

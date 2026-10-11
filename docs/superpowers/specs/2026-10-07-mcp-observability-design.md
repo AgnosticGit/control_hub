@@ -79,7 +79,7 @@ Arguments: `at_ns?`.
 
 Returns the existing infrastructure snapshot: machines, their resource metrics, containers,
 instances and replicas, internal/external/unknown resources, matching reasons and deterministic
-noisy-neighbour hints. It distinguishes missing agent metrics from a genuine zero value.
+noisy-neighbour hints. It distinguishes missing collector metrics from a genuine zero value.
 
 ### `get_infrastructure_timeline`
 

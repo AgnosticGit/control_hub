@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Frame, FrameSummary, TopologyView } from "@karbird/web-engine";
+import type { Frame, FrameSummary, InfrastructureSnapshot, TopologyView } from "@karbird/web-engine";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import type { EdgeStyle } from "@/renderer/edge-path";
 import type { PixiMap } from "@/renderer/pixi-map";
@@ -51,6 +51,10 @@ interface Props {
   topInset?: number;
   infrastructure: boolean;
   onInfrastructureChange: (enabled: boolean) => void;
+  serviceMetrics: boolean;
+  serviceMetricSnapshot: InfrastructureSnapshot | null;
+  serviceMetricsLoading: boolean;
+  onServiceMetricsChange: (enabled: boolean) => void;
   onlyProblems: boolean;
   onOnlyProblemsChange: (enabled: boolean) => void;
   hideInferred: boolean;
@@ -79,6 +83,10 @@ export function MapView({
   topInset = 0,
   infrastructure,
   onInfrastructureChange,
+  serviceMetrics,
+  serviceMetricSnapshot,
+  serviceMetricsLoading,
+  onServiceMetricsChange,
   onlyProblems,
   onOnlyProblemsChange,
   hideInferred,
@@ -103,10 +111,25 @@ export function MapView({
   const edgeStyleRef = useRef(edgeStyle);
   const topInsetRef = useRef(topInset);
   const selectedHostRef = useRef(selectedHost);
+  const serviceMetricsRef = useRef(serviceMetrics);
+  const serviceMetricSnapshotRef = useRef(serviceMetricSnapshot);
+  const serviceMetricsLoadingRef = useRef(serviceMetricsLoading);
   useEffect(() => {
     selectedHostRef.current = selectedHost;
     mapRef.current?.setSelectedHost(selectedHost);
   }, [selectedHost]);
+  useEffect(() => {
+    serviceMetricsRef.current = serviceMetrics;
+    mapRef.current?.setServiceMetricsEnabled(serviceMetrics);
+  }, [serviceMetrics]);
+  useEffect(() => {
+    serviceMetricSnapshotRef.current = serviceMetricSnapshot;
+    mapRef.current?.setServiceMetricSnapshot(serviceMetricSnapshot);
+  }, [serviceMetricSnapshot]);
+  useEffect(() => {
+    serviceMetricsLoadingRef.current = serviceMetricsLoading;
+    mapRef.current?.setServiceMetricsLoading(serviceMetricsLoading);
+  }, [serviceMetricsLoading]);
   const onSelectEdgeRef = useRef(onSelectEdge);
   const onSelectInstanceRef = useRef(onSelectInstance);
   useEffect(() => {
@@ -190,6 +213,9 @@ export function MapView({
         map.setEdgeStyle(edgeStyleRef.current);
         map.setTopInset(topInsetRef.current);
         map.setSelectedHost(selectedHostRef.current);
+        map.setServiceMetricsEnabled(serviceMetricsRef.current);
+        map.setServiceMetricSnapshot(serviceMetricSnapshotRef.current);
+        map.setServiceMetricsLoading(serviceMetricsLoadingRef.current);
         map.setSelectedEdge(selectedEdgeRef.current);
         map.setTopology(topo);
         const sel = selectedRef.current;
@@ -299,6 +325,8 @@ export function MapView({
           summary={summary}
           infrastructure={infrastructure}
           onInfrastructureChange={onInfrastructureChange}
+          serviceMetrics={serviceMetrics}
+          onServiceMetricsChange={onServiceMetricsChange}
           onlyProblems={onlyProblems}
           onOnlyProblemsChange={onOnlyProblemsChange}
           hideInferred={hideInferred}
@@ -381,6 +409,8 @@ export function MapView({
         summary={summary}
         infrastructure={infrastructure}
         onInfrastructureChange={onInfrastructureChange}
+        serviceMetrics={serviceMetrics}
+        onServiceMetricsChange={onServiceMetricsChange}
         onlyProblems={onlyProblems}
         onOnlyProblemsChange={onOnlyProblemsChange}
         hideInferred={hideInferred}
@@ -431,6 +461,8 @@ function AnimationNote({
   summary,
   infrastructure,
   onInfrastructureChange,
+  serviceMetrics,
+  onServiceMetricsChange,
   onlyProblems,
   onOnlyProblemsChange,
   hideInferred,
@@ -443,6 +475,8 @@ function AnimationNote({
   summary: FrameSummary | null;
   infrastructure: boolean;
   onInfrastructureChange: (enabled: boolean) => void;
+  serviceMetrics: boolean;
+  onServiceMetricsChange: (enabled: boolean) => void;
   onlyProblems: boolean;
   onOnlyProblemsChange: (enabled: boolean) => void;
   hideInferred: boolean;
@@ -466,6 +500,8 @@ function AnimationNote({
       <MapLayers
         infrastructure={infrastructure}
         onInfrastructureChange={onInfrastructureChange}
+        serviceMetrics={serviceMetrics}
+        onServiceMetricsChange={onServiceMetricsChange}
         onlyProblems={onlyProblems}
         onOnlyProblemsChange={onOnlyProblemsChange}
         hideInferred={hideInferred}
@@ -482,6 +518,8 @@ function AnimationNote({
 function MapLayers({
   infrastructure,
   onInfrastructureChange,
+  serviceMetrics,
+  onServiceMetricsChange,
   onlyProblems,
   onOnlyProblemsChange,
   hideInferred,
@@ -492,6 +530,8 @@ function MapLayers({
 }: {
   infrastructure: boolean;
   onInfrastructureChange: (enabled: boolean) => void;
+  serviceMetrics: boolean;
+  onServiceMetricsChange: (enabled: boolean) => void;
   onlyProblems: boolean;
   onOnlyProblemsChange: (enabled: boolean) => void;
   hideInferred: boolean;
@@ -542,6 +582,7 @@ function MapLayers({
           <p className="mb-2 px-2 text-xs font-semibold tracking-wide text-muted uppercase">Map layers</p>
           <div className="space-y-1">
             <LayerToggle label="Infrastructure" checked={infrastructure} onChange={onInfrastructureChange} />
+            <LayerToggle label="Service metrics" checked={serviceMetrics} onChange={onServiceMetricsChange} />
             <LayerToggle label="Only problems" checked={onlyProblems} onChange={onOnlyProblemsChange} disabled={!availability.ready || !availability.problems} />
             <LayerToggle label="Hide inferred" checked={hideInferred} onChange={onHideInferredChange} disabled={!availability.ready || !availability.inferred} />
             <LayerToggle label="Table view" checked={tableView} onChange={onTableViewChange} />

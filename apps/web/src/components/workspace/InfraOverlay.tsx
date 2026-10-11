@@ -83,7 +83,7 @@ export function InfraOverlay({ snapshot, error, selectedHost, visibleHostIds, on
         {!snapshot && !error ? <p className="px-1 text-muted">Loading…</p> : null}
         {snapshot && hosts.length === 0 ? (
           <p className="px-1 text-muted">
-            {onlyProblems ? "No machines with problem services." : "No machines yet: run the Karbird agent on your hosts."}
+            {onlyProblems ? "No machines with problem services." : "No machines yet: run the Karbird Collector on your hosts."}
           </p>
         ) : null}
         <ul className="min-h-0 space-y-0.5 overflow-y-auto">

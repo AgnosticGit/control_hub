@@ -493,7 +493,7 @@ impl Engine {
                         frame.has_metrics = host.has_metrics;
                     } else {
                         let name = frame.label.split(" · ").next().unwrap_or(&frame.host_id).to_owned();
-                        frame.label = format!("{name} · no agent metrics");
+                        frame.label = format!("{name} · no collector metrics");
                         frame.hot = false;
                         frame.has_metrics = false;
                     }

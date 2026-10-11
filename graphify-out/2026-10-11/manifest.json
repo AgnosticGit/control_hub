@@ -2928,9 +2928,9 @@
     "semantic_hash": ""
   },
   "crates/karbird-archive/src/segment.rs": {
-    "mtime": 1791695274.0544994,
-    "seen": 1791695490.0607383,
-    "ast_hash": "e8777d6f27f4dbaab39094b48586701c",
+    "mtime": 1791703816.9703896,
+    "seen": 1791704144.6806386,
+    "ast_hash": "c4c5566de1184a56b7514dd0990150a1",
     "semantic_hash": ""
   },
   "crates/karbird-archive/src/template.rs": {
@@ -3090,9 +3090,9 @@
     "semantic_hash": ""
   },
   "crates/karbird-engine-core/src/lib.rs": {
-    "mtime": 1791695219.8545842,
-    "seen": 1791695490.062252,
-    "ast_hash": "bbf8b5e27fec201c743c6bd7d2200ba9",
+    "mtime": 1791703608.150274,
+    "seen": 1791704144.6833427,
+    "ast_hash": "b280ea2f6f9eb547edde4413885825ab",
     "semantic_hash": ""
   },
   "crates/karbird-engine-core/src/reducer.rs": {
@@ -3390,9 +3390,9 @@
     "semantic_hash": ""
   },
   "crates/karbird-api/src/routes/infrastructure.rs": {
-    "mtime": 1791550221.5246575,
-    "seen": 1791558717.6630795,
-    "ast_hash": "b3c4a411d72c965fa8caad77f9ff7ee6",
+    "mtime": 1791703073.8308697,
+    "seen": 1791704144.6787708,
+    "ast_hash": "c5f13fb7ea0675621818218b24c2223d",
     "semantic_hash": ""
   },
   "crates/karbird-engine-core/src/infra.rs": {
@@ -4122,9 +4122,9 @@
     "semantic_hash": ""
   },
   "crates/karbird-convert/src/lib.rs": {
-    "mtime": 1791507168.058052,
-    "seen": 1791514607.4839158,
-    "ast_hash": "d8960158f4ed85c2a8bb87553adb3e6d",
+    "mtime": 1791703284.8112626,
+    "seen": 1791704144.6820526,
+    "ast_hash": "754d1a055824909ec3ea02591b959f31",
     "semantic_hash": ""
   },
   "docs/adr/0023-rdkafka-and-live-fanout.md": {
@@ -4230,9 +4230,9 @@
     "semantic_hash": ""
   },
   "crates/karbird-api/benches/infrastructure.rs": {
-    "mtime": 1791691592.8370862,
-    "seen": 1791692918.3545375,
-    "ast_hash": "3397e2c582fb4cdc923c50ba0a8b4905",
+    "mtime": 1791702519.696304,
+    "seen": 1791704144.6777642,
+    "ast_hash": "276dc8e944f798c60355bb4aac695257",
     "semantic_hash": ""
   },
   "crates/karbird-api/src/lib.rs": {
@@ -4272,9 +4272,9 @@
     "semantic_hash": ""
   },
   "crates/karbird-convert/benches/normalize.rs": {
-    "mtime": 1791691592.8415942,
-    "seen": 1791692918.3649087,
-    "ast_hash": "05fa9b56f0536fe7f73b75b768f6aa9b",
+    "mtime": 1791702255.42101,
+    "seen": 1791704144.6820526,
+    "ast_hash": "7ffa9a9af9de012b5e78947d26bd564d",
     "semantic_hash": ""
   },
   "crates/karbird-domain/benches/redaction.rs": {

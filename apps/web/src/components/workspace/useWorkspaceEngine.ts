@@ -8,8 +8,9 @@ import { scopedUrl } from "@/lib/api";
 import { NS_PER_MS, NS_PER_SEC, clampNs, nowNs, parseNs } from "@/lib/time";
 import type { AnimClock } from "@/renderer/hops";
 import { firstItemStart, playStart, replayStep } from "./timeline/range";
-import { hasFuture, rangeCoveredBy } from "./timeline/scale";
+import { clampRangeToNow, hasFuture, rangeCoveredBy } from "./timeline/scale";
 import { asLogSource, type LogSource } from "./logs-query";
+import { ENGINE_ROLLING_WINDOW_NS } from "./service-card-metrics";
 
 export type Mode = "live" | "paused" | "replay" | "historical";
 export const SPEED_MIN = 0.001;
@@ -40,6 +41,10 @@ export type Speed = number;
  * (OpenTelemetry's default is every 5 s), so the newest requests are not loaded yet at "now".
  */
 export const LIVE_ANIM_DELAY_MS = 8000;
+
+export function infrastructureFeedQuery(enabled: boolean): { infrastructure: "true" } | Record<string, never> {
+  return enabled ? { infrastructure: "true" } : {};
+}
 
 export function animClockFor(mode: Mode, speed: Speed): AnimClock {
   if (mode === "live") return { kind: "wall", delayMs: LIVE_ANIM_DELAY_MS };
@@ -115,7 +120,8 @@ export function asCompleteness(v: unknown): Completeness | null {
 
 export function useWorkspaceEngine(projectId: string, environmentId: string) {
   const clientRef = useRef<EngineClient | null>(null);
-  const infrastructureEnabledRef=useRef(false);
+  const infrastructureLayoutEnabledRef = useRef(false);
+  const infrastructureFeedEnabledRef = useRef(false);
   /** Settles once every range load started so far is done (success or not). */
   const loadsRef = useRef<Promise<void>>(Promise.resolve());
   const loadedChunksRef = useRef<Array<{ from: bigint; to: bigint }>>([]);
@@ -213,7 +219,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
           await c.call({ kind: "evictBefore", beforeNs: EVICT_ALL.toString() });
         }
         if (opts.topology) {
-          await c.call({ kind: "loadTopology", url: url("topology", from, to, { ...(stateRef.current.mode === "historical" ? {} : { live: "true" }),...(infrastructureEnabledRef.current ? {at:stateRef.current.cursor.toString()}: {}) }) });
+          await c.call({ kind: "loadTopology", url: url("topology", from, to, { ...(stateRef.current.mode === "historical" ? {} : { live: "true" }),...(infrastructureLayoutEnabledRef.current ? {at:stateRef.current.cursor.toString()}: {}) }) });
         }
         const r = await c.call({ kind: "loadTimeline", url: url("timeline", from, to, { limit: TIMELINE_LIMIT }) });
         loadedChunksRef.current.push({ from, to });
@@ -231,11 +237,14 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
   );
 
   const loadTimelineChunk = useCallback(async (from: bigint, to: bigint) => {
-    if (from >= to || to - from > 7n * 86_400n * NS_PER_SEC) return;
-    const key = `${from}:${to}`;
+    const bounded = clampRangeToNow({ from, to }, nowNs());
+    if (!bounded || bounded.to - bounded.from > 7n * 86_400n * NS_PER_SEC) return;
+    const boundedFrom = bounded.from;
+    const boundedTo = bounded.to;
+    const key = `${boundedFrom}:${boundedTo}`;
     const pending = chunkLoadsRef.current.get(key);
     if (pending) return pending;
-    if (loadedChunksRef.current.some((range) => range.from <= from && range.to >= to)) return;
+    if (loadedChunksRef.current.some((range) => range.from <= boundedFrom && range.to >= boundedTo)) return;
     const c = clientRef.current;
     if (!c) return;
 
@@ -245,18 +254,18 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       try {
         await c.call({
           kind: "loadTopology",
-          url: url("topology", from, to, {
+          url: url("topology", boundedFrom, boundedTo, {
             live: "true",
-            ...(infrastructureEnabledRef.current ? { at: stateRef.current.cursor.toString() } : {}),
+            ...(infrastructureLayoutEnabledRef.current ? { at: stateRef.current.cursor.toString() } : {}),
           }),
         });
-        const result = await c.call({ kind: "loadTimeline", url: url("timeline", from, to, { limit: TIMELINE_LIMIT }) });
+        const result = await c.call({ kind: "loadTimeline", url: url("timeline", boundedFrom, boundedTo, { limit: TIMELINE_LIMIT }) });
         if (c !== clientRef.current) return;
-        loadedChunksRef.current.push({ from, to });
+        loadedChunksRef.current.push({ from: boundedFrom, to: boundedTo });
         recordLoad(result);
         await refreshTopologyView();
         const s = stateRef.current;
-        patch({ rangeFrom: from < s.rangeFrom ? from : s.rangeFrom, rangeTo: to > s.rangeTo ? to : s.rangeTo });
+        patch({ rangeFrom: boundedFrom < s.rangeFrom ? boundedFrom : s.rangeFrom, rangeTo: boundedTo > s.rangeTo ? boundedTo : s.rangeTo });
         c.seek(s.cursor);
       } catch (error) {
         if (c === clientRef.current) patch({ error: error instanceof Error ? error.message : String(error) });
@@ -315,7 +324,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     const offFatal = client.onFatal((message) => patch({ phase: "error", error: message }));
     (async () => {
       try {
-        const init = await client.call({ kind: "init", config:{server_owned_topology:true} });
+        const init = await client.call({ kind: "init", config:{server_owned_topology:true, rolling_window_ns: ENGINE_ROLLING_WINDOW_NS.toString()} });
         patch({ phase: "ready", init });
         const now = nowNs();
         const from = now - LIVE_WINDOW_NS;
@@ -437,7 +446,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       }
     });
     patch({ liveTransport: "connecting" });
-    void c.call({ kind: "liveStart", url: scopedUrl(projectId, environmentId, "live", infrastructureEnabledRef.current ? { infrastructure: "true" } : {}) });
+    void c.call({ kind: "liveStart", url: scopedUrl(projectId, environmentId, "live", infrastructureFeedQuery(infrastructureFeedEnabledRef.current)) });
     const id = setInterval(() => void tick(), LIVE_TICK_MS);
     return () => {
       cancelled = true;
@@ -467,7 +476,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       const {rangeFrom,rangeTo}=stateRef.current;
       void (async()=>{
         try {
-          await client.call({kind:"loadTopology",url:url("topology",rangeFrom,rangeTo,{...(stateRef.current.mode==="historical" ? {} : {live:"true"}),...(infrastructureEnabledRef.current ? {at:stateRef.current.cursor.toString()}: {})})});
+          await client.call({kind:"loadTopology",url:url("topology",rangeFrom,rangeTo,{...(stateRef.current.mode==="historical" ? {} : {live:"true"}),...(infrastructureLayoutEnabledRef.current ? {at:stateRef.current.cursor.toString()}: {})})});
           if(cancelled || client!==clientRef.current) return;
           const result=await client.call({kind:"loadTimeline",url:url("timeline",rangeFrom,rangeTo,{limit:TIMELINE_LIMIT})});
           if(!cancelled && client===clientRef.current) {
@@ -595,11 +604,15 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
         url: scopedUrl(projectId, environmentId, "infrastructure", { at: at.toString(), ...(live ? { live: "true" } : {}) }),
       })) ?? null,
     setFilters: (f: Filters) => {
-      const changed = infrastructureEnabledRef.current !== f.infrastructure;
-      infrastructureEnabledRef.current = f.infrastructure;
+      infrastructureLayoutEnabledRef.current = f.infrastructure;
       clientRef.current?.setFilters(f);
-      if (changed && stateRef.current.mode === "live") {
-        void clientRef.current?.call({ kind: "liveStart", url: scopedUrl(projectId, environmentId, "live", f.infrastructure ? { infrastructure: "true" } : {}) });
+    },
+    setInfrastructureFeedEnabled: (enabled: boolean) => {
+      if (infrastructureFeedEnabledRef.current === enabled) return;
+      infrastructureFeedEnabledRef.current = enabled;
+      if (stateRef.current.mode === "live") {
+        const client = clientRef.current;
+        if (client) void client.call({ kind: "liveStart", url: scopedUrl(projectId, environmentId, "live", infrastructureFeedQuery(enabled)) });
       }
     },
     onLiveSignals: (listener: (signals: LiveSignal[]) => void) => {

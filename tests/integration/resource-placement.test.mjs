@@ -1,4 +1,4 @@
-// Databases on our own machines are placed automatically (ADR-0018): the Karbird agent reports
+// Databases on our own machines are placed automatically (ADR-0018): the Karbird Collector reports
 // each container's image and Docker Compose service, the SDK's client spans report the address
 // they connect to, and GET …/infrastructure says where each database runs. A managed database
 // (an address no agent answers to) is external. Writes only into the isolation tenant with

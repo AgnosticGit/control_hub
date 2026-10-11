@@ -15,7 +15,7 @@ export interface KarbirdOptions {
   requestEvents?: boolean;
   /** Incoming request paths that are not traced. */
   ignorePaths?: string[];
-  /** `host.name`; defaults to KARBIRD_HOST_NAME, then the OS hostname. Must match the Karbird agent's host name. */
+  /** `host.name`; defaults to KARBIRD_HOST_NAME, then the OS hostname. Must match the Karbird Collector's host name. */
   hostName?: string;
   /** `container.id`; defaults to KARBIRD_CONTAINER_ID, then /proc/self/cgroup or mountinfo. */
   containerId?: string;

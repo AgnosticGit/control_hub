@@ -432,7 +432,7 @@ pub struct InfrastructureSnapshot {
     /// Databases and queues on the map and where they run: on a machine with the agent
     /// (internal) or not (external).
     pub resources: Vec<ResourcePlacementDto>,
-    /// What could not be determined (no agent metrics, unmatched instances, truncation).
+    /// What could not be determined (no collector metrics, unmatched instances, truncation).
     pub notes: Vec<String>,
 }
 
@@ -442,7 +442,7 @@ pub struct InfrastructureSnapshot {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ResourceLocation {
-    /// On a machine the Karbird agent reports.
+    /// On a machine the Karbird Collector reports.
     Internal,
     /// At an address no machine with the agent answers to (a managed database, another network).
     External,
@@ -498,7 +498,7 @@ pub struct ResourcePlacementDto {
 pub struct HostDto {
     pub id: String,
     pub name: String,
-    /// False for a machine known only from span `host.name` (no Karbird agent on it).
+    /// False for a machine known only from span `host.name` (no Karbird Collector on it).
     pub has_metrics: bool,
     /// Busy CPU share of the whole machine, 0..1.
     pub cpu_utilization: Option<f64>,
@@ -551,11 +551,11 @@ pub struct ContainerDto {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum InstanceMatch {
-    /// Span `container.id` equals a container the agent reports.
+    /// Span `container.id` equals a container the collector reports.
     ContainerId,
     /// Span `host.name` is the container's hostname (Docker sets it to the short container ID).
     ContainerHostname,
-    /// Span `host.name`/`host.id` equals a machine the agent reports.
+    /// Span `host.name`/`host.id` equals a machine the collector reports.
     HostName,
     /// Only the span's own `host.name`; no agent confirms it.
     Unverified,

@@ -52,7 +52,7 @@ function metric(m) {
 /**
  * resources: [{ attributes, metrics: [{ name, unit?, kind: 'gauge' | 'sum', monotonic?, points: [{ attributes?, value, timeNs, startNs? }] }] }]
  */
-export function encodeMetrics(resources, scopeName = 'karbird-demo-infra-agent') {
+export function encodeMetrics(resources, scopeName = 'karbird-demo-infra-collector') {
   return Buffer.concat(
     resources.map((r) =>
       lenField(
