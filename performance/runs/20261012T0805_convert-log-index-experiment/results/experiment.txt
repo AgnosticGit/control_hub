@@ -1,0 +1,5 @@
+Rejected experiment: reused a Vec<usize> and sorted attribute indexes for log fingerprinting to reduce one temporary allocation per record.
+Benchmark: criterion:convert/normalize_1000_logs.v1
+Candidate mean: 1.2595 ms; Criterion interval [1.2464 ms, 1.2759 ms].
+Criterion reported +11.530% slower than the preceding estimate (95% interval +10.473% to +12.785%, p=0.00).
+Decision: reject and revert. Existing test log_ids_ignore_attribute_order_but_not_content passed before and after the experiment; no output change was accepted.

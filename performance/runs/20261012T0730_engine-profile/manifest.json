@@ -1,0 +1,19 @@
+{
+  "run_id": "20261012T0730_engine-profile",
+  "schema_version": 1,
+  "status": "unsupported",
+  "files": [
+    {
+      "path": "metadata.json",
+      "generated_by": "WPR profile attempt",
+      "sha256": "da7fc9e06c34be739fbab5fc71e0ff4f471841c1d58836c5e627ee45177b5cfb",
+      "bytes": 384
+    },
+    {
+      "path": "wpr-start.log",
+      "generated_by": "WPR profile attempt",
+      "sha256": "584d771c9b6dbd8ae0702f901851f6198afe2f6ca5ee4ca667ff3aa47463236e",
+      "bytes": 341
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "engine.apply-batch-2000",
+  "version": 1,
+  "kind": "criterion_micro_workload",
+  "crate": "karbird-engine-core",
+  "bench_target": "engine",
+  "criterion_id": "engine/apply_batch_2000_spans",
+  "scenario": "Apply a deterministic batch of 2,000 synthetic spans across 24 services, including parent-child edges and periodic errors.",
+  "fixture": "Generated deterministically by crates/karbird-engine-core/benches/engine.rs::fixture.",
+  "seed": "none; deterministic index-derived values",
+  "expected_output": "Engine accepts the batch; benchmark black-boxes the resulting engine",
+  "concurrency": 1,
+  "duration_seconds": 2,
+  "measurement": "Criterion latency per batch; Engine construction and fixture clone are in Criterion iter_batched setup and excluded from the timed closure",
+  "direction": "lower_is_better",
+  "source": "crates/karbird-engine-core/benches/engine.rs"
+}

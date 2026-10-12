@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "run_id": "20261012T145000000Z_resource-placement-ab",
+  "status": "completed",
+  "mode": "paired-allocation-experiment",
+  "workload": "place_200_resources_600_addresses",
+  "criterion_sample_size": 50,
+  "criterion_warm_up_seconds": 3,
+  "criterion_measurement_seconds": 5,
+  "divan_repetitions": 1,
+  "baseline_allocation_count": 8909,
+  "candidate_allocation_count": 8309,
+  "baseline_allocated_bytes": 479700,
+  "candidate_allocated_bytes": 460500,
+  "measurement_note": "Criterion short alternating repetitions are preserved in logs; accepted timing is from the controlled 3-repetition full-suite runs. Divan allocation counts are the primary evidence for this targeted experiment."
+}

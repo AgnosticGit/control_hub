@@ -1,0 +1,2959 @@
+﻿{
+    "schema_version":  1,
+    "status":  "completed",
+    "run_id":  "20261012T145454592Z_workspace",
+    "files":  [
+                  {
+                      "path":  "metadata.json",
+                      "sha256":  "aff6eac00347891aba591fe2f8e11c1321dedf3632a83c950e02471ad19a5bb9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  7375
+                  },
+                  {
+                      "path":  "logs/aggregate.log",
+                      "sha256":  "07db083bf9eb3bc4069c5a818c97d722c205bdf0d6d0cc12e576da16dc6e8b66",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  80
+                  },
+                  {
+                      "path":  "logs/collect-repetition-1.log",
+                      "sha256":  "e5f3cfd146806f216e867f5f0a50e3a2865d7bd8eb58f7a9e9da4b9bbc733ffb",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  78
+                  },
+                  {
+                      "path":  "logs/collect-repetition-2.log",
+                      "sha256":  "e5f3cfd146806f216e867f5f0a50e3a2865d7bd8eb58f7a9e9da4b9bbc733ffb",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  78
+                  },
+                  {
+                      "path":  "logs/collect-repetition-3.log",
+                      "sha256":  "e5f3cfd146806f216e867f5f0a50e3a2865d7bd8eb58f7a9e9da4b9bbc733ffb",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  78
+                  },
+                  {
+                      "path":  "logs/workspace-repetition-1.log",
+                      "sha256":  "5c948bfd6750358dca5010620793cbf11a5b9d1e73dc173778b9763b89cdf758",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  64145
+                  },
+                  {
+                      "path":  "logs/workspace-repetition-2.log",
+                      "sha256":  "f1f3c85a21c3f3a2474f225486f6877527d62d535fbedfd8cadb21e5208a35ba",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  64047
+                  },
+                  {
+                      "path":  "logs/workspace-repetition-3.log",
+                      "sha256":  "f7dfc1c61ae71911a6c715da176135ba1312ca9fe91a8263e470d08e041048cf",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  64599
+                  },
+                  {
+                      "path":  "results/summary.json",
+                      "sha256":  "4e8888299761d67c8f71abebdb119b006c13172b57dc01123395af951cfc29f6",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  38135
+                  },
+                  {
+                      "path":  "results/repetition-1/summary.json",
+                      "sha256":  "109a4fafc0a6e2bdac313f99acc1cf8a6de973887c6752d3e85e07232638a405",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  27570
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/actions_evaluate_policy/new/benchmark.json",
+                      "sha256":  "dff521f26b0be7e850da642b59b1718dcbeb909b517cf3d432010cdb7cceb0de",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  205
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/actions_evaluate_policy/new/estimates.json",
+                      "sha256":  "5efd14a6167389a4d8b8c4772f9517e9c4fe382e7869828ac450576b25cad858",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  986
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/actions_evaluate_policy/new/sample.json",
+                      "sha256":  "7f9c05c16fb96d33b1904cd0eab7f15133a8344aab8855ccdf62a753cc7730b5",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  672
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/actions_evaluate_policy/new/tukey.json",
+                      "sha256":  "124647647aeb2d588a354920bbef5ab0cdcece2cd2631d31ea918bd170614d16",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/actions_validate_scale/new/benchmark.json",
+                      "sha256":  "a12176b077979d6a1d99f60b2e223f498b23d38e42b8aa1110287279ee30c9cb",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  201
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/actions_validate_scale/new/estimates.json",
+                      "sha256":  "b321c4863d30ce7ff16f53e0c8a233653673ca1adfc4ba91c66de14df7fddafc",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  994
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/actions_validate_scale/new/sample.json",
+                      "sha256":  "1271b459ab8f425b6d84e2c0cf7094ae918dfe37ffe0cf5f4ee44686b0be87dd",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  706
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/actions_validate_scale/new/tukey.json",
+                      "sha256":  "eeb11c0ca38f95867d9e5f2f1f0a4241f4ec2eea5dad7676dca9efbded00d173",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_group_500_hosts_and_containers/new/benchmark.json",
+                      "sha256":  "86e039a9bfa35953511b9f8f78ab3d37bc7546432ba355de73c50193d9ebdfaa",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  249
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_group_500_hosts_and_containers/new/estimates.json",
+                      "sha256":  "e305aff974cd45b66d29e968d8aa2d865403c37969b3e131812d4838d16c32c2",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  972
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_group_500_hosts_and_containers/new/sample.json",
+                      "sha256":  "60270be4f38d827a4ad9a0027b6760de3de4cac5ab77580db7d933bf5e7d13d0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  581
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_group_500_hosts_and_containers/new/tukey.json",
+                      "sha256":  "539ae7dc52f260d4dc5a2164099f351e6948e6ae4ebcb95c1cbf6882b9068f33",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_group_500_hosts_cpu_utilization_fallback/new/benchmark.json",
+                      "sha256":  "0695d57ac2c371a7c4aa5d83574cba15c7a38b7219b1e659d7c9722d227a0431",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  289
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_group_500_hosts_cpu_utilization_fallback/new/estimates.json",
+                      "sha256":  "bd89d4ddbb4935c8c440eca82d7fbe4f5340672ad16cec722ffd11bf66ecc8ca",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  978
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_group_500_hosts_cpu_utilization_fallback/new/sample.json",
+                      "sha256":  "657781a6377e79461c04898080013c4c8e18498714bbffe246fb4eb7a28e78ac",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  593
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_group_500_hosts_cpu_utilization_fallback/new/tukey.json",
+                      "sha256":  "6ff8a8e7ea74e2cb5e917729f300ba732817b67adda62d5c743179f2315ffefe",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_group_500_hosts_realistic_metrics/new/benchmark.json",
+                      "sha256":  "6a16b4bb5e2f73db8ac90212d0bfe95e101f529c7c8703815559864aa33924a6",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  261
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_group_500_hosts_realistic_metrics/new/estimates.json",
+                      "sha256":  "716cd3bb8f26ed231ed4c12865b5f43d270394a5c8211bfc2d58e47ed6a211c0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  976
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_group_500_hosts_realistic_metrics/new/sample.json",
+                      "sha256":  "97dcf8954fb714fb90d2c3338288c424062b6ef0a4f7388381347c02a90da4fd",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  571
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_group_500_hosts_realistic_metrics/new/tukey.json",
+                      "sha256":  "ebc7f1743e2979c88302e3b5b4cb84ec9df26316790ad1556d2962e6426ec8c9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_place_200_resources_600_addresses/new/benchmark.json",
+                      "sha256":  "32be55b04ec645409e34bbdf0b7eee3d72b61f39fa5eeadc614b8898f9485582",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  261
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_place_200_resources_600_addresses/new/estimates.json",
+                      "sha256":  "f44ae832561def1196f5061c0e4a6b66bc863622f388a38d4afd97197f73827a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  980
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_place_200_resources_600_addresses/new/sample.json",
+                      "sha256":  "acc6b1d717ee07540c5a5b3f8eb0e0e8e88cfce0d59b444dd5a41febdb6613a9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  562
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/api_place_200_resources_600_addresses/new/tukey.json",
+                      "sha256":  "acf54614c0d2ed2aaa4d518dbe004061c3985cc4457dded3caf40f869816b730",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archiver_plan_closed_windows/new/benchmark.json",
+                      "sha256":  "3c8faf68d51a3f8002111a703148f0d79af0e12a83896648d92adca5addde7b9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  225
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archiver_plan_closed_windows/new/estimates.json",
+                      "sha256":  "2439678c710c982aa3ce66ff294a26b40a5c7dc2ce51cca5d977550f4eee05a0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  985
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archiver_plan_closed_windows/new/sample.json",
+                      "sha256":  "7c3dadba5e443c1d25c9edcfef071f7ee1fe03ba0cdb2f9660de63a199d6ec0d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  664
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archiver_plan_closed_windows/new/tukey.json",
+                      "sha256":  "ef92851aba3106aa0e94117e80e467f28a582cd0a6c483a3fab91ed129165a00",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archive_decode_512_logs/new/benchmark.json",
+                      "sha256":  "af80320d5aac35f3102632ec796c12810af0fbc82708ab4191d7842001b7008d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  205
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archive_decode_512_logs/new/estimates.json",
+                      "sha256":  "1ab29c8c07976c236884351575a4a3c8cda87b8e055551f90a87f5d985854b71",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  978
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archive_decode_512_logs/new/sample.json",
+                      "sha256":  "2310c03238eb9eca178a5c11a5fc0d37fb4859caf82e6ee4626d4ca1c9ec72d3",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  574
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archive_decode_512_logs/new/tukey.json",
+                      "sha256":  "6ba31b5434892b9ba185b58ecb868e36acd6336a34bca7f9916ada59b5ac9388",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archive_encode_512_logs/new/benchmark.json",
+                      "sha256":  "ad19bedc839c407a4cac72b9abd11efd0ce4bb9caaeed1b0328b13cf4515d304",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  205
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archive_encode_512_logs/new/estimates.json",
+                      "sha256":  "59b569387df3d7421561b181c2ea9c5fa9d52842f7e769faa201b1c0b7eb3503",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  977
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archive_encode_512_logs/new/sample.json",
+                      "sha256":  "952890fce3303e6e457c0c22949d3ba500f876be16a20a59eee42ed1e2033ee7",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  563
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archive_encode_512_logs/new/tukey.json",
+                      "sha256":  "5d4f83985450c6333bf14f626e12aa3bc9f460585f59fb46edce3037c4d674f5",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archive_index_512_logs/new/benchmark.json",
+                      "sha256":  "82d3c284ae51a86a2f49d2ce8752410cdd6da144506a2397b947dda943678e9f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  201
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archive_index_512_logs/new/estimates.json",
+                      "sha256":  "e21dcf532e916e5c38540506bcefb50b14cbe175a81ffdd8f0651dd476a09cb5",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  977
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archive_index_512_logs/new/sample.json",
+                      "sha256":  "c1695d33fabbde242057f704ac7a893253d50c71cf29913ae2818070480bc0ab",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  600
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/archive_index_512_logs/new/tukey.json",
+                      "sha256":  "6270a344beac5d01f9e4f138521b737cf051c26e79acd22740548a4b14c3a00c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/cli_parse_node_entry/new/benchmark.json",
+                      "sha256":  "ce11c070ad53f063ef158a167e160c5413f19ca87296a127a28c8aed75588b7b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  193
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/cli_parse_node_entry/new/estimates.json",
+                      "sha256":  "1ed6560888f789f2f768fcd51e52086dd31b1b6038f6970fd63340addf146cd2",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  990
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/cli_parse_node_entry/new/sample.json",
+                      "sha256":  "841930c4b8ad058c31ff441a25aab32576f48ea7ae88ed61343171123b976126",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  688
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/cli_parse_node_entry/new/tukey.json",
+                      "sha256":  "bcba97ec24d5ff857eb0c882a2596b9b5c1ee905d79dc4d4b748a9d42e29f7fd",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_1000_logs/new/benchmark.json",
+                      "sha256":  "3c789b14862692d485aba9179188484ed51f46af94f6855b758f46d6d5685864",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  221
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_1000_logs/new/estimates.json",
+                      "sha256":  "b38ee72aa6ce40b80c744947bba4d96a4642e33e60789f258028169006f7677e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  982
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_1000_logs/new/sample.json",
+                      "sha256":  "b91b8ceeaa017cdd93c689b620a2d89aa30ac2b52c64623637a56d9e86b88c46",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  569
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_1000_logs/new/tukey.json",
+                      "sha256":  "cf85862cc49f33675721fe78d7d54e7245b694ec798b13fceb85fd52fe6c450c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  50
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_1000_spans/new/benchmark.json",
+                      "sha256":  "de34fb390f994f16b5d083219e8e5dde990c1e62423f54ef64bed58d3531a36d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  225
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_1000_spans/new/estimates.json",
+                      "sha256":  "bc3a268498b06bf7d8b544e7568c6b75d4de93e0707ef3311cdfe926dd2ea121",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  976
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_1000_spans/new/sample.json",
+                      "sha256":  "1d4f2106d3dd56248c5bd9c25ed188cb74e64e8cb9c746dfe4527782cbf5d73e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  570
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_1000_spans/new/tukey.json",
+                      "sha256":  "dd9ea5fd08e8b209e2b76fed35b40e1b193dc166784b38ab5c7717212ccea493",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_256_custom_events/new/benchmark.json",
+                      "sha256":  "fce263b35f6f4f656635ace239b2483fcac9b114d693031949801b73e982ecaf",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  253
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_256_custom_events/new/estimates.json",
+                      "sha256":  "ae9f75d502b15c7d9afe6606ca3071ad289eea59944fceb05fe4e94a154a40f1",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  975
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_256_custom_events/new/sample.json",
+                      "sha256":  "373c58f9ad6c9c6c187f0cdcc3d45330e181d7183384950441c9a9c649e65a0c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  602
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_256_custom_events/new/tukey.json",
+                      "sha256":  "ed4fb832e6193259dfabbe416b457c431cbde5920d8d60ee0b63f7f3c956e1a6",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_256_metric_points/new/benchmark.json",
+                      "sha256":  "9bdce3ebfc8b8acf65828161ecf18380b8ba6d6c9679694b4312452fe4875351",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  253
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_256_metric_points/new/estimates.json",
+                      "sha256":  "13393dda0a1a2d79163a87d3d9a4c5a66a71c12ba75058a75c16253caafcc6e8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  979
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_256_metric_points/new/sample.json",
+                      "sha256":  "6410e44abd10f532892b7c80cc9c47b4e1638e61a83d1f9ecbf25b6f7eeb645a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  578
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/convert_normalize_256_metric_points/new/tukey.json",
+                      "sha256":  "87f79adbf981b410aafaeef71ad3334a0feb81c8ac644f446fff16e5571d941f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  71
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_classify_common_attribute/new/benchmark.json",
+                      "sha256":  "3b0669c2a601340b573797743e11c3e31c73ff3b3da3f8c6d071b5320a2c36ae",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  241
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_classify_common_attribute/new/estimates.json",
+                      "sha256":  "63fcc50817b91042396c1ffd698f3db88fc74b7e8f3fe27a0283cf95b74afaf4",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  981
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_classify_common_attribute/new/sample.json",
+                      "sha256":  "af96a7c994ee8a9c6ac035b217853a8661bb9e3ab1c59493e7219460cb145547",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  664
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_classify_common_attribute/new/tukey.json",
+                      "sha256":  "c24c3609027b614a0bef40b5d7fafe802e51eafcb632a85f822929d44ad14f9d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_classify_header/new/benchmark.json",
+                      "sha256":  "a4ecd021bcbd87e5e0cf5cf59273a860492ff33d3c2f534e54fcea2145a6462c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  201
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_classify_header/new/estimates.json",
+                      "sha256":  "6a57fe5cabfe9e7752b2f65ac0653c1398e37d45618027a1c5685bbff0077f69",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  989
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_classify_header/new/sample.json",
+                      "sha256":  "78158b0c895bc0dbd555eddd3610e79f2ceb6633e5cb09f3740ddf1220d50ea3",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  693
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_classify_header/new/tukey.json",
+                      "sha256":  "3aa442702aa91c53f511b845c5f1fc49c100618fd4f43f67ac00039db984fcc3",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_derive_scoped_service_id/new/benchmark.json",
+                      "sha256":  "f9ecea9297243120c6038fc617e756bc633ebcd5e094d9e211e638f01a383f3c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  237
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_derive_scoped_service_id/new/estimates.json",
+                      "sha256":  "9585f482736b007059cd3f196ea2dfa093cdbbf7e7f42f52cccac91168863394",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  985
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_derive_scoped_service_id/new/sample.json",
+                      "sha256":  "006fd85258ecbb62a19c413cb6f99e4fa04ee787fd02ddb46c86d396fed2da0f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  678
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_derive_scoped_service_id/new/tukey.json",
+                      "sha256":  "61fad7918867e081855c615dd0d169e80972139135f0505eab7acde4b0fa2cbc",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_mask_bearer_plain_value/new/benchmark.json",
+                      "sha256":  "3eb06595f7990c6d8af71c1f99478fbbd3f4325853170f05c96aa1c6598e374e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  233
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_mask_bearer_plain_value/new/estimates.json",
+                      "sha256":  "96b7c4c59533f842beac6af202f91b3992f08ef88016a53f11050a2354291e1e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  988
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_mask_bearer_plain_value/new/sample.json",
+                      "sha256":  "345c5b3ef37f176af16ee11487f3563e066b2c6bfc15edef6eb36bc5e357c3ef",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  693
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_mask_bearer_plain_value/new/tukey.json",
+                      "sha256":  "8b44573e0fe2df43c4754ecb1e721f9b6614079ed5e85ca0a53b3d17d28f6aec",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_mask_bearer_secret_value/new/benchmark.json",
+                      "sha256":  "33a6a4aade8875e5b80174b4efa3e924c13b9a31245a8ebdcd78d1bc2bfaf164",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  237
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_mask_bearer_secret_value/new/estimates.json",
+                      "sha256":  "712a0aec1baa697f232ea234b1aa01af29cb5a6e4a963a677c11cc352b5fceec",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  985
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_mask_bearer_secret_value/new/sample.json",
+                      "sha256":  "fbefc1ad31d877f441d16341f3bea53a1ddc5b796a5b0f02e170b58135bf04e4",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  691
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_mask_bearer_secret_value/new/tukey.json",
+                      "sha256":  "11976d2c41fdf41c955ef647254e458e32a9309d328dc1d321634f066d20f8af",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  71
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_redact_url_attribute/new/benchmark.json",
+                      "sha256":  "5b5b8df1c32c6700eaff2e847400f0350b258691903bc8e0a59e823aebb46f56",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  221
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_redact_url_attribute/new/estimates.json",
+                      "sha256":  "af43e6ab832bcbc03cc6f721dc718e077036a8afce7f753714f12c9cda50ca8b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  994
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_redact_url_attribute/new/sample.json",
+                      "sha256":  "2a30acfa6849d62f74c859b7edc8310787d873f653a417ce2889722269d7a5b7",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  685
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_redact_url_attribute/new/tukey.json",
+                      "sha256":  "54ff8a5cf8d3d6bddad6f867e55b2f6281a60bb7d4d85ef193a4e6a48ac0718f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_sanitize_common_string_attribute/new/benchmark.json",
+                      "sha256":  "4286947ad83eb8461da4b9b687e00cbf6920d6959806c7e7744ec9fd74de8f3f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  269
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_sanitize_common_string_attribute/new/estimates.json",
+                      "sha256":  "594bfeca9dbaff9397ac0f1d48a34797e7824a44e0540235d320c636839bdd31",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  988
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_sanitize_common_string_attribute/new/sample.json",
+                      "sha256":  "661b257f7e3a22e9b7fb3100cba1e52fcf53a641bb82e2c1d4efe22262fb2991",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  694
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_sanitize_common_string_attribute/new/tukey.json",
+                      "sha256":  "1b1f0e59a57322aae5ca96ab529cd4fd866d021215bd4d522462d4da6d6e3509",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_sanitize_common_string_attribute_in_place/new/benchmark.json",
+                      "sha256":  "ff8c74367b18ee7de603800dae4bdb9fb59f8caa2758b184ae19fe22f507d7d0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  305
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_sanitize_common_string_attribute_in_place/new/estimates.json",
+                      "sha256":  "f5b9a446ee2f4156d549174c82e6f85495ed0edf26e12b4fb4477b452e7681f2",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  998
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_sanitize_common_string_attribute_in_place/new/sample.json",
+                      "sha256":  "03ff01fec2b55a873125a01a8259df08725b6a0fc6bfe6bd0fe337330062d10f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  676
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/domain_sanitize_common_string_attribute_in_place/new/tukey.json",
+                      "sha256":  "dc8415493b333c76eb320677438b035b835cc312a768d84b929140a4307bc161",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_apply_batch_2000_spans/new/benchmark.json",
+                      "sha256":  "cf12d56467fe9983125d794d613c54fa81344a0488bd2a750ddbf5b92b648c86",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  229
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_apply_batch_2000_spans/new/estimates.json",
+                      "sha256":  "82002281758f9d2204330b704dca949fc3b2e10e9250fedf74eb154d2ffbf494",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  975
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_apply_batch_2000_spans/new/sample.json",
+                      "sha256":  "90ee89d7519092564974fa61f91dbd0ec328f30fbe5f2c446a459c8cc2989d38",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  566
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_apply_batch_2000_spans/new/tukey.json",
+                      "sha256":  "1bad36da0065694f425444af08787b8125307699bc11c31b82d42b72db3f9e8a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_apply_batch_json_2000_spans/new/benchmark.json",
+                      "sha256":  "a7f2df1479696d0d896e4353f3b587bd1600241afe5bd2496456a1ae61d7569f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  249
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_apply_batch_json_2000_spans/new/estimates.json",
+                      "sha256":  "78d26d43e2f66fa00880c2029d282dae9c378fe07af72a57fbd514e71219157e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  976
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_apply_batch_json_2000_spans/new/sample.json",
+                      "sha256":  "16757927569bb6505282a1f024be8fc65011b2af682723914c57264e31a686be",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  557
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_apply_batch_json_2000_spans/new/tukey.json",
+                      "sha256":  "002fbed0f7774b06bec15f5f5a6e5bef836b3fc7c35b9325d24de9a61e133839",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_build_server_geometry_100_nodes/new/benchmark.json",
+                      "sha256":  "51b8a6a737192706449a2465acc43f823de81047993858e4b02d20ca70c51b92",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  265
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_build_server_geometry_100_nodes/new/estimates.json",
+                      "sha256":  "8122af3aa8f657a666d677a044a449d77c4e5ec9c64c0081657e3c2cb5656502",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  975
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_build_server_geometry_100_nodes/new/sample.json",
+                      "sha256":  "21a7d0578a9d941d93fb0029e0befcb8d4665083249db4dff573d081e9a93190",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  570
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_build_server_geometry_100_nodes/new/tukey.json",
+                      "sha256":  "5070b2ea77a7826528d5873671838d101e41cb47030e486ad0a2422387e900f8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  72
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_search_visible_state_1000_nodes/new/benchmark.json",
+                      "sha256":  "7a278101654ab6c17d7642dff30380de1851f36bb5db45817371457c121ea13a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  265
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_search_visible_state_1000_nodes/new/estimates.json",
+                      "sha256":  "dee1143843156b1385f90212ebaa5e171b7945c3260ea86acaf6231d6dddc059",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  975
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_search_visible_state_1000_nodes/new/sample.json",
+                      "sha256":  "d68b533fa3d464c678fe9016f15155877c648e3d826cbd208877eee646a5b187",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  615
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_search_visible_state_1000_nodes/new/tukey.json",
+                      "sha256":  "fbbe9d8f8d7682a8896bedc69c03fa91c77c5ba2afcd2e11270f81d7a7e93614",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_seek_and_build_visible_state/new/benchmark.json",
+                      "sha256":  "43aae599ff8e4eb5af60e9dc1f306f8032684e7db64d41d2c8330c5e8f97982b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  253
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_seek_and_build_visible_state/new/estimates.json",
+                      "sha256":  "c580879f575737bcebf89654d57411e8e41f59168ae0cf594b7627ee264aed94",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  984
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_seek_and_build_visible_state/new/sample.json",
+                      "sha256":  "dddc2b387feb3fbd507c5925da8d032e43ef7096f30c8a81baa2e05bef907c39",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  614
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/engine_seek_and_build_visible_state/new/tukey.json",
+                      "sha256":  "f82c169ec2375aebd41e1b9d5a462a62c1517abae725edb92302ea69390798da",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/executor_evaluate_and_record_verification/new/benchmark.json",
+                      "sha256":  "fe04b22eebf06c2841bb4c39fff0cf13605d4fc071a7a2d234a4853f348b024c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  277
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/executor_evaluate_and_record_verification/new/estimates.json",
+                      "sha256":  "28f6bde3fa2c52992d97bce99171f338e7402c2150509457bc8632cac2c3c2fa",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  979
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/executor_evaluate_and_record_verification/new/sample.json",
+                      "sha256":  "af58f714a5075e2a84f589057f39d92f550c5847ae5ae1e1bc0a184631045e3e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  655
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/executor_evaluate_and_record_verification/new/tukey.json",
+                      "sha256":  "ef925a0de454880ea016cf6ecd77077a21c93b0124e09d18ea3c9e8b4b987f1a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_logs_with_attributes/new/benchmark.json",
+                      "sha256":  "34952d69e034665091842e04471872a7795a8585c7fb14978a608726898dd262",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  277
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_logs_with_attributes/new/estimates.json",
+                      "sha256":  "40a32a2e3624432549fe4d9494178f771fff20a31aaa17a8a1521dc59cb31e17",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  980
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_logs_with_attributes/new/sample.json",
+                      "sha256":  "cfe29b54bda228ce0992308228f22233a8951a14faccd6509c902d9d7ce5655c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  566
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_logs_with_attributes/new/tukey.json",
+                      "sha256":  "786d4ae8aacda945273787d829eb27b08d722bdf5bdd6e3d935d297c67c627df",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_metric_points_with_attributes/new/benchmark.json",
+                      "sha256":  "c0fc7c99d003fb2dfddc88c28fc018fdd075e49d13224951379c1f292bcb5745",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  313
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_metric_points_with_attributes/new/estimates.json",
+                      "sha256":  "5382c6d6ffa3e3a3b50c4e7939c196d95c2a750467f562beed5acfffb26719b3",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  967
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_metric_points_with_attributes/new/sample.json",
+                      "sha256":  "309e5e8f379eb375ae8efa442a74320a1127950d335e862bc4d76a2635a7ad1f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  565
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_metric_points_with_attributes/new/tukey.json",
+                      "sha256":  "f1730c92ef8a0da5f95d24a8a96b0b689e7adeb69460ee694da84bba7535441a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_traces/new/benchmark.json",
+                      "sha256":  "6533d88cb78cd8f1370fce6913973dcff05c1c9d265a8604dd933267b3dc00e6",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  221
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_traces/new/estimates.json",
+                      "sha256":  "c202ab7f1262559970407dcbb21840dd065bd9edab9092d0602cefd8997d453c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  977
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_traces/new/sample.json",
+                      "sha256":  "97a05a96f9300886fde09b5b3ed94294bf83b66c48cd116a3710788e633eb6ea",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  565
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_traces/new/tukey.json",
+                      "sha256":  "21ddcdd8be0ea0a3dde2efbcb5a7925bf009af67db28aae9170881d37eb063d3",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_traces_with_attributes/new/benchmark.json",
+                      "sha256":  "f957e704cd44877e6ef21e31100f152af88f465627b3f9fb90ae18afae32283d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  285
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_traces_with_attributes/new/estimates.json",
+                      "sha256":  "00c58002727023c9e7d4bbd11e6869a1343a08986b1222ab356f358550ec7176",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  973
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_traces_with_attributes/new/sample.json",
+                      "sha256":  "3dbf6fb3c7ec4048b52de5822a55b27b529eb0b32d681d619b5fd7438bf7468f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  564
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/ingest_sanitize_1000_traces_with_attributes/new/tukey.json",
+                      "sha256":  "ff46983fff92ee561fc90df92aa00f0d12f2504e6d2b94088c8e9040a83ca82e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/processor_check_dead_letter_payload_bound/new/benchmark.json",
+                      "sha256":  "3ed303b8a13150eeae3d3305f7ebbbc0cffcfee74a1b18b9cba81dc65746365c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  277
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/processor_check_dead_letter_payload_bound/new/estimates.json",
+                      "sha256":  "e612a337ae68456a103d4e8811f2ac9e9d64d0a810e16f8d2137de8018cd8d7b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  1022
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/processor_check_dead_letter_payload_bound/new/sample.json",
+                      "sha256":  "0342392b1055d45cd11562b3542e5826938fe3dc25aa6eb817904e67c489fc0b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  754
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/processor_check_dead_letter_payload_bound/new/tukey.json",
+                      "sha256":  "3af6922c29a1f3b84d17a1195519ac915dc8082755f373025696a8bffa9ad0eb",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  79
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/processor_drain_128_ready_records/new/benchmark.json",
+                      "sha256":  "3bee57f77045c2b14f3aded9e6317f2fcd662708b8f66a4f4c2e6c84089714c7",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  245
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/processor_drain_128_ready_records/new/estimates.json",
+                      "sha256":  "2381275f214cd63e582de62a818af9ea69b7428fb15a6f53c4abc609a086b79b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  984
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/processor_drain_128_ready_records/new/sample.json",
+                      "sha256":  "99c04bc77144e0ecb5da6caa438a19bab1af61066e2a40300f7fb0622fbe224d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  634
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/processor_drain_128_ready_records/new/tukey.json",
+                      "sha256":  "7811d27f70c8b9b99fd6d917c3ad8f80dd4f474332a84cc8356573d660665524",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/protocol_decode_256_events/new/benchmark.json",
+                      "sha256":  "488d48b6eec47bb323809445498652d364517e0114e01b74dbede1f3c82903f0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  217
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/protocol_decode_256_events/new/estimates.json",
+                      "sha256":  "dd4ec89fdec6da60c4408fd9074c1a6a521861c8a519d957fae08835ab63595f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  985
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/protocol_decode_256_events/new/sample.json",
+                      "sha256":  "a0caad7eb36d1858e62968fc1b07fb54abf4c91cf9aeb007096fdf69d033f16c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  611
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/protocol_decode_256_events/new/tukey.json",
+                      "sha256":  "1cfac58ee49c0ca894a033872334b88fdab662f6f8b59258a9038c164c69e304",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/protocol_encode_256_events/new/benchmark.json",
+                      "sha256":  "70db09deb88740e0e7667063dc4154fa1bf2f562bd2b4d5078ed1e6a240055e8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  217
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/protocol_encode_256_events/new/estimates.json",
+                      "sha256":  "2baa27f1611e25f0f06aea58c3db53fa2307916491332fcb313b8c0efda07fa2",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  976
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/protocol_encode_256_events/new/sample.json",
+                      "sha256":  "3bb3099bf5c8754fa843ef01f6cf19d405c5bdaa8baa670ee17947b7421929a9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  632
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/protocol_encode_256_events/new/tukey.json",
+                      "sha256":  "3dea838977c179b457bc595d7c0f6fe61ad2ea84f6fb6ce7eb25ab62814b7c52",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  72
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/runtime_backoff_schedule/new/benchmark.json",
+                      "sha256":  "f1255a12bc7d9e41c77184aaa86d5f08db3e5b3b24f89049833db3980f318a8b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  209
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/runtime_backoff_schedule/new/estimates.json",
+                      "sha256":  "6817ce6ce1744fc94a75580306ac4a6cbd0f9c2623fba9faf8a0d9950545aa00",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  1006
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/runtime_backoff_schedule/new/sample.json",
+                      "sha256":  "eb2a74bc98292a588227022b44d3095d499a89a0ca84fa519791414ffb646dff",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  713
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/runtime_backoff_schedule/new/tukey.json",
+                      "sha256":  "eed959e10d977d8afe2712a101a7455da7c3ac8887f6e5943ce3f806474979c4",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/storage_parse_clickhouse_ttl/new/benchmark.json",
+                      "sha256":  "b76b51ad894d30d440586b710e3f23bdfcc120f131294dff35763808b987a21a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  225
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/storage_parse_clickhouse_ttl/new/estimates.json",
+                      "sha256":  "98a169948521aeaca645bd5fb200a8d20a93be9c74ea83283a618d191219f2e5",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  982
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/storage_parse_clickhouse_ttl/new/sample.json",
+                      "sha256":  "ad72d49593bf495967b16ff64c48e6c83d57df8b77c10ac31680bd06d1b086e6",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  682
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/storage_parse_clickhouse_ttl/new/tukey.json",
+                      "sha256":  "65c3e2f3027dd8cff35fc488c7e4ea00e749ba7085b1f114dcb16ea00e81bdc1",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/web_engine_construct_from_config_json/new/benchmark.json",
+                      "sha256":  "deca4a05802c3d450c4c7b4e5959c417cc86e68453e006452ef285c1b3d9ec6f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  261
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/web_engine_construct_from_config_json/new/estimates.json",
+                      "sha256":  "1e8e30319261b003618c3edd9039e9174fa8fc91e532ac1180193d13e30650c0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  985
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/web_engine_construct_from_config_json/new/sample.json",
+                      "sha256":  "55963aacf0d66fbf7e59d92ae17cfdbb61b16ebacbbbbec0804cd695fcabc30b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  675
+                  },
+                  {
+                      "path":  "results/repetition-1/criterion/web_engine_construct_from_config_json/new/tukey.json",
+                      "sha256":  "ccbeb42e91d1fead7fccab26bbb36cdee88bbc99c7e0471f00d7725f4a9455a3",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-2/summary.json",
+                      "sha256":  "0a8689170ceb749472b403918eb54cda2fd0e2b2f6f91a3619454996d38fb354",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  27550
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/actions_evaluate_policy/new/benchmark.json",
+                      "sha256":  "dff521f26b0be7e850da642b59b1718dcbeb909b517cf3d432010cdb7cceb0de",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  205
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/actions_evaluate_policy/new/estimates.json",
+                      "sha256":  "5241e46a25a61d3085cd4899f213c5aebb7d3150b6db04214f3724cf13d3a65b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  988
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/actions_evaluate_policy/new/sample.json",
+                      "sha256":  "8172abbef582f0c3735e052f775ddea65309f51723679a2ba3c44a8576e057b4",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  672
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/actions_evaluate_policy/new/tukey.json",
+                      "sha256":  "7b67f67cc2a5d837100d6f21f4ddd5d2be61cd5c505a1991878cfd7dd86c7803",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/actions_validate_scale/new/benchmark.json",
+                      "sha256":  "a12176b077979d6a1d99f60b2e223f498b23d38e42b8aa1110287279ee30c9cb",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  201
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/actions_validate_scale/new/estimates.json",
+                      "sha256":  "154c351e6b54355d7abf02b4c61c9e699e4d128e668db0ffa7c529408b2baaa3",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  998
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/actions_validate_scale/new/sample.json",
+                      "sha256":  "9db91152dd22a82688bb65511f5b7fac91f3faa08a2791af355d713229ac2e2d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  707
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/actions_validate_scale/new/tukey.json",
+                      "sha256":  "078cbe26030f27a7241c379cd3e7e0ad2d5dee76dea98b9955aa2b0ce1649f19",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_group_500_hosts_and_containers/new/benchmark.json",
+                      "sha256":  "86e039a9bfa35953511b9f8f78ab3d37bc7546432ba355de73c50193d9ebdfaa",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  249
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_group_500_hosts_and_containers/new/estimates.json",
+                      "sha256":  "1b329f087e52ab59a6f00fcb1bf61fefbb3b0eed361aa0c97f87228cbb55e2ef",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  977
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_group_500_hosts_and_containers/new/sample.json",
+                      "sha256":  "2f8f2e06f772dec097779fbec5698a31587bba1b49bc41ad6b60158bc51dfbff",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  580
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_group_500_hosts_and_containers/new/tukey.json",
+                      "sha256":  "69f2ec6c9d1ee96bc89a17c116e6795c20f7ca8d1f90613779602c8b20cf42b2",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_group_500_hosts_cpu_utilization_fallback/new/benchmark.json",
+                      "sha256":  "0695d57ac2c371a7c4aa5d83574cba15c7a38b7219b1e659d7c9722d227a0431",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  289
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_group_500_hosts_cpu_utilization_fallback/new/estimates.json",
+                      "sha256":  "92ddc749076480eb22f7c8d709091e8354ed217047fba327f86ae4cb26660c77",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  986
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_group_500_hosts_cpu_utilization_fallback/new/sample.json",
+                      "sha256":  "4d46b278b9a07ae9036195c27cde7175d26b176a090af4a1fce340cb9158435b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  593
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_group_500_hosts_cpu_utilization_fallback/new/tukey.json",
+                      "sha256":  "d1d8d3ce9fe63017104f35a372c920b486456fdc7d81e1850777ccb4373b7d77",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_group_500_hosts_realistic_metrics/new/benchmark.json",
+                      "sha256":  "6a16b4bb5e2f73db8ac90212d0bfe95e101f529c7c8703815559864aa33924a6",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  261
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_group_500_hosts_realistic_metrics/new/estimates.json",
+                      "sha256":  "84dd02b2b1f03b92eca03a0513de976580b094e80c1b67599e073b431bfa5bd8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  974
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_group_500_hosts_realistic_metrics/new/sample.json",
+                      "sha256":  "d4362702f8c86087d6280a25ef520c4fcdb55c650c04860dc43aa8b2ddb5ad4c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  570
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_group_500_hosts_realistic_metrics/new/tukey.json",
+                      "sha256":  "820eade6010df551106fb576c4ab1db019dfa7f4966f1eac841cfe19c68f0f5e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_place_200_resources_600_addresses/new/benchmark.json",
+                      "sha256":  "32be55b04ec645409e34bbdf0b7eee3d72b61f39fa5eeadc614b8898f9485582",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  261
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_place_200_resources_600_addresses/new/estimates.json",
+                      "sha256":  "ec81f9505b49d48ef0e6ccac0b5c9bb88c0e8aab3ef31d138cd18fd3f672a678",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  978
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_place_200_resources_600_addresses/new/sample.json",
+                      "sha256":  "05428222be6e30dfabb52ed90cb354f8866b611b90cfa9f61c69d8ea7aa67ef5",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  562
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/api_place_200_resources_600_addresses/new/tukey.json",
+                      "sha256":  "b6c29885b60f23513803108c22c55c73ab9e2c7fe14bc5e62546e36d554e0abe",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archiver_plan_closed_windows/new/benchmark.json",
+                      "sha256":  "3c8faf68d51a3f8002111a703148f0d79af0e12a83896648d92adca5addde7b9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  225
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archiver_plan_closed_windows/new/estimates.json",
+                      "sha256":  "02b4291961f1527507478189d5bfac7378a9542b6083e9c89e94b798352ffa1e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  981
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archiver_plan_closed_windows/new/sample.json",
+                      "sha256":  "603cb09e3147125734c48c6853cae727f06950885e0b4cc2a8948f34499ad409",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  664
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archiver_plan_closed_windows/new/tukey.json",
+                      "sha256":  "a66efc87b182998044b8b46186c5fa3cbc41b1c753d73c8e06da35b385ebf802",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archive_decode_512_logs/new/benchmark.json",
+                      "sha256":  "af80320d5aac35f3102632ec796c12810af0fbc82708ab4191d7842001b7008d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  205
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archive_decode_512_logs/new/estimates.json",
+                      "sha256":  "56e5e68f4f660c0b1f9f5cb9f0a2eb633945b4ccd77b1a3e9bb8f3a39f527cc8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  984
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archive_decode_512_logs/new/sample.json",
+                      "sha256":  "f34b8c764ab935d198106bf71448aa69908c2abaf421dce9c1863e64c7881a7c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  575
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archive_decode_512_logs/new/tukey.json",
+                      "sha256":  "599942b2f0062b7b531dddc626d7e5863366a639b8f4e1a79515bbc1ad8bcfed",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archive_encode_512_logs/new/benchmark.json",
+                      "sha256":  "ad19bedc839c407a4cac72b9abd11efd0ce4bb9caaeed1b0328b13cf4515d304",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  205
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archive_encode_512_logs/new/estimates.json",
+                      "sha256":  "2bc439b9b8b8c5351e8447e8b7ef4d9e6b83b3e320b70a172331f58e538aca13",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  982
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archive_encode_512_logs/new/sample.json",
+                      "sha256":  "fe0c89951a9e316919a54b6405fc3788a866fbe4f414526c80f0c2890c068113",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  564
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archive_encode_512_logs/new/tukey.json",
+                      "sha256":  "7984ad19203d6b48e2d2a02c16355822787e052eddf2e6f391d30cfb1814819e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archive_index_512_logs/new/benchmark.json",
+                      "sha256":  "82d3c284ae51a86a2f49d2ce8752410cdd6da144506a2397b947dda943678e9f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  201
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archive_index_512_logs/new/estimates.json",
+                      "sha256":  "104008de31da1a1e0826eb2fadf7589381ed1c31dec9157c60f65de1e94a020d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  973
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archive_index_512_logs/new/sample.json",
+                      "sha256":  "4a44d2cc142733d54277414e9e5353bee1c46ee0876af18d86d0e43e597ac5f4",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  600
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/archive_index_512_logs/new/tukey.json",
+                      "sha256":  "060b8d8524ae931d27761ce30627624ac7184b7095d9cb0fb9656fda14282e5e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/cli_parse_node_entry/new/benchmark.json",
+                      "sha256":  "ce11c070ad53f063ef158a167e160c5413f19ca87296a127a28c8aed75588b7b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  193
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/cli_parse_node_entry/new/estimates.json",
+                      "sha256":  "e42ad0c04b91fb98c1d768141c9b18fad41822fdb2d9f6025bad498900af70ff",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  990
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/cli_parse_node_entry/new/sample.json",
+                      "sha256":  "6d8a4a646058b9ffca0efaf2d68bba0845bb1fa931bd308306f1c749c338ee4e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  688
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/cli_parse_node_entry/new/tukey.json",
+                      "sha256":  "f61e3c0b2abc3ddeecef59a1583aca6f288adf8c52321573fd2f63ac09fab36f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_1000_logs/new/benchmark.json",
+                      "sha256":  "3c789b14862692d485aba9179188484ed51f46af94f6855b758f46d6d5685864",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  221
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_1000_logs/new/estimates.json",
+                      "sha256":  "4e63d70300445a3257cc1187c8c8b76c361c7f6e555f25659011ef2a8b630e3b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  976
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_1000_logs/new/sample.json",
+                      "sha256":  "934f29af88672852f56a384e4df5e58135c52310f524c0a87531aa290a17ba9c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  569
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_1000_logs/new/tukey.json",
+                      "sha256":  "25aedb18e2584b3f578dfcc40eaf09dc30426f7383c704c4263c20ca4e06af51",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_1000_spans/new/benchmark.json",
+                      "sha256":  "de34fb390f994f16b5d083219e8e5dde990c1e62423f54ef64bed58d3531a36d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  225
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_1000_spans/new/estimates.json",
+                      "sha256":  "354b1584b06c7f27ba0940c280c11e3b5af8f51a5b1b21c4f714d4792af739ef",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  978
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_1000_spans/new/sample.json",
+                      "sha256":  "09385645bf1c2332eb6f338344ef739b76a3b95673903dfa7c82cc7c36899908",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  570
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_1000_spans/new/tukey.json",
+                      "sha256":  "bccd40ed151307a1acfeeeb51cd864da03c2125831f433e0cbc95b2c4df418fc",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_256_custom_events/new/benchmark.json",
+                      "sha256":  "fce263b35f6f4f656635ace239b2483fcac9b114d693031949801b73e982ecaf",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  253
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_256_custom_events/new/estimates.json",
+                      "sha256":  "827d0695e045e91619c0cbc5db9277006246de527da748eb3efdadb4d26571a9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  977
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_256_custom_events/new/sample.json",
+                      "sha256":  "a6eea405523c9cc1ac3760e69766c31928e3545cdbe25ed0d3df21988c5c765c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  602
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_256_custom_events/new/tukey.json",
+                      "sha256":  "443d574b26ecc511c0b51f48899894364c7603d0dfa50369de07c3f218ce4fbd",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_256_metric_points/new/benchmark.json",
+                      "sha256":  "9bdce3ebfc8b8acf65828161ecf18380b8ba6d6c9679694b4312452fe4875351",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  253
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_256_metric_points/new/estimates.json",
+                      "sha256":  "72d17e5c4c2738a4134e8510ec654e0dedf4941abea4d0fd8f84b11c5067bd39",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  977
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_256_metric_points/new/sample.json",
+                      "sha256":  "2e28b6b29c0717b5b0db4c6fa3c47a1a09371855c7943f1bee9b60d8f739d6f3",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  577
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/convert_normalize_256_metric_points/new/tukey.json",
+                      "sha256":  "f29ca56ce1144756a279fca397ae8f8d5f011cb908741e94e279c6338e749024",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_classify_common_attribute/new/benchmark.json",
+                      "sha256":  "3b0669c2a601340b573797743e11c3e31c73ff3b3da3f8c6d071b5320a2c36ae",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  241
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_classify_common_attribute/new/estimates.json",
+                      "sha256":  "10ab9ba20fe50888d73d01518749604c49768bbfb6d3fa30de75fee4d45feba0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  979
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_classify_common_attribute/new/sample.json",
+                      "sha256":  "5bc94f63631a09b018a1063e23e9c1a3c780fb843b50e0cf011b8c7937d86d87",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  664
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_classify_common_attribute/new/tukey.json",
+                      "sha256":  "24754765ba2e357e01d51f9a463219ce02a5c6989c547a25bd61e776bfe85525",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_classify_header/new/benchmark.json",
+                      "sha256":  "a4ecd021bcbd87e5e0cf5cf59273a860492ff33d3c2f534e54fcea2145a6462c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  201
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_classify_header/new/estimates.json",
+                      "sha256":  "6687ad275c0520a5566b7b320402cec6503667ebe06020a8d4844c00d21ea9ce",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  991
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_classify_header/new/sample.json",
+                      "sha256":  "583c625f277524cb34eb513852b5c5f9d7150f84dd56672585dfd0cb37c28466",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  693
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_classify_header/new/tukey.json",
+                      "sha256":  "bb48c3765ec1c007430216a3da1936b7cd10e94f9bef2c84b614692c110f0891",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_derive_scoped_service_id/new/benchmark.json",
+                      "sha256":  "f9ecea9297243120c6038fc617e756bc633ebcd5e094d9e211e638f01a383f3c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  237
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_derive_scoped_service_id/new/estimates.json",
+                      "sha256":  "e319e9641f065246de3e28473c4ba2372906751789b7ee9e19673518b0d0933c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  988
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_derive_scoped_service_id/new/sample.json",
+                      "sha256":  "3f3ff14c1be17e146e44cb8b0e2ec1a164fb4adbfec608b29b4b7c29f5f47571",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  679
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_derive_scoped_service_id/new/tukey.json",
+                      "sha256":  "ac7d58266a846cea607efe27503a638b0130a21cee6c3b57da642813331a9acf",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_mask_bearer_plain_value/new/benchmark.json",
+                      "sha256":  "3eb06595f7990c6d8af71c1f99478fbbd3f4325853170f05c96aa1c6598e374e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  233
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_mask_bearer_plain_value/new/estimates.json",
+                      "sha256":  "56a763514427dc76d0f3bd5ae0ad7226f753977531d7f39a640c0f4663e62d86",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  985
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_mask_bearer_plain_value/new/sample.json",
+                      "sha256":  "2989845e8ff2f6222c8f0953594511414dd17e8ae4f99f4eb7428a6bfedde718",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  693
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_mask_bearer_plain_value/new/tukey.json",
+                      "sha256":  "59358a55853d8abc454cb90448130753d11229496eec3bc9ccb40b9de0e29978",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_mask_bearer_secret_value/new/benchmark.json",
+                      "sha256":  "33a6a4aade8875e5b80174b4efa3e924c13b9a31245a8ebdcd78d1bc2bfaf164",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  237
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_mask_bearer_secret_value/new/estimates.json",
+                      "sha256":  "e702060d930ad2543feb4a7cf11f6a2a62736124388928fb0f0502268e123c31",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  983
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_mask_bearer_secret_value/new/sample.json",
+                      "sha256":  "0c815cfe5a2d785d27b193f5c8442203d3ad4eb018595583c5607efeaeff1835",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  691
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_mask_bearer_secret_value/new/tukey.json",
+                      "sha256":  "ff4b212091fb53005718ad76150572f865b7ebb7164dcf4f1f0cc0f812d0ea6a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  71
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_redact_url_attribute/new/benchmark.json",
+                      "sha256":  "5b5b8df1c32c6700eaff2e847400f0350b258691903bc8e0a59e823aebb46f56",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  221
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_redact_url_attribute/new/estimates.json",
+                      "sha256":  "ae96f6dbc5f26ac8b6fece7250be44cf1fdc3586f463edec80ca1eee2adfe5a2",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  990
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_redact_url_attribute/new/sample.json",
+                      "sha256":  "6aa7c1723b496d22604ced4ae816c3a3eeee7610ea8667cebc7da23e411a8685",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  686
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_redact_url_attribute/new/tukey.json",
+                      "sha256":  "9216377350a98808adf0367afa15af01fdff66c305bd9de13a22c2a0d30651b5",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_sanitize_common_string_attribute/new/benchmark.json",
+                      "sha256":  "4286947ad83eb8461da4b9b687e00cbf6920d6959806c7e7744ec9fd74de8f3f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  269
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_sanitize_common_string_attribute/new/estimates.json",
+                      "sha256":  "4a5920debf5dbb44907746363ff96a575ade229998200a855ceef4bab53e9d41",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  994
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_sanitize_common_string_attribute/new/sample.json",
+                      "sha256":  "4e387c04b384b2ac45cfb583f786dde3947df2c5c9965cc1f3b63b80947d2e09",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  694
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_sanitize_common_string_attribute/new/tukey.json",
+                      "sha256":  "6f4b3de4d0f5454ad0eff27b5ff6541ae82ab5cace52f93b3839a111c36154fb",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_sanitize_common_string_attribute_in_place/new/benchmark.json",
+                      "sha256":  "ff8c74367b18ee7de603800dae4bdb9fb59f8caa2758b184ae19fe22f507d7d0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  305
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_sanitize_common_string_attribute_in_place/new/estimates.json",
+                      "sha256":  "e92b3e0e7aecebce62c13f264f550909eceda48ae63d88ca4d788456b4dcc5f9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  993
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_sanitize_common_string_attribute_in_place/new/sample.json",
+                      "sha256":  "440777b5a0a9b9cb83270e921e2562bc2ae399ada424e40e3622b7f1ba54cfb7",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  676
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/domain_sanitize_common_string_attribute_in_place/new/tukey.json",
+                      "sha256":  "90a5fd36ffaaf76fcd051a7c56e6bfd5337e532fc3795fb0a7211f3f25de28b2",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_apply_batch_2000_spans/new/benchmark.json",
+                      "sha256":  "cf12d56467fe9983125d794d613c54fa81344a0488bd2a750ddbf5b92b648c86",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  229
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_apply_batch_2000_spans/new/estimates.json",
+                      "sha256":  "241a1e2776c1049f9c4086a98e341bd34f69b5d72f64b798afe26f81eaee6805",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  976
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_apply_batch_2000_spans/new/sample.json",
+                      "sha256":  "fe4244edf6ba22223c1275017ce4df0c12b8ca756258d5a63be9e98e420e747a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  566
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_apply_batch_2000_spans/new/tukey.json",
+                      "sha256":  "b1a212716c895696ad204b881f4281d1953838d2c2171772440aa4b56eddac28",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  72
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_apply_batch_json_2000_spans/new/benchmark.json",
+                      "sha256":  "a7f2df1479696d0d896e4353f3b587bd1600241afe5bd2496456a1ae61d7569f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  249
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_apply_batch_json_2000_spans/new/estimates.json",
+                      "sha256":  "9112c44c87b108bb27abb0dd2e5f6eb924be0efc8dc3d711d11d6fc8a0ec103a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  981
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_apply_batch_json_2000_spans/new/sample.json",
+                      "sha256":  "0953cbc72f0f90b60d9a5fa69417c6914f8e9ae53bc8e95b00d9aa28ade74288",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  557
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_apply_batch_json_2000_spans/new/tukey.json",
+                      "sha256":  "a13dd8fa2a3aeb2a7296e67155ef0346c377353069cc88129cad6257c07df1bc",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_build_server_geometry_100_nodes/new/benchmark.json",
+                      "sha256":  "51b8a6a737192706449a2465acc43f823de81047993858e4b02d20ca70c51b92",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  265
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_build_server_geometry_100_nodes/new/estimates.json",
+                      "sha256":  "389deab2751843f62ae0731ab404cad4ca4775457f327da5816de375b5e6c8cd",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  976
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_build_server_geometry_100_nodes/new/sample.json",
+                      "sha256":  "ceb4cb2db3218457be99d86c82d40f018be40320dcead14c4060b71f021a0085",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  570
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_build_server_geometry_100_nodes/new/tukey.json",
+                      "sha256":  "0f8d3b9bc400c080c40c564fae3a119782646dab7304a233d998a8ed3d052ec8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_search_visible_state_1000_nodes/new/benchmark.json",
+                      "sha256":  "7a278101654ab6c17d7642dff30380de1851f36bb5db45817371457c121ea13a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  265
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_search_visible_state_1000_nodes/new/estimates.json",
+                      "sha256":  "2cbdcfc88f039973ff2817f0e59de805b2dd9de18886f062caa6cf9a19f2007f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  983
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_search_visible_state_1000_nodes/new/sample.json",
+                      "sha256":  "1c143cbcc073cbe2b6daf37e759b22480fe61ef7f0b3fb401d5bd9ac4f2acfeb",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  615
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_search_visible_state_1000_nodes/new/tukey.json",
+                      "sha256":  "f5dad85f29c08c210bfc9da04e7c39b6f95ea42540feb6ee9d8e89940322296b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_seek_and_build_visible_state/new/benchmark.json",
+                      "sha256":  "43aae599ff8e4eb5af60e9dc1f306f8032684e7db64d41d2c8330c5e8f97982b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  253
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_seek_and_build_visible_state/new/estimates.json",
+                      "sha256":  "735ece38757796223d535b7d10b0d7d78a72c8076fda4d19ee79cdee9368c929",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  979
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_seek_and_build_visible_state/new/sample.json",
+                      "sha256":  "f7b8d74ac0a4b4c6586fc601f5e66fe5fd03d7281ffb1185888368b9f35fbf76",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  615
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/engine_seek_and_build_visible_state/new/tukey.json",
+                      "sha256":  "c76e189900bf6b6c8c90e163de6e862246f61b6de924214b150e2cb11bbfb399",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/executor_evaluate_and_record_verification/new/benchmark.json",
+                      "sha256":  "fe04b22eebf06c2841bb4c39fff0cf13605d4fc071a7a2d234a4853f348b024c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  277
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/executor_evaluate_and_record_verification/new/estimates.json",
+                      "sha256":  "e1eb2898862af3b67b2694d3f7336964d71c16544a982069233bccffc764fda7",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  980
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/executor_evaluate_and_record_verification/new/sample.json",
+                      "sha256":  "a18fc0c8a65245020e25d893e5ddf5515ee3982dff6e45d3f5a3afcaca60407b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  655
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/executor_evaluate_and_record_verification/new/tukey.json",
+                      "sha256":  "93e40b47684a6a4b9eafbbea2c646315b8c2cadf7a39bbd1e0ee13316130cdbd",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_logs_with_attributes/new/benchmark.json",
+                      "sha256":  "34952d69e034665091842e04471872a7795a8585c7fb14978a608726898dd262",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  277
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_logs_with_attributes/new/estimates.json",
+                      "sha256":  "7ee041746b103a332508c8dff444e2cc0c985577c6ae3a5aa95cde7ce7c1c67b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  975
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_logs_with_attributes/new/sample.json",
+                      "sha256":  "13a366eb472c2edff97575b757c52f8645ba02b1912a5f85c6c7ba024a04712a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  565
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_logs_with_attributes/new/tukey.json",
+                      "sha256":  "950859dcc0f67876d21d369938e2ae16c31c65afddc3bad1f72483b097a674e2",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_metric_points_with_attributes/new/benchmark.json",
+                      "sha256":  "c0fc7c99d003fb2dfddc88c28fc018fdd075e49d13224951379c1f292bcb5745",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  313
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_metric_points_with_attributes/new/estimates.json",
+                      "sha256":  "5a4e9c47e1947e9f009091a0ba0af3163abd7fba99bc82e0add7e29484650664",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  977
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_metric_points_with_attributes/new/sample.json",
+                      "sha256":  "da7ce971add440fd39d4ba0af9173f3efcf639a5021cf2261e222f3eb86bf3de",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  561
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_metric_points_with_attributes/new/tukey.json",
+                      "sha256":  "da9dbf9dd693d8458d2797b871e653d234ec76629c6b04089a7582ee876b2e08",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  72
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_traces/new/benchmark.json",
+                      "sha256":  "6533d88cb78cd8f1370fce6913973dcff05c1c9d265a8604dd933267b3dc00e6",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  221
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_traces/new/estimates.json",
+                      "sha256":  "9b333ca7e9f1b31168f87b8018fbba1e0ff11c1e5002fb04c41c58d9dcd3f32b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  977
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_traces/new/sample.json",
+                      "sha256":  "db79c0334fa411f52ad5f6acafc0f3e6a59812eb97ce4774d67c0e0960adae62",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  565
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_traces/new/tukey.json",
+                      "sha256":  "a5bbe41c6d87c963f050d6304a0a03a1e7c7d954e5d18c78a55c536d93f7bdf0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_traces_with_attributes/new/benchmark.json",
+                      "sha256":  "f957e704cd44877e6ef21e31100f152af88f465627b3f9fb90ae18afae32283d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  285
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_traces_with_attributes/new/estimates.json",
+                      "sha256":  "22e8c2b48b5744dd62cda90558b1d63d81e7bfd6ccbaddcb70db31d7eacd05f6",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  970
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_traces_with_attributes/new/sample.json",
+                      "sha256":  "c0f99c2825d4119c23959195d2e00137fce78b8ce4ad84df6304577eea276c37",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  564
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/ingest_sanitize_1000_traces_with_attributes/new/tukey.json",
+                      "sha256":  "79ad746aa72d4c89c3be3208d5cf6f6c6b6b2f114c2efcbcc201ca7fb7c89746",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  72
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/processor_check_dead_letter_payload_bound/new/benchmark.json",
+                      "sha256":  "3ed303b8a13150eeae3d3305f7ebbbc0cffcfee74a1b18b9cba81dc65746365c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  277
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/processor_check_dead_letter_payload_bound/new/estimates.json",
+                      "sha256":  "1bcc64a46b7d69be215164d981c278f4f07548f7ff0383daf15f9675b1884ce5",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  1016
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/processor_check_dead_letter_payload_bound/new/sample.json",
+                      "sha256":  "0ba98faf09003e3a39fe7dcb353339a3a09a5a64f7ebec08c2950f5c3dc224d0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  742
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/processor_check_dead_letter_payload_bound/new/tukey.json",
+                      "sha256":  "0ebd4b781f87e218f3fa49a530215e7c4152efc35a6ad8431632e1e77cdcd65a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  80
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/processor_drain_128_ready_records/new/benchmark.json",
+                      "sha256":  "3bee57f77045c2b14f3aded9e6317f2fcd662708b8f66a4f4c2e6c84089714c7",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  245
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/processor_drain_128_ready_records/new/estimates.json",
+                      "sha256":  "7ebeb55a57ddae83d71d1776b912e72d24719931033b0f6b2caecad722c24a46",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  981
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/processor_drain_128_ready_records/new/sample.json",
+                      "sha256":  "33aff2758b4b76482e79f484b64240ea84bacefcebe38563cf61bff0b3245353",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  634
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/processor_drain_128_ready_records/new/tukey.json",
+                      "sha256":  "deefefb6349cbc7d21eb0df8ea1eccf78696602d6d765933cb1f56be721973f4",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/protocol_decode_256_events/new/benchmark.json",
+                      "sha256":  "488d48b6eec47bb323809445498652d364517e0114e01b74dbede1f3c82903f0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  217
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/protocol_decode_256_events/new/estimates.json",
+                      "sha256":  "52671e38123719049f852e8c296de1e887d84847ecec300a417d5be15201901d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  985
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/protocol_decode_256_events/new/sample.json",
+                      "sha256":  "26947980f3311d6fc81ddb7b4a2f863a8be0fe2a9ef77239ecf5d1ee622d5d9e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  611
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/protocol_decode_256_events/new/tukey.json",
+                      "sha256":  "0be11ae5db8cc3d27010417c6dfdc1906d1f5cbee9f22e838db95f3f131e83ec",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/protocol_encode_256_events/new/benchmark.json",
+                      "sha256":  "70db09deb88740e0e7667063dc4154fa1bf2f562bd2b4d5078ed1e6a240055e8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  217
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/protocol_encode_256_events/new/estimates.json",
+                      "sha256":  "b43780e28fd648603cbafffb7d2707910cc8af7b986d8382c2f1ea7f9d70e2d7",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  977
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/protocol_encode_256_events/new/sample.json",
+                      "sha256":  "3716b179dbb48075b466f69c79741feeb7ac2e0805673b646698faa105accea3",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  633
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/protocol_encode_256_events/new/tukey.json",
+                      "sha256":  "c88804d92bfad7c1d099fc468c2ffcb67008086720812ebb19c4b0992faebf56",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/runtime_backoff_schedule/new/benchmark.json",
+                      "sha256":  "f1255a12bc7d9e41c77184aaa86d5f08db3e5b3b24f89049833db3980f318a8b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  209
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/runtime_backoff_schedule/new/estimates.json",
+                      "sha256":  "06e35c3ed680416da8f4a0c4207213c7d73c6bcfd0275f842d93dd3a8f411327",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  1003
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/runtime_backoff_schedule/new/sample.json",
+                      "sha256":  "fb4de52a93c4ff55815edb0bc3fc119ea135cca4a80df6df1c1efe0a53c225a7",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  713
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/runtime_backoff_schedule/new/tukey.json",
+                      "sha256":  "6ee955e32a4f2a2db370a089822cf2c98ae3ea1f4a583525ddf21ec28e9a51fe",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/storage_parse_clickhouse_ttl/new/benchmark.json",
+                      "sha256":  "b76b51ad894d30d440586b710e3f23bdfcc120f131294dff35763808b987a21a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  225
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/storage_parse_clickhouse_ttl/new/estimates.json",
+                      "sha256":  "c4211a376738b8f370ba45c2ecdcde15dc7fc8d603dd0199fc19310594a58863",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  985
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/storage_parse_clickhouse_ttl/new/sample.json",
+                      "sha256":  "b524321ab4be598403b3ab6b59490bedd758c2ed6df33f6ad940d0e11a4cc316",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  682
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/storage_parse_clickhouse_ttl/new/tukey.json",
+                      "sha256":  "9f3537ae3ccbe1b6c60c9eb1e8211e693dc9d02a5ef1c23259b898c4427fbe30",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/web_engine_construct_from_config_json/new/benchmark.json",
+                      "sha256":  "deca4a05802c3d450c4c7b4e5959c417cc86e68453e006452ef285c1b3d9ec6f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  261
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/web_engine_construct_from_config_json/new/estimates.json",
+                      "sha256":  "ec62513b850741588549f9b5ad48615ea19cd7ea9ad9de7de59ad908fee5ac34",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  984
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/web_engine_construct_from_config_json/new/sample.json",
+                      "sha256":  "4de01738b60410c9aec84b34db3503d154d69c336bb45e7d311633e42b75d9b6",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  675
+                  },
+                  {
+                      "path":  "results/repetition-2/criterion/web_engine_construct_from_config_json/new/tukey.json",
+                      "sha256":  "20f0ad534ed8628b9590e400a77e3dd65c3ed3e9389729b7fbc40c1eace79943",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-3/summary.json",
+                      "sha256":  "b964efa9053b7f5fc78524232f75fdf66830a04f16990394c166a811d0f4a8b7",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  27550
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/actions_evaluate_policy/new/benchmark.json",
+                      "sha256":  "dff521f26b0be7e850da642b59b1718dcbeb909b517cf3d432010cdb7cceb0de",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  205
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/actions_evaluate_policy/new/estimates.json",
+                      "sha256":  "c34283649c94d8238f356f728ec24524b0dd013e097639dc3c22e0ab30a044e9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  985
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/actions_evaluate_policy/new/sample.json",
+                      "sha256":  "1141d0f151125e8b7b3e52141315e44a3432b1edbac5524078b59debf5613fd1",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  673
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/actions_evaluate_policy/new/tukey.json",
+                      "sha256":  "514d1fcd66eea990daea715a20f245361a2f29dd95c3fd028f89077f4659ee9f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/actions_validate_scale/new/benchmark.json",
+                      "sha256":  "a12176b077979d6a1d99f60b2e223f498b23d38e42b8aa1110287279ee30c9cb",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  201
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/actions_validate_scale/new/estimates.json",
+                      "sha256":  "f8e6980e9d7aa202c5a8883cafaa5d35a1fae736a20d50c31f4a54bd24670e99",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  999
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/actions_validate_scale/new/sample.json",
+                      "sha256":  "a3a2b6d069f6d0605cc1bf34c38ef37a3ea217faa33a0f6a813b15a4c8a3d1ce",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  707
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/actions_validate_scale/new/tukey.json",
+                      "sha256":  "0a26a618f7d8f5bdf950db5709a523c5bdf42ba9906a1be4d1a5f197ceb9dd92",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_group_500_hosts_and_containers/new/benchmark.json",
+                      "sha256":  "86e039a9bfa35953511b9f8f78ab3d37bc7546432ba355de73c50193d9ebdfaa",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  249
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_group_500_hosts_and_containers/new/estimates.json",
+                      "sha256":  "58afc2be2748949d06d659b4e2ffce75016f0b33d91c110b0f0cf5f80696b0b9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  977
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_group_500_hosts_and_containers/new/sample.json",
+                      "sha256":  "46f882b6e440a76b8858a832c8b9f4192cea9017308efe597bfa0df3ac02988b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  580
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_group_500_hosts_and_containers/new/tukey.json",
+                      "sha256":  "f91e4216d43180c6b3cad530e5c76a4d58744cc4d62a98635903740998df4e7f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_group_500_hosts_cpu_utilization_fallback/new/benchmark.json",
+                      "sha256":  "0695d57ac2c371a7c4aa5d83574cba15c7a38b7219b1e659d7c9722d227a0431",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  289
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_group_500_hosts_cpu_utilization_fallback/new/estimates.json",
+                      "sha256":  "a498aaa0980624af4faeeffdfb12c9c4e14ad4e1239f69767171ce804a332747",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  984
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_group_500_hosts_cpu_utilization_fallback/new/sample.json",
+                      "sha256":  "bcb164680720a9c4484f4fb3231631543d17880d53ab30f92a6bf3248d018c8b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  592
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_group_500_hosts_cpu_utilization_fallback/new/tukey.json",
+                      "sha256":  "2ac7426c53b1c62fe2ce85a4542f0177f459aecb12fa96fd29daa450bbe7428b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_group_500_hosts_realistic_metrics/new/benchmark.json",
+                      "sha256":  "6a16b4bb5e2f73db8ac90212d0bfe95e101f529c7c8703815559864aa33924a6",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  261
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_group_500_hosts_realistic_metrics/new/estimates.json",
+                      "sha256":  "df3006090715f1e5af7ab20ac0b3f9e8e8562bd416a7ab11a4d139d9c12918f7",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  973
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_group_500_hosts_realistic_metrics/new/sample.json",
+                      "sha256":  "297ee8e68d16e900132d8cdeace4fb60647ae9349e3070be06e1683a7ba7a09f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  570
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_group_500_hosts_realistic_metrics/new/tukey.json",
+                      "sha256":  "1f4b8a12a6e1d0932d40a5791911c7471b67d143f1b47b8c15adc5e9649c1cc6",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  49
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_place_200_resources_600_addresses/new/benchmark.json",
+                      "sha256":  "32be55b04ec645409e34bbdf0b7eee3d72b61f39fa5eeadc614b8898f9485582",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  261
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_place_200_resources_600_addresses/new/estimates.json",
+                      "sha256":  "efcf72b36077034c75c9aa06302d74a58e9be88c6f11c90790dcbc38ea1313b7",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  987
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_place_200_resources_600_addresses/new/sample.json",
+                      "sha256":  "d47b1a55a85c8327ba84b5219551d52c3fe6967bf86d29d5ab13840cd9e55cf0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  563
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/api_place_200_resources_600_addresses/new/tukey.json",
+                      "sha256":  "de6384f7eb3aa97b3f680901ba0e2e4eeea1782287c03040ab34771e711a1110",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archiver_plan_closed_windows/new/benchmark.json",
+                      "sha256":  "3c8faf68d51a3f8002111a703148f0d79af0e12a83896648d92adca5addde7b9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  225
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archiver_plan_closed_windows/new/estimates.json",
+                      "sha256":  "01d29dd80619b73798e62e5dc4c17fe42b249e56bf5a2fd4146d2e96f7092098",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  979
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archiver_plan_closed_windows/new/sample.json",
+                      "sha256":  "e31c4526f1e8d4f60366c10104d7c54c3073033abf2fa3c11d3f40647038f1bd",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  664
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archiver_plan_closed_windows/new/tukey.json",
+                      "sha256":  "5f057bc01706887fb084de52a7d8fb0ddcb505352d8b21b472c48b151631e3f1",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archive_decode_512_logs/new/benchmark.json",
+                      "sha256":  "af80320d5aac35f3102632ec796c12810af0fbc82708ab4191d7842001b7008d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  205
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archive_decode_512_logs/new/estimates.json",
+                      "sha256":  "220ed57bf1258da792672f5cf91222b5aabbc3cac842e73e9b06f3df1ad1c4a1",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  972
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archive_decode_512_logs/new/sample.json",
+                      "sha256":  "d2178ab8e618c14e42fda7db4bacecc295e0ceb6ea2458df9340306ab70bd746",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  575
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archive_decode_512_logs/new/tukey.json",
+                      "sha256":  "0f64180c6a58bb789abf02aa6099a3cbe3365d53c0f3a5826d944070da959aa4",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  72
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archive_encode_512_logs/new/benchmark.json",
+                      "sha256":  "ad19bedc839c407a4cac72b9abd11efd0ce4bb9caaeed1b0328b13cf4515d304",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  205
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archive_encode_512_logs/new/estimates.json",
+                      "sha256":  "1e11c5e63610a358b9ae1ef595036eef9941f87bce344f1d1cf50cd48a265318",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  979
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archive_encode_512_logs/new/sample.json",
+                      "sha256":  "0feb932e87130afd852ddc430bf9155e10602df7a3a89c4fe6be04789687312c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  563
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archive_encode_512_logs/new/tukey.json",
+                      "sha256":  "344e8235f16e583c92e7ad0d584ea591516f585ce2b9eb6c0d96d027308c50b8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archive_index_512_logs/new/benchmark.json",
+                      "sha256":  "82d3c284ae51a86a2f49d2ce8752410cdd6da144506a2397b947dda943678e9f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  201
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archive_index_512_logs/new/estimates.json",
+                      "sha256":  "2af9b4f023f23274c73c466dca7cc5efd238448133b01ce0d97cf2a14a7b6097",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  977
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archive_index_512_logs/new/sample.json",
+                      "sha256":  "d1462fb1f322073337949e05e479a8ceef37c16a5cd126bcc4a97a0404f00212",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  600
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/archive_index_512_logs/new/tukey.json",
+                      "sha256":  "59b1d419960b1a3dcd66c476fdc5815b5e1b1e3387c03a3a0bf3319f81cc88b0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  72
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/cli_parse_node_entry/new/benchmark.json",
+                      "sha256":  "ce11c070ad53f063ef158a167e160c5413f19ca87296a127a28c8aed75588b7b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  193
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/cli_parse_node_entry/new/estimates.json",
+                      "sha256":  "6dae8f4a42db8d31d355d0b2b2d3d5c0e2fe2f4ab7c160327ca7eb68453cf0ef",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  994
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/cli_parse_node_entry/new/sample.json",
+                      "sha256":  "c48e879a46ee87a5955413dcf1d9bcc0326aab7fe75597a8a13af6af210a4d61",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  688
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/cli_parse_node_entry/new/tukey.json",
+                      "sha256":  "54003dc05d4ad1ba77c070fb3588584c23aba43b5b5327e3298d91e842813e3a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_1000_logs/new/benchmark.json",
+                      "sha256":  "3c789b14862692d485aba9179188484ed51f46af94f6855b758f46d6d5685864",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  221
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_1000_logs/new/estimates.json",
+                      "sha256":  "382c6d9cbad355a2681f42e77524e0ce2296bf99d358bd6ec6a0d20c720edd68",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  983
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_1000_logs/new/sample.json",
+                      "sha256":  "06b09b6e691c306937b16d3e42f68b174d5f0dd2ca87bc084d318af3c2aea144",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  569
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_1000_logs/new/tukey.json",
+                      "sha256":  "38d5d2a0ce22a2528a3af6e26dffdb4ad5521177c6e4c70576b9880f56e032e9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_1000_spans/new/benchmark.json",
+                      "sha256":  "de34fb390f994f16b5d083219e8e5dde990c1e62423f54ef64bed58d3531a36d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  225
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_1000_spans/new/estimates.json",
+                      "sha256":  "3436f41db1e94fc40e508818188058a035a3e8c6b32a800e442d98e213a346b1",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  971
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_1000_spans/new/sample.json",
+                      "sha256":  "70b123960b61db5f77d1080cf42274f227be74861e914598cc5daad870a8a643",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  570
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_1000_spans/new/tukey.json",
+                      "sha256":  "d6f5a92cabf887e6628fa64c64d5e1a627ba97f0b34ec7cef374a0a06e65e579",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_256_custom_events/new/benchmark.json",
+                      "sha256":  "fce263b35f6f4f656635ace239b2483fcac9b114d693031949801b73e982ecaf",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  253
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_256_custom_events/new/estimates.json",
+                      "sha256":  "155661afba70c6d0eb516d905c73707f841f17b6adb07bfc57aee73a7a645a01",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  974
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_256_custom_events/new/sample.json",
+                      "sha256":  "6366472ca4cb29d202abd1b2283d7a1ea510176844173168545f8ea4ef4d5520",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  602
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_256_custom_events/new/tukey.json",
+                      "sha256":  "ca7c14cb59fe901a19769e1d076e8a0c8c2d3c242a10e465545475d4c6a4196f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_256_metric_points/new/benchmark.json",
+                      "sha256":  "9bdce3ebfc8b8acf65828161ecf18380b8ba6d6c9679694b4312452fe4875351",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  253
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_256_metric_points/new/estimates.json",
+                      "sha256":  "6a5553c1f4a323c2bd4fe708ca95ab5f9ef87d596cc5d35436309e89aede8ef8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  976
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_256_metric_points/new/sample.json",
+                      "sha256":  "f34ad43b6accb1f85bf81533de99726af0768719581746f3932aee682fa8768a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  579
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/convert_normalize_256_metric_points/new/tukey.json",
+                      "sha256":  "2c9e4639ce1df58ee5173ce7caf97aeb4a069e69856f770605a206d0eea6c821",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_classify_common_attribute/new/benchmark.json",
+                      "sha256":  "3b0669c2a601340b573797743e11c3e31c73ff3b3da3f8c6d071b5320a2c36ae",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  241
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_classify_common_attribute/new/estimates.json",
+                      "sha256":  "3dc290a1847f0dd68d95e9cd984a2567d2466a05c5fe9482b10a85a797eb3f5b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  981
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_classify_common_attribute/new/sample.json",
+                      "sha256":  "4d2396d0bd01f3ef6593dfce1251ae5fddd4f7964edefba6e3c8a9da2ea7d4b8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  664
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_classify_common_attribute/new/tukey.json",
+                      "sha256":  "0ec5c05dcb7423436403472dd63c81ece741583ff2c7b6cb3b36f2421a472442",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_classify_header/new/benchmark.json",
+                      "sha256":  "a4ecd021bcbd87e5e0cf5cf59273a860492ff33d3c2f534e54fcea2145a6462c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  201
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_classify_header/new/estimates.json",
+                      "sha256":  "af9a4b2469a5775d4077cf709a96f6c3ff6979940c49394aa25e6df4318b842a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  992
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_classify_header/new/sample.json",
+                      "sha256":  "1333e111725ea1fe44ae680acd348b5a7ff8c6036e41e6d272fc77edc6a49876",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  693
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_classify_header/new/tukey.json",
+                      "sha256":  "c42bfd60c857522858ebcb01a94f1291434a9db51fa1d44870d4bebd905916dc",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_derive_scoped_service_id/new/benchmark.json",
+                      "sha256":  "f9ecea9297243120c6038fc617e756bc633ebcd5e094d9e211e638f01a383f3c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  237
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_derive_scoped_service_id/new/estimates.json",
+                      "sha256":  "15caa85249d2809762b270593505e523db92034a4201f9b257f92e568b57b0fd",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  984
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_derive_scoped_service_id/new/sample.json",
+                      "sha256":  "a61afb3f480ec93064e092a47d93b8057f0926463e71d14d9b3962d173f2a885",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  679
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_derive_scoped_service_id/new/tukey.json",
+                      "sha256":  "53245d55157364fd1d6ea2b463c235533e479e93714ebe431d6e345abd62f17b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_mask_bearer_plain_value/new/benchmark.json",
+                      "sha256":  "3eb06595f7990c6d8af71c1f99478fbbd3f4325853170f05c96aa1c6598e374e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  233
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_mask_bearer_plain_value/new/estimates.json",
+                      "sha256":  "6fe2d5c8c41ffddcf834dbd735c88a3949a6d8286133be4bdf6b7656b715ff8f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  987
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_mask_bearer_plain_value/new/sample.json",
+                      "sha256":  "9b977329482976569fc0472b7f6c5eae08484fef83d9fb045c99a48c45ba0617",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  694
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_mask_bearer_plain_value/new/tukey.json",
+                      "sha256":  "c7724d59e9702adf9cf6f1797cd47b4117d6bf3a6ee7f43064548313e63fe2f0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_mask_bearer_secret_value/new/benchmark.json",
+                      "sha256":  "33a6a4aade8875e5b80174b4efa3e924c13b9a31245a8ebdcd78d1bc2bfaf164",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  237
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_mask_bearer_secret_value/new/estimates.json",
+                      "sha256":  "4c1ac37e510768fa8ccd70d3da257fe227856c1010f9006da85e02d21117de0f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  979
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_mask_bearer_secret_value/new/sample.json",
+                      "sha256":  "4a871c75f7649c73fa5b683989edad8b4f791050fe237890c4ce142fbe537481",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  691
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_mask_bearer_secret_value/new/tukey.json",
+                      "sha256":  "ad1c4af76592f17ef280ec88ed2b52ac218d832473725665f4154f81897729ea",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  71
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_redact_url_attribute/new/benchmark.json",
+                      "sha256":  "5b5b8df1c32c6700eaff2e847400f0350b258691903bc8e0a59e823aebb46f56",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  221
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_redact_url_attribute/new/estimates.json",
+                      "sha256":  "936f259879b91e4c4c7890ffecf7994ed39432b4e8927d7ec9667a7184cbce97",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  994
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_redact_url_attribute/new/sample.json",
+                      "sha256":  "86361270b21afb997b897cb3a8156ffdf7bb4c2f7ae2721a179fc09398c2ecbc",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  686
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_redact_url_attribute/new/tukey.json",
+                      "sha256":  "a37d4ab2d58b4e97cde96ef3850a5ebcef3caf40ae6fb6d27e94542c815ffb9f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_sanitize_common_string_attribute/new/benchmark.json",
+                      "sha256":  "4286947ad83eb8461da4b9b687e00cbf6920d6959806c7e7744ec9fd74de8f3f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  269
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_sanitize_common_string_attribute/new/estimates.json",
+                      "sha256":  "a9e97601c7765a5fccaea1d9b8ca89649f1f1641fd2c913cf1b13379ad12b25d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  991
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_sanitize_common_string_attribute/new/sample.json",
+                      "sha256":  "60b370d22a8cca218d622b2d220510cfb716c95c329ff74b7618b22724e57b91",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  694
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_sanitize_common_string_attribute/new/tukey.json",
+                      "sha256":  "5d1fcbbeb2496a5633dd872a75f8475690326bc4eda2de59e7d13ad7707d9ec2",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_sanitize_common_string_attribute_in_place/new/benchmark.json",
+                      "sha256":  "ff8c74367b18ee7de603800dae4bdb9fb59f8caa2758b184ae19fe22f507d7d0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  305
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_sanitize_common_string_attribute_in_place/new/estimates.json",
+                      "sha256":  "fa642ac9db6ea574e4aa694446e9696810bdce149fbae252fd24d2f110ea250e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  995
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_sanitize_common_string_attribute_in_place/new/sample.json",
+                      "sha256":  "006f4eaccf8bb440c3ab8add348a71297e9c3a6bd529ad7ae8c084234a40ef25",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  676
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/domain_sanitize_common_string_attribute_in_place/new/tukey.json",
+                      "sha256":  "6b24ed7579265b0da6c94a6fb229bfb95d00527be764866d9da1f880e061e404",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_apply_batch_2000_spans/new/benchmark.json",
+                      "sha256":  "cf12d56467fe9983125d794d613c54fa81344a0488bd2a750ddbf5b92b648c86",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  229
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_apply_batch_2000_spans/new/estimates.json",
+                      "sha256":  "9044dbdb053e7a9aa70ac66ebf93f64bd84a526577b87d267f56ed7f1f4d1ab0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  978
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_apply_batch_2000_spans/new/sample.json",
+                      "sha256":  "a816960fd221cbf7cb73c06e4d0fb7cb72371e89160dcd7501a8d82120ad7f52",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  566
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_apply_batch_2000_spans/new/tukey.json",
+                      "sha256":  "c1a7e96a6406a8a312d4625509b43447da6904ff5334eb1c0c98b466612be087",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  71
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_apply_batch_json_2000_spans/new/benchmark.json",
+                      "sha256":  "a7f2df1479696d0d896e4353f3b587bd1600241afe5bd2496456a1ae61d7569f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  249
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_apply_batch_json_2000_spans/new/estimates.json",
+                      "sha256":  "ad8cd2070a6188e2192022c10f6900f894aeeda4e1ecd20bee275135846d35d8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  974
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_apply_batch_json_2000_spans/new/sample.json",
+                      "sha256":  "97e270892e0ba0fdf262d61315a6575a9271ef4e36d1e05146f8d9d195a4434f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  557
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_apply_batch_json_2000_spans/new/tukey.json",
+                      "sha256":  "b3575284cbe0e353fd3bfc4c3b122d47b6791f2e0b20415c47279e7f316976cf",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_build_server_geometry_100_nodes/new/benchmark.json",
+                      "sha256":  "51b8a6a737192706449a2465acc43f823de81047993858e4b02d20ca70c51b92",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  265
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_build_server_geometry_100_nodes/new/estimates.json",
+                      "sha256":  "b28955fec01fe6b05d4037db3baffa64062ae4407fca261c803fb53d98dd96b5",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  981
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_build_server_geometry_100_nodes/new/sample.json",
+                      "sha256":  "548c6c00fcc85b334513ba71c7cf508b18ccfbff275fc28c8f233f45ce6e1f8e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  571
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_build_server_geometry_100_nodes/new/tukey.json",
+                      "sha256":  "927002ead7271e1b55b5d535522e84efff1b8822a13f9fa69d91eb76be97cd48",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  72
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_search_visible_state_1000_nodes/new/benchmark.json",
+                      "sha256":  "7a278101654ab6c17d7642dff30380de1851f36bb5db45817371457c121ea13a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  265
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_search_visible_state_1000_nodes/new/estimates.json",
+                      "sha256":  "3be40dd3e9d6de91df84869490de912b2f3dba1fdaa7770aeccf4310180344a9",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  977
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_search_visible_state_1000_nodes/new/sample.json",
+                      "sha256":  "f44dedd10404bc3711185ae76004af5692f879cf18964784409d3e7e4b7eef85",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  615
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_search_visible_state_1000_nodes/new/tukey.json",
+                      "sha256":  "f09afc1f93d5c69a865cff374cd4428d47ca433ae336193080288d4e99fffefd",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_seek_and_build_visible_state/new/benchmark.json",
+                      "sha256":  "43aae599ff8e4eb5af60e9dc1f306f8032684e7db64d41d2c8330c5e8f97982b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  253
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_seek_and_build_visible_state/new/estimates.json",
+                      "sha256":  "b4bb3e9022033cc1bb45f9beda87419b266207623fb8d5afb1498233dcaa3eb5",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  981
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_seek_and_build_visible_state/new/sample.json",
+                      "sha256":  "ef787dee8d8b8e804a36e58777c4cfd822060c7aa0b448fbe4fb8bf36377ae3d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  615
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/engine_seek_and_build_visible_state/new/tukey.json",
+                      "sha256":  "01fc18cfdf36020175b013c04b40cf7f0b137ec8b2ac3f06ad467ce19e0312e2",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/executor_evaluate_and_record_verification/new/benchmark.json",
+                      "sha256":  "fe04b22eebf06c2841bb4c39fff0cf13605d4fc071a7a2d234a4853f348b024c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  277
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/executor_evaluate_and_record_verification/new/estimates.json",
+                      "sha256":  "4a71b839a59ede991a0fce5acc4163a10aff2419390a7e7feb4d6808b27608cd",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  986
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/executor_evaluate_and_record_verification/new/sample.json",
+                      "sha256":  "77d3a50c8d21563b647826e1de1d3ebc5198823d07d5cb23ff14956f715e68fe",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  655
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/executor_evaluate_and_record_verification/new/tukey.json",
+                      "sha256":  "88848adbe2e8a393fe0713c38ab8fa379f3d18e4b20bb107b6cc1314d112b938",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  76
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_logs_with_attributes/new/benchmark.json",
+                      "sha256":  "34952d69e034665091842e04471872a7795a8585c7fb14978a608726898dd262",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  277
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_logs_with_attributes/new/estimates.json",
+                      "sha256":  "07442736ce532a638c0d5ef487e8e3f519a05050e5f354b7da02b99b560b376f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  976
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_logs_with_attributes/new/sample.json",
+                      "sha256":  "1bd531ba69d04a23657529c4c5fca3e0181577026e9a6bba6e5e2cf51b1f6afe",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  564
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_logs_with_attributes/new/tukey.json",
+                      "sha256":  "6ae85391842baf26f01f529d8813c939467798f99d45ba3b0bb274e1d337802a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_metric_points_with_attributes/new/benchmark.json",
+                      "sha256":  "c0fc7c99d003fb2dfddc88c28fc018fdd075e49d13224951379c1f292bcb5745",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  313
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_metric_points_with_attributes/new/estimates.json",
+                      "sha256":  "fd2ba2e65cad0337db2dc133366ea646f70fde8b7cecbe767ee804fc94a4f063",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  967
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_metric_points_with_attributes/new/sample.json",
+                      "sha256":  "50a0059ffdd5db0d02728fb47e8c835a198e0b8b7c63fbb53d51f5785725787b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  566
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_metric_points_with_attributes/new/tukey.json",
+                      "sha256":  "e0236f0f272cef00e12b0e445e803e5cc20aef3f3c3f587afcb20f84dbbf326b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_traces/new/benchmark.json",
+                      "sha256":  "6533d88cb78cd8f1370fce6913973dcff05c1c9d265a8604dd933267b3dc00e6",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  221
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_traces/new/estimates.json",
+                      "sha256":  "b9aa53c5ebbd0559b1f1dc509a611b961bca0f5a8b3a53a680d95b57869a1268",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  979
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_traces/new/sample.json",
+                      "sha256":  "3832845a172950c1de6ea416a1e5ae52b7cea4741c58ed73b009199f3cffa2c5",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  564
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_traces/new/tukey.json",
+                      "sha256":  "2df5b7d25070a9b6e712d0bc714817760bcc861fbad18f590e2772abbd698391",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_traces_with_attributes/new/benchmark.json",
+                      "sha256":  "f957e704cd44877e6ef21e31100f152af88f465627b3f9fb90ae18afae32283d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  285
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_traces_with_attributes/new/estimates.json",
+                      "sha256":  "c9361e45decc85b51971582123cc6dd1ec704f157f62aec6985b10b2c1c75d74",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  978
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_traces_with_attributes/new/sample.json",
+                      "sha256":  "b2c87b58ea1eeb80093eb31933fc3686f0939135eca2bc5fc0ca0382f29a78ff",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  560
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/ingest_sanitize_1000_traces_with_attributes/new/tukey.json",
+                      "sha256":  "17c3e9737d3c38b2858cd69625b1547968b2764924d68ff247d39fcac1198d61",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  73
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/processor_check_dead_letter_payload_bound/new/benchmark.json",
+                      "sha256":  "3ed303b8a13150eeae3d3305f7ebbbc0cffcfee74a1b18b9cba81dc65746365c",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  277
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/processor_check_dead_letter_payload_bound/new/estimates.json",
+                      "sha256":  "2a1d53fd99ee2c97a1803c95f805e3b37fdbddcc31f25390b81662c37afff25e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  1006
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/processor_check_dead_letter_payload_bound/new/sample.json",
+                      "sha256":  "78f03561a5dc95f983228cf3c1af2211caa65a20d044185ab2ee9ee6410ba602",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  759
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/processor_check_dead_letter_payload_bound/new/tukey.json",
+                      "sha256":  "871da256701c658aab100ed7f0786b1e1f1f6856d8ba87cf5b67de648df025bd",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  79
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/processor_drain_128_ready_records/new/benchmark.json",
+                      "sha256":  "3bee57f77045c2b14f3aded9e6317f2fcd662708b8f66a4f4c2e6c84089714c7",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  245
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/processor_drain_128_ready_records/new/estimates.json",
+                      "sha256":  "42bc17ff448622e09599ed57e260856b4f22385a7c63cbf8e495ad681971622e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  978
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/processor_drain_128_ready_records/new/sample.json",
+                      "sha256":  "a3f2ccc3efc195f0fb21c2a07b74cb432b1266409fb730ea6f15304e6968c645",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  634
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/processor_drain_128_ready_records/new/tukey.json",
+                      "sha256":  "94c70287bd26fbac303fbb30532899a15d159770dee510f152eec0d2a103dfd3",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/protocol_decode_256_events/new/benchmark.json",
+                      "sha256":  "488d48b6eec47bb323809445498652d364517e0114e01b74dbede1f3c82903f0",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  217
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/protocol_decode_256_events/new/estimates.json",
+                      "sha256":  "ad2f417e58683f37829034eee53971668376b0813d0945f9e0500f78e516fd1d",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  981
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/protocol_decode_256_events/new/sample.json",
+                      "sha256":  "f4306e21228aa9d0ffaa7407870068dd6f0a39a6972a4cd1cef101e4eb8a6609",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  610
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/protocol_decode_256_events/new/tukey.json",
+                      "sha256":  "65fc9267c8d72f1dc42d7b1e217ddac2e8af24add5d1e8d4c93dd229529c19a5",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/protocol_encode_256_events/new/benchmark.json",
+                      "sha256":  "70db09deb88740e0e7667063dc4154fa1bf2f562bd2b4d5078ed1e6a240055e8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  217
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/protocol_encode_256_events/new/estimates.json",
+                      "sha256":  "4ade79ea59c592337cb0ce1789e7566dd620a56bbb7c43ecf428dd9d50c6be3b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  980
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/protocol_encode_256_events/new/sample.json",
+                      "sha256":  "9ab61c7aa7dc5d1a9cfacbd5f242b8fd71b57a8323cd9a7a7ba4c7aa29866adf",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  633
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/protocol_encode_256_events/new/tukey.json",
+                      "sha256":  "9ac2d30472081c63a53d0657ee75c1f86c7cd223d09aa3ed39233f65318104fb",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  74
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/runtime_backoff_schedule/new/benchmark.json",
+                      "sha256":  "f1255a12bc7d9e41c77184aaa86d5f08db3e5b3b24f89049833db3980f318a8b",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  209
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/runtime_backoff_schedule/new/estimates.json",
+                      "sha256":  "4cb277fbe3f15b30b18af3ab587dc56423298677f52f806985d6e485da134e5a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  1001
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/runtime_backoff_schedule/new/sample.json",
+                      "sha256":  "31b2efa03fbeb4504129096dd1ba3e7fd328d9ef055bfa5985767dc3a4cb031f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  713
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/runtime_backoff_schedule/new/tukey.json",
+                      "sha256":  "268203a9ae986fdac81c5d743b892f3bc1fbd7e612582bce4893eeb036a7f281",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/storage_parse_clickhouse_ttl/new/benchmark.json",
+                      "sha256":  "b76b51ad894d30d440586b710e3f23bdfcc120f131294dff35763808b987a21a",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  225
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/storage_parse_clickhouse_ttl/new/estimates.json",
+                      "sha256":  "713a1c17f0b5868145fd1acf196b7046152af74c14fad84584e9a72fcbd78f88",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  990
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/storage_parse_clickhouse_ttl/new/sample.json",
+                      "sha256":  "6a1bd1ab751322ee11060283e70d097333a6ce31b1aaf2bbcfe2c541a715f6e8",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  682
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/storage_parse_clickhouse_ttl/new/tukey.json",
+                      "sha256":  "642f5e4465cfadbd46b338641f05b1321e3dea9262fcebd6039490a1f992ed22",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  77
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/web_engine_construct_from_config_json/new/benchmark.json",
+                      "sha256":  "deca4a05802c3d450c4c7b4e5959c417cc86e68453e006452ef285c1b3d9ec6f",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  261
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/web_engine_construct_from_config_json/new/estimates.json",
+                      "sha256":  "f1b2436332f75dc1a9cfd3c9bc482b80fb2c861c4b613f44a9af655cf93bd6ef",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  986
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/web_engine_construct_from_config_json/new/sample.json",
+                      "sha256":  "30a0b1c339c48cd022def206487cf54e292eaf33d9244630e3dc7a97b257802e",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  675
+                  },
+                  {
+                      "path":  "results/repetition-3/criterion/web_engine_construct_from_config_json/new/tukey.json",
+                      "sha256":  "2c17caa4d0bf97efb41e0f21a7117ab9658925423646e4e3c6437392fb294bdd",
+                      "generated_by":  "run-benchmarks.ps1",
+                      "bytes":  75
+                  }
+              ]
+}

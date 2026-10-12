@@ -1,0 +1,10 @@
+{
+  "mode": "cpu-profile",
+  "schema_version": 1,
+  "run_id": "20261012T0730_engine-profile",
+  "tool": "Windows Performance Recorder CPU",
+  "status": "unsupported",
+  "error_code": "0xc5585011",
+  "reason": "The current process cannot enable system-performance profiling policy; no ETL collected.",
+  "target_workload": "criterion:engine/apply_batch_json_2000_spans.v1"
+}

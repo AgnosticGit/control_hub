@@ -18,10 +18,15 @@ protox = "0.9"
 
 [dev-dependencies]
 criterion.workspace = true
+divan.workspace = true
 serde_json.workspace = true
 
 [[bench]]
 name = "envelope"
+harness = false
+
+[[bench]]
+name = "allocation"
 harness = false
 
 [lints]

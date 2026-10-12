@@ -1,0 +1,529 @@
+{
+  "status": "completed",
+  "files": [
+    {
+      "bytes": 2587,
+      "sha256": "24a7c2cc036de58f269e290ee59270c6e868c85ba5d6a5910fbd1c9862f9c7bb",
+      "generated_by": "initial verified runner snapshot",
+      "path": "metadata.json"
+    },
+    {
+      "bytes": 1814,
+      "sha256": "d11c6a289ded607a894fc6d6060f89db871adb40cf76b5e13e6e5705ec1944e7",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/summary.json"
+    },
+    {
+      "bytes": 205,
+      "sha256": "ad19bedc839c407a4cac72b9abd11efd0ce4bb9caaeed1b0328b13cf4515d304",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/base/benchmark.json"
+    },
+    {
+      "bytes": 979,
+      "sha256": "6a2b2a025327788b4e4611ff08a83a68eb772d6c9708734c374cb244412f35cb",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/base/estimates.json"
+    },
+    {
+      "bytes": 220,
+      "sha256": "81f9400064663daef69db2fd5b38cacc7bb346b7e5ff7d5a6b6872fb445274dc",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/base/sample.json"
+    },
+    {
+      "bytes": 75,
+      "sha256": "15eb99e59b90bb56ac16000f61703669621fd9d0f59d6149d16f48a391fa362f",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/base/tukey.json"
+    },
+    {
+      "bytes": 405,
+      "sha256": "192fcdb02d8f14bd4886d61f8e6dda4c0a8fae222b0c696ce25a149078758c2b",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/change/estimates.json"
+    },
+    {
+      "bytes": 205,
+      "sha256": "ad19bedc839c407a4cac72b9abd11efd0ce4bb9caaeed1b0328b13cf4515d304",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/new/benchmark.json"
+    },
+    {
+      "bytes": 979,
+      "sha256": "6a2b2a025327788b4e4611ff08a83a68eb772d6c9708734c374cb244412f35cb",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/new/estimates.json"
+    },
+    {
+      "bytes": 220,
+      "sha256": "81f9400064663daef69db2fd5b38cacc7bb346b7e5ff7d5a6b6872fb445274dc",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/new/sample.json"
+    },
+    {
+      "bytes": 75,
+      "sha256": "15eb99e59b90bb56ac16000f61703669621fd9d0f59d6149d16f48a391fa362f",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/new/tukey.json"
+    },
+    {
+      "bytes": 10671,
+      "sha256": "6d85b67a7672e6255be4a47dcec22f570ebab062044dbd78f5b4dac113e4cf64",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/index.html"
+    },
+    {
+      "bytes": 12431,
+      "sha256": "38c28055ed64b5ce2d67c41f84d64bcfb20fe8c03cf87759593f65347b724559",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/MAD.svg"
+    },
+    {
+      "bytes": 12935,
+      "sha256": "7352494e1abee471bd2233fabdab17e3866a3f706347d18afc8267451302d03b",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/mean.svg"
+    },
+    {
+      "bytes": 13892,
+      "sha256": "732277c9a9c37ec24a086c58ef8b11e5bccdb855db79fbfff2e7e65fed822acd",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/median.svg"
+    },
+    {
+      "bytes": 7591,
+      "sha256": "cdf7f880d1d37fe95bb024a65931ee4fe8d26ab45ce365f2c83fe02f84556ec1",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/pdf_small.svg"
+    },
+    {
+      "bytes": 22284,
+      "sha256": "4e3b7dea73c2a4268c41cedd53fcf80fbde02318a560971efe9e6324b44acaff",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/pdf.svg"
+    },
+    {
+      "bytes": 15290,
+      "sha256": "b757f3b347624d6f00cbd375b664f21b9020b063ca40a0dde38066170629eec7",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/regression_small.svg"
+    },
+    {
+      "bytes": 16243,
+      "sha256": "de738c573f3587ea64e08209a083a5fe9a948af4b4ffd1e864df4fda95407d71",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/regression.svg"
+    },
+    {
+      "bytes": 11481,
+      "sha256": "04e965b43a4518d03acc30e30d3e5e75bdb6b01530c6b63b8cec33d174d4284e",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/relative_pdf_small.svg"
+    },
+    {
+      "bytes": 6955,
+      "sha256": "3a7a9c8c06a32e94bbf1284ac1a7e07a31c99856161e9feb3314eba45e9237fb",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/relative_regression_small.svg"
+    },
+    {
+      "bytes": 14140,
+      "sha256": "505bef245c86d84e0feb076d44e32c634b34d84418a3a85319b19707a111a37c",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/SD.svg"
+    },
+    {
+      "bytes": 13859,
+      "sha256": "c2feb3f7eefb7f8b3af08a64490b85d7c27c84aef955e7fb1a04595dbbf08a06",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/slope.svg"
+    },
+    {
+      "bytes": 13861,
+      "sha256": "eafe14dd59d00509464a76d5085921c29c8fed9a95918c4bfcb0dbd489c6d3f2",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/typical.svg"
+    },
+    {
+      "bytes": 12698,
+      "sha256": "10b656c88aab854bb6f60c746a2c483ba4cfd746fc9de6cc64a3f11d8de6445a",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/both/pdf.svg"
+    },
+    {
+      "bytes": 7627,
+      "sha256": "c76b54636461d9aabe5216616fd855a17c1390e2f3c10d49f2eacd4bd68dc93c",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/both/regression.svg"
+    },
+    {
+      "bytes": 12962,
+      "sha256": "47159447ae702a2863d4febb297baa3bed6b5dfa0ed894a3447901aebcaf44cc",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/change/mean.svg"
+    },
+    {
+      "bytes": 12704,
+      "sha256": "b59daa7ebb89e83ea1a3d6a72c90f1baa61e29d0765449adb5c6ee8baf5029a0",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/change/median.svg"
+    },
+    {
+      "bytes": 9557,
+      "sha256": "8fb387b9e71ae42ae18582304c02feaa55b9bffb74801399fb146f89e7d2a41a",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/archive_encode_512_logs/report/change/t-test.svg"
+    },
+    {
+      "bytes": 229,
+      "sha256": "cf12d56467fe9983125d794d613c54fa81344a0488bd2a750ddbf5b92b648c86",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/base/benchmark.json"
+    },
+    {
+      "bytes": 973,
+      "sha256": "c4412386cf98ae8984621fa32a583fd907b08ee3de3d708bf3044869c356953a",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/base/estimates.json"
+    },
+    {
+      "bytes": 219,
+      "sha256": "72cba38738f0a0c2229a7c9f0079089bd6ad5c4ab59535a7e076ca02ea88678d",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/base/sample.json"
+    },
+    {
+      "bytes": 73,
+      "sha256": "994cc5e158c87005776969016d0a2960a1aeb428199510bad6d2dcee2afe8eb7",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/base/tukey.json"
+    },
+    {
+      "bytes": 402,
+      "sha256": "e0c4c96624195e3a76cf6be50a4d79d951f6930b39087d8a48c1eba2646d382e",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/change/estimates.json"
+    },
+    {
+      "bytes": 229,
+      "sha256": "cf12d56467fe9983125d794d613c54fa81344a0488bd2a750ddbf5b92b648c86",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/new/benchmark.json"
+    },
+    {
+      "bytes": 973,
+      "sha256": "c4412386cf98ae8984621fa32a583fd907b08ee3de3d708bf3044869c356953a",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/new/estimates.json"
+    },
+    {
+      "bytes": 219,
+      "sha256": "72cba38738f0a0c2229a7c9f0079089bd6ad5c4ab59535a7e076ca02ea88678d",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/new/sample.json"
+    },
+    {
+      "bytes": 73,
+      "sha256": "994cc5e158c87005776969016d0a2960a1aeb428199510bad6d2dcee2afe8eb7",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/new/tukey.json"
+    },
+    {
+      "bytes": 10685,
+      "sha256": "88bad0f8c941a507a9dc7fc80f638ca0476fa9e5159b891897319994ea7fd8a5",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/index.html"
+    },
+    {
+      "bytes": 14361,
+      "sha256": "a5270a9184a031645c4f3aeb18331c30b9a94241989a169f2c4ad3d76e782aae",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/MAD.svg"
+    },
+    {
+      "bytes": 13391,
+      "sha256": "e2c605b688b317e4c3d931f4bce7759983a688f4f98f9162895fb23a4458f1be",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/mean.svg"
+    },
+    {
+      "bytes": 12946,
+      "sha256": "405a05f005e68777eed36d8c909b75ba68ef7170c847a839b23ec46cf0eef806",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/median.svg"
+    },
+    {
+      "bytes": 7802,
+      "sha256": "46774da11d622b0fb97b48095ed8057bc28cb3a957af6a7c44f5e68177594f08",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/pdf_small.svg"
+    },
+    {
+      "bytes": 22519,
+      "sha256": "9f4af72decf59306fce9b18c617f3cc409107698ae29b33f0047edd5336bbdca",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/pdf.svg"
+    },
+    {
+      "bytes": 15944,
+      "sha256": "b6bc3bca7842ac060b9b3631be16633e53fc801316b604aa1de11520057bb31a",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/regression_small.svg"
+    },
+    {
+      "bytes": 16912,
+      "sha256": "064e053b5b19fb55ba6fab0ad4d4b2e32dd3c03d9a3e9b36b3a5e169d2d203b1",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/regression.svg"
+    },
+    {
+      "bytes": 11644,
+      "sha256": "fee5fd59ef7f463575cce708258896b9c786da5b626edbc03c40adbbeec11d15",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/relative_pdf_small.svg"
+    },
+    {
+      "bytes": 7280,
+      "sha256": "b01df82de09e5f8fe7c73ed2a6d6dc4c3b30e33c5f3d6ee838090a2350f12e32",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/relative_regression_small.svg"
+    },
+    {
+      "bytes": 11883,
+      "sha256": "65ffb1ea0d1079c2a48f33cfe76f57d8ace57c4bd6d5d5ca6114878c0eff7219",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/SD.svg"
+    },
+    {
+      "bytes": 13377,
+      "sha256": "804115fffda35bd4863c3d130839bbc77a09dd835421fe6cf9bb9fbb7fa4e899",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/slope.svg"
+    },
+    {
+      "bytes": 13379,
+      "sha256": "58685649b53e9997b593b1df189de64babe5e09b838e7d7e82942d500ca14f53",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/typical.svg"
+    },
+    {
+      "bytes": 12933,
+      "sha256": "f7c6d52cad7254f9fb6bb465dfae9ca54822a7d16d1e2864b7a4066e5f82b546",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/both/pdf.svg"
+    },
+    {
+      "bytes": 7963,
+      "sha256": "9372f99702a9b9ab3e166be105566146c263cf78671b6a089a2b51fa6f0d9e1c",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/both/regression.svg"
+    },
+    {
+      "bytes": 12105,
+      "sha256": "edb03b42c9c207c1c4b23fbd9631353028824216e9265b11f3ee90d0ec535214",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/change/mean.svg"
+    },
+    {
+      "bytes": 13170,
+      "sha256": "356c00f9455aa0778b99b87aa2f4c96f8d64915de9cd6bdc18b2a455a588a14c",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/change/median.svg"
+    },
+    {
+      "bytes": 9798,
+      "sha256": "6f144970e5fff435f749b8f2d189250385e944ea3359aad4099f27f95c5eedc5",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/engine_apply_batch_2000_spans/report/change/t-test.svg"
+    },
+    {
+      "bytes": 285,
+      "sha256": "f957e704cd44877e6ef21e31100f152af88f465627b3f9fb90ae18afae32283d",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/base/benchmark.json"
+    },
+    {
+      "bytes": 982,
+      "sha256": "2c6fe2b445dcc6fa0d72e90613fcd1188d982e70d4646bf35e6791369b5ab8fc",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/base/estimates.json"
+    },
+    {
+      "bytes": 220,
+      "sha256": "0023943e88c59b783c7114b8327e26a940e4629b8e6d20d903a86ab69cb241c0",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/base/sample.json"
+    },
+    {
+      "bytes": 75,
+      "sha256": "4a7dcccbd8924ff486ba466ef2dcd487b309a49afd33a942c175c770b4318026",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/base/tukey.json"
+    },
+    {
+      "bytes": 285,
+      "sha256": "f957e704cd44877e6ef21e31100f152af88f465627b3f9fb90ae18afae32283d",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/before-opt/benchmark.json"
+    },
+    {
+      "bytes": 965,
+      "sha256": "9067a3e5a5b4d65739e88a86991209c7855fc5b2dd47656513ee00079a733b24",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/before-opt/estimates.json"
+    },
+    {
+      "bytes": 457,
+      "sha256": "a60c355ba72ae8c8aa1e397ccc90d14b45327835bda9e4c2b31669869c443697",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/before-opt/sample.json"
+    },
+    {
+      "bytes": 75,
+      "sha256": "ab5be67c09b61f2ea269b7f3a41b8dde2e836002803dc7fe74eef59327e0f331",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/before-opt/tukey.json"
+    },
+    {
+      "bytes": 404,
+      "sha256": "e2ffa8b1e9200f8615c91b194cda8bb69a7ffb43e1e58454573cdcfd0d253922",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/change/estimates.json"
+    },
+    {
+      "bytes": 285,
+      "sha256": "f957e704cd44877e6ef21e31100f152af88f465627b3f9fb90ae18afae32283d",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/new/benchmark.json"
+    },
+    {
+      "bytes": 982,
+      "sha256": "2c6fe2b445dcc6fa0d72e90613fcd1188d982e70d4646bf35e6791369b5ab8fc",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/new/estimates.json"
+    },
+    {
+      "bytes": 220,
+      "sha256": "0023943e88c59b783c7114b8327e26a940e4629b8e6d20d903a86ab69cb241c0",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/new/sample.json"
+    },
+    {
+      "bytes": 75,
+      "sha256": "4a7dcccbd8924ff486ba466ef2dcd487b309a49afd33a942c175c770b4318026",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/new/tukey.json"
+    },
+    {
+      "bytes": 10706,
+      "sha256": "33053b03f98126ee12072b673b8ce2573a16f97f3cfc6b25724e921edb0630eb",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/index.html"
+    },
+    {
+      "bytes": 12939,
+      "sha256": "17d3ec8fd3321a802b10bcd12a16238487b5caf6e174c77b26e681d0f6e22c2e",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/MAD.svg"
+    },
+    {
+      "bytes": 13876,
+      "sha256": "15c3b4dce9f27b51601b0652b0a9f9f47ce3840923c0582ae9678b1ff9b045dd",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/mean.svg"
+    },
+    {
+      "bytes": 13901,
+      "sha256": "8046927f23ded285ab24b64d50d9238c51a495e12a3d5c563bcc997d526fd15f",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/median.svg"
+    },
+    {
+      "bytes": 7103,
+      "sha256": "a876e111d36a6b2189be577b4acab828c1a114496f27e542e6cb086661e50072",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/pdf_small.svg"
+    },
+    {
+      "bytes": 22063,
+      "sha256": "b69794486538aad0dae73bacce88f9010fde3a8c7fcf54efcfd8df6e021045b7",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/pdf.svg"
+    },
+    {
+      "bytes": 15948,
+      "sha256": "c96cfce1ed52bf24e066abec56b0a3fe094c9466e7300bf591a2a8389234ede7",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/regression_small.svg"
+    },
+    {
+      "bytes": 16928,
+      "sha256": "075d85beaca69193dee4dfb927c34c70dcdc5f52ad51f90dc8b255e9b7595322",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/regression.svg"
+    },
+    {
+      "bytes": 10904,
+      "sha256": "14bf2a99d027568796dee39cd672c3e6e6d9ca0fedd4ff5080a62214e6f6c3b7",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/relative_pdf_small.svg"
+    },
+    {
+      "bytes": 7935,
+      "sha256": "be3fd22bc5263aa4733e7f318d98e2ef1f03c5ce56d13e603d2ed6cbff27ad83",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/relative_regression_small.svg"
+    },
+    {
+      "bytes": 12179,
+      "sha256": "ffc9b21f1fa314b68cfafc7a7cec98650bbccf9956e596e8f1a77bc5e40231cf",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/SD.svg"
+    },
+    {
+      "bytes": 12132,
+      "sha256": "1fd042ffbf553a811b2b647164d846a8722a53a05f41f96afcca99ede893b0ed",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/slope.svg"
+    },
+    {
+      "bytes": 12134,
+      "sha256": "2bd8bb43903704930a30d3689fa2b75205bb31a561848c5593f9ffcd86f581e2",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/typical.svg"
+    },
+    {
+      "bytes": 12221,
+      "sha256": "201a0f5ac0e8d65af325f936340246923087bcce1935a84c1dfc314025dff95d",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/both/pdf.svg"
+    },
+    {
+      "bytes": 8635,
+      "sha256": "7399b14c3b7f77a7cb8f300b2f43e6e3c286fddc6a3b26d550ad57b2becc3b4e",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/both/regression.svg"
+    },
+    {
+      "bytes": 13320,
+      "sha256": "59d43a7e60ac3a7049d73a0834b4886afba60d9eee0a60c441f89fb72ad103fd",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/change/mean.svg"
+    },
+    {
+      "bytes": 14372,
+      "sha256": "e59b0b400d1f201ad33814aac29dd4055032e10d469133a6d615baee1ad8f4c7",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/change/median.svg"
+    },
+    {
+      "bytes": 10054,
+      "sha256": "96b4cc8d8f5e1989a73eed70b724e1ffa29639f53f32a43cedf1a958169a4973",
+      "generated_by": "initial verified runner snapshot",
+      "path": "results/criterion/ingest_sanitize_1000_traces_with_attributes/report/change/t-test.svg"
+    }
+  ],
+  "run_id": "20261012T031450104Z_windows",
+  "schema_version": 1
+}

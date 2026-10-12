@@ -1,0 +1,103 @@
+﻿{
+    "schema_version":  1,
+    "status":  "completed",
+    "run_id":  "20261012T142400000Z_app-baseline",
+    "files":  [
+                  {
+                      "path":  "metadata.json",
+                      "sha256":  "251d269e51dd41e91e3fa14754d6f341a90671347e5d7a1ca524dd1dd241f1c9",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  1673
+                  },
+                  {
+                      "path":  "binaries/baseline.exe",
+                      "sha256":  "5d179fdd5966c2747aab50b2659305d0dd06aab8954257fd502a87866df0e54e",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  3622400
+                  },
+                  {
+                      "path":  "logs/discover-repository-hyperfine.log",
+                      "sha256":  "834af43d9fd53f431c7f8e7ec47e863663cc393ef79cf24058e26e4532673ff9",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  186
+                  },
+                  {
+                      "path":  "logs/plan-repository-hyperfine.log",
+                      "sha256":  "0cbc8d1590340884a4c63db08a30c61243c4d4b515b1585879545017824180ae",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  182
+                  },
+                  {
+                      "path":  "results/discover-repository-baseline-rss-rep-1.json",
+                      "sha256":  "fc6132417d5fd7327d284887d38a54469d1fbd7e81a0ac05457df2e4e98097f2",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  885
+                  },
+                  {
+                      "path":  "results/discover-repository-baseline-rss-rep-2.json",
+                      "sha256":  "e102b52c56881109cec3e8841b493ce1ec02828d0a01ee66e8a689a87f2e4641",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  885
+                  },
+                  {
+                      "path":  "results/discover-repository-baseline-rss-rep-3.json",
+                      "sha256":  "e102b52c56881109cec3e8841b493ce1ec02828d0a01ee66e8a689a87f2e4641",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  885
+                  },
+                  {
+                      "path":  "results/discover-repository-baseline-rss-rep-4.json",
+                      "sha256":  "e102b52c56881109cec3e8841b493ce1ec02828d0a01ee66e8a689a87f2e4641",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  885
+                  },
+                  {
+                      "path":  "results/discover-repository-baseline-rss-rep-5.json",
+                      "sha256":  "e102b52c56881109cec3e8841b493ce1ec02828d0a01ee66e8a689a87f2e4641",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  885
+                  },
+                  {
+                      "path":  "results/discover-repository-hyperfine.json",
+                      "sha256":  "18841e5f39867e49decf7f49259b516b33676af5c7a143ec05152b73ae22bf83",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  10461
+                  },
+                  {
+                      "path":  "results/plan-repository-baseline-rss-rep-1.json",
+                      "sha256":  "38295b3d4f863b465e1735c49cc64b65ee8878e01c1aea2dc1b1d3ec26d81b4c",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  2111
+                  },
+                  {
+                      "path":  "results/plan-repository-baseline-rss-rep-2.json",
+                      "sha256":  "38295b3d4f863b465e1735c49cc64b65ee8878e01c1aea2dc1b1d3ec26d81b4c",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  2111
+                  },
+                  {
+                      "path":  "results/plan-repository-baseline-rss-rep-3.json",
+                      "sha256":  "38295b3d4f863b465e1735c49cc64b65ee8878e01c1aea2dc1b1d3ec26d81b4c",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  2111
+                  },
+                  {
+                      "path":  "results/plan-repository-baseline-rss-rep-4.json",
+                      "sha256":  "38295b3d4f863b465e1735c49cc64b65ee8878e01c1aea2dc1b1d3ec26d81b4c",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  2111
+                  },
+                  {
+                      "path":  "results/plan-repository-baseline-rss-rep-5.json",
+                      "sha256":  "38295b3d4f863b465e1735c49cc64b65ee8878e01c1aea2dc1b1d3ec26d81b4c",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  2111
+                  },
+                  {
+                      "path":  "results/plan-repository-hyperfine.json",
+                      "sha256":  "c8814d52e08847731f1030743f9913abc221d2202b3a9a62540ee2b06c3f7c6d",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  10410
+                  }
+              ]
+}

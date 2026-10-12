@@ -1,0 +1,64 @@
+﻿{
+    "schema_version":  1,
+    "run_id":  "20261012T151500000Z_divan-candidate",
+    "mode":  "allocation-baseline",
+    "started_utc":  "2026-10-12T15:14:48.1235342Z",
+    "linked_criterion_run":  "20261012T135755240Z_workspace",
+    "rustc":  "rustc 1.98.1 (48a229cea 2026-09-01)\r\nbinary: rustc\r\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\r\ncommit-date: 2026-09-01\r\nhost: x86_64-pc-windows-msvc\r\nrelease: 1.98.1\r\nLLVM version: 22.1.8",
+    "cargo":  "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+    "cargo_lock_sha256":  "367c195a541a6c4c46910a0547842fd39d9947c8f8b0bbf3842b060c74a25a41",
+    "criterion":  "0.8.2 (see linked full-workspace run)",
+    "divan":  "0.1.21",
+    "repetitions":  3,
+    "sample_count":  30,
+    "workloads":  [
+                      {
+                          "id":  "divan:api/group_500_hosts.v1",
+                          "source":  "crates/karbird-api/benches/allocation.rs",
+                          "target":  "allocation",
+                          "package":  "karbird-api"
+                      },
+                      {
+                          "id":  "divan:api/place_200_resources_600_addresses.v1",
+                          "source":  "crates/karbird-api/benches/allocation.rs",
+                          "target":  "allocation",
+                          "package":  "karbird-api"
+                      },
+                      {
+                          "id":  "divan:archive/encode_512_logs.v1",
+                          "source":  "crates/karbird-archive/benches/allocation.rs",
+                          "target":  "allocation",
+                          "package":  "karbird-archive"
+                      },
+                      {
+                          "id":  "divan:convert/convert_256_custom_events.v1",
+                          "source":  "crates/karbird-convert/benches/allocation.rs",
+                          "target":  "allocation",
+                          "package":  "karbird-convert"
+                      },
+                      {
+                          "id":  "divan:engine/apply_batch_2000_spans.v1",
+                          "source":  "crates/karbird-engine-core/benches/allocation.rs",
+                          "target":  "allocation",
+                          "package":  "karbird-engine-core"
+                      },
+                      {
+                          "id":  "divan:ingest/sanitize_1000_traces.v1",
+                          "source":  "crates/karbird-ingest/benches/allocation.rs",
+                          "target":  "allocation",
+                          "package":  "karbird-ingest"
+                      },
+                      {
+                          "id":  "divan:protocol/encode_256_events.v1",
+                          "source":  "crates/karbird-protocol/benches/allocation.rs",
+                          "target":  "allocation",
+                          "package":  "karbird-protocol"
+                      }
+                  ],
+    "unavailable":  {
+                        "gungraun":  "Valgrind is unavailable on the Windows host; WSL Ubuntu has Valgrind 3.18.1, below Gungraun tested versions, and installation/build prerequisites require elevated setup.",
+                        "linux_perf":  "The benchmark host is Windows; WSL perf is not installed and hardware-counter access is restricted."
+                    },
+    "status":  "completed",
+    "finished_utc":  "2026-10-12T15:14:56.2819229Z"
+}

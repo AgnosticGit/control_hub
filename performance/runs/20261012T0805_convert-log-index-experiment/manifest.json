@@ -1,0 +1,169 @@
+{
+  "status": "completed-rejected",
+  "files": [
+    {
+      "bytes": 437,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "33b7db4354ac9420eb7d4075ad03088265ce0e7fbe4a76d142d13dcb3a7d554e",
+      "path": "metadata.json"
+    },
+    {
+      "bytes": 532,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "70893da23f10de2907622b2dacff80047b9f9fc00b88f2db1d86df8d1c4cdb9b",
+      "path": "results/experiment.txt"
+    },
+    {
+      "bytes": 61604,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "ec8db611a801b75db8db263c8d02a734a1ab3e13ad6260179acdda932033db66",
+      "path": "results/experimental-lib.rs"
+    },
+    {
+      "bytes": 221,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "3c789b14862692d485aba9179188484ed51f46af94f6855b758f46d6d5685864",
+      "path": "results/criterion/convert_normalize_1000_logs/base/benchmark.json"
+    },
+    {
+      "bytes": 984,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "ed2b1ad3c4d980b160b534bdf2f7c2c71f503e23d64f328b0e7a7ab832496594",
+      "path": "results/criterion/convert_normalize_1000_logs/base/estimates.json"
+    },
+    {
+      "bytes": 566,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "be58540281d86fd2908d287066c6fe2e2b180370c193f0f5e7ed60812e853218",
+      "path": "results/criterion/convert_normalize_1000_logs/base/sample.json"
+    },
+    {
+      "bytes": 76,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "0c27541814d0685ed69c0ff1c92c28df19ead0c55ccc0ba3f96c3ac595bcc32b",
+      "path": "results/criterion/convert_normalize_1000_logs/base/tukey.json"
+    },
+    {
+      "bytes": 221,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "3c789b14862692d485aba9179188484ed51f46af94f6855b758f46d6d5685864",
+      "path": "results/criterion/convert_normalize_1000_logs/before-opt/benchmark.json"
+    },
+    {
+      "bytes": 978,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "11cbf4afe9cf0d552a87928d185b89f7a006d9f61e423490e22aeb55fd7f033a",
+      "path": "results/criterion/convert_normalize_1000_logs/before-opt/estimates.json"
+    },
+    {
+      "bytes": 460,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "dff588802a28a560de1fa779ce743b8a662254e1bc83c4392156a71718df9dd5",
+      "path": "results/criterion/convert_normalize_1000_logs/before-opt/sample.json"
+    },
+    {
+      "bytes": 76,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "68054a397fd8281ee33ebcd86513f4d8218fd86f11d810cdb79e1913b60ad54b",
+      "path": "results/criterion/convert_normalize_1000_logs/before-opt/tukey.json"
+    },
+    {
+      "bytes": 401,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "b7f31d501e6a981f98af2045eba9e5e8a4dc53bd34a91394e4dea7c272de7b1b",
+      "path": "results/criterion/convert_normalize_1000_logs/change/estimates.json"
+    },
+    {
+      "bytes": 221,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "3c789b14862692d485aba9179188484ed51f46af94f6855b758f46d6d5685864",
+      "path": "results/criterion/convert_normalize_1000_logs/new/benchmark.json"
+    },
+    {
+      "bytes": 984,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "ed2b1ad3c4d980b160b534bdf2f7c2c71f503e23d64f328b0e7a7ab832496594",
+      "path": "results/criterion/convert_normalize_1000_logs/new/estimates.json"
+    },
+    {
+      "bytes": 566,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "be58540281d86fd2908d287066c6fe2e2b180370c193f0f5e7ed60812e853218",
+      "path": "results/criterion/convert_normalize_1000_logs/new/sample.json"
+    },
+    {
+      "bytes": 76,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "0c27541814d0685ed69c0ff1c92c28df19ead0c55ccc0ba3f96c3ac595bcc32b",
+      "path": "results/criterion/convert_normalize_1000_logs/new/tukey.json"
+    },
+    {
+      "bytes": 7133,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "10eb6230ca65c0de310f470697dd060ac57b1622d678505abb86c174d974e97f",
+      "path": "results/criterion/convert_normalize_1000_logs/report/index.html"
+    },
+    {
+      "bytes": 12657,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "6f2b778a8d945d0386d5accad082ae8ce1b518aeee1e535b582b00925906edcf",
+      "path": "results/criterion/convert_normalize_1000_logs/report/MAD.svg"
+    },
+    {
+      "bytes": 13363,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "6bd943ccfc5389ad7ea3cb7e86fee11a8a4538d425655506942fee5da49f5bfa",
+      "path": "results/criterion/convert_normalize_1000_logs/report/mean.svg"
+    },
+    {
+      "bytes": 13409,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "4f1d68a0a1868896ac7aaf96b5e48981cbbe0c69db485d9079286489c310981f",
+      "path": "results/criterion/convert_normalize_1000_logs/report/median.svg"
+    },
+    {
+      "bytes": 7322,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "67237b18993bd24f40695eac32ff3623ee4cfe39c5c33bcf0b18f030d2d30f10",
+      "path": "results/criterion/convert_normalize_1000_logs/report/pdf_small.svg"
+    },
+    {
+      "bytes": 22267,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "904ea6c82fc49ad7233e3a0dc1b374fac12d2f5dd3b82f61cab96099e2046af9",
+      "path": "results/criterion/convert_normalize_1000_logs/report/pdf.svg"
+    },
+    {
+      "bytes": 15621,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "ff573dbf8559dbfa2aadd4bcf8c73e577be5d167082a43cd34a46138eb24ac31",
+      "path": "results/criterion/convert_normalize_1000_logs/report/regression_small.svg"
+    },
+    {
+      "bytes": 16587,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "586831d8d2ada777bdf39eeea9aacb2123d2f41744aab72143164d5310fd363f",
+      "path": "results/criterion/convert_normalize_1000_logs/report/regression.svg"
+    },
+    {
+      "bytes": 11915,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "1ae2599123844d7387b72bc7b9f2a6f6547fb12146503a9e2b881e628192752f",
+      "path": "results/criterion/convert_normalize_1000_logs/report/SD.svg"
+    },
+    {
+      "bytes": 12138,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "9d8b67169f582237a11dbadc52b87322ab937a912a8c5c08a3a41242360958a9",
+      "path": "results/criterion/convert_normalize_1000_logs/report/slope.svg"
+    },
+    {
+      "bytes": 12140,
+      "generated_by": "manual rejected experiment capture",
+      "sha256": "12e853c9a4371f831128269feac187c266258921c5a0b4792f7740fa0b727897",
+      "path": "results/criterion/convert_normalize_1000_logs/report/typical.svg"
+    }
+  ],
+  "schema_version": 1,
+  "run_id": "20261012T0805_convert-log-index-experiment"
+}

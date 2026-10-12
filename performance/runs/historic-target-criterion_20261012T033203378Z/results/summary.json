@@ -1,0 +1,2150 @@
+{
+  "schema_version": 1,
+  "status": "completed",
+  "metrics": [
+    {
+      "criterion_id": "actions/evaluate_policy",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 274.30457730910564,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 269.9512314335719,
+        "upper_bound": 279.1550401671637
+      },
+      "std_dev_ns": 23.68422710534374,
+      "sample_count": 100,
+      "raw_estimates": "actions_evaluate_policy/base/estimates.json"
+    },
+    {
+      "criterion_id": "actions/evaluate_policy",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.03471400548662462,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.05617780258040619,
+        "upper_bound": -0.012716918242741678
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "actions_evaluate_policy/change/estimates.json"
+    },
+    {
+      "criterion_id": "actions/evaluate_policy",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 274.30457730910564,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 269.9512314335719,
+        "upper_bound": 279.1550401671637
+      },
+      "std_dev_ns": 23.68422710534374,
+      "sample_count": 100,
+      "raw_estimates": "actions_evaluate_policy/new/estimates.json"
+    },
+    {
+      "criterion_id": "actions/validate_scale",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 22.52324841463467,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 22.197584336962333,
+        "upper_bound": 22.867173407716336
+      },
+      "std_dev_ns": 1.7296574728272442,
+      "sample_count": 100,
+      "raw_estimates": "actions_validate_scale/base/estimates.json"
+    },
+    {
+      "criterion_id": "actions/validate_scale",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.033080041069429855,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.05363726313058868,
+        "upper_bound": -0.012901807947404935
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "actions_validate_scale/change/estimates.json"
+    },
+    {
+      "criterion_id": "actions/validate_scale",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 22.52324841463467,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 22.197584336962333,
+        "upper_bound": 22.867173407716336
+      },
+      "std_dev_ns": 1.7296574728272442,
+      "sample_count": 100,
+      "raw_estimates": "actions_validate_scale/new/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_and_containers",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 296963.2481539309,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 293511.9961984524,
+        "upper_bound": 300768.14718578686
+      },
+      "std_dev_ns": 18547.57322530236,
+      "sample_count": 100,
+      "raw_estimates": "api_group_500_hosts_and_containers/base/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_and_containers",
+      "result_set": "before-empty-fs-fast-path",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 272879.92581644014,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 268705.36920389725,
+        "upper_bound": 277787.17197572836
+      },
+      "std_dev_ns": 15062.844479796318,
+      "sample_count": 40,
+      "raw_estimates": "api_group_500_hosts_and_containers/before-empty-fs-fast-path/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_and_containers",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 266576.09966997034,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 264225.2753630901,
+        "upper_bound": 268827.52319504326
+      },
+      "std_dev_ns": 6532.852669752189,
+      "sample_count": 30,
+      "raw_estimates": "api_group_500_hosts_and_containers/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_and_containers",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.15411701727042848,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 0.10367389848799907,
+        "upper_bound": 0.2223272813249238
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "api_group_500_hosts_and_containers/change/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_and_containers",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 314935.3660562457,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 301716.2102078169,
+        "upper_bound": 330400.31259407627
+      },
+      "std_dev_ns": 47057.336096136314,
+      "sample_count": 40,
+      "raw_estimates": "api_group_500_hosts_and_containers/new/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_cpu_utilization_fallback",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 246203.25218465415,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 241880.38782399154,
+        "upper_bound": 251200.47506087495
+      },
+      "std_dev_ns": 24180.963304653316,
+      "sample_count": 100,
+      "raw_estimates": "api_group_500_hosts_cpu_utilization_fallback/base/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_cpu_utilization_fallback",
+      "result_set": "before-fallback-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 261981.17933302102,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 257112.3560370613,
+        "upper_bound": 268143.9966977065
+      },
+      "std_dev_ns": 15902.955048954604,
+      "sample_count": 30,
+      "raw_estimates": "api_group_500_hosts_cpu_utilization_fallback/before-fallback-opt/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_cpu_utilization_fallback",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.13313611973759387,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.16033752439123003,
+        "upper_bound": -0.10601741441255741
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "api_group_500_hosts_cpu_utilization_fallback/change/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_cpu_utilization_fallback",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 227102.0216723439,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 222274.7593086472,
+        "upper_bound": 232674.24833299132
+      },
+      "std_dev_ns": 17009.071854263053,
+      "sample_count": 40,
+      "raw_estimates": "api_group_500_hosts_cpu_utilization_fallback/new/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_realistic_metrics",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1604534.403540572,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1581829.945322148,
+        "upper_bound": 1629777.985258024
+      },
+      "std_dev_ns": 122406.20752752668,
+      "sample_count": 100,
+      "raw_estimates": "api_group_500_hosts_realistic_metrics/base/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_realistic_metrics",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 3472615.0745458626,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 3402364.969760257,
+        "upper_bound": 3557364.964421145
+      },
+      "std_dev_ns": 202156.31016590475,
+      "sample_count": 25,
+      "raw_estimates": "api_group_500_hosts_realistic_metrics/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_realistic_metrics",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.5431949710789428,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.5563243149028647,
+        "upper_bound": -0.5313474003500144
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "api_group_500_hosts_realistic_metrics/change/estimates.json"
+    },
+    {
+      "criterion_id": "api/group_500_hosts_realistic_metrics",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1586308.029559622,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1563448.7303944197,
+        "upper_bound": 1615880.02130087
+      },
+      "std_dev_ns": 86898.21129132745,
+      "sample_count": 40,
+      "raw_estimates": "api_group_500_hosts_realistic_metrics/new/estimates.json"
+    },
+    {
+      "criterion_id": "api/place_200_resources_600_addresses",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1766652.2334877776,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1736984.7023112092,
+        "upper_bound": 1800294.69030735
+      },
+      "std_dev_ns": 162786.24201659035,
+      "sample_count": 100,
+      "raw_estimates": "api_place_200_resources_600_addresses/base/estimates.json"
+    },
+    {
+      "criterion_id": "api/place_200_resources_600_addresses",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1943517.6589584092,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1891217.2961390102,
+        "upper_bound": 2004913.8394953557
+      },
+      "std_dev_ns": 148530.95215836514,
+      "sample_count": 25,
+      "raw_estimates": "api_place_200_resources_600_addresses/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "api/place_200_resources_600_addresses",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.014094005480982386,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.060218224484741005,
+        "upper_bound": 0.03846629326466441
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "api_place_200_resources_600_addresses/change/estimates.json"
+    },
+    {
+      "criterion_id": "api/place_200_resources_600_addresses",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1766652.2334877776,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1736984.7023112092,
+        "upper_bound": 1800294.69030735
+      },
+      "std_dev_ns": 162786.24201659035,
+      "sample_count": 100,
+      "raw_estimates": "api_place_200_resources_600_addresses/new/estimates.json"
+    },
+    {
+      "criterion_id": "archive/decode_512_logs",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 472832.3196117805,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 434059.2862115127,
+        "upper_bound": 510565.53647925035
+      },
+      "std_dev_ns": 65659.84299431083,
+      "sample_count": 10,
+      "raw_estimates": "archive_decode_512_logs/base/estimates.json"
+    },
+    {
+      "criterion_id": "archive/decode_512_logs",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.029159832361908666,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.15169380798785173,
+        "upper_bound": 0.11277397747112979
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "archive_decode_512_logs/change/estimates.json"
+    },
+    {
+      "criterion_id": "archive/decode_512_logs",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 472832.3196117805,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 434059.2862115127,
+        "upper_bound": 510565.53647925035
+      },
+      "std_dev_ns": 65659.84299431083,
+      "sample_count": 10,
+      "raw_estimates": "archive_decode_512_logs/new/estimates.json"
+    },
+    {
+      "criterion_id": "archive/encode_512_logs",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 333369.53838522587,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 319317.5646367521,
+        "upper_bound": 351019.1068376069
+      },
+      "std_dev_ns": 27117.69670459142,
+      "sample_count": 10,
+      "raw_estimates": "archive_encode_512_logs/base/estimates.json"
+    },
+    {
+      "criterion_id": "archive/encode_512_logs",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.055496315295996634,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.14614151815203563,
+        "upper_bound": 0.034261992819159426
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "archive_encode_512_logs/change/estimates.json"
+    },
+    {
+      "criterion_id": "archive/encode_512_logs",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 333369.53838522587,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 319317.5646367521,
+        "upper_bound": 351019.1068376069
+      },
+      "std_dev_ns": 27117.69670459142,
+      "sample_count": 10,
+      "raw_estimates": "archive_encode_512_logs/new/estimates.json"
+    },
+    {
+      "criterion_id": "archive/index_512_logs",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 103585.44563769564,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 95515.64885114886,
+        "upper_bound": 114947.72902097902
+      },
+      "std_dev_ns": 17212.305006177863,
+      "sample_count": 10,
+      "raw_estimates": "archive_index_512_logs/base/estimates.json"
+    },
+    {
+      "criterion_id": "archive/index_512_logs",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 88331.98678569011,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 87090.85719975931,
+        "upper_bound": 89842.59199056827
+      },
+      "std_dev_ns": 3617.0972526205155,
+      "sample_count": 25,
+      "raw_estimates": "archive_index_512_logs/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "archive/index_512_logs",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.10154331798161165,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.23524301219564972,
+        "upper_bound": 0.052736480341762676
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "archive_index_512_logs/change/estimates.json"
+    },
+    {
+      "criterion_id": "archive/index_512_logs",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 103585.44563769564,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 95515.64885114886,
+        "upper_bound": 114947.72902097902
+      },
+      "std_dev_ns": 17212.305006177863,
+      "sample_count": 10,
+      "raw_estimates": "archive_index_512_logs/new/estimates.json"
+    },
+    {
+      "criterion_id": "archiver/plan_closed_windows",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 466.9285379106313,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 461.5740686069114,
+        "upper_bound": 472.8703817501288
+      },
+      "std_dev_ns": 28.97895437073233,
+      "sample_count": 100,
+      "raw_estimates": "archiver_plan_closed_windows/base/estimates.json"
+    },
+    {
+      "criterion_id": "archiver/plan_closed_windows",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.015007761231569217,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.031177275700226815,
+        "upper_bound": 0.0005422806755029371
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "archiver_plan_closed_windows/change/estimates.json"
+    },
+    {
+      "criterion_id": "archiver/plan_closed_windows",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 466.9285379106313,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 461.5740686069114,
+        "upper_bound": 472.8703817501288
+      },
+      "std_dev_ns": 28.97895437073233,
+      "sample_count": 100,
+      "raw_estimates": "archiver_plan_closed_windows/new/estimates.json"
+    },
+    {
+      "criterion_id": "cli/parse_node_entry",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 91.5638104143206,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 90.50223451498186,
+        "upper_bound": 92.73992360598636
+      },
+      "std_dev_ns": 5.792909295187996,
+      "sample_count": 100,
+      "raw_estimates": "cli_parse_node_entry/base/estimates.json"
+    },
+    {
+      "criterion_id": "cli/parse_node_entry",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.052066967600212455,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.08005609165258258,
+        "upper_bound": -0.02526604618451658
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "cli_parse_node_entry/change/estimates.json"
+    },
+    {
+      "criterion_id": "cli/parse_node_entry",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 91.5638104143206,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 90.50223451498186,
+        "upper_bound": 92.73992360598636
+      },
+      "std_dev_ns": 5.792909295187996,
+      "sample_count": 100,
+      "raw_estimates": "cli_parse_node_entry/new/estimates.json"
+    },
+    {
+      "criterion_id": "convert/normalize_1000_logs",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1237852.4237538306,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1222185.9996072694,
+        "upper_bound": 1255527.7971266562
+      },
+      "std_dev_ns": 85726.4688135635,
+      "sample_count": 100,
+      "raw_estimates": "convert_normalize_1000_logs/base/estimates.json"
+    },
+    {
+      "criterion_id": "convert/normalize_1000_logs",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1255359.7653371254,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1207861.7473818467,
+        "upper_bound": 1320440.6718392845
+      },
+      "std_dev_ns": 149163.84653072577,
+      "sample_count": 25,
+      "raw_estimates": "convert_normalize_1000_logs/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "convert/normalize_1000_logs",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1237852.4237538306,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1222185.9996072694,
+        "upper_bound": 1255527.7971266562
+      },
+      "std_dev_ns": 85726.4688135635,
+      "sample_count": 100,
+      "raw_estimates": "convert_normalize_1000_logs/new/estimates.json"
+    },
+    {
+      "criterion_id": "convert/normalize_1000_spans",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1054248.8057825512,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1039837.7271333,
+        "upper_bound": 1070139.6076864237
+      },
+      "std_dev_ns": 78035.32446098611,
+      "sample_count": 100,
+      "raw_estimates": "convert_normalize_1000_spans/base/estimates.json"
+    },
+    {
+      "criterion_id": "convert/normalize_1000_spans",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1065242.8138958234,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1035761.1166825274,
+        "upper_bound": 1098895.9609986914
+      },
+      "std_dev_ns": 83010.20507411822,
+      "sample_count": 25,
+      "raw_estimates": "convert_normalize_1000_spans/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "convert/normalize_1000_spans",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1054248.8057825512,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1039837.7271333,
+        "upper_bound": 1070139.6076864237
+      },
+      "std_dev_ns": 78035.32446098611,
+      "sample_count": 100,
+      "raw_estimates": "convert_normalize_1000_spans/new/estimates.json"
+    },
+    {
+      "criterion_id": "convert/normalize_256_custom_events",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 57868.98801728035,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 57328.54800420746,
+        "upper_bound": 58469.73947110163
+      },
+      "std_dev_ns": 2898.1533617625887,
+      "sample_count": 100,
+      "raw_estimates": "convert_normalize_256_custom_events/base/estimates.json"
+    },
+    {
+      "criterion_id": "convert/normalize_256_custom_events",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.0003611509563238302,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.016365528873458317,
+        "upper_bound": 0.016044297937495986
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "convert_normalize_256_custom_events/change/estimates.json"
+    },
+    {
+      "criterion_id": "convert/normalize_256_custom_events",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 57868.98801728035,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 57328.54800420746,
+        "upper_bound": 58469.73947110163
+      },
+      "std_dev_ns": 2898.1533617625887,
+      "sample_count": 100,
+      "raw_estimates": "convert_normalize_256_custom_events/new/estimates.json"
+    },
+    {
+      "criterion_id": "convert/normalize_256_metric_points",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 327641.4227416883,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 324146.6749854416,
+        "upper_bound": 331423.54896997707
+      },
+      "std_dev_ns": 18709.68730968776,
+      "sample_count": 100,
+      "raw_estimates": "convert_normalize_256_metric_points/base/estimates.json"
+    },
+    {
+      "criterion_id": "convert/normalize_256_metric_points",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.02418176554118845,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 0.0039618730768180965,
+        "upper_bound": 0.043182082897002455
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "convert_normalize_256_metric_points/change/estimates.json"
+    },
+    {
+      "criterion_id": "convert/normalize_256_metric_points",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 327641.4227416883,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 324146.6749854416,
+        "upper_bound": 331423.54896997707
+      },
+      "std_dev_ns": 18709.68730968776,
+      "sample_count": 100,
+      "raw_estimates": "convert_normalize_256_metric_points/new/estimates.json"
+    },
+    {
+      "criterion_id": "domain/classify_common_attribute",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 326.7155509120975,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 323.24576478108077,
+        "upper_bound": 330.79069354003997
+      },
+      "std_dev_ns": 19.448567221924556,
+      "sample_count": 100,
+      "raw_estimates": "domain_classify_common_attribute/base/estimates.json"
+    },
+    {
+      "criterion_id": "domain/classify_common_attribute",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.000501158294141435,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.014840224678134917,
+        "upper_bound": 0.017213481603982898
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "domain_classify_common_attribute/change/estimates.json"
+    },
+    {
+      "criterion_id": "domain/classify_common_attribute",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 326.7155509120975,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 323.24576478108077,
+        "upper_bound": 330.79069354003997
+      },
+      "std_dev_ns": 19.448567221924556,
+      "sample_count": 100,
+      "raw_estimates": "domain_classify_common_attribute/new/estimates.json"
+    },
+    {
+      "criterion_id": "domain/classify_header",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 43.99532058520162,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 43.36494878214318,
+        "upper_bound": 44.72076277931447
+      },
+      "std_dev_ns": 3.4900164297901544,
+      "sample_count": 100,
+      "raw_estimates": "domain_classify_header/base/estimates.json"
+    },
+    {
+      "criterion_id": "domain/classify_header",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.055879111438705165,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 0.03223883978557995,
+        "upper_bound": 0.07947272380393602
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "domain_classify_header/change/estimates.json"
+    },
+    {
+      "criterion_id": "domain/classify_header",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 43.99532058520162,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 43.36494878214318,
+        "upper_bound": 44.72076277931447
+      },
+      "std_dev_ns": 3.4900164297901544,
+      "sample_count": 100,
+      "raw_estimates": "domain_classify_header/new/estimates.json"
+    },
+    {
+      "criterion_id": "domain/derive_scoped_service_id",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 211.51248449975253,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 208.37591510828094,
+        "upper_bound": 215.17386959745463
+      },
+      "std_dev_ns": 17.457502839914646,
+      "sample_count": 100,
+      "raw_estimates": "domain_derive_scoped_service_id/base/estimates.json"
+    },
+    {
+      "criterion_id": "domain/derive_scoped_service_id",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.025572574200352305,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 0.002609817992684711,
+        "upper_bound": 0.0484850315239201
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "domain_derive_scoped_service_id/change/estimates.json"
+    },
+    {
+      "criterion_id": "domain/derive_scoped_service_id",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 211.51248449975253,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 208.37591510828094,
+        "upper_bound": 215.17386959745463
+      },
+      "std_dev_ns": 17.457502839914646,
+      "sample_count": 100,
+      "raw_estimates": "domain_derive_scoped_service_id/new/estimates.json"
+    },
+    {
+      "criterion_id": "domain/mask_bearer_plain_value",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 53.87182968922743,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 52.877925851279976,
+        "upper_bound": 55.04343219714549
+      },
+      "std_dev_ns": 5.569331018940259,
+      "sample_count": 100,
+      "raw_estimates": "domain_mask_bearer_plain_value/base/estimates.json"
+    },
+    {
+      "criterion_id": "domain/mask_bearer_plain_value",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.11311480016898678,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.13274377436991008,
+        "upper_bound": -0.08997176911148616
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "domain_mask_bearer_plain_value/change/estimates.json"
+    },
+    {
+      "criterion_id": "domain/mask_bearer_plain_value",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 53.87182968922743,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 52.877925851279976,
+        "upper_bound": 55.04343219714549
+      },
+      "std_dev_ns": 5.569331018940259,
+      "sample_count": 100,
+      "raw_estimates": "domain_mask_bearer_plain_value/new/estimates.json"
+    },
+    {
+      "criterion_id": "domain/mask_bearer_secret_value",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 77.93637403144056,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 76.66828442321858,
+        "upper_bound": 79.42137340075608
+      },
+      "std_dev_ns": 7.04552293817081,
+      "sample_count": 100,
+      "raw_estimates": "domain_mask_bearer_secret_value/base/estimates.json"
+    },
+    {
+      "criterion_id": "domain/mask_bearer_secret_value",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.005213768136887786,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.01925899129035146,
+        "upper_bound": 0.03075319696315993
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "domain_mask_bearer_secret_value/change/estimates.json"
+    },
+    {
+      "criterion_id": "domain/mask_bearer_secret_value",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 77.93637403144056,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 76.66828442321858,
+        "upper_bound": 79.42137340075608
+      },
+      "std_dev_ns": 7.04552293817081,
+      "sample_count": 100,
+      "raw_estimates": "domain_mask_bearer_secret_value/new/estimates.json"
+    },
+    {
+      "criterion_id": "domain/redact_url_attribute",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 120.26630872935911,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 118.61456101537757,
+        "upper_bound": 122.1826173006014
+      },
+      "std_dev_ns": 9.25029651841903,
+      "sample_count": 100,
+      "raw_estimates": "domain_redact_url_attribute/base/estimates.json"
+    },
+    {
+      "criterion_id": "domain/redact_url_attribute",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 221.08808423881638,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 212.9172279392548,
+        "upper_bound": 230.6262266837867
+      },
+      "std_dev_ns": 23.07473906616484,
+      "sample_count": 25,
+      "raw_estimates": "domain_redact_url_attribute/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "domain/redact_url_attribute",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.41056778078928524,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.42249019406383936,
+        "upper_bound": -0.3985251645370433
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "domain_redact_url_attribute/change/estimates.json"
+    },
+    {
+      "criterion_id": "domain/redact_url_attribute",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 120.26630872935911,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 118.61456101537757,
+        "upper_bound": 122.1826173006014
+      },
+      "std_dev_ns": 9.25029651841903,
+      "sample_count": 100,
+      "raw_estimates": "domain_redact_url_attribute/new/estimates.json"
+    },
+    {
+      "criterion_id": "domain/sanitize_common_string_attribute",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 34.56964474517727,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 34.24028616452716,
+        "upper_bound": 34.94433681778033
+      },
+      "std_dev_ns": 1.8133380315055454,
+      "sample_count": 100,
+      "raw_estimates": "domain_sanitize_common_string_attribute/base/estimates.json"
+    },
+    {
+      "criterion_id": "domain/sanitize_common_string_attribute",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 59.58160755996163,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 58.28104680997526,
+        "upper_bound": 61.08846386576839
+      },
+      "std_dev_ns": 3.6860031681103873,
+      "sample_count": 25,
+      "raw_estimates": "domain_sanitize_common_string_attribute/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "domain/sanitize_common_string_attribute",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.3895872045743016,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.4085613854167473,
+        "upper_bound": -0.37214494185020597
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "domain_sanitize_common_string_attribute/change/estimates.json"
+    },
+    {
+      "criterion_id": "domain/sanitize_common_string_attribute",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 34.56964474517727,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 34.24028616452716,
+        "upper_bound": 34.94433681778033
+      },
+      "std_dev_ns": 1.8133380315055454,
+      "sample_count": 100,
+      "raw_estimates": "domain_sanitize_common_string_attribute/new/estimates.json"
+    },
+    {
+      "criterion_id": "domain/sanitize_common_string_attribute_in_place",
+      "result_set": "after-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 13.650113257396608,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 13.363195873445362,
+        "upper_bound": 13.918292977904255
+      },
+      "std_dev_ns": 0.7308997521761784,
+      "sample_count": 25,
+      "raw_estimates": "domain_sanitize_common_string_attribute_in_place/after-opt/estimates.json"
+    },
+    {
+      "criterion_id": "domain/sanitize_common_string_attribute_in_place",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 13.219657920471038,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 12.855072063915065,
+        "upper_bound": 13.65237905728542
+      },
+      "std_dev_ns": 2.0370770833277025,
+      "sample_count": 100,
+      "raw_estimates": "domain_sanitize_common_string_attribute_in_place/base/estimates.json"
+    },
+    {
+      "criterion_id": "domain/sanitize_common_string_attribute_in_place",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 13.219657920471038,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 12.855072063915065,
+        "upper_bound": 13.65237905728542
+      },
+      "std_dev_ns": 2.0370770833277025,
+      "sample_count": 100,
+      "raw_estimates": "domain_sanitize_common_string_attribute_in_place/new/estimates.json"
+    },
+    {
+      "criterion_id": "engine/apply_batch_2000_spans",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 890066.3216931217,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 807465.8722222223,
+        "upper_bound": 983871.9026455026
+      },
+      "std_dev_ns": 150017.28206314676,
+      "sample_count": 10,
+      "raw_estimates": "engine_apply_batch_2000_spans/base/estimates.json"
+    },
+    {
+      "criterion_id": "engine/apply_batch_2000_spans",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.04170473130656793,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.060397010191482255,
+        "upper_bound": 0.1740212022285416
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "engine_apply_batch_2000_spans/change/estimates.json"
+    },
+    {
+      "criterion_id": "engine/apply_batch_2000_spans",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 890066.3216931217,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 807465.8722222223,
+        "upper_bound": 983871.9026455026
+      },
+      "std_dev_ns": 150017.28206314676,
+      "sample_count": 10,
+      "raw_estimates": "engine_apply_batch_2000_spans/new/estimates.json"
+    },
+    {
+      "criterion_id": "engine/apply_batch_json_2000_spans",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 3044430.7675264543,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 2801865.33234127,
+        "upper_bound": 3358604.5347222215
+      },
+      "std_dev_ns": 481134.31362731894,
+      "sample_count": 10,
+      "raw_estimates": "engine_apply_batch_json_2000_spans/base/estimates.json"
+    },
+    {
+      "criterion_id": "engine/apply_batch_json_2000_spans",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 2856728.285241349,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 2789109.4430576074,
+        "upper_bound": 2935709.1961847097
+      },
+      "std_dev_ns": 189415.94824511692,
+      "sample_count": 25,
+      "raw_estimates": "engine_apply_batch_json_2000_spans/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "engine/apply_batch_json_2000_spans",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.00020347573753087822,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.12847930374898578,
+        "upper_bound": 0.15425175971962463
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "engine_apply_batch_json_2000_spans/change/estimates.json"
+    },
+    {
+      "criterion_id": "engine/apply_batch_json_2000_spans",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 3044430.7675264543,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 2801865.33234127,
+        "upper_bound": 3358604.5347222215
+      },
+      "std_dev_ns": 481134.31362731894,
+      "sample_count": 10,
+      "raw_estimates": "engine_apply_batch_json_2000_spans/new/estimates.json"
+    },
+    {
+      "criterion_id": "engine/build_server_geometry_100_nodes",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1244678.2308201059,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1092136.8242559521,
+        "upper_bound": 1420642.2227777778
+      },
+      "std_dev_ns": 282144.2705762491,
+      "sample_count": 10,
+      "raw_estimates": "engine_build_server_geometry_100_nodes/base/estimates.json"
+    },
+    {
+      "criterion_id": "engine/build_server_geometry_100_nodes",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 912507.3300877745,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 890280.0225354575,
+        "upper_bound": 938816.7616341481
+      },
+      "std_dev_ns": 63235.129370316565,
+      "sample_count": 25,
+      "raw_estimates": "engine_build_server_geometry_100_nodes/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "engine/build_server_geometry_100_nodes",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.20751171752023123,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 0.04488541041885838,
+        "upper_bound": 0.3993318479760726
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "engine_build_server_geometry_100_nodes/change/estimates.json"
+    },
+    {
+      "criterion_id": "engine/build_server_geometry_100_nodes",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1244678.2308201059,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1092136.8242559521,
+        "upper_bound": 1420642.2227777778
+      },
+      "std_dev_ns": 282144.2705762491,
+      "sample_count": 10,
+      "raw_estimates": "engine_build_server_geometry_100_nodes/new/estimates.json"
+    },
+    {
+      "criterion_id": "engine/search_visible_state_1000_nodes",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 33392.77467898962,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 28948.179956857657,
+        "upper_bound": 38370.629681426515
+      },
+      "std_dev_ns": 8089.185895328639,
+      "sample_count": 10,
+      "raw_estimates": "engine_search_visible_state_1000_nodes/base/estimates.json"
+    },
+    {
+      "criterion_id": "engine/search_visible_state_1000_nodes",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.08332751384219272,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.07327412705887229,
+        "upper_bound": 0.27702809398111583
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "engine_search_visible_state_1000_nodes/change/estimates.json"
+    },
+    {
+      "criterion_id": "engine/search_visible_state_1000_nodes",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 33392.77467898962,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 28948.179956857657,
+        "upper_bound": 38370.629681426515
+      },
+      "std_dev_ns": 8089.185895328639,
+      "sample_count": 10,
+      "raw_estimates": "engine_search_visible_state_1000_nodes/new/estimates.json"
+    },
+    {
+      "criterion_id": "engine/seek_and_build_visible_state",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 30343.072908143786,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 26737.60221322206,
+        "upper_bound": 34291.80443735341
+      },
+      "std_dev_ns": 6465.633072852177,
+      "sample_count": 10,
+      "raw_estimates": "engine_seek_and_build_visible_state/base/estimates.json"
+    },
+    {
+      "criterion_id": "engine/seek_and_build_visible_state",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.008642493015834418,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.14672449119356307,
+        "upper_bound": 0.1708502795596435
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "engine_seek_and_build_visible_state/change/estimates.json"
+    },
+    {
+      "criterion_id": "engine/seek_and_build_visible_state",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 30343.072908143786,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 26737.60221322206,
+        "upper_bound": 34291.80443735341
+      },
+      "std_dev_ns": 6465.633072852177,
+      "sample_count": 10,
+      "raw_estimates": "engine_seek_and_build_visible_state/new/estimates.json"
+    },
+    {
+      "criterion_id": "executor/evaluate_and_record_verification",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1454.6822672650922,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1433.1895429767146,
+        "upper_bound": 1480.4287950086828
+      },
+      "std_dev_ns": 120.93658359548901,
+      "sample_count": 100,
+      "raw_estimates": "executor_evaluate_and_record_verification/base/estimates.json"
+    },
+    {
+      "criterion_id": "executor/evaluate_and_record_verification",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.1242635608295859,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 0.10086901731858611,
+        "upper_bound": 0.1505188072298615
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "executor_evaluate_and_record_verification/change/estimates.json"
+    },
+    {
+      "criterion_id": "executor/evaluate_and_record_verification",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1454.6822672650922,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1433.1895429767146,
+        "upper_bound": 1480.4287950086828
+      },
+      "std_dev_ns": 120.93658359548901,
+      "sample_count": 100,
+      "raw_estimates": "executor_evaluate_and_record_verification/new/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_logs_with_attributes",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 657988.3227926588,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 639208.4945436508,
+        "upper_bound": 677871.3504464284
+      },
+      "std_dev_ns": 32864.74486001136,
+      "sample_count": 10,
+      "raw_estimates": "ingest_sanitize_1000_logs_with_attributes/base/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_logs_with_attributes",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 783424.5608558314,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 767577.1051445608,
+        "upper_bound": 802843.5915719564
+      },
+      "std_dev_ns": 46420.91132671373,
+      "sample_count": 25,
+      "raw_estimates": "ingest_sanitize_1000_logs_with_attributes/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_logs_with_attributes",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.27035356918871123,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.35666236507659094,
+        "upper_bound": -0.16242402270167183
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "ingest_sanitize_1000_logs_with_attributes/change/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_logs_with_attributes",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 657988.3227926588,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 639208.4945436508,
+        "upper_bound": 677871.3504464284
+      },
+      "std_dev_ns": 32864.74486001136,
+      "sample_count": 10,
+      "raw_estimates": "ingest_sanitize_1000_logs_with_attributes/new/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_metric_points_with_attributes",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1360641.1735679782,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1177211.2967563835,
+        "upper_bound": 1563266.8405797102
+      },
+      "std_dev_ns": 330649.86139653646,
+      "sample_count": 10,
+      "raw_estimates": "ingest_sanitize_1000_metric_points_with_attributes/base/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_metric_points_with_attributes",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1166127.8346540425,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1140418.2690057307,
+        "upper_bound": 1197515.5404840019
+      },
+      "std_dev_ns": 74607.64032677797,
+      "sample_count": 25,
+      "raw_estimates": "ingest_sanitize_1000_metric_points_with_attributes/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_metric_points_with_attributes",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.3302778595967282,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 0.13422712763043443,
+        "upper_bound": 0.5439382129538324
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "ingest_sanitize_1000_metric_points_with_attributes/change/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_metric_points_with_attributes",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1360641.1735679782,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1177211.2967563835,
+        "upper_bound": 1563266.8405797102
+      },
+      "std_dev_ns": 330649.86139653646,
+      "sample_count": 10,
+      "raw_estimates": "ingest_sanitize_1000_metric_points_with_attributes/new/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_traces",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 59875.31429463171,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 53908.11610486892,
+        "upper_bound": 67049.86423220974
+      },
+      "std_dev_ns": 11341.518106785279,
+      "sample_count": 10,
+      "raw_estimates": "ingest_sanitize_1000_traces/base/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_traces",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 44417.80986858089,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 42986.8227684495,
+        "upper_bound": 45847.0837584492
+      },
+      "std_dev_ns": 3730.953822194467,
+      "sample_count": 25,
+      "raw_estimates": "ingest_sanitize_1000_traces/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_traces",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.010732135222082717,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.1290993093960504,
+        "upper_bound": 0.13052826782802093
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "ingest_sanitize_1000_traces/change/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_traces",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 59875.31429463171,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 53908.11610486892,
+        "upper_bound": 67049.86423220974
+      },
+      "std_dev_ns": 11341.518106785279,
+      "sample_count": 10,
+      "raw_estimates": "ingest_sanitize_1000_traces/new/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_traces_with_attributes",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 928726.601037851,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 832776.7619047619,
+        "upper_bound": 1030487.6729700855
+      },
+      "std_dev_ns": 167819.25263380446,
+      "sample_count": 10,
+      "raw_estimates": "ingest_sanitize_1000_traces_with_attributes/base/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_traces_with_attributes",
+      "result_set": "before-opt",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1084802.9025733257,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 1042095.5372072645,
+        "upper_bound": 1133458.7890201441
+      },
+      "std_dev_ns": 119008.76738009905,
+      "sample_count": 25,
+      "raw_estimates": "ingest_sanitize_1000_traces_with_attributes/before-opt/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_traces_with_attributes",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.02012724534719834,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.1602733397135456,
+        "upper_bound": 0.15206438454120472
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "ingest_sanitize_1000_traces_with_attributes/change/estimates.json"
+    },
+    {
+      "criterion_id": "ingest/sanitize_1000_traces_with_attributes",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 928726.601037851,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 832776.7619047619,
+        "upper_bound": 1030487.6729700855
+      },
+      "std_dev_ns": 167819.25263380446,
+      "sample_count": 10,
+      "raw_estimates": "ingest_sanitize_1000_traces_with_attributes/new/estimates.json"
+    },
+    {
+      "criterion_id": "processor/check_dead_letter_payload_bound",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.5364982037470063,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 0.5021226396965939,
+        "upper_bound": 0.5720566193099086
+      },
+      "std_dev_ns": 0.18047872748623922,
+      "sample_count": 100,
+      "raw_estimates": "processor_check_dead_letter_payload_bound/base/estimates.json"
+    },
+    {
+      "criterion_id": "processor/check_dead_letter_payload_bound",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.024688914776712867,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.06523057048304717,
+        "upper_bound": 0.12464963466464676
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "processor_check_dead_letter_payload_bound/change/estimates.json"
+    },
+    {
+      "criterion_id": "processor/check_dead_letter_payload_bound",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.5364982037470063,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 0.5021226396965939,
+        "upper_bound": 0.5720566193099086
+      },
+      "std_dev_ns": 0.18047872748623922,
+      "sample_count": 100,
+      "raw_estimates": "processor_check_dead_letter_payload_bound/new/estimates.json"
+    },
+    {
+      "criterion_id": "processor/drain_128_ready_records",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 179.58867562987106,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 174.5579983585141,
+        "upper_bound": 185.78941426763512
+      },
+      "std_dev_ns": 29.24577592150777,
+      "sample_count": 100,
+      "raw_estimates": "processor_drain_128_ready_records/base/estimates.json"
+    },
+    {
+      "criterion_id": "processor/drain_128_ready_records",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.03344608363555002,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.07970270117241526,
+        "upper_bound": 0.012493209318009237
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "processor_drain_128_ready_records/change/estimates.json"
+    },
+    {
+      "criterion_id": "processor/drain_128_ready_records",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 179.58867562987106,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 174.5579983585141,
+        "upper_bound": 185.78941426763512
+      },
+      "std_dev_ns": 29.24577592150777,
+      "sample_count": 100,
+      "raw_estimates": "processor_drain_128_ready_records/new/estimates.json"
+    },
+    {
+      "criterion_id": "protocol/decode_256_events",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 27800.31013785579,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 27447.466567902873,
+        "upper_bound": 28208.462992380966
+      },
+      "std_dev_ns": 1954.1207085240208,
+      "sample_count": 100,
+      "raw_estimates": "protocol_decode_256_events/base/estimates.json"
+    },
+    {
+      "criterion_id": "protocol/decode_256_events",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.01493392553043893,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.03925061043717541,
+        "upper_bound": 0.007146150836855641
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "protocol_decode_256_events/change/estimates.json"
+    },
+    {
+      "criterion_id": "protocol/decode_256_events",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 27800.31013785579,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 27447.466567902873,
+        "upper_bound": 28208.462992380966
+      },
+      "std_dev_ns": 1954.1207085240208,
+      "sample_count": 100,
+      "raw_estimates": "protocol_decode_256_events/new/estimates.json"
+    },
+    {
+      "criterion_id": "protocol/encode_256_events",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 6062.702043865629,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 5964.716217568414,
+        "upper_bound": 6186.5219767085955
+      },
+      "std_dev_ns": 562.9566427749916,
+      "sample_count": 100,
+      "raw_estimates": "protocol_encode_256_events/base/estimates.json"
+    },
+    {
+      "criterion_id": "protocol/encode_256_events",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.00020460155594093088,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.021810342719790668,
+        "upper_bound": 0.023477865219850645
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "protocol_encode_256_events/change/estimates.json"
+    },
+    {
+      "criterion_id": "protocol/encode_256_events",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 6062.702043865629,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 5964.716217568414,
+        "upper_bound": 6186.5219767085955
+      },
+      "std_dev_ns": 562.9566427749916,
+      "sample_count": 100,
+      "raw_estimates": "protocol_encode_256_events/new/estimates.json"
+    },
+    {
+      "criterion_id": "runtime/backoff_schedule",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 15.132343642515307,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 14.991387255403032,
+        "upper_bound": 15.27913641788508
+      },
+      "std_dev_ns": 0.7281169619315824,
+      "sample_count": 100,
+      "raw_estimates": "runtime_backoff_schedule/base/estimates.json"
+    },
+    {
+      "criterion_id": "runtime/backoff_schedule",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.0026546683918646785,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.018389460707122243,
+        "upper_bound": 0.012105141959622862
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "runtime_backoff_schedule/change/estimates.json"
+    },
+    {
+      "criterion_id": "runtime/backoff_schedule",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 15.132343642515307,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 14.991387255403032,
+        "upper_bound": 15.27913641788508
+      },
+      "std_dev_ns": 0.7281169619315824,
+      "sample_count": 100,
+      "raw_estimates": "runtime_backoff_schedule/new/estimates.json"
+    },
+    {
+      "criterion_id": "storage/parse_clickhouse_ttl",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 167.60365519564922,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 165.21000642150898,
+        "upper_bound": 170.3327605109485
+      },
+      "std_dev_ns": 13.231265753737242,
+      "sample_count": 100,
+      "raw_estimates": "storage_parse_clickhouse_ttl/base/estimates.json"
+    },
+    {
+      "criterion_id": "storage/parse_clickhouse_ttl",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.031005174657693146,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 0.011236272164070617,
+        "upper_bound": 0.05154657611203401
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "storage_parse_clickhouse_ttl/change/estimates.json"
+    },
+    {
+      "criterion_id": "storage/parse_clickhouse_ttl",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 167.60365519564922,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 165.21000642150898,
+        "upper_bound": 170.3327605109485
+      },
+      "std_dev_ns": 13.231265753737242,
+      "sample_count": 100,
+      "raw_estimates": "storage_parse_clickhouse_ttl/new/estimates.json"
+    },
+    {
+      "criterion_id": "web_engine/construct_from_config_json",
+      "result_set": "base",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 235.39984877095435,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 232.24990630624262,
+        "upper_bound": 239.06626315921136
+      },
+      "std_dev_ns": 17.573759698219533,
+      "sample_count": 100,
+      "raw_estimates": "web_engine_construct_from_config_json/base/estimates.json"
+    },
+    {
+      "criterion_id": "web_engine/construct_from_config_json",
+      "result_set": "change",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": -0.00035126434288290653,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": -0.024654564532270863,
+        "upper_bound": 0.022974910404334883
+      },
+      "std_dev_ns": null,
+      "sample_count": null,
+      "raw_estimates": "web_engine_construct_from_config_json/change/estimates.json"
+    },
+    {
+      "criterion_id": "web_engine/construct_from_config_json",
+      "result_set": "new",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 235.39984877095435,
+      "mean_ci95_ns": {
+        "confidence_level": 0.95,
+        "lower_bound": 232.24990630624262,
+        "upper_bound": 239.06626315921136
+      },
+      "std_dev_ns": 17.573759698219533,
+      "sample_count": 100,
+      "raw_estimates": "web_engine_construct_from_config_json/new/estimates.json"
+    }
+  ]
+}

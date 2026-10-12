@@ -1,0 +1,17 @@
+{
+  "id": "archive.encode-logs-512",
+  "version": 1,
+  "kind": "criterion_micro_workload",
+  "crate": "karbird-archive",
+  "bench_target": "segments",
+  "criterion_id": "archive/encode_512_logs",
+  "scenario": "Encode a deterministic segment of 512 synthetic checkout service log records without a trained dictionary at compression level 3.",
+  "fixture": "Generated deterministically by crates/karbird-archive/benches/segments.rs::records.",
+  "seed": "none; deterministic index-derived values",
+  "expected_output": "segment encoder returns bytes and metadata; benchmark black-boxes successful result",
+  "concurrency": 1,
+  "duration_seconds": 2,
+  "measurement": "Criterion latency per segment; fixture clone is outside the timed closure",
+  "direction": "lower_is_better",
+  "source": "crates/karbird-archive/benches/segments.rs"
+}

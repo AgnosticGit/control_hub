@@ -312,12 +312,29 @@ impl Engine {
     /// Apply a batch of items. Idempotent per item ID; order-independent. A batch with an
     /// invalid item is rejected as a whole.
     pub fn apply_batch(&mut self, batch: Batch) -> Result<(), EngineError> {
+        let mut span_count = 0;
+        let mut log_count = 0;
+        let mut event_count = 0;
         for item in &batch.items {
-            if let TimelineItem::Span(s) = item
-                && s.end_ns < s.start_ns
-            {
-                return Err(EngineError::InvalidInput(format!("span {} ends before it starts", s.span_id)));
+            match item {
+                TimelineItem::Span(s) => {
+                    span_count += 1;
+                    if s.end_ns < s.start_ns {
+                        return Err(EngineError::InvalidInput(format!("span {} ends before it starts", s.span_id)));
+                    }
+                }
+                TimelineItem::Log(_) => log_count += 1,
+                TimelineItem::Event(_) => event_count += 1,
             }
+        }
+        if self.spans.is_empty() {
+            self.spans.reserve(span_count);
+        }
+        if self.logs.is_empty() {
+            self.logs.reserve(log_count);
+        }
+        if self.events.is_empty() {
+            self.events.reserve(event_count);
         }
         let before_nodes = self.nodes.len();
         for item in batch.items {

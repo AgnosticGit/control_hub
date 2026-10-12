@@ -1,0 +1,31 @@
+﻿{
+    "schema_version":  1,
+    "status":  "partial",
+    "run_id":  "20261012T142300000Z_app-baseline",
+    "files":  [
+                  {
+                      "path":  "metadata.json",
+                      "sha256":  "bef81f7decb1fa17ad43f9f094c5cae2c3d078ff91067f5eff6fca4ea08667b1",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  1671
+                  },
+                  {
+                      "path":  "binaries/baseline.exe",
+                      "sha256":  "5d179fdd5966c2747aab50b2659305d0dd06aab8954257fd502a87866df0e54e",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  3622400
+                  },
+                  {
+                      "path":  "logs/discover-repository-hyperfine.log",
+                      "sha256":  "b110191ea4dad5c5ed73d75d523f6f20627188141afda205b34a704ab068d868",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  171
+                  },
+                  {
+                      "path":  "results/discover-repository-hyperfine.json",
+                      "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                      "generated_by":  "run-app-workloads.ps1",
+                      "bytes":  0
+                  }
+              ]
+}

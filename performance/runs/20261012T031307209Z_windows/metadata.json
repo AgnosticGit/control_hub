@@ -1,0 +1,49 @@
+﻿{
+    "schema_version":  1,
+    "run_id":  "20261012T031307209Z_windows",
+    "started_utc":  "2026-10-12T03:13:08.6474833Z",
+    "git_sha":  "unavailable",
+    "git_dirty":  "unknown",
+    "git_metadata_reason":  "Project AGENTS.md prohibits agents from executing Git commands.",
+    "os":  "Microsoft Windows 10.0.26200 ",
+    "architecture":  "X64",
+    "cpu_model":  "13th Gen Intel(R) Core(TM) i9-13980HX",
+    "logical_cores":  32,
+    "ram_bytes":  34116345856,
+    "rustc":  "rustc 1.98.1 (48a229cea 2026-09-01)\r\nbinary: rustc\r\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\r\ncommit-date: 2026-09-01\r\nhost: x86_64-pc-windows-msvc\r\nrelease: 1.98.1\r\nLLVM version: 22.1.8",
+    "cargo":  "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+    "cargo_lock_sha256":  "7916af49e5073df7c73aa2a57829cfd42d37593eabea06d415a182622c6146c5",
+    "profile":  "bench (Cargo default optimized benchmark profile)",
+    "rustflags":  "",
+    "target":  "x86_64-pc-windows-msvc",
+    "features":  "default",
+    "allocator":  "system default",
+    "tools":  {
+                  "criterion":  "0.8",
+                  "nextest":  "unavailable",
+                  "profiler":  "unavailable on this host"
+              },
+    "datasets":  [
+
+                 ],
+    "workloads":  [
+                      "ingest.sanitize-traces-1000.v1",
+                      "engine.apply-batch-2000.v1",
+                      "archive.encode-logs-512.v1"
+                  ],
+    "repetition":  {
+                       "criterion_sample_size":  10,
+                       "warm_up_seconds":  1,
+                       "repetitions":  1,
+                       "measurement_seconds":  2
+                   },
+    "command":  "powershell -NoProfile -ExecutionPolicy Bypass -File performance/scripts/run-benchmarks.ps1",
+    "workload_source_sha256":  {
+                                   "archive.encode-logs-512.v1":  "9fce32556e397c45c6909a8e2ad5058a045f6242d994b7c5bf77984a3b9a240d",
+                                   "engine.apply-batch-2000.v1":  "69a407b1a9ccdf7a9301bac7cf6bc8d264c13aa07ecb7d8aa752be265a284ddc",
+                                   "ingest.sanitize-traces-1000.v1":  "fed9b7016255e3f8f3a6a246dddf6624d3916c03714a869df4e12e32bdd5c8cb"
+                               },
+    "compatibility_key":  "windows-x86_64-msvc|rustc 1.98.1 (48a229cea 2026-09-01)|bench|default|lock-7916af49e5073df7c73aa2a57829cfd42d37593eabea06d415a182622c6146c5|workloads-v1",
+    "status":  "partial",
+    "finished_utc":  "2026-10-12T03:14:26.7390480Z"
+}

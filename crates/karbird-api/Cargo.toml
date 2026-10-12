@@ -41,12 +41,17 @@ rdkafka.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+divan.workspace = true
 tower = { workspace = true, features = ["util"] }
 proptest.workspace = true
 argon2.workspace = true
 
 [[bench]]
 name = "infrastructure"
+harness = false
+
+[[bench]]
+name = "allocation"
 harness = false
 
 [lints]

@@ -1,0 +1,9 @@
+﻿{
+    "executable":  "C:\\Development\\control_hub\\performance\\runs\\20261012T151600000Z_app-paired\\binaries\\baseline.exe",
+    "arguments":  "discover --path .",
+    "working_directory":  "C:\\Development\\control_hub",
+    "exit_code":  0,
+    "peak_working_set_bytes":  3186688,
+    "stdout":  "{\n  \"ecosystem\": \"node\",\n  \"package_name\": \"karbird\",\n  \"module_type\": \"commonjs\",\n  \"package_manager\": \"pnpm\",\n  \"start_script\": null,\n  \"entry\": null,\n  \"node_engines\": \"\u003e=22.12\",\n  \"frameworks\": [],\n  \"datastores\": [],\n  \"existing_telemetry\": [],\n  \"karbird_sdk_installed\": false,\n  \"karbird_register_in_start\": false,\n  \"env_files\": [\n    \".env.example\"\n  ],\n  \"env_ignored_by_git\": true,\n  \"containers\": [],\n  \"other_ecosystems\": [\n    \"rust\"\n  ],\n  \"warnings\": []\n}",
+    "stderr":  ""
+}

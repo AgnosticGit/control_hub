@@ -15,10 +15,15 @@ zstd.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+divan.workspace = true
 proptest.workspace = true
 
 [[bench]]
 name = "segments"
+harness = false
+
+[[bench]]
+name = "allocation"
 harness = false
 
 [lints]

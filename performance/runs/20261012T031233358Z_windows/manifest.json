@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "generated_by": "run-benchmarks.ps1",
+      "sha256": "c16f8118adbb03099369aa6b2b0185c08321f1d6749bc2e91c1b63200057450f",
+      "bytes": 2053,
+      "path": "metadata.json"
+    },
+    {
+      "generated_by": "run-benchmarks.ps1",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "path": "logs/ingest-sanitize.log"
+    },
+    {
+      "generated_by": "run-benchmarks.ps1",
+      "sha256": "afd12b7c049f48e3cad93b53a4db7c6774c3e9577cb215e719e3b74e8b2ddb93",
+      "bytes": 115,
+      "path": "results/summary.json"
+    }
+  ],
+  "run_id": "20261012T031233358Z_windows",
+  "status": "partial"
+}

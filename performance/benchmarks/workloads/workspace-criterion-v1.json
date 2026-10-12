@@ -1,0 +1,328 @@
+{
+  "schema_version": 1,
+  "catalog_id": "karbird-workspace-criterion-v1",
+  "target_count": 15,
+  "workload_count": 40,
+  "workloads": [
+    {
+      "workload_id": "criterion:actions/evaluate_policy.v1",
+      "package": "karbird-actions",
+      "bench_target": "policy",
+      "criterion_id": "actions/evaluate_policy",
+      "source": "crates/karbird-actions/benches/policy.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: actions/evaluate_policy. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:actions/validate_scale.v1",
+      "package": "karbird-actions",
+      "bench_target": "policy",
+      "criterion_id": "actions/validate_scale",
+      "source": "crates/karbird-actions/benches/policy.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: actions/validate_scale. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:api/group_500_hosts_and_containers.v1",
+      "package": "karbird-api",
+      "bench_target": "infrastructure",
+      "criterion_id": "api/group_500_hosts_and_containers",
+      "source": "crates/karbird-api/benches/infrastructure.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: api/group_500_hosts_and_containers. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:api/group_500_hosts_cpu_utilization_fallback.v1",
+      "package": "karbird-api",
+      "bench_target": "infrastructure",
+      "criterion_id": "api/group_500_hosts_cpu_utilization_fallback",
+      "source": "crates/karbird-api/benches/infrastructure.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: api/group_500_hosts_cpu_utilization_fallback. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:api/group_500_hosts_realistic_metrics.v1",
+      "package": "karbird-api",
+      "bench_target": "infrastructure",
+      "criterion_id": "api/group_500_hosts_realistic_metrics",
+      "source": "crates/karbird-api/benches/infrastructure.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: api/group_500_hosts_realistic_metrics. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:api/place_200_resources_600_addresses.v1",
+      "package": "karbird-api",
+      "bench_target": "infrastructure",
+      "criterion_id": "api/place_200_resources_600_addresses",
+      "source": "crates/karbird-api/benches/infrastructure.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: api/place_200_resources_600_addresses. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:archive/decode_512_logs.v1",
+      "package": "karbird-archive",
+      "bench_target": "segments",
+      "criterion_id": "archive/decode_512_logs",
+      "source": "crates/karbird-archive/benches/segments.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: archive/decode_512_logs. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:archive/encode_512_logs.v1",
+      "package": "karbird-archive",
+      "bench_target": "segments",
+      "criterion_id": "archive/encode_512_logs",
+      "source": "crates/karbird-archive/benches/segments.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: archive/encode_512_logs. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:archive/index_512_logs.v1",
+      "package": "karbird-archive",
+      "bench_target": "segments",
+      "criterion_id": "archive/index_512_logs",
+      "source": "crates/karbird-archive/benches/segments.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: archive/index_512_logs. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:archiver/plan_closed_windows.v1",
+      "package": "karbird-archiver",
+      "bench_target": "schedule",
+      "criterion_id": "archiver/plan_closed_windows",
+      "source": "crates/karbird-archiver/benches/schedule.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: archiver/plan_closed_windows. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:cli/parse_node_entry.v1",
+      "package": "karbird-cli",
+      "bench_target": "discovery",
+      "criterion_id": "cli/parse_node_entry",
+      "source": "crates/karbird-cli/benches/discovery.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: cli/parse_node_entry. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:convert/normalize_1000_logs.v1",
+      "package": "karbird-convert",
+      "bench_target": "normalize",
+      "criterion_id": "convert/normalize_1000_logs",
+      "source": "crates/karbird-convert/benches/normalize.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: convert/normalize_1000_logs. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:convert/normalize_1000_spans.v1",
+      "package": "karbird-convert",
+      "bench_target": "normalize",
+      "criterion_id": "convert/normalize_1000_spans",
+      "source": "crates/karbird-convert/benches/normalize.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: convert/normalize_1000_spans. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:convert/normalize_256_custom_events.v1",
+      "package": "karbird-convert",
+      "bench_target": "normalize",
+      "criterion_id": "convert/normalize_256_custom_events",
+      "source": "crates/karbird-convert/benches/normalize.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: convert/normalize_256_custom_events. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:convert/normalize_256_metric_points.v1",
+      "package": "karbird-convert",
+      "bench_target": "normalize",
+      "criterion_id": "convert/normalize_256_metric_points",
+      "source": "crates/karbird-convert/benches/normalize.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: convert/normalize_256_metric_points. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:domain/classify_common_attribute.v1",
+      "package": "karbird-domain",
+      "bench_target": "redaction",
+      "criterion_id": "domain/classify_common_attribute",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: domain/classify_common_attribute. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:domain/classify_header.v1",
+      "package": "karbird-domain",
+      "bench_target": "redaction",
+      "criterion_id": "domain/classify_header",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: domain/classify_header. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:domain/derive_scoped_service_id.v1",
+      "package": "karbird-domain",
+      "bench_target": "redaction",
+      "criterion_id": "domain/derive_scoped_service_id",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: domain/derive_scoped_service_id. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:domain/mask_bearer_plain_value.v1",
+      "package": "karbird-domain",
+      "bench_target": "redaction",
+      "criterion_id": "domain/mask_bearer_plain_value",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: domain/mask_bearer_plain_value. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:domain/mask_bearer_secret_value.v1",
+      "package": "karbird-domain",
+      "bench_target": "redaction",
+      "criterion_id": "domain/mask_bearer_secret_value",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: domain/mask_bearer_secret_value. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:domain/redact_url_attribute.v1",
+      "package": "karbird-domain",
+      "bench_target": "redaction",
+      "criterion_id": "domain/redact_url_attribute",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: domain/redact_url_attribute. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:domain/sanitize_common_string_attribute.v1",
+      "package": "karbird-domain",
+      "bench_target": "redaction",
+      "criterion_id": "domain/sanitize_common_string_attribute",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: domain/sanitize_common_string_attribute. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:domain/sanitize_common_string_attribute_in_place.v1",
+      "package": "karbird-domain",
+      "bench_target": "redaction",
+      "criterion_id": "domain/sanitize_common_string_attribute_in_place",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: domain/sanitize_common_string_attribute_in_place. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:engine/apply_batch_2000_spans.v1",
+      "package": "karbird-engine-core",
+      "bench_target": "engine",
+      "criterion_id": "engine/apply_batch_2000_spans",
+      "source": "crates/karbird-engine-core/benches/engine.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: engine/apply_batch_2000_spans. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:engine/apply_batch_json_2000_spans.v1",
+      "package": "karbird-engine-core",
+      "bench_target": "engine",
+      "criterion_id": "engine/apply_batch_json_2000_spans",
+      "source": "crates/karbird-engine-core/benches/engine.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: engine/apply_batch_json_2000_spans. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:engine/build_server_geometry_100_nodes.v1",
+      "package": "karbird-engine-core",
+      "bench_target": "engine",
+      "criterion_id": "engine/build_server_geometry_100_nodes",
+      "source": "crates/karbird-engine-core/benches/engine.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: engine/build_server_geometry_100_nodes. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:engine/search_visible_state_1000_nodes.v1",
+      "package": "karbird-engine-core",
+      "bench_target": "engine",
+      "criterion_id": "engine/search_visible_state_1000_nodes",
+      "source": "crates/karbird-engine-core/benches/engine.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: engine/search_visible_state_1000_nodes. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:engine/seek_and_build_visible_state.v1",
+      "package": "karbird-engine-core",
+      "bench_target": "engine",
+      "criterion_id": "engine/seek_and_build_visible_state",
+      "source": "crates/karbird-engine-core/benches/engine.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: engine/seek_and_build_visible_state. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:executor/evaluate_and_record_verification.v1",
+      "package": "karbird-executor",
+      "bench_target": "verification",
+      "criterion_id": "executor/evaluate_and_record_verification",
+      "source": "crates/karbird-executor/benches/verification.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: executor/evaluate_and_record_verification. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:ingest/sanitize_1000_logs_with_attributes.v1",
+      "package": "karbird-ingest",
+      "bench_target": "sanitize",
+      "criterion_id": "ingest/sanitize_1000_logs_with_attributes",
+      "source": "crates/karbird-ingest/benches/sanitize.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: ingest/sanitize_1000_logs_with_attributes. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:ingest/sanitize_1000_metric_points_with_attributes.v1",
+      "package": "karbird-ingest",
+      "bench_target": "sanitize",
+      "criterion_id": "ingest/sanitize_1000_metric_points_with_attributes",
+      "source": "crates/karbird-ingest/benches/sanitize.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: ingest/sanitize_1000_metric_points_with_attributes. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:ingest/sanitize_1000_traces.v1",
+      "package": "karbird-ingest",
+      "bench_target": "sanitize",
+      "criterion_id": "ingest/sanitize_1000_traces",
+      "source": "crates/karbird-ingest/benches/sanitize.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: ingest/sanitize_1000_traces. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:ingest/sanitize_1000_traces_with_attributes.v1",
+      "package": "karbird-ingest",
+      "bench_target": "sanitize",
+      "criterion_id": "ingest/sanitize_1000_traces_with_attributes",
+      "source": "crates/karbird-ingest/benches/sanitize.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: ingest/sanitize_1000_traces_with_attributes. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:processor/check_dead_letter_payload_bound.v1",
+      "package": "karbird-processor",
+      "bench_target": "batching",
+      "criterion_id": "processor/check_dead_letter_payload_bound",
+      "source": "crates/karbird-processor/benches/batching.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: processor/check_dead_letter_payload_bound. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:processor/drain_128_ready_records.v1",
+      "package": "karbird-processor",
+      "bench_target": "batching",
+      "criterion_id": "processor/drain_128_ready_records",
+      "source": "crates/karbird-processor/benches/batching.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: processor/drain_128_ready_records. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:protocol/decode_256_events.v1",
+      "package": "karbird-protocol",
+      "bench_target": "envelope",
+      "criterion_id": "protocol/decode_256_events",
+      "source": "crates/karbird-protocol/benches/envelope.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: protocol/decode_256_events. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:protocol/encode_256_events.v1",
+      "package": "karbird-protocol",
+      "bench_target": "envelope",
+      "criterion_id": "protocol/encode_256_events",
+      "source": "crates/karbird-protocol/benches/envelope.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: protocol/encode_256_events. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:runtime/backoff_schedule.v1",
+      "package": "karbird-runtime",
+      "bench_target": "backoff",
+      "criterion_id": "runtime/backoff_schedule",
+      "source": "crates/karbird-runtime/benches/backoff.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: runtime/backoff_schedule. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:storage/parse_clickhouse_ttl.v1",
+      "package": "karbird-storage",
+      "bench_target": "retention",
+      "criterion_id": "storage/parse_clickhouse_ttl",
+      "source": "crates/karbird-storage/benches/retention.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: storage/parse_clickhouse_ttl. Fixture and measured boundary are defined in the referenced Criterion harness."
+    },
+    {
+      "workload_id": "criterion:web_engine/construct_from_config_json.v1",
+      "package": "karbird-web-engine",
+      "bench_target": "wasm_facade",
+      "criterion_id": "web_engine/construct_from_config_json",
+      "source": "crates/karbird-web-engine/benches/wasm_facade.rs",
+      "scenario": "Existing deterministic CPU workload calling production code: web_engine/construct_from_config_json. Fixture and measured boundary are defined in the referenced Criterion harness."
+    }
+  ]
+}

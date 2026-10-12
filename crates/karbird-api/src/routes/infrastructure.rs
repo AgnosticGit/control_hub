@@ -274,11 +274,11 @@ fn container_metrics(id: &str, rows: &[&InfraSeriesRow], host: &HostDto) -> Cont
 }
 
 pub fn hosts_from_series(series: &[InfraSeriesRow]) -> Vec<HostDto> {
-    let mut by_host: BTreeMap<&str, Vec<&InfraSeriesRow>> = BTreeMap::new();
+    let mut by_host: HashMap<&str, Vec<&InfraSeriesRow>> = HashMap::new();
     for r in series.iter().filter(|r| !r.host_id.is_empty()) {
         by_host.entry(r.host_id.as_str()).or_default().push(r);
     }
-    let mut hosts = Vec::new();
+    let mut hosts = Vec::with_capacity(by_host.len());
     for (id, rows) in by_host {
         let machine: Vec<&InfraSeriesRow> = rows.iter().copied().filter(|r| r.container_id.is_empty()).collect();
         let mut host = host_metrics(id, &machine);
@@ -288,13 +288,15 @@ pub fn hosts_from_series(series: &[InfraSeriesRow]) -> Vec<HostDto> {
         {
             host.name = n.to_owned();
         }
-        let mut by_container: BTreeMap<&str, Vec<&InfraSeriesRow>> = BTreeMap::new();
+        let mut by_container: HashMap<&str, Vec<&InfraSeriesRow>> = HashMap::new();
         for r in rows.iter().copied().filter(|r| !r.container_id.is_empty()) {
             by_container.entry(r.container_id.as_str()).or_default().push(r);
         }
-        host.containers = by_container.iter().map(|(cid, rs)| container_metrics(cid, rs, &host)).collect();
+        host.containers = by_container.into_iter().map(|(cid, rs)| container_metrics(cid, &rs, &host)).collect();
+        host.containers.sort_unstable_by(|left, right| left.id.cmp(&right.id));
         hosts.push(host);
     }
+    hosts.sort_unstable_by(|left, right| left.id.cmp(&right.id));
     hosts
 }
 
@@ -583,17 +585,24 @@ fn resolve<'a>(
         });
     }
     let unique = |pred: &dyn Fn(&Ctr<'_>) -> bool| -> Option<&'a Ctr<'a>> {
-        let local: Vec<_> = ctrs.iter().filter(|c| Some(c.host) == caller_host && pred(c)).collect();
-        match local.as_slice() {
-            [only] => return Some(*only),
-            [] => {}
-            _ => return None,
+        let mut local = None;
+        for container in ctrs.iter().filter(|c| Some(c.host) == caller_host && pred(c)) {
+            if local.is_some() {
+                return None;
+            }
+            local = Some(container);
         }
-        let global: Vec<_> = ctrs.iter().filter(|c| pred(c)).collect();
-        match global.as_slice() {
-            [only] => Some(*only),
-            _ => None,
+        if local.is_some() {
+            return local;
         }
+        let mut global = None;
+        for container in ctrs.iter().filter(|c| pred(c)) {
+            if global.is_some() {
+                return None;
+            }
+            global = Some(container);
+        }
+        global
     };
     let rules: [(ResourceMatch, &CtrPredicate); 3] = [
         (ResourceMatch::ComposeService, &|c| c.service == address),
@@ -1094,6 +1103,25 @@ mod tests {
         let h = &hosts_from_series(&rows)[0];
         assert!((h.cpu_utilization.unwrap() - 0.7).abs() < 1e-9);
         assert_eq!(h.cpu_cores, Some(2.0));
+    }
+
+    #[test]
+    fn hosts_and_containers_keep_deterministic_id_order() {
+        let rows = vec![
+            series("host-z", "container-z", "container.cpu.usage.total", &[], 0.0, 1e9),
+            series("host-a", "container-z", "container.cpu.usage.total", &[], 0.0, 1e9),
+            series("host-z", "container-a", "container.cpu.usage.total", &[], 0.0, 1e9),
+            series("host-a", "container-a", "container.cpu.usage.total", &[], 0.0, 1e9),
+        ];
+
+        let hosts = hosts_from_series(&rows);
+        assert_eq!(hosts.iter().map(|host| host.id.as_str()).collect::<Vec<_>>(), ["host-a", "host-z"]);
+        for host in hosts {
+            assert_eq!(
+                host.containers.iter().map(|container| container.id.as_str()).collect::<Vec<_>>(),
+                ["container-a", "container-z"]
+            );
+        }
     }
 
     // ------------------------------------------------------------ resource placement

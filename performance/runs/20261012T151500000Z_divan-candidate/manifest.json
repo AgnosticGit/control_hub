@@ -1,0 +1,121 @@
+﻿{
+    "schema_version":  1,
+    "status":  "completed",
+    "run_id":  "20261012T151500000Z_divan-candidate",
+    "files":  [
+                  {
+                      "path":  "metadata.json",
+                      "sha256":  "6d5211d90ae068aeb211ddc634f9b360ae42931afa5719404690049b05fe0e8e",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  3519
+                  },
+                  {
+                      "path":  "logs/rep-1-karbird-api.log",
+                      "sha256":  "c6fdb3d0c3d6bdd8d6dcdda8becdb9340e9815fb648347aa26ec274e77ebddc4",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  3175
+                  },
+                  {
+                      "path":  "logs/rep-1-karbird-archive.log",
+                      "sha256":  "c94a635cd80a52cb611506b66d924f083550cb025808525b3cfe5538d3531ee4",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1668
+                  },
+                  {
+                      "path":  "logs/rep-1-karbird-convert.log",
+                      "sha256":  "1c8e284f573b09df799f88dd6bb2a63fead5640ef6254bee38af6b8fb3c19b37",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1808
+                  },
+                  {
+                      "path":  "logs/rep-1-karbird-engine-core.log",
+                      "sha256":  "33a04e517e7fd71b416eec4f3df6e9b7a2653a365481e493bd4eb788522594ed",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1762
+                  },
+                  {
+                      "path":  "logs/rep-1-karbird-ingest.log",
+                      "sha256":  "9a9e8f41ee967e6e25ec18bbe5b45c9c7ec39ae967606d755e73c98640edb20a",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1408
+                  },
+                  {
+                      "path":  "logs/rep-1-karbird-protocol.log",
+                      "sha256":  "8e46dc99d2ee96d00fed641e79f3da1e4517b85f0c06fabc9ecfb5835fe32991",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1375
+                  },
+                  {
+                      "path":  "logs/rep-2-karbird-api.log",
+                      "sha256":  "82c8533d275fa087376bf8055b1b9b05b7d6bb419e5461ba9d65a625e9f05338",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  3175
+                  },
+                  {
+                      "path":  "logs/rep-2-karbird-archive.log",
+                      "sha256":  "293d4082c82c7f4a938ccabf6c28558893b6ba6dec265c34782915d34d225a0a",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1668
+                  },
+                  {
+                      "path":  "logs/rep-2-karbird-convert.log",
+                      "sha256":  "62c168ad3e5d22c0a52fb0abb673431a133cb9c0d6217b8aea2473b6ac8dc14f",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1808
+                  },
+                  {
+                      "path":  "logs/rep-2-karbird-engine-core.log",
+                      "sha256":  "774956eb2066e57d9eef482168d161c0a567a9d09651b8919a4cab20b9084984",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1762
+                  },
+                  {
+                      "path":  "logs/rep-2-karbird-ingest.log",
+                      "sha256":  "77016807f80ac45dd4a7d351d21340f94092739b32646ea4fada6cf24c18896f",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1408
+                  },
+                  {
+                      "path":  "logs/rep-2-karbird-protocol.log",
+                      "sha256":  "59d2f13850283e18d5c6efbf7c18ff93df12711f9ae250bc6c4f498c9ece14b4",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1375
+                  },
+                  {
+                      "path":  "logs/rep-3-karbird-api.log",
+                      "sha256":  "0c2fc3ea1b7e8f9f63230d55f9827f40d21531917243108d09a3628cb4365887",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  3175
+                  },
+                  {
+                      "path":  "logs/rep-3-karbird-archive.log",
+                      "sha256":  "848c9269ec87789ccb547b8e95018d4cf4ad3b65b3721bf338dbcfd0138d3ed9",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1668
+                  },
+                  {
+                      "path":  "logs/rep-3-karbird-convert.log",
+                      "sha256":  "891cbd27146183f29a23b9ad1b424b815a9f939c7e80f74c54b4fc603892eb11",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1808
+                  },
+                  {
+                      "path":  "logs/rep-3-karbird-engine-core.log",
+                      "sha256":  "12b4c9b1ca259b32b3c9006685319848ca873b0d2116f4428e432f201d3290e4",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1762
+                  },
+                  {
+                      "path":  "logs/rep-3-karbird-ingest.log",
+                      "sha256":  "39b734c5b71e611253ed8bc96813ff1bafe6f8caf39b4d034a7e7e73dca29b45",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1408
+                  },
+                  {
+                      "path":  "logs/rep-3-karbird-protocol.log",
+                      "sha256":  "ecd0cf1765222ca16aa73adfa098f2b62e51909a1a67cd05ab5c1349ebea5aba",
+                      "generated_by":  "run-divan-suite.ps1",
+                      "bytes":  1375
+                  }
+              ]
+}

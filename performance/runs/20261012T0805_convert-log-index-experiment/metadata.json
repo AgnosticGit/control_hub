@@ -1,0 +1,11 @@
+{
+  "decision": "rejected: 11.5% regression",
+  "workload_id": "criterion:convert/normalize_1000_logs.v1",
+  "started_utc": "2026-10-12T07:55:00.7790042Z",
+  "status": "completed-rejected",
+  "baseline": "workspace-clean-idle-six-reps-20261012",
+  "run_id": "20261012T0805_convert-log-index-experiment",
+  "hypothesis": "reusing an index buffer lowers per-log allocation cost",
+  "schema_version": 1,
+  "mode": "experiment"
+}

@@ -23,10 +23,15 @@ ts-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion.workspace = true
+divan.workspace = true
 proptest.workspace = true
 
 [[bench]]
 name = "engine"
+harness = false
+
+[[bench]]
+name = "allocation"
 harness = false
 
 [lints]

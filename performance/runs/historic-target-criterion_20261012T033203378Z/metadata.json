@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "run_id": "historic-target-criterion_20261012T033203378Z",
+  "kind": "archive_of_preexisting_criterion_results",
+  "captured_utc": "2026-10-12T03:32:04.9070556Z",
+  "git_sha": "b2ab3b53ef8dbe68cdef9c6f9de18173cde23971",
+  "git_dirty": true,
+  "git_status_note": "Working tree already contained performance artifacts and agent-rule edits; production crates were clean.",
+  "criterion_version": "0.8",
+  "source_bench_hashes": {
+    "crates/karbird-engine-core/benches/engine.rs": "69a407b1a9ccdf7a9301bac7cf6bc8d264c13aa07ecb7d8aa752be265a284ddc",
+    "crates/karbird-convert/benches/normalize.rs": "52369c815fcdd4b26dd5f24ebfc05f9c45295ff9626f9df8ad903fc12439a809",
+    "crates/karbird-actions/benches/policy.rs": "8a6e134cf430fea533dbe64c60471f1cfcb73dba7a33d85b690347e4c6116f6e",
+    "crates/karbird-storage/benches/retention.rs": "379829d19f37137a0531edcf0905bc407757a1159f4d7869834906dddbc0a942",
+    "crates/karbird-archive/benches/segments.rs": "9fce32556e397c45c6909a8e2ad5058a045f6242d994b7c5bf77984a3b9a240d",
+    "crates/karbird-processor/benches/batching.rs": "05afff74c6ccf9e423a441233dc6e1c1518a489c8447070c1ecafaffd36513fc",
+    "crates/karbird-domain/benches/redaction.rs": "ad1ba23d7c4f8c9b269ca11e3d251ea691d7202235be045d6d0f1ede826042c4",
+    "crates/karbird-protocol/benches/envelope.rs": "89817366640f7bb4ad0775bff467663edd94faba0265d83c8b38d41d7b2f8179",
+    "crates/karbird-api/benches/infrastructure.rs": "d789f4a68b549c2943c3307982d3326f2ba2cc2d760940c03a7c3139bf56d3ef",
+    "crates/karbird-runtime/benches/backoff.rs": "04dfe19376960b64863e0766c76fd914398b4767a678b1906d013ca23bd0ec98",
+    "crates/karbird-web-engine/benches/wasm_facade.rs": "3079f1de29657f030aff3bae1327cffc0e5edba5a03bc4ecb550521bf0be6872",
+    "crates/karbird-cli/benches/discovery.rs": "edf4304cce306e0592e9603ec095a12493b04fc173f7f1dda036ab4639bd2c5e",
+    "crates/karbird-executor/benches/verification.rs": "8ea75b68fd0d2147b294bf1e36b01de8ad7f6b3a2cd3b31ead209e6dc1aa3779",
+    "crates/karbird-archiver/benches/schedule.rs": "d35e92d7b0ef03f6ce84f6437330678704a152eb4e62049cb5053cb38dd71bcf",
+    "crates/karbird-ingest/benches/sanitize.rs": "fed9b7016255e3f8f3a6a246dddf6624d3916c03714a869df4e12e32bdd5c8cb"
+  },
+  "host": "Windows x86_64",
+  "note": "Existing accumulated target/criterion results archived before the new clean rerun; contains 134 estimate files across current and historical Criterion labels."
+}

@@ -1,0 +1,55 @@
+{
+  "status": "completed",
+  "run_id": "20261012T145000000Z_resource-placement-ab",
+  "files": [
+    {
+      "path": "metadata.json",
+      "sha256": "722ac36d22924f244951f1e789a7928c337d10ad0649e7200bb95820f76612ca",
+      "bytes": 734,
+      "generated_by": "resource-placement-and-convert-ab-experiment"
+    },
+    {
+      "path": "logs/baseline-a.log",
+      "sha256": "4da291c5c41f2634f1eced6b66936bae0ec0f83fa3abbeffb58c924f4da9dedc",
+      "bytes": 925,
+      "generated_by": "resource-placement-and-convert-ab-experiment"
+    },
+    {
+      "path": "logs/baseline-b.log",
+      "sha256": "4e305f4bd5e8f379599ed422757d21137e8528dd70d58c6fa4e78c3d139e9727",
+      "bytes": 934,
+      "generated_by": "resource-placement-and-convert-ab-experiment"
+    },
+    {
+      "path": "logs/candidate-b.log",
+      "sha256": "bd1d93ac15767c54e96b445140a82516514eade07abe44479093e97caf51fc47",
+      "bytes": 904,
+      "generated_by": "resource-placement-and-convert-ab-experiment"
+    },
+    {
+      "path": "logs/convert-logs-divan-baseline.log",
+      "sha256": "dc8a816e566035111188cb202fcb75cbcf86a3d750584505f8bd9bdd550b4b35",
+      "bytes": 1780,
+      "generated_by": "resource-placement-and-convert-ab-experiment"
+    },
+    {
+      "path": "logs/convert-logs-divan-candidate.log",
+      "sha256": "8c9d8d1383a44b2578a3412a7c792020e5496388746af91bfe409aadd63d6d17",
+      "bytes": 1780,
+      "generated_by": "resource-placement-and-convert-ab-experiment"
+    },
+    {
+      "path": "logs/divan-baseline.log",
+      "sha256": "7182b66133c2f1d28a89b125aa1a651e5b88aaf8afdd8b96f0fd1f47b5edbc5b",
+      "bytes": 1915,
+      "generated_by": "resource-placement-and-convert-ab-experiment"
+    },
+    {
+      "path": "logs/divan-candidate.log",
+      "sha256": "4b3a9ccb8b3b4aa11a0eea48556a9d489a80050fc69c2bd0dbfa0fb8ce1bfbba",
+      "bytes": 1997,
+      "generated_by": "resource-placement-and-convert-ab-experiment"
+    }
+  ],
+  "schema_version": 1
+}

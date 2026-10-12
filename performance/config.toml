@@ -1,0 +1,14 @@
+schema_version = 1
+mode = "baseline"
+active_baseline = "workspace-clean-idle-six-reps-20261012"
+profile = "bench"
+target = "host"
+features = "workspace defaults"
+allocator = "system-default"
+repetitions = 3
+criterion_sample_size = 30
+criterion_warm_up_seconds = 3
+criterion_measurement_seconds = 5
+catalog = "benchmarks/workloads/workspace-criterion-v1.json"
+workspace_targets = 15
+workspace_workloads = 40

@@ -1,0 +1,1767 @@
+{
+  "schema_version": 2,
+  "status": "completed",
+  "repetition_count": 6,
+  "metrics": [
+    {
+      "workload_id": "criterion:actions/evaluate_policy.v1",
+      "criterion_id": "actions/evaluate_policy",
+      "source": "crates/karbird-actions/benches/policy.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 282.8788401694562,
+      "std_dev_ns": 6.5019974760033525,
+      "between_run_std_dev_ns": 77.51796417563455,
+      "between_run_range_pct": 70.75152192317069,
+      "repetitions": [
+        {
+          "mean_ns": 276.5819577971687,
+          "std_dev_ns": 15.39692650840555,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 438.7375339761157,
+          "std_dev_ns": 7.242512736534525,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 244.17448392093098,
+          "std_dev_ns": 3.987804757522164,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 238.5964493576119,
+          "std_dev_ns": 3.171943063203022,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 245.2030418032339,
+          "std_dev_ns": 4.169598490596431,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 253.9795741616761,
+          "std_dev_ns": 5.043199299758422,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:actions/validate_scale.v1",
+      "criterion_id": "actions/validate_scale",
+      "source": "crates/karbird-actions/benches/policy.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 21.375379382225315,
+      "std_dev_ns": 0.4378455546143954,
+      "between_run_std_dev_ns": 0.6239731548698779,
+      "between_run_range_pct": 7.871532432308541,
+      "repetitions": [
+        {
+          "mean_ns": 22.532405166168918,
+          "std_dev_ns": 0.42629058983677226,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 21.224353933128494,
+          "std_dev_ns": 0.4191858965160135,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 21.008769022828425,
+          "std_dev_ns": 0.39815110891676436,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 21.02852982873944,
+          "std_dev_ns": 0.36003566201581005,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 20.84983524556806,
+          "std_dev_ns": 0.5667026546825006,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 21.60838309691856,
+          "std_dev_ns": 0.45670741571851153,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:api/group_500_hosts_and_containers.v1",
+      "criterion_id": "api/group_500_hosts_and_containers",
+      "source": "crates/karbird-api/benches/infrastructure.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 265131.0212112915,
+      "std_dev_ns": 5195.923726537376,
+      "between_run_std_dev_ns": 8619.586115916065,
+      "between_run_range_pct": 8.001299794575734,
+      "repetitions": [
+        {
+          "mean_ns": 278559.0635960506,
+          "std_dev_ns": 6523.871105947833,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 272240.8739157016,
+          "std_dev_ns": 4021.2860248206703,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 264939.96542586695,
+          "std_dev_ns": 5317.847227085965,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 259584.94909088386,
+          "std_dev_ns": 5588.212708064408,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 257345.135740515,
+          "std_dev_ns": 4175.900621473802,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 258116.13949873106,
+          "std_dev_ns": 5548.424671831576,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:api/group_500_hosts_cpu_utilization_fallback.v1",
+      "criterion_id": "api/group_500_hosts_cpu_utilization_fallback",
+      "source": "crates/karbird-api/benches/infrastructure.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 227730.9742813404,
+      "std_dev_ns": 9937.904985197189,
+      "between_run_std_dev_ns": 21082.074990821337,
+      "between_run_range_pct": 25.568196028539507,
+      "repetitions": [
+        {
+          "mean_ns": 270071.3852835109,
+          "std_dev_ns": 47752.48826015105,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 220388.39012734423,
+          "std_dev_ns": 2409.2070650766927,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 221332.13474677308,
+          "std_dev_ns": 2745.891144676437,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 222246.3405800914,
+          "std_dev_ns": 2043.2706565520114,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 220502.91158876786,
+          "std_dev_ns": 2014.506164259334,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 211844.6833615549,
+          "std_dev_ns": 2662.0666204676127,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:api/group_500_hosts_realistic_metrics.v1",
+      "criterion_id": "api/group_500_hosts_realistic_metrics",
+      "source": "crates/karbird-api/benches/infrastructure.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1496950.4167184888,
+      "std_dev_ns": 40782.05294216093,
+      "between_run_std_dev_ns": 63332.921942680005,
+      "between_run_range_pct": 11.89204331312564,
+      "repetitions": [
+        {
+          "mean_ns": 1620632.2547925739,
+          "std_dev_ns": 131341.40609044506,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1500858.2616761301,
+          "std_dev_ns": 30612.57405875331,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1471845.3340830132,
+          "std_dev_ns": 19119.01621698359,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1473585.927606515,
+          "std_dev_ns": 20503.402238784896,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1472166.459292304,
+          "std_dev_ns": 25043.967957224293,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1442614.2628603964,
+          "std_dev_ns": 18071.951090774448,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:api/place_200_resources_600_addresses.v1",
+      "criterion_id": "api/place_200_resources_600_addresses",
+      "source": "crates/karbird-api/benches/infrastructure.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1679500.5462875548,
+      "std_dev_ns": 69477.38452766923,
+      "between_run_std_dev_ns": 103190.1982022635,
+      "between_run_range_pct": 16.277725808675132,
+      "repetitions": [
+        {
+          "mean_ns": 1887310.3080624708,
+          "std_dev_ns": 218252.73377298936,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1613925.8141825816,
+          "std_dev_ns": 17788.168522702665,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1663950.8550460462,
+          "std_dev_ns": 97096.96330495899,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1630576.647428643,
+          "std_dev_ns": 20169.571190741975,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1633641.9713058032,
+          "std_dev_ns": 46275.27177276215,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1647597.6816997847,
+          "std_dev_ns": 17281.598601860274,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:archive/decode_512_logs.v1",
+      "criterion_id": "archive/decode_512_logs",
+      "source": "crates/karbird-archive/benches/segments.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 347398.1923741573,
+      "std_dev_ns": 8726.195132313283,
+      "between_run_std_dev_ns": 18160.816666778093,
+      "between_run_range_pct": 13.527497494236092,
+      "repetitions": [
+        {
+          "mean_ns": 382112.494389618,
+          "std_dev_ns": 25461.433787729242,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 335118.2126211824,
+          "std_dev_ns": 5886.209176853831,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 337057.4805133247,
+          "std_dev_ns": 6891.290396643873,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 342918.9663555911,
+          "std_dev_ns": 5066.3918077021035,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 351873.8870762842,
+          "std_dev_ns": 4798.677303575239,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 335308.1132889436,
+          "std_dev_ns": 4253.16832137541,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:archive/encode_512_logs.v1",
+      "criterion_id": "archive/encode_512_logs",
+      "source": "crates/karbird-archive/benches/segments.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 311250.1724694382,
+      "std_dev_ns": 15139.339930494869,
+      "between_run_std_dev_ns": 18768.5147197251,
+      "between_run_range_pct": 15.999578124086197,
+      "repetitions": [
+        {
+          "mean_ns": 348449.0205499504,
+          "std_dev_ns": 43728.18700117546,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 306808.1583491018,
+          "std_dev_ns": 10877.17393769617,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 298650.3060443496,
+          "std_dev_ns": 11259.362420191765,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 302155.8958864745,
+          "std_dev_ns": 8156.342447449305,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 310969.8207046555,
+          "std_dev_ns": 7114.309562644038,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 300467.83328209765,
+          "std_dev_ns": 9700.66421381248,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:archive/index_512_logs.v1",
+      "criterion_id": "archive/index_512_logs",
+      "source": "crates/karbird-archive/benches/segments.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 83578.79086776912,
+      "std_dev_ns": 1923.9555577959366,
+      "between_run_std_dev_ns": 4357.553586135709,
+      "between_run_range_pct": 14.045595195593869,
+      "repetitions": [
+        {
+          "mean_ns": 91941.43336888145,
+          "std_dev_ns": 5550.893799966618,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 81630.31454243229,
+          "std_dev_ns": 1581.951208567254,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 80808.68181872815,
+          "std_dev_ns": 1257.5590725526176,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 82420.07330909725,
+          "std_dev_ns": 1254.2094942989243,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 84469.9474332529,
+          "std_dev_ns": 1112.3395615666373,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 80202.29473422263,
+          "std_dev_ns": 786.7802098235683,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:archiver/plan_closed_windows.v1",
+      "criterion_id": "archiver/plan_closed_windows",
+      "source": "crates/karbird-archiver/benches/schedule.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 428.8689333734284,
+      "std_dev_ns": 14.38192090642175,
+      "between_run_std_dev_ns": 35.090830469543384,
+      "between_run_range_pct": 21.339821419846665,
+      "repetitions": [
+        {
+          "mean_ns": 494.20926451987845,
+          "std_dev_ns": 52.77600272186001,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 406.42248497832963,
+          "std_dev_ns": 6.467380846371258,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 402.68940001278764,
+          "std_dev_ns": 5.102307900624536,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 419.51633926153573,
+          "std_dev_ns": 9.42363102450711,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 442.27157544358573,
+          "std_dev_ns": 6.631311966689346,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 408.10453602445324,
+          "std_dev_ns": 5.8908909784782395,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:cli/parse_node_entry.v1",
+      "criterion_id": "cli/parse_node_entry",
+      "source": "crates/karbird-cli/benches/discovery.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 107.70085782779489,
+      "std_dev_ns": 5.5147238173779485,
+      "between_run_std_dev_ns": 9.766093420913014,
+      "between_run_range_pct": 22.86006263555812,
+      "repetitions": [
+        {
+          "mean_ns": 127.47853102695522,
+          "std_dev_ns": 25.951662246444037,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 102.85804746848791,
+          "std_dev_ns": 1.2486410503986638,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 102.87962507983609,
+          "std_dev_ns": 1.36735415262532,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 106.04078343608025,
+          "std_dev_ns": 1.2786363175551811,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 103.99480063072703,
+          "std_dev_ns": 2.0431939723357226,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 102.95335932468288,
+          "std_dev_ns": 1.198855164908768,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:convert/normalize_1000_logs.v1",
+      "criterion_id": "convert/normalize_1000_logs",
+      "source": "crates/karbird-convert/benches/normalize.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1158822.940697975,
+      "std_dev_ns": 28738.693112982088,
+      "between_run_std_dev_ns": 70915.92649497412,
+      "between_run_range_pct": 15.93747304559028,
+      "repetitions": [
+        {
+          "mean_ns": 1302051.7087635798,
+          "std_dev_ns": 87937.8641189737,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1119400.2152037409,
+          "std_dev_ns": 16334.465256572656,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1133724.2476892076,
+          "std_dev_ns": 18076.135882814022,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1136061.412127968,
+          "std_dev_ns": 15702.502105584968,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1144335.4454596303,
+          "std_dev_ns": 12200.310472653691,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1117364.6149437234,
+          "std_dev_ns": 22180.880841293496,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:convert/normalize_1000_spans.v1",
+      "criterion_id": "convert/normalize_1000_spans",
+      "source": "crates/karbird-convert/benches/normalize.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 954472.0718856413,
+      "std_dev_ns": 29076.714210791255,
+      "between_run_std_dev_ns": 60586.15205873216,
+      "between_run_range_pct": 17.49769043690157,
+      "repetitions": [
+        {
+          "mean_ns": 1074581.4190488206,
+          "std_dev_ns": 85120.54013115696,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 946432.9537155417,
+          "std_dev_ns": 21970.032114527705,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 939265.5108300763,
+          "std_dev_ns": 14271.15050685413,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 939067.8865842655,
+          "std_dev_ns": 12940.733181687889,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 919913.810531553,
+          "std_dev_ns": 7968.461380125033,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 907570.8506035905,
+          "std_dev_ns": 32189.367950395805,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:convert/normalize_256_custom_events.v1",
+      "criterion_id": "convert/normalize_256_custom_events",
+      "source": "crates/karbird-convert/benches/normalize.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 57776.128085319506,
+      "std_dev_ns": 2609.3372500442524,
+      "between_run_std_dev_ns": 4892.98664918658,
+      "between_run_range_pct": 22.814805763974494,
+      "repetitions": [
+        {
+          "mean_ns": 67514.13375487452,
+          "std_dev_ns": 11288.08868182306,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 55738.27176871535,
+          "std_dev_ns": 738.9228049514657,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 54332.62235426376,
+          "std_dev_ns": 862.7632682877703,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 56235.330823479984,
+          "std_dev_ns": 857.7218114264217,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 57602.53600565214,
+          "std_dev_ns": 902.450250912109,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 55233.873804931274,
+          "std_dev_ns": 1006.0766828646895,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:convert/normalize_256_metric_points.v1",
+      "criterion_id": "convert/normalize_256_metric_points",
+      "source": "crates/karbird-convert/benches/normalize.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 304690.0628020546,
+      "std_dev_ns": 10482.729787333594,
+      "between_run_std_dev_ns": 17684.85049996817,
+      "between_run_range_pct": 16.034633012697217,
+      "repetitions": [
+        {
+          "mean_ns": 339598.05909305223,
+          "std_dev_ns": 38600.8775932586,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 296349.33440688055,
+          "std_dev_ns": 4253.8697146512795,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 296803.10171388584,
+          "std_dev_ns": 5291.432392563207,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 304284.3580724211,
+          "std_dev_ns": 7538.835769441396,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 300363.39782950183,
+          "std_dev_ns": 3962.532220468249,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 290742.1256965861,
+          "std_dev_ns": 3248.8310336188315,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:domain/classify_common_attribute.v1",
+      "criterion_id": "domain/classify_common_attribute",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 353.88498498359917,
+      "std_dev_ns": 11.259987546440644,
+      "between_run_std_dev_ns": 15.96214501215437,
+      "between_run_range_pct": 11.859233587289006,
+      "repetitions": [
+        {
+          "mean_ns": 384.946508899894,
+          "std_dev_ns": 41.61039358670612,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 352.7001853714909,
+          "std_dev_ns": 6.095081115776058,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 343.5495986450345,
+          "std_dev_ns": 5.244099247621748,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 342.97846190034636,
+          "std_dev_ns": 3.9449772093895867,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 344.84127463937784,
+          "std_dev_ns": 7.161183759649626,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 354.2938804454514,
+          "std_dev_ns": 3.5041903595007264,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:domain/classify_header.v1",
+      "criterion_id": "domain/classify_header",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 49.47183379161988,
+      "std_dev_ns": 1.7396417217165812,
+      "between_run_std_dev_ns": 2.1104631191385845,
+      "between_run_range_pct": 11.704738123353856,
+      "repetitions": [
+        {
+          "mean_ns": 53.32477604443887,
+          "std_dev_ns": 5.255551708860657,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 48.71737192021491,
+          "std_dev_ns": 1.0557500846842476,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 47.53422745430888,
+          "std_dev_ns": 0.9135818208451809,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 48.20185360490736,
+          "std_dev_ns": 1.426867244329804,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 48.66534792679822,
+          "std_dev_ns": 0.897862344853095,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 50.38742579905104,
+          "std_dev_ns": 0.8882371267265025,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:domain/derive_scoped_service_id.v1",
+      "criterion_id": "domain/derive_scoped_service_id",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 199.28066575762193,
+      "std_dev_ns": 5.628089741720284,
+      "between_run_std_dev_ns": 10.538746687679401,
+      "between_run_range_pct": 14.964620117879903,
+      "repetitions": [
+        {
+          "mean_ns": 218.15957062623332,
+          "std_dev_ns": 20.375950316192235,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 188.33797602722322,
+          "std_dev_ns": 2.385301892242214,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 197.22670474043625,
+          "std_dev_ns": 3.440432807426332,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 195.46083805561335,
+          "std_dev_ns": 1.9509249470320413,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 203.6454584905405,
+          "std_dev_ns": 2.7503582089888416,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 192.8534466056849,
+          "std_dev_ns": 2.8655702784400456,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:domain/mask_bearer_plain_value.v1",
+      "criterion_id": "domain/mask_bearer_plain_value",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 51.99347062655195,
+      "std_dev_ns": 2.3075537194191806,
+      "between_run_std_dev_ns": 2.5395463641196105,
+      "between_run_range_pct": 13.895231050766371,
+      "repetitions": [
+        {
+          "mean_ns": 56.51403468016201,
+          "std_dev_ns": 10.016097308118136,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 51.31315185476934,
+          "std_dev_ns": 0.7300001142205316,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 49.289421805290274,
+          "std_dev_ns": 0.7676911410483342,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 50.06890804236086,
+          "std_dev_ns": 0.4135711404474375,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 52.49148996059037,
+          "std_dev_ns": 1.137224837116336,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 52.283817416138824,
+          "std_dev_ns": 0.7807377755643095,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:domain/mask_bearer_secret_value.v1",
+      "criterion_id": "domain/mask_bearer_secret_value",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 72.62528711437254,
+      "std_dev_ns": 2.4199895149398443,
+      "between_run_std_dev_ns": 4.316588847927798,
+      "between_run_range_pct": 17.001215211667027,
+      "repetitions": [
+        {
+          "mean_ns": 80.60513157400105,
+          "std_dev_ns": 7.051925900182821,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 71.19706878400524,
+          "std_dev_ns": 1.53711154895203,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 68.25795021359549,
+          "std_dev_ns": 1.2059692351891893,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 70.93122150647943,
+          "std_dev_ns": 1.3252008386645278,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 74.02080349525629,
+          "std_dev_ns": 2.3155363791760273,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 70.73954711289774,
+          "std_dev_ns": 1.084193187474469,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:domain/redact_url_attribute.v1",
+      "criterion_id": "domain/redact_url_attribute",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 120.78778209522928,
+      "std_dev_ns": 4.697012986519284,
+      "between_run_std_dev_ns": 6.906927745489301,
+      "between_run_range_pct": 15.462216341749278,
+      "repetitions": [
+        {
+          "mean_ns": 134.28763639363763,
+          "std_dev_ns": 18.43739182761892,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 116.49667419584435,
+          "std_dev_ns": 1.6577980234719487,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 117.85892055805019,
+          "std_dev_ns": 2.4343656106728853,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 119.26547243431962,
+          "std_dev_ns": 2.2910023162757702,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 121.20682077785128,
+          "std_dev_ns": 1.2682364544088691,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 115.61116821167258,
+          "std_dev_ns": 2.0932836866673106,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:domain/sanitize_common_string_attribute.v1",
+      "criterion_id": "domain/sanitize_common_string_attribute",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 33.6060296012306,
+      "std_dev_ns": 1.1192373951648165,
+      "between_run_std_dev_ns": 2.1166551860691394,
+      "between_run_range_pct": 17.052480311884267,
+      "repetitions": [
+        {
+          "mean_ns": 37.779117620123856,
+          "std_dev_ns": 4.492395546766723,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 33.1097609555284,
+          "std_dev_ns": 0.6226911696861845,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 32.182201729375684,
+          "std_dev_ns": 0.5274778074301988,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 33.10819495873535,
+          "std_dev_ns": 0.3583040067366234,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 33.40844630485232,
+          "std_dev_ns": 0.3657970861179473,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 32.04845603876801,
+          "std_dev_ns": 0.3487587542512227,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:domain/sanitize_common_string_attribute_in_place.v1",
+      "criterion_id": "domain/sanitize_common_string_attribute_in_place",
+      "source": "crates/karbird-domain/benches/redaction.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 12.601360978567058,
+      "std_dev_ns": 0.48481157430131855,
+      "between_run_std_dev_ns": 0.5373201574522396,
+      "between_run_range_pct": 11.18243243834767,
+      "repetitions": [
+        {
+          "mean_ns": 13.6677122256203,
+          "std_dev_ns": 1.122405945695164,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 12.397043688379403,
+          "std_dev_ns": 0.2727269453976544,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 12.618935259928126,
+          "std_dev_ns": 0.48438995429436,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 12.258573547879731,
+          "std_dev_ns": 0.32511622312006144,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 12.295441554850838,
+          "std_dev_ns": 0.32284317207748753,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 12.370459594743947,
+          "std_dev_ns": 0.38138720522318376,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:engine/apply_batch_2000_spans.v1",
+      "criterion_id": "engine/apply_batch_2000_spans",
+      "source": "crates/karbird-engine-core/benches/engine.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 758957.475405838,
+      "std_dev_ns": 30097.814551080897,
+      "between_run_std_dev_ns": 46950.57332114396,
+      "between_run_range_pct": 17.063757976866018,
+      "repetitions": [
+        {
+          "mean_ns": 844758.9835895008,
+          "std_dev_ns": 85258.43203318752,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 715252.3168389162,
+          "std_dev_ns": 14520.814397675535,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 718130.731572762,
+          "std_dev_ns": 25956.389698654664,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 757716.1670122909,
+          "std_dev_ns": 14675.232415561788,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 752564.5444971039,
+          "std_dev_ns": 16197.641599478458,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 765322.1089244544,
+          "std_dev_ns": 23978.377161927416,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:engine/apply_batch_json_2000_spans.v1",
+      "criterion_id": "engine/apply_batch_json_2000_spans",
+      "source": "crates/karbird-engine-core/benches/engine.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 2275559.033692363,
+      "std_dev_ns": 71759.15050129537,
+      "between_run_std_dev_ns": 113267.0887683342,
+      "between_run_range_pct": 14.037528669881109,
+      "repetitions": [
+        {
+          "mean_ns": 2475332.1626257314,
+          "std_dev_ns": 243147.75508859695,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 2191408.467548515,
+          "std_dev_ns": 64172.62216452507,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 2155899.9108710964,
+          "std_dev_ns": 32820.89811246956,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 2233595.716054033,
+          "std_dev_ns": 24798.570563442427,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 2301667.51637531,
+          "std_dev_ns": 35125.31724935147,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 2295450.428679494,
+          "std_dev_ns": 30489.73982938678,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:engine/build_server_geometry_100_nodes.v1",
+      "criterion_id": "engine/build_server_geometry_100_nodes",
+      "source": "crates/karbird-engine-core/benches/engine.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 869025.4074317005,
+      "std_dev_ns": 23571.701381280316,
+      "between_run_std_dev_ns": 91057.15247527137,
+      "between_run_range_pct": 28.814504545573406,
+      "repetitions": [
+        {
+          "mean_ns": 881801.1208452146,
+          "std_dev_ns": 65385.64031595054,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 795667.8228832899,
+          "std_dev_ns": 8252.021600682725,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 824844.1069142638,
+          "std_dev_ns": 15955.759992091778,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1046073.188409885,
+          "std_dev_ns": 18971.78744000393,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 831874.4940448595,
+          "std_dev_ns": 19265.75339274802,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 833891.7114926901,
+          "std_dev_ns": 13599.245546204895,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:engine/search_visible_state_1000_nodes.v1",
+      "criterion_id": "engine/search_visible_state_1000_nodes",
+      "source": "crates/karbird-engine-core/benches/engine.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 23685.05479130639,
+      "std_dev_ns": 770.0330098890377,
+      "between_run_std_dev_ns": 1129.4823701298264,
+      "between_run_range_pct": 13.430718567524272,
+      "repetitions": [
+        {
+          "mean_ns": 25475.85555546471,
+          "std_dev_ns": 2089.351880710468,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 22748.215340660194,
+          "std_dev_ns": 515.8580435391905,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 22294.782503880426,
+          "std_dev_ns": 403.09646678222504,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 23448.884535238747,
+          "std_dev_ns": 579.9115280181485,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 24130.53872069139,
+          "std_dev_ns": 685.3860806150726,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 24012.052091902868,
+          "std_dev_ns": 346.5940596691211,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:engine/seek_and_build_visible_state.v1",
+      "criterion_id": "engine/seek_and_build_visible_state",
+      "source": "crates/karbird-engine-core/benches/engine.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 23198.93464257427,
+      "std_dev_ns": 848.3582518608191,
+      "between_run_std_dev_ns": 1572.6592793155212,
+      "between_run_range_pct": 18.696189492691698,
+      "repetitions": [
+        {
+          "mean_ns": 26174.758402910324,
+          "std_dev_ns": 3380.6355352634287,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 21974.83761879513,
+          "std_dev_ns": 336.6346806452299,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 21837.44162184894,
+          "std_dev_ns": 242.5290326717185,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 23180.140989259853,
+          "std_dev_ns": 475.70829056043294,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 23224.57350155979,
+          "std_dev_ns": 300.3488128992965,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 22801.855721071577,
+          "std_dev_ns": 354.2931591248082,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:executor/evaluate_and_record_verification.v1",
+      "criterion_id": "executor/evaluate_and_record_verification",
+      "source": "crates/karbird-executor/benches/verification.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 1303.449150622184,
+      "std_dev_ns": 35.18541974981554,
+      "between_run_std_dev_ns": 72.13923442069915,
+      "between_run_range_pct": 15.595725779577052,
+      "repetitions": [
+        {
+          "mean_ns": 1438.5772956220035,
+          "std_dev_ns": 113.89101977567655,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1272.5927017970764,
+          "std_dev_ns": 20.01505901329406,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1235.2949404147414,
+          "std_dev_ns": 13.184433203120228,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1318.835929803923,
+          "std_dev_ns": 20.407909095584984,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1295.0249680415009,
+          "std_dev_ns": 25.6551449993655,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 1260.3690680538596,
+          "std_dev_ns": 17.958952411851897,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:ingest/sanitize_1000_logs_with_attributes.v1",
+      "criterion_id": "ingest/sanitize_1000_logs_with_attributes",
+      "source": "crates/karbird-ingest/benches/sanitize.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 575954.535660631,
+      "std_dev_ns": 13140.883239364333,
+      "between_run_std_dev_ns": 12272.179577580206,
+      "between_run_range_pct": 5.066116936779028,
+      "repetitions": [
+        {
+          "mean_ns": 563497.4852041659,
+          "std_dev_ns": 15923.925272731094,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 590120.0655744479,
+          "std_dev_ns": 12484.446520842434,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 592676.0154834162,
+          "std_dev_ns": 12015.258159320816,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 569876.8443373403,
+          "std_dev_ns": 10059.525052296834,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 568302.5742898877,
+          "std_dev_ns": 14642.658273297133,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 571254.2290745279,
+          "std_dev_ns": 13719.486157697685,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:ingest/sanitize_1000_metric_points_with_attributes.v1",
+      "criterion_id": "ingest/sanitize_1000_metric_points_with_attributes",
+      "source": "crates/karbird-ingest/benches/sanitize.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 865767.3896474751,
+      "std_dev_ns": 18454.56312083521,
+      "between_run_std_dev_ns": 15689.066890950282,
+      "between_run_range_pct": 4.294445123294559,
+      "repetitions": [
+        {
+          "mean_ns": 852080.087889292,
+          "std_dev_ns": 14715.148325885793,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 861488.6609346356,
+          "std_dev_ns": 28576.847323170634,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 888976.2023880644,
+          "std_dev_ns": 16025.57031860506,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 851796.2969442738,
+          "std_dev_ns": 13260.286674005814,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 858880.9397902577,
+          "std_dev_ns": 19918.80226077632,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 881382.1499383271,
+          "std_dev_ns": 18230.72382256763,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:ingest/sanitize_1000_traces.v1",
+      "criterion_id": "ingest/sanitize_1000_traces",
+      "source": "crates/karbird-ingest/benches/sanitize.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 43117.98327547258,
+      "std_dev_ns": 7652.68675338828,
+      "between_run_std_dev_ns": 3573.426919211375,
+      "between_run_range_pct": 21.527521112130792,
+      "repetitions": [
+        {
+          "mean_ns": 50374.8517140006,
+          "std_dev_ns": 11159.029736654442,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 41610.09932397135,
+          "std_dev_ns": 5117.925746266281,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 41973.34581294386,
+          "std_dev_ns": 4958.337203192836,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 41092.61876124822,
+          "std_dev_ns": 4686.290517271917,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 42122.74910110954,
+          "std_dev_ns": 16117.466933704254,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 41534.234939561895,
+          "std_dev_ns": 3877.070383239948,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:ingest/sanitize_1000_traces_with_attributes.v1",
+      "criterion_id": "ingest/sanitize_1000_traces_with_attributes",
+      "source": "crates/karbird-ingest/benches/sanitize.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 730089.0341396927,
+      "std_dev_ns": 30152.062682176085,
+      "between_run_std_dev_ns": 46441.28072082584,
+      "between_run_range_pct": 17.015554105752102,
+      "repetitions": [
+        {
+          "mean_ns": 820461.2103958576,
+          "std_dev_ns": 97505.04546195384,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 703448.971192159,
+          "std_dev_ns": 13403.377783537582,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 726657.8698252148,
+          "std_dev_ns": 21130.518719326712,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 730999.2089235171,
+          "std_dev_ns": 21007.355336466975,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 696232.5157716552,
+          "std_dev_ns": 15343.44860885529,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 702734.4287297522,
+          "std_dev_ns": 12522.63018291611,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:processor/check_dead_letter_payload_bound.v1",
+      "criterion_id": "processor/check_dead_letter_payload_bound",
+      "source": "crates/karbird-processor/benches/batching.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 0.5659475549087578,
+      "std_dev_ns": 0.1908876011957911,
+      "between_run_std_dev_ns": 0.028771000682564975,
+      "between_run_range_pct": 11.176803828435428,
+      "repetitions": [
+        {
+          "mean_ns": 0.5906223535653149,
+          "std_dev_ns": 0.19030275929404522,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 0.5962547201135221,
+          "std_dev_ns": 0.19553855351873825,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 0.5516147939145437,
+          "std_dev_ns": 0.19025257558279077,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 0.5329998721295434,
+          "std_dev_ns": 0.18717353183795715,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 0.5875019902569074,
+          "std_dev_ns": 0.19330921480211372,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 0.5366915994727155,
+          "std_dev_ns": 0.18874897213910147,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:processor/drain_128_ready_records.v1",
+      "criterion_id": "processor/drain_128_ready_records",
+      "source": "crates/karbird-processor/benches/batching.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 203.41496900324466,
+      "std_dev_ns": 23.03064557686079,
+      "between_run_std_dev_ns": 4.198645980409185,
+      "between_run_range_pct": 5.068814692655304,
+      "repetitions": [
+        {
+          "mean_ns": 205.27530313339287,
+          "std_dev_ns": 22.24802343221861,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 207.52777747329216,
+          "std_dev_ns": 21.511053105380142,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 197.21704963739546,
+          "std_dev_ns": 19.708930582686538,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 199.406650894627,
+          "std_dev_ns": 25.468711324764868,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 204.060676693125,
+          "std_dev_ns": 23.578825380312622,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 207.0023561876354,
+          "std_dev_ns": 25.668329635801946,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:protocol/decode_256_events.v1",
+      "criterion_id": "protocol/decode_256_events",
+      "source": "crates/karbird-protocol/benches/envelope.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 27384.397115449945,
+      "std_dev_ns": 489.11914681281377,
+      "between_run_std_dev_ns": 642.5440080207129,
+      "between_run_range_pct": 6.448727998195644,
+      "repetitions": [
+        {
+          "mean_ns": 28142.33789764556,
+          "std_dev_ns": 657.505887533419,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 27383.683765615875,
+          "std_dev_ns": 333.520108071975,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 27327.452516494202,
+          "std_dev_ns": 741.2353614331395,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 27078.270342381325,
+          "std_dev_ns": 438.14636905533837,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 26376.39261372446,
+          "std_dev_ns": 437.8758572371435,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 27998.245556838243,
+          "std_dev_ns": 326.4312975458672,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:protocol/encode_256_events.v1",
+      "criterion_id": "protocol/encode_256_events",
+      "source": "crates/karbird-protocol/benches/envelope.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 5654.4986127534075,
+      "std_dev_ns": 93.15845067009937,
+      "between_run_std_dev_ns": 69.67520767133983,
+      "between_run_range_pct": 3.5945753153577966,
+      "repetitions": [
+        {
+          "mean_ns": 5765.9478532277735,
+          "std_dev_ns": 89.11412580821498,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 5562.6926418864905,
+          "std_dev_ns": 50.18184340393864,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 5610.838674712602,
+          "std_dev_ns": 78.87018095911681,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 5665.318376388057,
+          "std_dev_ns": 102.77226836592246,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 5686.724849958726,
+          "std_dev_ns": 94.4294985990675,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 5635.469280346796,
+          "std_dev_ns": 143.58278688433586,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:runtime/backoff_schedule.v1",
+      "criterion_id": "runtime/backoff_schedule",
+      "source": "crates/karbird-runtime/benches/backoff.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 14.330268083128052,
+      "std_dev_ns": 0.22303558999725923,
+      "between_run_std_dev_ns": 0.25436128734646335,
+      "between_run_range_pct": 4.511007722438619,
+      "repetitions": [
+        {
+          "mean_ns": 14.395566368768316,
+          "std_dev_ns": 0.17366498292039484,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 14.274385351945906,
+          "std_dev_ns": 0.13351538577062258,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 14.698161367471375,
+          "std_dev_ns": 0.40155226509186465,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 14.502585988926729,
+          "std_dev_ns": 0.24452113591767835,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 14.05918755406068,
+          "std_dev_ns": 0.1859284207567606,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 14.051721867595312,
+          "std_dev_ns": 0.19903134952623439,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:storage/parse_clickhouse_ttl.v1",
+      "criterion_id": "storage/parse_clickhouse_ttl",
+      "source": "crates/karbird-storage/benches/retention.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 155.7047125712026,
+      "std_dev_ns": 2.141982668536037,
+      "between_run_std_dev_ns": 3.3710224105973428,
+      "between_run_range_pct": 5.130668579890791,
+      "repetitions": [
+        {
+          "mean_ns": 156.83481948761013,
+          "std_dev_ns": 1.9427637001562563,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 159.30112205579204,
+          "std_dev_ns": 2.901726203679794,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 159.24544452000947,
+          "std_dev_ns": 2.330383417862767,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 155.04610558684325,
+          "std_dev_ns": 2.0735428399275024,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 152.48835448646875,
+          "std_dev_ns": 2.1291182360847203,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 151.31242929049208,
+          "std_dev_ns": 1.4743616135051798,
+          "sample_count": 30
+        }
+      ]
+    },
+    {
+      "workload_id": "criterion:web_engine/construct_from_config_json.v1",
+      "criterion_id": "web_engine/construct_from_config_json",
+      "source": "crates/karbird-web-engine/benches/wasm_facade.rs",
+      "metric": "latency",
+      "unit": "nanoseconds per iteration",
+      "direction": "lower_is_better",
+      "mean_ns": 215.06542426344376,
+      "std_dev_ns": 2.7777190075564757,
+      "between_run_std_dev_ns": 4.503386721749292,
+      "between_run_range_pct": 5.9762575445308705,
+      "repetitions": [
+        {
+          "mean_ns": 215.32117779657437,
+          "std_dev_ns": 2.888529738090362,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 220.4182724171181,
+          "std_dev_ns": 2.91560087596605,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 212.94866736901614,
+          "std_dev_ns": 2.7256771746155892,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 218.4695914560217,
+          "std_dev_ns": 2.672930927438621,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 207.5654087738967,
+          "std_dev_ns": 1.7674467719259934,
+          "sample_count": 30
+        },
+        {
+          "mean_ns": 215.66942776803552,
+          "std_dev_ns": 3.69612855730224,
+          "sample_count": 30
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "ingest.sanitize-traces-1000",
+  "version": 1,
+  "kind": "criterion_micro_workload",
+  "crate": "karbird-ingest",
+  "bench_target": "sanitize",
+  "criterion_id": "ingest/sanitize_1000_traces_with_attributes",
+  "scenario": "Typical OTLP trace sanitization with 1,000 spans, four synthetic attributes per span, including authorization and URL secret redaction.",
+  "fixture": "Generated deterministically by crates/karbird-ingest/benches/sanitize.rs::traces_with_attributes.",
+  "seed": "none; deterministic index-derived values",
+  "expected_output": "sanitizer completes and strips/redacts sensitive attributes; existing crate tests cover redaction behavior",
+  "concurrency": 1,
+  "duration_seconds": 2,
+  "measurement": "Criterion latency per batch; setup clones the input outside the timed closure",
+  "direction": "lower_is_better",
+  "source": "crates/karbird-ingest/benches/sanitize.rs"
+}

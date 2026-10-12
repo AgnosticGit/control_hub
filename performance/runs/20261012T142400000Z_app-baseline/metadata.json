@@ -1,0 +1,33 @@
+﻿{
+    "schema_version":  1,
+    "run_id":  "20261012T142400000Z_app-baseline",
+    "mode":  "baseline",
+    "started_utc":  "2026-10-12T14:23:02.8236507Z",
+    "linked_criterion_run":  "20261012T135755240Z_workspace",
+    "linked_divan_run":  "20261012T142120657Z_divan",
+    "host_os":  "Microsoft Windows 10.0.26200 ",
+    "architecture":  "X64",
+    "rustc":  "rustc 1.98.1 (48a229cea 2026-09-01)\r\nbinary: rustc\r\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\r\ncommit-date: 2026-09-01\r\nhost: x86_64-pc-windows-msvc\r\nrelease: 1.98.1\r\nLLVM version: 22.1.8",
+    "cargo":  "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+    "hyperfine":  "hyperfine 2.0.0",
+    "executable":  "C:\\Development\\control_hub\\performance\\runs\\20261012T142400000Z_app-baseline\\binaries\\baseline.exe",
+    "executable_sha256":  "5d179fdd5966c2747aab50b2659305d0dd06aab8954257fd502a87866df0e54e",
+    "compare_executable":  null,
+    "compare_executable_sha256":  null,
+    "hyperfine_runs":  20,
+    "warmup_runs":  3,
+    "rss_repetitions":  5,
+    "rss_metric":  "Windows PROCESS_MEMORY_COUNTERS.PeakWorkingSetSize via Get-Process PeakWorkingSet64; bytes",
+    "workloads":  [
+                      {
+                          "id":  "hyperfine:karbird-cli/discover-repository.v1",
+                          "args":  "discover --path ."
+                      },
+                      {
+                          "id":  "hyperfine:karbird-cli/plan-repository.v1",
+                          "args":  "plan --path ."
+                      }
+                  ],
+    "status":  "completed",
+    "finished_utc":  "2026-10-12T14:23:06.9279232Z"
+}
