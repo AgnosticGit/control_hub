@@ -298,6 +298,56 @@ test.describe("workspace on demo data", () => {
     await expect(timeline.getByText("live", { exact: true })).toBeVisible();
   });
 
+  test("returning live keeps live active while timeline data loads", async ({ page }) => {
+    const timeline = page.getByRole("region", { name: "Timeline" });
+    const live = timeline.getByText("live", { exact: true });
+    await expect(page.getByText("Starting engine…")).toBeHidden();
+
+    let releaseSummary: (() => void) | undefined;
+    const heldSummary = new Promise<void>((resolve) => { releaseSummary = resolve; });
+    await page.route("**/timeline/summary**", async (route) => {
+      await heldSummary;
+      await route.continue();
+    });
+    await timeline.getByRole("button", { name: "Range", exact: true }).click();
+    await page.getByRole("button", { name: "Last 1 h" }).click();
+    const loadingSegment = page.getByRole("img", { name: /Loading timeline data from/ });
+    await expect(loadingSegment).toBeVisible();
+    expect(await loadingSegment.getAttribute("data-load-from-ns")).toMatch(/^\d+$/);
+    expect(await loadingSegment.getAttribute("data-load-to-ns")).toMatch(/^\d+$/);
+    await expect(timeline.getByText("historical", { exact: true })).toBeVisible();
+
+    await timeline.getByRole("button", { name: "Return to live" }).click();
+    await expect(live).toBeVisible();
+    releaseSummary?.();
+    await expect(timeline.getByRole("button", { name: "Pause live" })).toBeVisible();
+    await expect(page.getByLabel("Live transport")).toHaveText("Live: WebSocket");
+    // A delayed view/chunk refresh must not turn the live controls back into Return to live.
+    await expect(live).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("live refresh highlights only the newly requested time", async ({ page }) => {
+    const timeline = page.getByRole("region", { name: "Timeline" });
+    await expect(page.getByText("Starting engine…")).toBeHidden();
+    await expect(timeline.getByText("live", { exact: true })).toBeVisible();
+    await page.waitForResponse((response) => response.url().includes("/timeline/summary") && response.ok());
+    const segment = page.getByRole("img", { name: /Loading timeline data from/ });
+    await expect(segment).toBeHidden();
+    let releaseRefresh: (() => void) | undefined;
+    const heldRefresh = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+    await page.route("**/timeline/summary**", async (route) => {
+      await heldRefresh;
+      await route.continue();
+    });
+    await expect(segment).toBeVisible();
+    const segmentBox = await segment.boundingBox();
+    const timelineBox = await timeline.boundingBox();
+    expect(segmentBox).not.toBeNull();
+    expect(timelineBox).not.toBeNull();
+    expect(segmentBox!.width).toBeLessThan(timelineBox!.width / 10);
+    releaseRefresh?.();
+  });
+
   test("map line style can be switched and is remembered", async ({ page }) => {
     const styles = page.getByRole("group", { name: "Line style" });
     await expect(styles.getByRole("button", { name: "Curved lines" })).toHaveAttribute("aria-pressed", "true");

@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TimelineTracks } from "@karbird/web-engine";
 import { Icon } from "@/components/ui/Icon";
@@ -10,7 +10,7 @@ import { RESOURCE_COLOR, cssColor, serviceColors } from "@/renderer/service-colo
 import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime } from "@/lib/time";
 import type { EngineState, WorkspaceActions } from "../useWorkspaceEngine";
 import type { WorkspaceMemory } from "../workspace-memory";
-import { RULER_H, bucketGeometry, draw, drawRuler, rowTop, timelineRevealAlpha, totalHeight, type ActionBar, type Row } from "./draw";
+import { RULER_H, bucketGeometry, draw, drawRuler, rowTop, timelineRevealAlpha, timelineRevealProgressFor, totalHeight, type ActionBar, type Row } from "./draw";
 import { EVENT_COLOR, eventLabel, eventMarkers, formatShare, holdSamples, machineAt, machineWindow, type EventMarker, type InfraTimeline } from "./machines";
 import { centeredOn, nearestItems, tracksMatch, viewIsEmpty } from "./neighbours";
 import { placeAbove, rangeBetween, viewAround } from "./range";
@@ -26,6 +26,8 @@ import {
   needsTimelineSummary,
   panBy,
   timeAt,
+  uncoveredRanges,
+  visibleRangeSegment,
   xOf,
   zoomAt,
   zoomCentered,
@@ -37,6 +39,8 @@ import { summaryTracks } from "./summary-tracks";
 export const TIMELINE_TRACK_BUCKETS = 180;
 const CLIP_CAP = 400;
 const REFETCH_MS = 100;
+const LOAD_SWEEP_MS = 1500;
+const LOAD_FADE_MS = 240;
 export const LABEL_W = 168;
 /** Pointer travel (px) that turns a click on the tracks into a range drag. */
 const DRAG_PX = 4;
@@ -129,7 +133,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   useEffect(() => memory?.saveTimelineView(userView), [memory, userView]);
   const [hover, setHover] = useState<Hover | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [revealProgress, setRevealProgress] = useState(1);
+  const [revealFrame, setRevealFrame] = useState<{ startedAt: number | null; progress: number }>({ startedAt: null, progress: 1 });
   const [draft, setDraft] = useState<View | null>(null);
   const [prevLoop, setPrevLoop] = useState(state.loop);
   if (prevLoop !== state.loop) {
@@ -172,13 +176,19 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const actionPlansKey = useMemo(() => ["actions", projectId, environmentId] as const, [projectId, environmentId]);
   const dataKey = `${state.load?.at ?? 0}|${filterKey}`;
   const [chunkLoading, setChunkLoading] = useState(false);
+  const [loaderRanges, setLoaderRanges] = useState<View[]>([]);
   const loadDirection = view.from + (view.to - view.from) / 2n < data.from ? "left" : "right";
   const summaryView = needsTimelineSummary(view);
   const tracks = useTracks(actions, view, TIMELINE_TRACK_BUCKETS, CLIP_CAP, dataKey, ready && !summaryView);
   const [summaryWindow, setSummaryWindow] = useState<View | null>(null);
+  const summaryDataRangeRef = useRef<View | null>(null);
   useEffect(() => {
     if (!summaryView) return;
-    const timer = setTimeout(() => setSummaryWindow(view), 250);
+    const timer = setTimeout(() => {
+      const previous = summaryDataRangeRef.current;
+      setLoaderRanges(uncoveredRanges(previous ? [previous] : [], view));
+      setSummaryWindow(view);
+    }, 250);
     return () => clearTimeout(timer);
   }, [summaryView, data.from, view]);
   const summary = useQuery({
@@ -197,6 +207,58 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
+  const [summaryReveal, setSummaryReveal] = useState<EngineState["timelineReveal"]>(null);
+  useEffect(() => {
+    if (!summary.data) return;
+    const received = { from: BigInt(summary.data.from_ns), to: BigInt(summary.data.to_ns) };
+    const previous = summaryDataRangeRef.current;
+    summaryDataRangeRef.current = received;
+    const fresh = uncoveredRanges(previous ? [previous] : [], received);
+    if (fresh.length !== 1) return;
+    const interval = fresh[0];
+    if (!interval) return;
+    const reveal = { ...interval, startedAt: performance.now() };
+    const frame = requestAnimationFrame(() => setSummaryReveal(reveal));
+    return () => cancelAnimationFrame(frame);
+  }, [summary.data]);
+  const activeReveal = summaryView ? summaryReveal : state.timelineReveal;
+  const revealProgress = timelineRevealProgressFor(activeReveal?.startedAt ?? null, revealFrame);
+  const timelineDataLoading = chunkLoading || (summaryView && summary.isFetching);
+  const [keepTimelineLoaderVisible, setKeepTimelineLoaderVisible] = useState(false);
+  const [timelineLoaderFadingOut, setTimelineLoaderFadingOut] = useState(false);
+  const loaderStartedAtRef = useRef<number | null>(null);
+  const showTimelineLoader = timelineDataLoading || keepTimelineLoaderVisible;
+  useEffect(() => {
+    if (timelineDataLoading) {
+      loaderStartedAtRef.current ??= performance.now();
+      const revealTimer = setTimeout(() => {
+        setKeepTimelineLoaderVisible(true);
+        setTimelineLoaderFadingOut(false);
+      }, 0);
+      return () => clearTimeout(revealTimer);
+    }
+    const startedAt = loaderStartedAtRef.current;
+    if (startedAt === null) return;
+    const elapsed = performance.now() - startedAt;
+    const elapsedInSweep = elapsed % LOAD_SWEEP_MS;
+    const remaining = elapsedInSweep === 0 ? 0 : LOAD_SWEEP_MS - elapsedInSweep;
+    const revealTimer = setTimeout(() => setKeepTimelineLoaderVisible(true), 0);
+    let fadeTimer: ReturnType<typeof setTimeout> | null = null;
+    const cycleTimer = setTimeout(() => {
+      setTimelineLoaderFadingOut(true);
+      fadeTimer = setTimeout(() => {
+        loaderStartedAtRef.current = null;
+        setKeepTimelineLoaderVisible(false);
+        setTimelineLoaderFadingOut(false);
+        setLoaderRanges([]);
+      }, LOAD_FADE_MS);
+    }, remaining);
+    return () => {
+      clearTimeout(revealTimer);
+      clearTimeout(cycleTimer);
+      if (fadeTimer !== null) clearTimeout(fadeTimer);
+    };
+  }, [timelineDataLoading]);
 
   const plans = useQuery({
     queryKey: actionPlansKey,
@@ -257,15 +319,23 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     if (summaryView) return infrastructureSummary;
     return machines.data ? holdSamples(machines.data) : null;
   }, [summaryView, infrastructureSummary, machines.data]);
+  const loadChunk = useCallback(async (chunk: View) => {
+    setLoaderRanges(actions.unloadedTimelineRanges(chunk.from, chunk.to));
+    setChunkLoading(true);
+    try {
+      await actions.loadTimelineChunk(chunk.from, chunk.to);
+    } finally {
+      setChunkLoading(false);
+    }
+  }, [actions, setChunkLoading, setLoaderRanges]);
   useEffect(() => {
     if (!ready || summaryView || actions.hasTimelineRange(view.from, view.to)) return;
     const timer = setTimeout(() => {
-      setChunkLoading(true);
       const chunk = detailChunkFor(view, data.to);
-      void actions.loadTimelineChunk(chunk.from, chunk.to).finally(() => setChunkLoading(false));
+      void loadChunk(chunk);
     }, 250);
     return () => clearTimeout(timer);
-  }, [actions, summaryView, data.from, data.to, ready, view]);
+  }, [actions, loadChunk, summaryView, data.from, data.to, ready, view]);
 
   const nodeIds = useMemo(() => {
     const ids = new Map<number, string>();
@@ -321,6 +391,10 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   useEffect(() => onContentHeight(height + RULER_H), [height, onContentHeight]);
   const groupAt = rows.findIndex((r) => r.kind === "group" || r.kind === "heading");
   const markers = useMemo(() => (infra && width > 0 ? eventMarkers(infra, view, width) : []), [infra, view, width]);
+  const loaderSegments = loaderRanges.flatMap((range) => {
+    const segment = visibleRangeSegment(range, view, width);
+    return segment ? [{ range, segment }] : [];
+  });
   const hostRowTop = (host: number) => {
     const i = rows.findIndex((r) => r.kind === "machine" && r.host === host);
     return i === -1 ? null : rowTop(rows, i);
@@ -332,7 +406,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const seekToTime = async (time: bigint) => {
     if (!actions.hasTimelineRange(time, time + 1n)) {
       const chunk = detailChunkFor({ from: time, to: time + 1n }, data.to);
-      await actions.loadTimelineChunk(chunk.from, chunk.to);
+      await loadChunk(chunk);
     }
     actions.seek(time);
   };
@@ -368,24 +442,24 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   useEffect(() => {
     const ctx = setupCanvas(rowsRef.current, width, height);
     if (ctx) draw(ctx, { width, rows, view, tracks: displayedTracks, actions: actionBars, cursor: state.cursor, markA, hoverX, range, machines: infra,
-      reveal: state.timelineReveal ? { from: state.timelineReveal.from, to: state.timelineReveal.to, progress: revealProgress } : null });
-  }, [width, height, rows, view, displayedTracks, actionBars, state.cursor, markA, hoverX, range, infra, state.timelineReveal, revealProgress]);
+      reveal: activeReveal ? { from: activeReveal.from, to: activeReveal.to, progress: revealProgress } : null });
+  }, [width, height, rows, view, displayedTracks, actionBars, state.cursor, markA, hoverX, range, infra, activeReveal, revealProgress]);
 
   useEffect(() => {
-    const reveal = state.timelineReveal;
+    const reveal = activeReveal;
     if (!reveal || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      const raf = requestAnimationFrame(() => setRevealProgress(1));
+      const raf = requestAnimationFrame(() => setRevealFrame({ startedAt: reveal?.startedAt ?? null, progress: 1 }));
       return () => cancelAnimationFrame(raf);
     }
     let raf = 0;
     const animate = () => {
       const progress = timelineRevealAlpha(performance.now(), reveal.startedAt);
-      setRevealProgress(progress);
+      setRevealFrame({ startedAt: reveal.startedAt, progress });
       if (progress < 1) raf = requestAnimationFrame(animate);
     };
     raf = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(raf);
-  }, [state.timelineReveal]);
+  }, [activeReveal]);
 
   // Wheel and drag need the latest values without re-binding listeners.
   const live = useRef({ view, bounds, width, setView });
@@ -595,6 +669,14 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
           {...pointer}
         >
           <canvas ref={rulerRef} aria-hidden className="absolute inset-0" style={{ width, height: RULER_H }} />
+          {showTimelineLoader ? loaderSegments.map(({ range, segment }) => (
+            <div
+              key={`${range.from}:${range.to}`}
+              aria-hidden="true"
+              className={`timeline-load-ruler${segment.width < 8 ? " timeline-load-ruler-narrow" : ""}${timelineLoaderFadingOut ? " timeline-load-range-fading" : ""}`}
+              style={{ left: segment.left, width: segment.width }}
+            />
+          )) : null}
         </div>
       </div>
 
@@ -693,15 +775,24 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
           {markers.map((m) => {
             const top = hostRowTop(m.host);
             if (top === null) return null;
-            return <EventButton key={`${m.event.time_ns}-${m.event.container_id}-${m.event.kind}`} marker={m} top={top} onClick={() => goToItem(m.time)} />;
+            const opacity = activeReveal && m.time >= activeReveal.from && m.time <= activeReveal.to ? revealProgress : 1;
+            return <EventButton key={`${m.event.time_ns}-${m.event.container_id}-${m.event.kind}`} marker={m} top={top} opacity={opacity} onClick={() => goToItem(m.time)} />;
           })}
-          {(chunkLoading || (summaryView && summary.isFetching)) ? (
-            <div className={`timeline-load-edge timeline-load-edge-${loadDirection}`} aria-hidden="true">
+          {showTimelineLoader ? loaderSegments.map(({ range, segment }) => (
+            <div
+              key={`${range.from}:${range.to}`}
+              className={`timeline-load-range${segment.width < 8 ? " timeline-load-range-narrow" : ""}${timelineLoaderFadingOut ? " timeline-load-range-fading" : ""}`}
+              style={{ left: segment.left, width: segment.width }}
+              data-load-from-ns={range.from.toString()}
+              data-load-to-ns={range.to.toString()}
+              role="img"
+              aria-label={`Loading timeline data from ${formatDateTime(range.from)} to ${formatDateTime(range.to)}`}
+            >
               <span className="timeline-load-wave" />
               <span className="timeline-load-points"><i /><i /><i /></span>
             </div>
-          ) : null}
-          {(chunkLoading || (summaryView && summary.isFetching)) ? (
+          )) : null}
+          {timelineDataLoading ? (
             <span className="sr-only" role="status" aria-live="polite">
               {loadDirection === "left" ? "Loading earlier timeline data" : "Loading later timeline data"}
             </span>
@@ -747,14 +838,14 @@ function NeighbourButton({ dir, distance, onClick }: { dir: "prev" | "next"; dis
 }
 
 /** A container event on its machine's row; a click moves the cursor there. */
-function EventButton({ marker, top, onClick }: { marker: EventMarker; top: number; onClick: () => void }) {
+function EventButton({ marker, top, opacity, onClick }: { marker: EventMarker; top: number; opacity: number; onClick: () => void }) {
   const e = marker.event;
   const label = `${eventLabel(e)} at ${formatClock(marker.time, false)}`;
   return (
     <button
       type="button"
       className="absolute z-10 h-3 w-3 -translate-x-1/2 rotate-45 rounded-[2px] border border-bg shadow-sm hover:scale-125 focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none"
-      style={{ left: marker.x, top: top + 2, background: EVENT_COLOR[e.kind] }}
+      style={{ left: marker.x, top: top + 2, background: EVENT_COLOR[e.kind], opacity }}
       aria-label={label}
       title={e.detail}
       onPointerDown={(ev) => ev.stopPropagation()}

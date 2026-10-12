@@ -37,10 +37,6 @@ $metadata = [ordered]@{
   repetitions = $Repetitions
   sample_count = $SampleCount
   workloads = $workloads
-  unavailable = @{
-    gungraun = 'Valgrind is unavailable on the Windows host; WSL Ubuntu has Valgrind 3.18.1, below Gungraun tested versions, and installation/build prerequisites require elevated setup.'
-    linux_perf = 'The benchmark host is Windows; WSL perf is not installed and hardware-counter access is restricted.'
-  }
 }
 $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $run 'metadata.json') -Encoding utf8
 

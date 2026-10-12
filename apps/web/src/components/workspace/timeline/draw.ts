@@ -127,6 +127,15 @@ export function timelineRevealAlpha(now: number, startedAt: number, durationMs =
   return Math.max(0, Math.min(1, (now - startedAt) / durationMs));
 }
 
+export function timelineRevealProgressFor(
+  activeStartedAt: number | null,
+  frame: { startedAt: number | null; progress: number },
+): number {
+  if (activeStartedAt === null) return 1;
+  if (frame.startedAt !== activeStartedAt) return 0;
+  return Math.max(0, Math.min(1, frame.progress));
+}
+
 export function liveSignalTimeNs(record: Record<string, unknown>): bigint | null {
   const value = [record.start_ns, record.time_ns, record.end_ns].find((candidate) => typeof candidate === "string" && /^\d+$/.test(candidate));
   return typeof value === "string" ? BigInt(value) : null;
@@ -398,9 +407,15 @@ export function draw(ctx: CanvasRenderingContext2D, d: DrawInput) {
   const g = t ? bucketGeometry(t, view, width) : null;
   const infra = d.machines ?? null;
   const mg = infra ? machineGeometry(infra, view, width) : null;
-  rows.forEach((r, i) => {
+  const contentReveal = reveal && reveal.to > reveal.from && reveal.progress < 1
+    ? Math.max(0, Math.min(1, reveal.progress))
+    : 1;
+  const revealX1 = reveal ? Math.max(0, Math.min(width, xOf(reveal.from, view, width))) : 0;
+  const revealX2 = reveal ? Math.max(0, Math.min(width, xOf(reveal.to, view, width))) : width;
+  const clipContentToReveal = contentReveal < 1 && revealX2 > revealX1;
+  const paintContent = (opacity: number) => rows.forEach((r, i) => {
     const y = rowTop(rows, i);
-    ctx.globalAlpha = r.dimmed ? DIMMED_ROW_ALPHA : 1;
+    ctx.globalAlpha = opacity * (r.dimmed ? DIMMED_ROW_ALPHA : 1);
     if (r.kind === "machine") {
       const h = infra && r.host !== undefined ? infra.hosts[r.host] : undefined;
       if (h && mg) machine(ctx, h.cpu, h.memory, y, r.height, mg, width);
@@ -420,9 +435,9 @@ export function draw(ctx: CanvasRenderingContext2D, d: DrawInput) {
         const color = actionColor(a.state);
         roundRect(ctx, x1, y + 3, x2 - x1, r.height - 6, 3);
         ctx.fillStyle = color;
-        ctx.globalAlpha = 0.85;
+        ctx.globalAlpha = opacity * 0.85;
         ctx.fill();
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = opacity;
         if (x2 - x1 > 60) {
           ctx.fillStyle = "#07111c";
           ctx.fillText(`${a.title} · ${a.target}`, Math.max(x1, 0) + 4, y + r.height / 2);
@@ -459,6 +474,24 @@ export function draw(ctx: CanvasRenderingContext2D, d: DrawInput) {
       else heat(ctx, s.counts, y, r.height, g, width, color);
     }
   });
+  if (clipContentToReveal) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, width, height);
+    ctx.rect(revealX1, 0, revealX2 - revealX1, height);
+    ctx.clip("evenodd");
+    paintContent(1);
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(revealX1, 0, revealX2 - revealX1, height);
+    ctx.clip();
+    paintContent(contentReveal);
+    ctx.restore();
+  } else {
+    paintContent(1);
+  }
   ctx.globalAlpha = 1;
   rangeBand(ctx, d.range, view, width, height, true);
 

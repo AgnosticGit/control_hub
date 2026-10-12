@@ -63,6 +63,9 @@ test("live request bars keep the same height as the timeline advances", async ({
   await login(page, "admin@karbird.local", WORKSPACE);
   const timeline = page.getByLabel("Timeline");
   await expect(timeline.getByText("Requests", { exact: true })).toBeVisible();
+  await timeline.getByRole("button", { name: "Zoom in time" }).click();
+  await timeline.getByRole("button", { name: "Zoom in time" }).click();
+  await expect(timeline.getByTitle("Visible time span")).toHaveText("15 min");
   const canvas = timeline.locator("canvas").nth(1);
   const slider = timeline.getByRole("slider", { name: "Selected time" });
   const beforeTime = await slider.getAttribute("aria-valuetext");
@@ -70,7 +73,7 @@ test("live request bars keep the same height as the timeline advances", async ({
   await expect.poll(async () => {
     initialResult.value = await requestBarHeight(canvas, await clockMs(timeline), null);
     return initialResult.value?.height ?? 0;
-  }, { timeout: 20_000 }).toBeGreaterThan(0);
+  }, { timeout: 20_000 }).toBeGreaterThanOrEqual(16);
   const initial = initialResult.value;
   if (!initial) throw new Error("no stable request bucket was visible on the timeline");
 

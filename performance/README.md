@@ -40,7 +40,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File performance/scripts/run-app-
 
 The shell entrypoint `performance/scripts/run-benchmarks.sh` delegates to the PowerShell runner on Windows and PowerShell 7 elsewhere. One invocation performs three complete workspace repetitions, with 30 Criterion samples, a 3-second warmup, and a 5-second measurement window per case. Each run stores repetition logs, raw Criterion output, per-repetition and aggregate summaries, host/tool/Git metadata, source hashes, and a SHA-256 manifest. Every invocation creates a new run directory. The accumulated pre-existing `target/criterion` tree (134 estimate sets) is preserved in its own run archive. The active baseline combines six repetitions from two later full-suite runs after the machine was left idle; `reports/baseline.md` lists all 40 cases and their variation.
 
-`run-divan-suite.ps1` measures allocation behavior in representative API, archive, convert, engine, ingest, and protocol CPU paths. `run-app-workloads.ps1` uses Hyperfine for the native CLI `discover` and `plan` flows and `measure-peak-rss.ps1` records OS-native process Peak RSS. Criterion is the latency comparison source; Divan's instrumented timings are not production latency evidence. Linux perf and Gungraun are only used where their platform/runtime prerequisites are met.
+`run-divan-suite.ps1` measures allocation behavior in representative API, archive, convert, engine, ingest, and protocol CPU paths. `run-app-workloads.ps1` uses Hyperfine for the native CLI `discover` and `plan` flows and `measure-peak-rss.ps1` records Windows-native process Peak RSS. Criterion is the latency comparison source; Divan's instrumented timings are not production latency evidence.
 
 ## Artifacts and retention
 

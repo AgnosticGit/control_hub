@@ -17,14 +17,15 @@ Ordered by priority within each stage. `[x]` = done and verified.
 - [x] Demo system + Node SDK + integration tests
 - [x] Automated broker-outage test (`just test-broker-outage`)
 - [x] Content-hash `log_id`, so client retries of logs deduplicate (ADR-0004)
-- [x] OTLP metrics ingestion: gauges and sums for machines and containers, series cap per environment (ADR-0018)
+- [x] Collector OTLP metrics ingestion: machine/container gauges and sums, series cap per environment (ADR-0018)
 - [x] Infrastructure layer on the map, machine card, instance chain, noisy-neighbour hint (ADR-0018)
 - [ ] Application metrics (histograms, summaries) — still rejected
 
 ## Stage 2 — viewer
 - [x] PixiJS map, table fallback, Worker + WASM engine, inspector, waterfall, virtualized logs
-- [x] WebSocket live channel per environment: resume cursor, reconnect with backoff, polling
-      fallback, gap → HTTP reload, per-environment scope only (ADR-0011)
+- [x] WebSocket live channel per environment: resume cursor, reconnect with backoff, bounded HTTP
+      catch-up after reconnect, gap recovery, per-environment scope only; no periodic DB polling
+      fallback (ADR-0023)
 - [ ] Server-side subscription filters on the live channel (today: whole environment, filtered in
       the engine)
 - [x] Incremental engine merge for live batches (rebuild only on structural changes)
@@ -96,7 +97,8 @@ Ordered by priority within each stage. `[x]` = done and verified.
 - [x] Public SEO pages, robots, sitemap
 - [x] Read-only MCP server (`karbird mcp`, stdio; ADR-0013)
 - [x] Strict nonce CSP for `/app/*`, baseline CSP elsewhere
-- [ ] Archiving (ClickHouse TTL to object storage), retention settings per tenant
+- [x] Log archiving from ClickHouse to S3-compatible object storage and per-signal retention
+      settings (ADR-0015, ADR-0016); spans and events are not archived
 - [x] Container images (GHCR, built in CI), two-host Compose deploy via GitHub Actions, TLS at
       Caddy, secrets derived from one GitHub secret, `karbird-api migrate`, deploy docs (ADR-0017)
 - [ ] Production hardening: rustls inside the private network, secrets from a secret manager,
@@ -121,5 +123,6 @@ Ordered by priority within each stage. `[x]` = done and verified.
       end sessions), administrators, roles, audit log of every project; every change and refusal audited
 - [ ] Admin panel: delete accounts, transfer project ownership, edit/delete environments, paging
       for long account and audit lists
-- [ ] Invite by email (needs outgoing mail); transfer a project
+- [x] Organization invitations by email through Resend; project invite links
+- [ ] Transfer a project
 - [ ] Load test ingest → ClickHouse and publish measured numbers

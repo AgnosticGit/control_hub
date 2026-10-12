@@ -7,6 +7,20 @@ export interface View {
   to: bigint;
 }
 
+export interface VisibleRangeSegment {
+  left: number;
+  width: number;
+}
+
+/** Maps the part of a loading range visible in the current timeline view to pixels. */
+export function visibleRangeSegment(range: View, view: View, width: number): VisibleRangeSegment | null {
+  if (width <= 0 || range.to <= view.from || range.from >= view.to) return null;
+  const from = range.from < view.from ? view.from : range.from;
+  const to = range.to > view.to ? view.to : range.to;
+  const left = xOf(from, view, width);
+  return { left, width: xOf(to, view, width) - left };
+}
+
 const US = 1_000n;
 const MS = 1_000_000n;
 const SEC = 1_000_000_000n;
@@ -65,6 +79,22 @@ export function rangeCoveredBy(loaded: readonly View[], target: View): boolean {
     if (coveredTo >= target.to) return true;
   }
   return false;
+}
+
+/** Returns only the gaps that still need loading inside a requested interval. */
+export function uncoveredRanges(loaded: readonly View[], target: View): View[] {
+  const ranges = [...loaded].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+  const gaps: View[] = [];
+  let cursor = target.from;
+  for (const range of ranges) {
+    if (range.to <= cursor) continue;
+    if (range.from >= target.to) break;
+    if (range.from > cursor) gaps.push({ from: cursor, to: range.from < target.to ? range.from : target.to });
+    if (range.to > cursor) cursor = range.to;
+    if (cursor >= target.to) return gaps;
+  }
+  if (cursor < target.to) gaps.push({ from: cursor, to: target.to });
+  return gaps;
 }
 
 const TICK_STEPS: bigint[] = [

@@ -8,7 +8,7 @@ import { scopedUrl } from "@/lib/api";
 import { NS_PER_MS, NS_PER_SEC, clampNs, nowNs, parseNs } from "@/lib/time";
 import type { AnimClock } from "@/renderer/hops";
 import { firstItemStart, playStart, replayStep } from "./timeline/range";
-import { clampRangeToNow, hasFuture, rangeCoveredBy } from "./timeline/scale";
+import { clampRangeToNow, hasFuture, rangeCoveredBy, uncoveredRanges } from "./timeline/scale";
 import { asLogSource, type LogSource } from "./logs-query";
 import { ENGINE_ROLLING_WINDOW_NS } from "./service-card-metrics";
 import { liveSignalTimeNs } from "./timeline/draw";
@@ -115,6 +115,11 @@ export interface EngineState {
   timelineReveal: { from: bigint; to: bigint; startedAt: number } | null;
 }
 
+/** A background timeline fetch must not change playback or the selected time. */
+export function beginTimelineChunkLoad(state: EngineState): EngineState {
+  return { ...state, loading: true, error: null };
+}
+
 export function asCompleteness(v: unknown): Completeness | null {
   return v && typeof v === "object" && "processing_caught_up" in v ? (v as Completeness) : null;
 }
@@ -200,12 +205,14 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
   }, [patch]);
 
   const recordLoad = useCallback(
-    (r: LoadResult) => {
-      const reveal = r.newItems && r.newItems > 0 && r.fromNs && r.toNs
-        ? { from: BigInt(r.fromNs), to: BigInt(r.toNs), startedAt: performance.now() }
+    (r: LoadResult, revealItems = true, revealRange?: { from: bigint; to: bigint }) => {
+      const revealFrom = revealRange?.from ?? (r.fromNs ? BigInt(r.fromNs) : null);
+      const revealTo = revealRange?.to ?? (r.toNs ? BigInt(r.toNs) : null);
+      const reveal = r.newItems && r.newItems > 0 && revealFrom !== null && revealTo !== null
+        ? { from: revealFrom, to: revealTo, startedAt: performance.now() }
         : stateRef.current.timelineReveal;
       patch({
-        timelineReveal: reveal,
+        ...(revealItems ? { timelineReveal: reveal } : {}),
         load: {
           items: r.count,
           fetchMs: r.fetchMs,
@@ -281,8 +288,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
     if (!c) return;
 
     const task = (async () => {
-      void c.call({ kind: "liveStop" });
-      patch({ mode: "paused", loading: true, error: null });
+      patch(beginTimelineChunkLoad(stateRef.current));
       try {
         await c.call({
           kind: "loadTopology",
@@ -293,11 +299,11 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
         });
         const result = await loadTimelineRange(c, boundedFrom, boundedTo);
         if (c !== clientRef.current) return;
+        const missing = uncoveredRanges(loadedChunksRef.current, { from: boundedFrom, to: boundedTo });
         loadedChunksRef.current.push({ from: boundedFrom, to: boundedTo });
-        recordLoad(result);
+        recordLoad(result, missing.length === 1, missing[0]);
         await refreshTopologyView();
         const s = stateRef.current;
-        patch({ rangeFrom: boundedFrom < s.rangeFrom ? boundedFrom : s.rangeFrom, rangeTo: boundedTo > s.rangeTo ? boundedTo : s.rangeTo });
         c.seek(s.cursor);
       } catch (error) {
         if (c === clientRef.current) patch({ error: error instanceof Error ? error.message : String(error) });
@@ -313,7 +319,8 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
   const seek = useCallback(
     (t: bigint) => {
       const s = stateRef.current;
-      const cursor = clampNs(t, s.rangeFrom, s.rangeTo);
+      const loadedFrom = loadedChunksRef.current.reduce((from, range) => range.from < from ? range.from : from, s.rangeFrom);
+      const cursor = clampNs(t, loadedFrom, s.rangeTo);
       clientRef.current?.seek(cursor);
       patch({ cursor });
     },
@@ -514,7 +521,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
           if(cancelled || client!==clientRef.current) return;
           const result=await loadTimelineRange(client,rangeFrom,rangeTo);
           if(!cancelled && client===clientRef.current) {
-            recordLoad(result);
+            recordLoad(result, false);
             client.seek(stateRef.current.cursor);
           }
         } catch(error) {
@@ -631,6 +638,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
     },
     loadTimelineChunk,
     hasTimelineRange: (from: bigint, to: bigint) => rangeCoveredBy(loadedChunksRef.current, { from, to }),
+    unloadedTimelineRanges: (from: bigint, to: bigint) => uncoveredRanges(loadedChunksRef.current, { from, to }),
     /** Machines, instances and saved backend placement at the selected time. */
     loadInfrastructure: async (at: bigint, live = false) =>
       (await clientRef.current?.call({

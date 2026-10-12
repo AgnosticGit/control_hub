@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { EngineState, WorkspaceActions } from "./useWorkspaceEngine";
 import { LogsPanel } from "./LogsPanel";
 import { TracesPanel } from "./TracesPanel";
 import { EventsPanel } from "./EventsPanel";
 import { useDebounced } from "./useDebounced";
-import { NS_PER_SEC, nowNs } from "@/lib/time";
+import { NS_PER_SEC } from "@/lib/time";
 
 export type Tab = "logs" | "traces" | "events";
 
@@ -107,7 +107,7 @@ function SignalPanelRecords({
   const cursorSec = useDebounced(state.cursor / NS_PER_SEC, state.mode === "replay" ? 800 : 250);
   const displayTo = (cursorSec + 1n) * NS_PER_SEC;
   const displayFrom = displayTo - PANEL_WINDOW_NS > state.rangeFrom ? displayTo - PANEL_WINDOW_NS : state.rangeFrom;
-  const [liveRange, setLiveRange] = useState<{ from: bigint; to: bigint } | null>(() => {
+  const [liveRange] = useState<{ from: bigint; to: bigint } | null>(() => {
     if (state.mode !== "live") return null;
     const to = ((cursorSec / 60n) + 1n) * 60n * NS_PER_SEC;
     return { from: to - PANEL_WINDOW_NS, to };

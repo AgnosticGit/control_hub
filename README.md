@@ -5,10 +5,12 @@ management of distributed systems. It takes in standard OpenTelemetry data, keep
 in ClickHouse, and shows the system as a live map with a time machine. The map runs on a Rust
 engine compiled to WebAssembly and is rendered with WebGL.
 
-> **Status:** not production-ready. On a local demo stand the following work end to end and are
-> tested: telemetry flow, map and time machine, WebSocket live updates, token management, the
-> `karbird` CLI, controlled actions (demo adapter only) and a read-only MCP server. OTLP metrics,
-> archiving, production deployment and real (non-demo) action adapters do not exist.
+> **Status:** not production-ready. The local demo runs end to end and supports OTLP traces, logs and events, machine and
+> container gauges and sums from the Karbird Collector, WebSocket live updates, a log archive,
+> deployment tooling, token management, the `karbird` CLI, demo-only controlled actions and a
+> read-only MCP server. Application histograms and summaries, archiving spans and events, and
+> non-demo action adapters are not available. Production deployment configuration is included;
+> production hardening remains, and this repository does not confirm a live production instance.
 
 ```
 SDK / OTel Collector ──OTLP──▶ ingest (Rust) ──▶ Kafka ──▶ processor (Rust) ──▶ ClickHouse

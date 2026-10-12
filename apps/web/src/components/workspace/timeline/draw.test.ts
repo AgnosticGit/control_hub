@@ -1,6 +1,6 @@
 import type { TimelineTracks } from "@karbird/web-engine";
 import { describe, expect, it } from "vitest";
-import { RULER_H, actionColor, bucketGeometry, draw, drawRuler, liveSignalTimeNs, rowTop, timelineRevealAlpha, totalHeight, withAlpha, type DrawInput, type Row } from "./draw";
+import { RULER_H, actionColor, bucketGeometry, draw, drawRuler, liveSignalTimeNs, rowTop, timelineRevealAlpha, timelineRevealProgressFor, totalHeight, withAlpha, type DrawInput, type Row } from "./draw";
 import type { View } from "./scale";
 
 interface Call {
@@ -38,6 +38,12 @@ describe("timeline reveal animation", () => {
     expect(timelineRevealAlpha(310, 100, 420)).toBe(0.5);
     expect(timelineRevealAlpha(600, 100)).toBe(1);
     expect(timelineRevealAlpha(100, 100, 420, true)).toBe(1);
+  });
+
+  it("starts a new reveal at zero instead of reusing the previous reveal's completed frame", () => {
+    expect(timelineRevealProgressFor(200, { startedAt: 100, progress: 1 })).toBe(0);
+    expect(timelineRevealProgressFor(200, { startedAt: 200, progress: 0.4 })).toBe(0.4);
+    expect(timelineRevealProgressFor(null, { startedAt: 100, progress: 0.2 })).toBe(1);
   });
 
   it("reads supported event timestamps without converting nanoseconds to Number", () => {
@@ -169,6 +175,30 @@ describe("draw", () => {
     const heights = bars.map((b) => b.args[3]);
     expect(heights[0]).toBeCloseTo(Math.sqrt(0.05) * 20);
     expect(heights[1]).toBeCloseTo(Math.sqrt(0.1) * 20);
+  });
+
+  it("fades timeline data elements in with reveal progress", () => {
+    const { ctx, calls } = fakeCtx();
+    draw(ctx, input({
+      rows: [row("r", "requests", 25)],
+      tracks: tracks({ requests: [0, 5, 10] }),
+      reveal: { from: VIEW.from, to: VIEW.to, progress: 0.5 },
+    }));
+    const bars = calls.filter((c) => c.name === "fillRect" && c.fillStyle === "#3b82f6");
+    expect(bars.filter((bar) => bar.globalAlpha === 0.5)).toHaveLength(2);
+  });
+
+  it("keeps data outside the revealed interval visible at full opacity", () => {
+    const { ctx, calls, named } = fakeCtx();
+    draw(ctx, input({
+      rows: [row("r", "requests", 25)],
+      tracks: tracks({ requests: [5, 10] }),
+      reveal: { from: 250_000_000n, to: 750_000_000n, progress: 0.5 },
+    }));
+    expect(named("clip").some((call) => call.args[0] === "evenodd")).toBe(true);
+    const bars = calls.filter((call) => call.name === "fillRect" && call.fillStyle === "#3b82f6");
+    expect(bars.some((bar) => bar.globalAlpha === 1)).toBe(true);
+    expect(bars.some((bar) => bar.globalAlpha === 0.5)).toBe(true);
   });
 
   it("keeps a bucket's height stable when a later live tick adds a higher bucket", () => {

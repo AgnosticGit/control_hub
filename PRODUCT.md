@@ -37,26 +37,26 @@ Four things together, which neighboring tools do not combine truthfully:
 - Users sign in to the private `/app` workspace (cookie sessions, CSRF); public pages (landing, features, docs, getting started, integrations) explain and onboard.
 - Workspace is scoped to a project and environment: Overview (service map, inspector, timeline, traces/logs/events), Actions, Integration (tokens, OTel env vars, connection status), Tokens, Settings (members & roles), plus personal Account, onboarding and karbird Admin.
 - Typical scenes: an incident where a node on the map turns amber/red and the user scrubs the timeline back; connecting a new service with an ingest token; proposing and approving an action as two different people; an assistant pulling context via CLI/MCP.
-- Delivered as a hosted SaaS: customers sign up, create an ingestion token and send telemetry to the karbird API with standard OpenTelemetry exporters; nothing is installed on their side beyond that. Public pages must never present karbird as something to run locally. (Development itself runs on a local demo stand with a 7-service demo system and fault injection; that is internal, not customer-facing.)
+- **Delivery target:** hosted SaaS. The repository includes a two-host production deployment path; it does not document a verified live production instance. Public pages must not present the local development demo as the customer product. (Development itself runs on a local demo stand with a 7-service demo system and fault injection; that is internal, not customer-facing.)
 
 ## Capabilities and Constraints
 
-- **Available:** OTLP traces and logs (HTTP protobuf and gRPC), custom events API; durable pipeline (ingest ACKs only after the broker ACK); service map with observed and inferred dependencies, external systems; trace list and waterfall, correlated logs and events; timeline with live/paused/historical modes, seek, step, replay range, speeds; WebSocket live updates; API tokens (create/rotate/revoke); self-service sign-up, invites, onboarding, personal account; per-project roles and permissions; karbird admin panel; controlled actions with the demo adapter only; `karbird` CLI and read-only MCP server.
-- **Not available yet:** OTLP metrics (explicitly rejected), archiving/retention, production deployment, real (non-demo) action adapters, email verification/password reset, invite by email, notifications for pending approvals.
+- **Available:** OTLP traces and logs (HTTP protobuf and gRPC), custom events API, machine and container gauges and sums from the Karbird Collector; durable pipeline (ingest ACKs only after the broker ACK); service map with observed and inferred dependencies, external systems; trace list and waterfall, correlated logs and events; timeline with live/paused/historical modes, seek, step, replay range, speeds; WebSocket live updates; API tokens (create/rotate/revoke); self-service sign-up, organization email invitations, project invite links, onboarding, personal account; per-project roles and permissions; karbird admin panel; controlled actions with the demo adapter only; `karbird` CLI and read-only MCP server; log archiving and per-signal retention; production deployment tooling.
+- **Not available yet:** application OTLP histograms and summaries, archiving spans and events, a verified live production deployment, real (non-demo) action adapters, email verification/password reset, notifications for pending approvals.
 - **Hard constraints:** telemetry text is untrusted — rendered as text only, never as HTML; every query is scoped by the authenticated principal's tenant/project/environment; secrets are redacted at ingestion; the map must have a working table fallback when WebGL is unavailable; `/app` is private (noindex, no-store) with strict nonce CSP.
 - **Terminology:** tenant, project, environment; service map, node, edge (observed / inferred), external clients/services; timeline, live / paused / historical, replay range, completeness; trace, span, log, event; action plan, policy check, approval (four-eyes), executor, verification, audit trail; ingest token, API token.
-- **Open decisions:** pricing, plans and licensing for the SaaS; production hosting/deployment target; supported scale (no published load numbers yet).
+- **Open decisions:** pricing, plans and licensing for the SaaS; supported production scale (no published load numbers yet).
 
 ## Brand Commitments
 
 - Name: **karbird**. Public tagline in use: "Observability · Replay · Control"; headline "See what your system is doing — and what it was doing five minutes ago."
-- Voice: plain, precise and honest about limits — the Features page openly lists what does not work yet. No logo or other brand assets exist in the repository.
+- Voice: plain, precise and honest about limits — the Features page openly lists what does not work yet. Brand marks, app icon and owl artwork are in `docs/brand/karbird/` and `apps/web/public/brand/`.
 
 ## Evidence on Hand
 
 - Working end-to-end demo stand (`just dev` + `just demo`) with fault injection that visibly turns map nodes amber/red.
 - Feature and status truth: `README.md`, `TASKS.md`, `apps/web/src/app/(public)/features/page.tsx`, ADRs in `docs/adr/`.
-- Absent and must not be fabricated: customers, testimonials, case studies, published benchmarks or load numbers, pricing, certifications, production deployments.
+- Absent and must not be fabricated: customers, testimonials, case studies, published benchmarks or load numbers, pricing, certifications, or a verified live production deployment.
 
 ## Product Principles
 

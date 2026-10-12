@@ -4,10 +4,12 @@ import {
   MAX_VIEW_NS,
   MAX_DETAIL_RANGE_NS,
   clampRangeToNow,
+  visibleRangeSegment,
   detailChunkFor,
   defaultLiveView,
   needsTimelineSummary,
   rangeCoveredBy,
+  uncoveredRanges,
   follow,
   followLive,
   formatSpan,
@@ -118,11 +120,45 @@ describe("clampRangeToNow", () => {
   });
 });
 
+describe("visibleRangeSegment", () => {
+  const view = { from: 100n, to: 200n };
+
+  it("maps the requested time segment to the visible timeline width", () => {
+    expect(visibleRangeSegment({ from: 125n, to: 175n }, view, 400)).toEqual({ left: 100, width: 200 });
+  });
+
+  it("clips the requested segment at the visible timeline boundaries", () => {
+    expect(visibleRangeSegment({ from: 50n, to: 125n }, view, 400)).toEqual({ left: 0, width: 100 });
+    expect(visibleRangeSegment({ from: 175n, to: 250n }, view, 400)).toEqual({ left: 300, width: 100 });
+  });
+
+  it("returns null when the requested range does not overlap the view", () => {
+    expect(visibleRangeSegment({ from: 0n, to: 100n }, view, 400)).toBeNull();
+    expect(visibleRangeSegment({ from: 200n, to: 300n }, view, 400)).toBeNull();
+    expect(visibleRangeSegment({ from: 125n, to: 175n }, view, 0)).toBeNull();
+  });
+});
+
 describe("rangeCoveredBy", () => {
   it("recognizes adjacent loaded intervals but keeps gaps unloaded", () => {
     const loaded = [{ from: 0n, to: 10n }, { from: 10n, to: 20n }, { from: 30n, to: 40n }];
     expect(rangeCoveredBy(loaded, { from: 5n, to: 18n })).toBe(true);
     expect(rangeCoveredBy(loaded, { from: 5n, to: 35n })).toBe(false);
+  });
+});
+
+describe("uncoveredRanges", () => {
+  it("returns only missing intervals within the requested range", () => {
+    const loaded = [{ from: 10n, to: 20n }, { from: 30n, to: 40n }];
+    expect(uncoveredRanges(loaded, { from: 0n, to: 50n })).toEqual([
+      { from: 0n, to: 10n },
+      { from: 20n, to: 30n },
+      { from: 40n, to: 50n },
+    ]);
+  });
+
+  it("returns no intervals when the request is already loaded", () => {
+    expect(uncoveredRanges([{ from: 0n, to: 100n }], { from: 20n, to: 80n })).toEqual([]);
   });
 });
 

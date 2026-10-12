@@ -1,6 +1,44 @@
 import { describe, expect, it } from "vitest";
 import { NS_PER_MS } from "@/lib/time";
-import { LIVE_ANIM_DELAY_MS, SPEEDS, animClockFor, asCompleteness, hopWindowFor, infrastructureFeedQuery, seeksIntoFuture, sliderPositionForSpeed, speedFromSlider, type Mode } from "./useWorkspaceEngine";
+import { LIVE_ANIM_DELAY_MS, SPEEDS, animClockFor, asCompleteness, beginTimelineChunkLoad, hopWindowFor, infrastructureFeedQuery, seeksIntoFuture, sliderPositionForSpeed, speedFromSlider, type EngineState, type Mode } from "./useWorkspaceEngine";
+
+describe("beginTimelineChunkLoad", () => {
+  it("sets loading without interrupting live playback or moving the cursor", () => {
+    const state = {
+      mode: "live",
+      cursor: 20n,
+      rangeFrom: 10n,
+      rangeTo: 20n,
+      loading: false,
+      error: "previous error",
+    } as EngineState;
+
+    expect(beginTimelineChunkLoad(state)).toEqual({
+      ...state,
+      loading: true,
+      error: null,
+    });
+  });
+
+  it("preserves a historical view while its missing timeline data loads", () => {
+    const state = {
+      mode: "historical",
+      cursor: 12n,
+      rangeFrom: 10n,
+      rangeTo: 20n,
+      loading: false,
+      error: null,
+    } as EngineState;
+
+    expect(beginTimelineChunkLoad(state)).toMatchObject({
+      mode: "historical",
+      cursor: 12n,
+      rangeFrom: 10n,
+      rangeTo: 20n,
+      loading: true,
+    });
+  });
+});
 
 describe("infrastructureFeedQuery", () => {
   it("subscribes to live infrastructure snapshots only when a map layer needs them", () => {
