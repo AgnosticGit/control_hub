@@ -17,8 +17,9 @@ import {
   type WorkerResponse,
 } from "@karbird/web-engine";
 import { WASM_BYTES, WASM_URL } from "@/generated/wasm-manifest";
-import { MAX_RESPONSE_BYTES, countLiveBatchItems, countItems, liveItemEnvelope, liveRetryDelayMs, liveTopologySnapshot, newerSeek, parseLiveAction, parseLiveEdgeChange, parseLiveHead, parseLiveInfrastructure, parseLiveRecord, parseLiveSignals, timelineTail } from "./worker-utils";
+import { MAX_RESPONSE_BYTES, countLiveBatchItems, countItems, liveItemEnvelope, liveRetryDelayMs, liveTopologySnapshot, newerSeek, parseLiveAction, parseLiveEdgeChange, parseLiveHead, parseLiveInfrastructure, parseLiveRecord, parseLiveSignals, parseTimelineFrame, timelineChunkEnvelope, timelineChunkItemsJson } from "./worker-utils";
 import { applyTopologyResponse, topologyCacheKey } from "./topology-cache";
+import { missingTimelineRanges, openTimelineCache, type TimelineRange } from "./timeline-cache";
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -126,14 +127,39 @@ async function fetchText(url: string, conditional = false): Promise<{ text: stri
 
 interface LiveState {
   url: string;
+  scopeKey: string;
   ws: WebSocket | null;
   resume: string | null;
   attempt: number;
   timer: ReturnType<typeof setTimeout> | null;
   edgeSubscription: { source: string; target: string; relation: string; afterCursorNs: string } | null;
+  openWaiters: Set<{ resolve: () => void; reject: (error: Error) => void }>;
+  temporary: boolean;
+}
+
+interface PendingHistory {
+  requestId: string;
+  scopeKey: string;
+  fromNs: string;
+  toNs: string;
+  liveUrl: string;
+  nextLiveUrl?: string;
+  ranges: TimelineRange[];
+  covered: TimelineRange[];
+  uncacheableRanges: Set<string>;
+  resolve: (result: LoadResult) => void;
+  reject: (error: Error) => void;
+  count: number;
+  networkCount: number;
+  applyMs: number;
+  startedAt: number;
+  sentSocket: WebSocket | null;
 }
 
 let live: LiveState | null = null;
+let pendingHistory: PendingHistory | null = null;
+let liveCacheSequence = 0;
+let timelineLoadQueue: Promise<void> = Promise.resolve();
 
 function postLive(event: LiveEvent) {
   post({ kind: "live", event });
@@ -152,7 +178,10 @@ function liveConnect() {
     if (live !== l) return;
     l.attempt = 0;
     postLive({ type: "open" });
+    for (const waiter of l.openWaiters) waiter.resolve();
+    l.openWaiters.clear();
     sendEdgeSubscription(l);
+    void sendPendingTimelineLoad(l);
   };
   ws.onmessage = (ev: MessageEvent<unknown>) => {
     if (live !== l || typeof ev.data !== "string") return;
@@ -170,6 +199,14 @@ function liveConnect() {
 
 /** Individual telemetry frames are applied in WASM; only one compact item is parsed on UI. */
 function onLiveMessage(l: LiveState, text: string) {
+  const history = parseTimelineFrame(text);
+  if (history) {
+    void onTimelineHistoryFrame(l, text, history).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      failPendingHistory(l, history.requestId, message);
+    });
+    return;
+  }
   const head = parseLiveHead(text);
   if (!head) return;
   const { type, resume } = head;
@@ -192,6 +229,7 @@ function onLiveMessage(l: LiveState, text: string) {
         signals: [{ kind: signal.kind, resume: signal.resume, storageCursor: signal.storageCursor, record: signal.record }],
         applyMs: performance.now() - t0,
       });
+      cacheLiveItem(l.scopeKey, signal.item);
       return;
     }
     case "batch": {
@@ -256,6 +294,18 @@ function onLiveMessage(l: LiveState, text: string) {
   }
 }
 
+function cacheLiveItem(scopeKey: string, item: Record<string, unknown>) {
+  if (!scopeKey) return;
+  const timestamp = [item.start_ns, item.time_ns, item.end_ns].find((value) => typeof value === "string" && /^\d+$/.test(value));
+  if (typeof timestamp !== "string") return;
+  const from = BigInt(timestamp);
+  const to = from < 9_223_372_036_854_775_806n ? from + 1n : from;
+  if (to <= from) return;
+  const itemsJson = JSON.stringify([item]);
+  const sequence = liveCacheSequence++;
+  void openTimelineCache().then((cache) => cache.putChunk(scopeKey, from.toString(), to.toString(), sequence, itemsJson)).catch(() => {});
+}
+
 function sendEdgeSubscription(l: LiveState) {
   if (l.ws?.readyState !== WebSocket.OPEN || !l.edgeSubscription) return;
   const { source, target, relation, afterCursorNs } = l.edgeSubscription;
@@ -263,14 +313,150 @@ function sendEdgeSubscription(l: LiveState) {
 }
 
 function liveStop() {
+  if (pendingHistory) {
+    if (live) live.temporary = true;
+    return;
+  }
   const l = live;
   live = null;
   if (!l) return;
   if (l.timer) clearTimeout(l.timer);
+  for (const waiter of l.openWaiters) waiter.reject(new Error("live connection stopped"));
+  l.openWaiters.clear();
   if (l.ws) {
     l.ws.onclose = null;
     l.ws.close(1000, "stopped");
   }
+}
+
+function ensureLiveOpen(url: string): Promise<LiveState> {
+  if (live && pendingHistory && live.url !== url) {
+    url = live.url;
+    pendingHistory.liveUrl = url;
+  }
+  if (!live || live.url !== url) {
+    liveStop();
+    live = { url, scopeKey: pendingHistory?.scopeKey ?? "", ws: null, resume: null, attempt: 0, timer: null, edgeSubscription: null, openWaiters: new Set(), temporary: true };
+    liveCacheSequence = Date.now() * 1000;
+    liveConnect();
+  }
+  const current = live;
+  if (!current) return Promise.reject(new Error("live connection unavailable"));
+  if (current.ws?.readyState === WebSocket.OPEN) return Promise.resolve(current);
+  return new Promise((resolve, reject) => current.openWaiters.add({ resolve: () => resolve(current), reject }));
+}
+
+function finishHistoryConnection(l: LiveState, pending: PendingHistory): void {
+  if (live !== l) return;
+  if (pending.nextLiveUrl) {
+    const url = pending.nextLiveUrl;
+    liveStop();
+    live = { url, scopeKey: pending.scopeKey, ws: null, resume: null, attempt: 0, timer: null, edgeSubscription: null, openWaiters: new Set(), temporary: false };
+    liveConnect();
+  } else if (l.temporary) {
+    liveStop();
+  }
+}
+
+function failPendingHistory(l: LiveState | null, requestId: string, message: string): void {
+  const pending = pendingHistory;
+  if (!pending || pending.requestId !== requestId) return;
+  if (l?.ws?.readyState === WebSocket.OPEN) l.ws.send(JSON.stringify({ type: "timeline_cancel", request_id: requestId }));
+  pendingHistory = null;
+  pending.reject(new Error(message));
+  if (l) finishHistoryConnection(l, pending);
+}
+
+async function sendPendingTimelineLoad(l: LiveState): Promise<void> {
+  const pending = pendingHistory;
+  if (!pending || pending.liveUrl !== l.url || l.ws?.readyState !== WebSocket.OPEN) return;
+  if (pending.sentSocket === l.ws) return;
+  const ranges = pending.ranges.flatMap((range) => missingTimelineRanges(
+    BigInt(range.fromNs), BigInt(range.toNs), pending.covered,
+  ));
+  if (ranges.length === 0) {
+    pending.resolve({ count: pending.count, fetchMs: performance.now() - pending.startedAt, applyMs: pending.applyMs, truncated: false, completeness: null, fromNs: pending.fromNs, toNs: pending.toNs, newItems: pending.networkCount });
+    pendingHistory = null;
+    finishHistoryConnection(l, pending);
+    return;
+  }
+  l.ws.send(JSON.stringify({
+    type: "timeline_load", request_id: pending.requestId, from_ns: pending.fromNs, to_ns: pending.toNs,
+    limit: 50_000, ranges: ranges.slice(0, 64).map((range) => ({ from_ns: range.fromNs, to_ns: range.toNs })),
+  }));
+  pending.sentSocket = l.ws;
+}
+
+async function onTimelineHistoryFrame(l: LiveState, text: string, frame: NonNullable<ReturnType<typeof parseTimelineFrame>>): Promise<void> {
+  const pending = pendingHistory;
+  if (!pending || pending.requestId !== frame.requestId || live !== l || !engine) return;
+  if (frame.type === "chunk") {
+    const envelope = timelineChunkEnvelope(text);
+    if (!envelope) return;
+    const started = performance.now();
+    engine.applyBatch(envelope);
+    schedule();
+    pending.applyMs += performance.now() - started;
+    const itemCount = countItems(envelope);
+    pending.count += itemCount;
+    pending.networkCount += itemCount;
+    if (pending.scopeKey) {
+      try {
+        const cache = await openTimelineCache();
+        const itemsJson = timelineChunkItemsJson(text);
+        const stored = itemsJson && await cache.putChunk(pending.scopeKey, frame.fromNs, frame.toNs, frame.sequence, itemsJson);
+        if (!stored) pending.uncacheableRanges.add(`${frame.fromNs}:${frame.toNs}`);
+      } catch { pending.uncacheableRanges.add(`${frame.fromNs}:${frame.toNs}`); }
+    }
+    if (pendingHistory === pending && l.ws?.readyState === WebSocket.OPEN) {
+      l.ws.send(JSON.stringify({ type: "timeline_ack", request_id: frame.requestId, sequence: frame.sequence }));
+    }
+    return;
+  }
+  if (frame.type === "range_complete") {
+    if (pending.scopeKey && !pending.uncacheableRanges.has(`${frame.fromNs}:${frame.toNs}`)) {
+      try {
+        const cache = await openTimelineCache();
+        await cache.markComplete(pending.scopeKey, frame.fromNs, frame.toNs);
+      } catch { /* Continue without durable caching. */ }
+    }
+    if (pendingHistory !== pending) return;
+    pending.covered.push({ fromNs: frame.fromNs, toNs: frame.toNs });
+    if (l.ws?.readyState === WebSocket.OPEN) {
+      l.ws.send(JSON.stringify({ type: "timeline_ack", request_id: frame.requestId, sequence: frame.sequence }));
+    }
+    return;
+  }
+  if (frame.type === "error") {
+    pendingHistory = null;
+    pending.reject(new Error(frame.message));
+    finishHistoryConnection(l, pending);
+    return;
+  }
+  if (!frame.truncated) {
+    const remaining = pending.ranges.flatMap((range) => missingTimelineRanges(
+      BigInt(range.fromNs), BigInt(range.toNs), pending.covered,
+    ));
+    if (remaining.length > 0) {
+      pending.sentSocket = null;
+      await sendPendingTimelineLoad(l);
+      return;
+    }
+  }
+  pendingHistory = null;
+  const result: LoadResult = {
+    count: pending.count,
+    fetchMs: performance.now() - pending.startedAt,
+    applyMs: pending.applyMs,
+    truncated: frame.truncated,
+    completeness: frame.completeness,
+    fromNs: pending.fromNs,
+    toNs: pending.toNs,
+    logsSource: frame.logsSource,
+    newItems: pending.networkCount,
+  };
+  pending.resolve(result);
+  finishHistoryConnection(l, pending);
 }
 
 async function handle(msg: WorkerRequest): Promise<unknown> {
@@ -309,23 +495,41 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
     }
     case "loadTimeline": {
       const e = requireEngine();
-      const { text, ms } = await fetchText(msg.url);
-      const t0 = performance.now();
-      e.applyBatch(text);
-      const applyMs = performance.now() - t0;
-      const tail = timelineTail(text);
-      schedule();
-      const result: LoadResult = {
-        count: countItems(text),
-        fetchMs: ms,
-        applyMs,
-        truncated: Boolean(tail.spans_truncated || tail.logs_truncated || tail.events_truncated),
-        completeness: tail.completeness ?? null,
-        fromNs: tail.from_ns,
-        toNs: tail.to_ns,
-        logsSource: tail.logs_source,
-      };
-      return result;
+      const startedAt = performance.now();
+      const completed: TimelineRange[] = [];
+      let cachedCount = 0;
+      let cachedApplyMs = 0;
+      if (msg.scopeKey) {
+        try {
+          const cache = await openTimelineCache();
+          const cached = await cache.read(msg.scopeKey, msg.fromNs, msg.toNs);
+          completed.push(...cached.covered);
+          const t0 = performance.now();
+          for (const chunk of cached.chunks) {
+            e.applyBatch(`{"items":${chunk.itemsJson}}`);
+            cachedCount += countItems(chunk.itemsJson);
+          }
+          schedule();
+          if (cached.chunks.length) cachedApplyMs = performance.now() - t0;
+        } catch { /* Offline and private browsing remain usable without IndexedDB. */ }
+      }
+      const ranges = missingTimelineRanges(BigInt(msg.fromNs), BigInt(msg.toNs), completed);
+      if (ranges.length === 0) {
+        return { count: cachedCount, fetchMs: performance.now() - startedAt, applyMs: cachedApplyMs, truncated: false, completeness: null, fromNs: msg.fromNs, toNs: msg.toNs, newItems: 0 } satisfies LoadResult;
+      }
+      if (pendingHistory) throw new Error("another timeline load is already active");
+      return new Promise<LoadResult>((resolve, reject) => {
+        const requestId = crypto.randomUUID();
+        pendingHistory = {
+          requestId, scopeKey: msg.scopeKey, fromNs: msg.fromNs, toNs: msg.toNs, liveUrl: msg.liveUrl,
+          ranges, covered: completed, uncacheableRanges: new Set(), resolve, reject, count: cachedCount, networkCount: 0, applyMs: cachedApplyMs, startedAt,
+          sentSocket: null,
+        };
+        void ensureLiveOpen(msg.liveUrl).then(async (connection) => {
+          try { await sendPendingTimelineLoad(connection); }
+          catch (error) { failPendingHistory(connection, requestId, error instanceof Error ? error.message : String(error)); }
+        }, (error: unknown) => failPendingHistory(live, requestId, error instanceof Error ? error.message : String(error)));
+      });
     }
     case "loadInfrastructure": {
       const sequence=++topologyLoadSequence;
@@ -379,9 +583,18 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       return requireEngine().getTopology();
     case "liveStart":
       requireEngine();
-      if (live?.url === msg.url && (live.ws || live.timer)) return null;
+      if (pendingHistory && live && live.url !== msg.url) {
+        pendingHistory.nextLiveUrl = msg.url;
+        return null;
+      }
+      if (live?.url === msg.url && (live.ws || live.timer)) {
+        live.scopeKey = msg.scopeKey ?? live.scopeKey;
+        live.temporary = false;
+        return null;
+      }
       liveStop();
-      live = { url: msg.url, ws: null, resume: null, attempt: 0, timer: null, edgeSubscription: null };
+      live = { url: msg.url, scopeKey: msg.scopeKey ?? "", ws: null, resume: null, attempt: 0, timer: null, edgeSubscription: null, openWaiters: new Set(), temporary: false };
+      liveCacheSequence = Date.now() * 1000;
       liveConnect();
       return null;
     case "subscribeEdge":
@@ -405,14 +618,41 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
 self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
   const msg = ev.data;
   const id = "id" in msg ? msg.id : null;
-  handle(msg).then(
+  if (msg.kind !== "init" && !engine) {
+    requestsBeforeInit.push({ msg, id });
+    return;
+  }
+  dispatch(msg, id);
+};
+
+const requestsBeforeInit: Array<{ msg: WorkerRequest; id: number | null }> = [];
+
+function dispatch(msg: WorkerRequest, id: number | null) {
+  const operation = msg.kind === "loadTimeline"
+    ? timelineLoadQueue.then(() => handle(msg))
+    : handle(msg);
+  if (msg.kind === "loadTimeline") timelineLoadQueue = operation.then(() => undefined, () => undefined);
+  operation.then(
     (value) => {
       if (id !== null) post({ kind: "result", id, value });
+      if (msg.kind === "init") drainRequestsBeforeInit();
     },
     (err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       if (id !== null) post({ kind: "error", id, message });
       else post({ kind: "fatal", message });
+      if (msg.kind === "init") drainRequestsBeforeInit(message);
     },
   );
-};
+}
+
+function drainRequestsBeforeInit(initError?: string) {
+  const queued = requestsBeforeInit.splice(0);
+  for (const request of queued) {
+    if (initError) {
+      if (request.id !== null) post({ kind: "error", id: request.id, message: initError });
+      continue;
+    }
+    dispatch(request.msg, request.id);
+  }
+}

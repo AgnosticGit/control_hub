@@ -1,6 +1,6 @@
 import type { TimelineTracks } from "@karbird/web-engine";
 import { describe, expect, it } from "vitest";
-import { RULER_H, actionColor, bucketGeometry, draw, drawRuler, rowTop, totalHeight, withAlpha, type DrawInput, type Row } from "./draw";
+import { RULER_H, actionColor, bucketGeometry, draw, drawRuler, liveSignalTimeNs, rowTop, timelineRevealAlpha, totalHeight, withAlpha, type DrawInput, type Row } from "./draw";
 import type { View } from "./scale";
 
 interface Call {
@@ -31,6 +31,21 @@ function fakeCtx() {
 
 const VIEW: View = { from: 0n, to: 1_000_000_000n };
 const WIDTH = 1000;
+
+describe("timeline reveal animation", () => {
+  it("clamps progress and finishes immediately for reduced motion", () => {
+    expect(timelineRevealAlpha(50, 100)).toBe(0);
+    expect(timelineRevealAlpha(310, 100, 420)).toBe(0.5);
+    expect(timelineRevealAlpha(600, 100)).toBe(1);
+    expect(timelineRevealAlpha(100, 100, 420, true)).toBe(1);
+  });
+
+  it("reads supported event timestamps without converting nanoseconds to Number", () => {
+    expect(liveSignalTimeNs({ start_ns: "1790000000000000001", end_ns: "1790000000000000009" }))
+      .toBe(1_790_000_000_000_000_001n);
+    expect(liveSignalTimeNs({ time_ns: "invalid" })).toBeNull();
+  });
+});
 
 function tracks(p: Partial<TimelineTracks> = {}): TimelineTracks {
   return {

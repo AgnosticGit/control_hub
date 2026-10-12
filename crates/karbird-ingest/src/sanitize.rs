@@ -3,7 +3,8 @@
 
 use karbird_domain::model::limits;
 use karbird_domain::redaction::{
-    AttributeDecision, REDACTED, classify_key, mask_bearer, sanitize_attribute, sanitize_value, truncate,
+    AttributeDecision, REDACTED, classify_key, sanitize_attribute_in_place, sanitize_value_in_place,
+    sanitize_value_in_place_with_limit, truncate,
 };
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
@@ -52,8 +53,7 @@ pub fn sanitize_attrs(attrs: &mut Vec<KeyValue>, stats: &mut SanitizeStats, dept
             }
             AttributeDecision::Keep => {
                 if let Some(AnyValue { value: Some(Value::StringValue(s)) }) = kv.value.as_mut() {
-                    let (clean, removed_query) = sanitize_attribute(&kv.key, s);
-                    *s = clean;
+                    let removed_query = sanitize_attribute_in_place(&kv.key, s);
                     if removed_query {
                         stats.redacted += 1;
                     }
@@ -73,7 +73,7 @@ pub fn sanitize_attrs(attrs: &mut Vec<KeyValue>, stats: &mut SanitizeStats, dept
 fn sanitize_any(v: &mut AnyValue, stats: &mut SanitizeStats, depth: u32) {
     let Some(inner) = v.value.as_mut() else { return };
     match inner {
-        Value::StringValue(s) => *s = sanitize_value(s),
+        Value::StringValue(s) => sanitize_value_in_place(s),
         Value::BytesValue(b) => {
             if b.len() > 256 {
                 *inner = Value::StringValue("[bytes omitted]".into());
@@ -141,7 +141,7 @@ pub fn sanitize_traces(req: &mut ExportTraceServiceRequest) -> SanitizeStats {
                     sanitize_attrs(&mut link.attributes, &mut st, 0);
                 }
                 if let Some(status) = span.status.as_mut() {
-                    status.message = sanitize_value(&status.message);
+                    sanitize_value_in_place(&mut status.message);
                 }
                 st.accepted += 1;
                 true
@@ -173,7 +173,7 @@ pub fn sanitize_logs(req: &mut ExportLogsServiceRequest) -> SanitizeStats {
                 if let Some(body) = lr.body.as_mut() {
                     match body.value.as_mut() {
                         Some(Value::StringValue(s)) => {
-                            *s = mask_bearer(truncate(s, limits::MAX_LOG_BODY_LEN));
+                            sanitize_value_in_place_with_limit(s, limits::MAX_LOG_BODY_LEN);
                         }
                         _ => sanitize_any(body, &mut st, 0),
                     }

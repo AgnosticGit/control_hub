@@ -234,6 +234,9 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   await expect(map).toHaveAttribute("data-infra-selected", "");
   await expect(map).toHaveAttribute("data-selection-dimmed", "false");
   await expect(await mapLayer(page, "Service metrics")).toBeChecked();
+  // The earlier fixtures may age out of the active topology window while this
+  // long interaction test runs; keep one fresh service signal for the reload check.
+  await ingestSpans(orders, serverSpans(1, BigInt(Date.now()) * 1_000_000n - 5n * SEC, 10), "isolation-test", ordersRes);
   await page.reload();
   await expect(page.getByText("Starting engine…")).toBeHidden();
   await expect(await mapLayer(page, "Service metrics")).toBeChecked();

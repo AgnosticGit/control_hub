@@ -5,6 +5,7 @@
 //!
 //! Only items of the authorized environment are sent; no tenant-wide stream exists.
 
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
@@ -15,7 +16,7 @@ use futures::{SinkExt, StreamExt};
 use karbird_domain::Scope;
 use karbird_engine_core::{InfrastructureSnapshot, TimelineItem};
 use serde::{Deserialize, Serialize};
-use tokio::sync::OwnedSemaphorePermit;
+use tokio::sync::{OwnedSemaphorePermit, mpsc, oneshot};
 use utoipa::IntoParams;
 
 use super::telemetry::{
@@ -38,6 +39,11 @@ const EVENT_LOOKBACK_NS: i64 = 15 * 60_000_000_000;
 const CATCHUP_OVERLAP_NS: i64 = 10_000_000_000;
 const CATCHUP_LIMIT: u32 = 5_000;
 const INFRASTRUCTURE_REFRESH: Duration = Duration::from_secs(10);
+const TIMELINE_LOAD_LIMIT: u32 = 50_000;
+const TIMELINE_LOAD_MAX_NS: i64 = 7 * 24 * 60 * 60 * 1_000_000_000;
+const TIMELINE_CHUNK_ITEMS: usize = 256;
+const TIMELINE_MAX_SPLIT_QUERIES: usize = 64;
+const TIMELINE_MIN_SPLIT_NS: i64 = 1_000_000_000;
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -53,17 +59,106 @@ pub struct LiveParams {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ServerMessage<'a> {
     // Field order matters: the Worker reads `type` and `resume` from the message head.
-    Hello { resume: String, poll_ms: u64 },
-    Span { resume: String, storage_cursor: String, item: &'a TimelineItem, record: &'a super::telemetry::SpanDto },
-    Log { resume: String, storage_cursor: String, item: &'a TimelineItem, record: &'a super::telemetry::LogDto },
-    Event { resume: String, storage_cursor: String, item: &'a TimelineItem, record: &'a super::telemetry::EventDto },
-    Action { resume: String, plan: serde_json::Value, snapshot: bool },
-    EdgeChange { resume: String, change: &'a karbird_protocol::EdgeChange },
-    Topology { resume: String, snapshot: &'a super::telemetry::TopologyResponse },
-    Infrastructure { resume: String, snapshot: &'a InfrastructureSnapshot },
-    Gap { resume: String, from_ingested_ns: String },
-    Heartbeat { resume: String },
-    Error { message: &'a str },
+    Hello {
+        resume: String,
+        poll_ms: u64,
+    },
+    Span {
+        resume: String,
+        storage_cursor: String,
+        item: &'a TimelineItem,
+        record: &'a super::telemetry::SpanDto,
+    },
+    Log {
+        resume: String,
+        storage_cursor: String,
+        item: &'a TimelineItem,
+        record: &'a super::telemetry::LogDto,
+    },
+    Event {
+        resume: String,
+        storage_cursor: String,
+        item: &'a TimelineItem,
+        record: &'a super::telemetry::EventDto,
+    },
+    Action {
+        resume: String,
+        plan: serde_json::Value,
+        snapshot: bool,
+    },
+    EdgeChange {
+        resume: String,
+        change: &'a karbird_protocol::EdgeChange,
+    },
+    Topology {
+        resume: String,
+        snapshot: &'a super::telemetry::TopologyResponse,
+    },
+    Infrastructure {
+        resume: String,
+        snapshot: &'a InfrastructureSnapshot,
+    },
+    Gap {
+        resume: String,
+        from_ingested_ns: String,
+    },
+    Heartbeat {
+        resume: String,
+    },
+    TimelineChunk {
+        request_id: &'a str,
+        sequence: u32,
+        from_ns: String,
+        to_ns: String,
+        items: &'a [TimelineItem],
+    },
+    TimelineRangeComplete {
+        request_id: &'a str,
+        sequence: u32,
+        from_ns: String,
+        to_ns: String,
+    },
+    TimelineComplete {
+        request_id: &'a str,
+        truncated: bool,
+        completeness: &'a super::telemetry::Completeness,
+        logs_source: super::telemetry::LogSource,
+    },
+    TimelineError {
+        request_id: &'a str,
+        message: &'a str,
+    },
+    Error {
+        message: &'a str,
+    },
+}
+
+enum HistoryOutput {
+    Chunk {
+        request_id: String,
+        sequence: u32,
+        from_ns: i64,
+        to_ns: i64,
+        items: Vec<TimelineItem>,
+        ack: oneshot::Sender<()>,
+    },
+    RangeComplete {
+        request_id: String,
+        sequence: u32,
+        from_ns: i64,
+        to_ns: i64,
+        ack: oneshot::Sender<()>,
+    },
+    Complete {
+        request_id: String,
+        truncated: bool,
+        completeness: super::telemetry::Completeness,
+        logs_source: super::telemetry::LogSource,
+    },
+    Error {
+        request_id: String,
+        message: &'static str,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,9 +169,82 @@ struct EdgeControl {
     target: Option<String>,
     relation: Option<String>,
     after_cursor_ns: Option<String>,
+    request_id: Option<String>,
+    from_ns: Option<String>,
+    to_ns: Option<String>,
+    limit: Option<u32>,
+    sequence: Option<u32>,
+    ranges: Option<Vec<TimelineIntervalControl>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TimelineIntervalControl {
+    from_ns: String,
+    to_ns: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct TimelineLoad {
+    request_id: String,
+    from_ns: i64,
+    to_ns: i64,
+    limit: u32,
+    ranges: Vec<(i64, i64)>,
 }
 
 impl EdgeControl {
+    fn timeline_load(&self) -> Option<TimelineLoad> {
+        if self.kind != "timeline_load" {
+            return None;
+        }
+        let request_id = self.request_id.as_ref()?;
+        if request_id.is_empty() || request_id.len() > 128 {
+            return None;
+        }
+        let from_ns = self.from_ns.as_deref()?.parse::<i64>().ok()?;
+        let to_ns = self.to_ns.as_deref()?.parse::<i64>().ok()?;
+        let limit = self.limit?;
+        if from_ns < 0
+            || to_ns <= from_ns
+            || to_ns.saturating_sub(from_ns) > TIMELINE_LOAD_MAX_NS
+            || !(1..=TIMELINE_LOAD_LIMIT).contains(&limit)
+        {
+            return None;
+        }
+        let ranges = match &self.ranges {
+            Some(ranges) if ranges.is_empty() || ranges.len() > 64 => return None,
+            Some(ranges) => {
+                let mut parsed = Vec::with_capacity(ranges.len());
+                let mut prior_to = from_ns;
+                for range in ranges {
+                    let from = range.from_ns.parse::<i64>().ok()?;
+                    let to = range.to_ns.parse::<i64>().ok()?;
+                    if from < from_ns || to > to_ns || from < prior_to || to <= from {
+                        return None;
+                    }
+                    parsed.push((from, to));
+                    prior_to = to;
+                }
+                parsed
+            }
+            None => vec![(from_ns, to_ns)],
+        };
+        Some(TimelineLoad { request_id: request_id.clone(), from_ns, to_ns, limit, ranges })
+    }
+
+    fn timeline_ack(&self) -> Option<(String, u32)> {
+        let request_id = self.request_id.as_ref()?;
+        if self.kind != "timeline_ack" || request_id.is_empty() || request_id.len() > 128 {
+            return None;
+        }
+        Some((request_id.clone(), self.sequence?))
+    }
+
+    fn timeline_cancel(&self) -> Option<&str> {
+        let request_id = self.request_id.as_deref()?;
+        (self.kind == "timeline_cancel" && !request_id.is_empty() && request_id.len() <= 128).then_some(request_id)
+    }
+
     fn edge(&self) -> Option<(String, String, String, i64)> {
         let source = self.source.as_ref()?.trim();
         let target = self.target.as_ref()?.trim();
@@ -170,11 +338,159 @@ async fn send_item(tx: &mut futures::stream::SplitSink<WebSocket, Message>, item
     }
 }
 
+async fn send_history_chunk(
+    output: &mpsc::Sender<HistoryOutput>,
+    request_id: &str,
+    sequence: &mut u32,
+    from_ns: i64,
+    to_ns: i64,
+    items: Vec<TimelineItem>,
+) -> Result<(), ()> {
+    let (ack, received) = oneshot::channel();
+    output
+        .send(HistoryOutput::Chunk {
+            request_id: request_id.to_owned(),
+            sequence: *sequence,
+            from_ns,
+            to_ns,
+            items,
+            ack,
+        })
+        .await
+        .map_err(|_| ())?;
+    received.await.map_err(|_| ())?;
+    *sequence = sequence.checked_add(1).ok_or(())?;
+    Ok(())
+}
+
+async fn send_history_range_complete(
+    output: &mpsc::Sender<HistoryOutput>,
+    request_id: &str,
+    sequence: &mut u32,
+    from_ns: i64,
+    to_ns: i64,
+) -> Result<(), ()> {
+    let (ack, received) = oneshot::channel();
+    output
+        .send(HistoryOutput::RangeComplete {
+            request_id: request_id.to_owned(),
+            sequence: *sequence,
+            from_ns,
+            to_ns,
+            ack,
+        })
+        .await
+        .map_err(|_| ())?;
+    received.await.map_err(|_| ())?;
+    *sequence = sequence.checked_add(1).ok_or(())?;
+    Ok(())
+}
+
+fn split_timeline_interval(from_ns: i64, to_ns: i64, query_count: usize, pending_count: usize) -> Option<(i64, i64)> {
+    if to_ns.saturating_sub(from_ns) <= TIMELINE_MIN_SPLIT_NS
+        || query_count + pending_count + 2 > TIMELINE_MAX_SPLIT_QUERIES
+    {
+        return None;
+    }
+    let middle = from_ns + (to_ns - from_ns) / 2;
+    (middle > from_ns && middle < to_ns).then_some((from_ns, middle))
+}
+
+async fn stream_timeline_history(
+    state: AppState,
+    scope: Scope,
+    load: TimelineLoad,
+    output: mpsc::Sender<HistoryOutput>,
+) {
+    let mut pending = load.ranges.iter().copied().rev().collect::<VecDeque<_>>();
+    let mut sequence = 0_u32;
+    let mut query_count = 0_usize;
+    let mut truncated = false;
+    let mut logs_source = None;
+
+    while let Some((from_ns, to_ns)) = pending.pop_back() {
+        if query_count >= TIMELINE_MAX_SPLIT_QUERIES {
+            truncated = true;
+            break;
+        }
+        query_count += 1;
+        let range = super::telemetry::Range { from: from_ns, to: to_ns };
+        let data = match super::telemetry::timeline_data_for_scope(&state, &scope, range, load.limit).await {
+            Ok(data) => data,
+            Err(error) => {
+                tracing::warn!(%error, request_id = %load.request_id, from_ns, to_ns, "timeline WebSocket query failed");
+                let _ = output
+                    .send(HistoryOutput::Error {
+                        request_id: load.request_id,
+                        message: "timeline history query failed",
+                    })
+                    .await;
+                return;
+            }
+        };
+
+        let interval_truncated = data.spans_truncated || data.logs_truncated || data.events_truncated;
+        if interval_truncated
+            && let Some((left_from, left_to)) = split_timeline_interval(from_ns, to_ns, query_count, pending.len())
+        {
+            pending.push_back((left_to, to_ns));
+            pending.push_back((left_from, left_to));
+            continue;
+        }
+
+        truncated |= interval_truncated;
+        logs_source = Some(match logs_source {
+            None => data.logs_source,
+            Some(source) if source == data.logs_source => source,
+            Some(_) => super::telemetry::LogSource::Mixed,
+        });
+        for items in data.items.chunks(TIMELINE_CHUNK_ITEMS) {
+            if send_history_chunk(&output, &load.request_id, &mut sequence, from_ns, to_ns, items.to_vec())
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+        if !interval_truncated
+            && send_history_range_complete(&output, &load.request_id, &mut sequence, from_ns, to_ns).await.is_err()
+        {
+            return;
+        }
+    }
+
+    let completeness =
+        match super::telemetry::timeline_completeness_for_scope(&state, &scope, truncated, load.from_ns).await {
+            Ok(value) => value,
+            Err(error) => {
+                tracing::warn!(%error, request_id = %load.request_id, "timeline WebSocket completeness query failed");
+                let _ = output
+                    .send(HistoryOutput::Error {
+                        request_id: load.request_id,
+                        message: "timeline completeness unavailable",
+                    })
+                    .await;
+                return;
+            }
+        };
+    let _ = output
+        .send(HistoryOutput::Complete {
+            request_id: load.request_id,
+            truncated,
+            completeness,
+            logs_source: logs_source.unwrap_or(super::telemetry::LogSource::Hot),
+        })
+        .await;
+}
+
 async fn run(socket: WebSocket, state: AppState, scope: Scope, mut cursor: i64, session: LiveSession) {
     let LiveSession { user, _permit, infrastructure, actions_enabled } = session;
     let (mut tx, mut rx) = socket.split();
     let mut last_sent = Instant::now();
     let mut last_session_check = Instant::now();
+    let (history_tx, mut history_rx) = mpsc::channel::<HistoryOutput>(1);
+    let mut history_task: Option<(String, tokio::task::JoinHandle<()>)> = None;
+    let mut history_acks = HashMap::<(String, u32), oneshot::Sender<()>>::new();
     let clients_id = external_clients_id(&scope);
     let (replay, mut updates, subscriber_id) =
         match state.live_hub.subscribe_with_controls(scope.clone(), cursor, actions_enabled) {
@@ -362,6 +678,40 @@ async fn run(socket: WebSocket, state: AppState, scope: Scope, mut cursor: i64, 
                         Ok(control) if control.kind == "unsubscribe_edge" => {
                             state.live_hub.select_edge(subscriber_id, None);
                         }
+                        Ok(control) if control.kind == "timeline_load" => {
+                            let Some(load) = control.timeline_load() else {
+                                let id = control.request_id.as_deref().filter(|id| !id.is_empty() && id.len() <= 128).unwrap_or("invalid");
+                                if !send(&mut tx, &ServerMessage::TimelineError { request_id: id, message: "invalid timeline request" }).await { break; }
+                                continue;
+                            };
+                            if history_task.is_some() {
+                                if !send(&mut tx, &ServerMessage::TimelineError { request_id: &load.request_id, message: "another timeline request is active" }).await { break; }
+                                continue;
+                            }
+                            let request_id = load.request_id.clone();
+                            let task_state = state.clone();
+                            let task_scope = scope.clone();
+                            let task_output = history_tx.clone();
+                            let task = tokio::spawn(async move {
+                                stream_timeline_history(task_state, task_scope, load, task_output).await;
+                            });
+                            history_task = Some((request_id, task));
+                        }
+                        Ok(control) if control.kind == "timeline_ack" => {
+                            if let Some((request_id, sequence)) = control.timeline_ack()
+                                && let Some(ack) = history_acks.remove(&(request_id, sequence))
+                            {
+                                let _ = ack.send(());
+                            }
+                        }
+                        Ok(control) if control.kind == "timeline_cancel" => {
+                            if let Some(request_id) = control.timeline_cancel()
+                                && history_task.as_ref().is_some_and(|(active, _)| active == request_id)
+                            {
+                                if let Some((_, task)) = history_task.take() { task.abort(); }
+                                history_acks.retain(|(active, _), _| active != request_id);
+                            }
+                        }
                         Ok(control) if control.kind == "subscribe_edge" => {
                             let Some((source, target, relation, after)) = control.edge() else {
                                 let _ = send(&mut tx, &ServerMessage::Error { message: "invalid edge subscription" }).await;
@@ -428,6 +778,34 @@ async fn run(socket: WebSocket, state: AppState, scope: Scope, mut cursor: i64, 
                 if !sent { break; }
                 last_sent = Instant::now();
             }
+            history = history_rx.recv() => {
+                let Some(history) = history else { break; };
+                let sent = match history {
+                    HistoryOutput::Chunk { request_id, sequence, from_ns, to_ns, items, ack } => {
+                        history_acks.insert((request_id.clone(), sequence), ack);
+                        send(&mut tx, &ServerMessage::TimelineChunk { request_id: &request_id, sequence, from_ns: from_ns.to_string(), to_ns: to_ns.to_string(), items: &items }).await
+                    }
+                    HistoryOutput::RangeComplete { request_id, sequence, from_ns, to_ns, ack } => {
+                        history_acks.insert((request_id.clone(), sequence), ack);
+                        send(&mut tx, &ServerMessage::TimelineRangeComplete { request_id: &request_id, sequence, from_ns: from_ns.to_string(), to_ns: to_ns.to_string() }).await
+                    }
+                    HistoryOutput::Complete { request_id, truncated, completeness, logs_source } => {
+                        let result = send(&mut tx, &ServerMessage::TimelineComplete { request_id: &request_id, truncated, completeness: &completeness, logs_source }).await;
+                        if history_task.as_ref().is_some_and(|(active, _)| active == &request_id) { history_task = None; }
+                        result
+                    }
+                    HistoryOutput::Error { request_id, message } => {
+                        let result = send(&mut tx, &ServerMessage::TimelineError { request_id: &request_id, message }).await;
+                        if history_task.as_ref().is_some_and(|(active, _)| active == &request_id) {
+                            if let Some((_, task)) = history_task.take() { task.abort(); }
+                            history_acks.retain(|(active, _), _| active != &request_id);
+                        }
+                        result
+                    }
+                };
+                if !sent { break; }
+                last_sent = Instant::now();
+            }
             _ = infrastructure_refresh.tick(), if infrastructure => {
                 let at = now_ns();
                 let snapshot = super::infrastructure::load_snapshot_coalesced(&state, &scope, at).await;
@@ -474,6 +852,10 @@ async fn run(socket: WebSocket, state: AppState, scope: Scope, mut cursor: i64, 
             }
         }
     }
+    if let Some((_, task)) = history_task {
+        task.abort();
+    }
+    history_acks.clear();
 }
 
 #[cfg(test)]
@@ -500,6 +882,105 @@ mod tests {
             let parsed: EdgeControl = serde_json::from_str(invalid).unwrap();
             assert_eq!(parsed.edge(), None, "{invalid}");
         }
+    }
+
+    #[test]
+    fn timeline_load_controls_validate_range_limit_and_request_identity() {
+        let control: EdgeControl = serde_json::from_str(
+            r#"{"type":"timeline_load","request_id":"range-1","from_ns":"100","to_ns":"200","limit":50000}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            control.timeline_load(),
+            Some(TimelineLoad {
+                request_id: "range-1".into(),
+                from_ns: 100,
+                to_ns: 200,
+                limit: 50_000,
+                ranges: vec![(100, 200)],
+            })
+        );
+
+        for invalid in [
+            r#"{"type":"timeline_load","request_id":"range-1","from_ns":"x","to_ns":"200","limit":50000}"#,
+            r#"{"type":"timeline_load","request_id":"range-1","from_ns":"200","to_ns":"100","limit":50000}"#,
+            r#"{"type":"timeline_load","request_id":"range-1","from_ns":"100","to_ns":"200","limit":0}"#,
+            r#"{"type":"timeline_load","request_id":"","from_ns":"100","to_ns":"200","limit":50000}"#,
+            r#"{"type":"timeline_load","request_id":"range-1","from_ns":"100","to_ns":"200","limit":50001}"#,
+        ] {
+            let parsed: EdgeControl = serde_json::from_str(invalid).unwrap();
+            assert_eq!(parsed.timeline_load(), None, "{invalid}");
+        }
+
+        let partial: EdgeControl = serde_json::from_str(
+            r#"{"type":"timeline_load","request_id":"range-2","from_ns":"100","to_ns":"200","limit":200,"ranges":[{"from_ns":"100","to_ns":"140"},{"from_ns":"160","to_ns":"200"}]}"#,
+        ).unwrap();
+        assert_eq!(partial.timeline_load().map(|load| load.ranges), Some(vec![(100, 140), (160, 200)]));
+        let overlap: EdgeControl = serde_json::from_str(
+            r#"{"type":"timeline_load","request_id":"range-2","from_ns":"100","to_ns":"200","limit":200,"ranges":[{"from_ns":"100","to_ns":"170"},{"from_ns":"160","to_ns":"200"}]}"#,
+        ).unwrap();
+        assert_eq!(overlap.timeline_load(), None);
+
+        let ack: EdgeControl =
+            serde_json::from_str(r#"{"type":"timeline_ack","request_id":"range-1","sequence":4}"#).unwrap();
+        assert_eq!(ack.timeline_ack(), Some(("range-1".into(), 4)));
+        let cancel: EdgeControl = serde_json::from_str(r#"{"type":"timeline_cancel","request_id":"range-1"}"#).unwrap();
+        assert_eq!(cancel.timeline_cancel(), Some("range-1"));
+    }
+
+    #[test]
+    fn capped_history_ranges_split_only_within_the_query_budget() {
+        assert_eq!(split_timeline_interval(0, 10_000_000_000, 1, 0), Some((0, 5_000_000_000)));
+        assert_eq!(split_timeline_interval(0, TIMELINE_MIN_SPLIT_NS, 1, 0), None);
+        assert_eq!(split_timeline_interval(0, 10_000_000_000, TIMELINE_MAX_SPLIT_QUERIES - 1, 0), None);
+    }
+
+    #[test]
+    fn timeline_history_frames_keep_the_wire_contract() {
+        let chunk = serde_json::to_string(&ServerMessage::TimelineChunk {
+            request_id: "load-1",
+            sequence: 7,
+            from_ns: "100".into(),
+            to_ns: "200".into(),
+            items: &[],
+        })
+        .unwrap();
+        assert_eq!(
+            chunk,
+            r#"{"type":"timeline_chunk","request_id":"load-1","sequence":7,"from_ns":"100","to_ns":"200","items":[]}"#
+        );
+
+        let complete = serde_json::to_string(&ServerMessage::TimelineRangeComplete {
+            request_id: "load-1",
+            sequence: 8,
+            from_ns: "100".into(),
+            to_ns: "200".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            complete,
+            r#"{"type":"timeline_range_complete","request_id":"load-1","sequence":8,"from_ns":"100","to_ns":"200"}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn history_chunk_waits_for_ack_before_advancing_sequence() {
+        let (output, mut receiver) = mpsc::channel(1);
+        let mut sequence = 0;
+        {
+            let transfer = send_history_chunk(&output, "load-ack", &mut sequence, 100, 200, vec![]);
+            tokio::pin!(transfer);
+            assert!(futures::poll!(transfer.as_mut()).is_pending());
+
+            let Some(HistoryOutput::Chunk { sequence: sent_sequence, ack, .. }) = receiver.recv().await else {
+                panic!("expected a history chunk");
+            };
+            assert_eq!(sent_sequence, 0);
+            assert!(futures::poll!(transfer.as_mut()).is_pending());
+            let _ = ack.send(());
+            assert!(transfer.as_mut().await.is_ok());
+        }
+        assert_eq!(sequence, 1);
     }
 
     #[test]

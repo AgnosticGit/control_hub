@@ -1,5 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { countItems, countLiveBatchItems, liveItemEnvelope, liveRetryDelayMs, liveTopologySnapshot, newerSeek, parseLiveAction, parseLiveEdgeChange, parseLiveHead, parseLiveInfrastructure, parseLiveRecord, parseLiveSignals, timelineTail } from "./worker-utils";
+import { countItems, countLiveBatchItems, liveItemEnvelope, liveRetryDelayMs, liveTopologySnapshot, newerSeek, parseLiveAction, parseLiveEdgeChange, parseLiveHead, parseLiveInfrastructure, parseLiveRecord, parseLiveSignals, parseTimelineFrame, timelineChunkEnvelope, timelineChunkItemsJson, timelineTail } from "./worker-utils";
+
+describe("timeline WebSocket frames", () => {
+  it("routes chunk metadata without materializing the large item array", () => {
+    const text = JSON.stringify({
+      type: "timeline_chunk", request_id: "r-1", sequence: 2, from_ns: "10", to_ns: "20",
+      items: [{ type: "log", body: 'brackets ] } and "quote"' }],
+    });
+    expect(parseTimelineFrame(text)).toEqual({ type: "chunk", requestId: "r-1", sequence: 2, fromNs: "10", toNs: "20" });
+    expect(JSON.parse(timelineChunkEnvelope(text) ?? "null")).toEqual({ items: [{ type: "log", body: 'brackets ] } and "quote"' }] });
+    expect(JSON.parse(timelineChunkItemsJson(text) ?? "null")).toEqual([{ type: "log", body: 'brackets ] } and "quote"' }]);
+  });
+
+  it("rejects malformed chunk headers and non-decimal time ranges", () => {
+    expect(parseTimelineFrame('{"type":"timeline_chunk","request_id":"r","sequence":0,"from_ns":"x","to_ns":"2","items":[]}')).toBeNull();
+    expect(parseTimelineFrame('{"type":"timeline_chunk","request_id":"r","sequence":-1,"from_ns":"1","to_ns":"2","items":[]}')).toBeNull();
+  });
+
+  it("parses completion metadata and request-scoped errors", () => {
+    expect(parseTimelineFrame(JSON.stringify({
+      type: "timeline_complete", request_id: "r-2", truncated: false,
+      completeness: { processing_caught_up: true }, logs_source: "hot",
+    }))).toEqual({
+      type: "complete", requestId: "r-2", truncated: false,
+      completeness: { processing_caught_up: true }, logsSource: "hot",
+    });
+    expect(parseTimelineFrame('{"type":"timeline_error","request_id":"r-2","message":"storage unavailable"}'))
+      .toEqual({ type: "error", requestId: "r-2", message: "storage unavailable" });
+    expect(parseTimelineFrame('{"type":"timeline_range_complete","request_id":"r-2","sequence":3,"from_ns":"10","to_ns":"20"}'))
+      .toEqual({ type: "range_complete", requestId: "r-2", sequence: 3, fromNs: "10", toNs: "20" });
+  });
+});
 
 describe("timelineTail", () => {
   it("reads the metadata after the items array without parsing the items", () => {

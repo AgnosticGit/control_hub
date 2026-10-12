@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { api, isUnauthenticated, unwrap } from "./api";
+import { openTimelineCache } from "@/engine/timeline-cache";
 
 export function useSession() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export function useSession() {
 export function useLogout() {
   return async () => {
     await api.POST("/api/v1/session/logout");
+    await openTimelineCache().then((cache) => cache.clearAll()).catch(() => {});
     window.location.replace("/app/login");
   };
 }

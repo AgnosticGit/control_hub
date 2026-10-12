@@ -10,7 +10,7 @@ import { RESOURCE_COLOR, cssColor, serviceColors } from "@/renderer/service-colo
 import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime } from "@/lib/time";
 import type { EngineState, WorkspaceActions } from "../useWorkspaceEngine";
 import type { WorkspaceMemory } from "../workspace-memory";
-import { RULER_H, bucketGeometry, draw, drawRuler, rowTop, totalHeight, type ActionBar, type Row } from "./draw";
+import { RULER_H, bucketGeometry, draw, drawRuler, rowTop, timelineRevealAlpha, totalHeight, type ActionBar, type Row } from "./draw";
 import { EVENT_COLOR, eventLabel, eventMarkers, formatShare, holdSamples, machineAt, machineWindow, type EventMarker, type InfraTimeline } from "./machines";
 import { centeredOn, nearestItems, tracksMatch, viewIsEmpty } from "./neighbours";
 import { placeAbove, rangeBetween, viewAround } from "./range";
@@ -129,6 +129,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   useEffect(() => memory?.saveTimelineView(userView), [memory, userView]);
   const [hover, setHover] = useState<Hover | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [revealProgress, setRevealProgress] = useState(1);
   const [draft, setDraft] = useState<View | null>(null);
   const [prevLoop, setPrevLoop] = useState(state.loop);
   if (prevLoop !== state.loop) {
@@ -366,8 +367,25 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
 
   useEffect(() => {
     const ctx = setupCanvas(rowsRef.current, width, height);
-    if (ctx) draw(ctx, { width, rows, view, tracks: displayedTracks, actions: actionBars, cursor: state.cursor, markA, hoverX, range, machines: infra });
-  }, [width, height, rows, view, displayedTracks, actionBars, state.cursor, markA, hoverX, range, infra]);
+    if (ctx) draw(ctx, { width, rows, view, tracks: displayedTracks, actions: actionBars, cursor: state.cursor, markA, hoverX, range, machines: infra,
+      reveal: state.timelineReveal ? { from: state.timelineReveal.from, to: state.timelineReveal.to, progress: revealProgress } : null });
+  }, [width, height, rows, view, displayedTracks, actionBars, state.cursor, markA, hoverX, range, infra, state.timelineReveal, revealProgress]);
+
+  useEffect(() => {
+    const reveal = state.timelineReveal;
+    if (!reveal || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const raf = requestAnimationFrame(() => setRevealProgress(1));
+      return () => cancelAnimationFrame(raf);
+    }
+    let raf = 0;
+    const animate = () => {
+      const progress = timelineRevealAlpha(performance.now(), reveal.startedAt);
+      setRevealProgress(progress);
+      if (progress < 1) raf = requestAnimationFrame(animate);
+    };
+    raf = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(raf);
+  }, [state.timelineReveal]);
 
   // Wheel and drag need the latest values without re-binding listeners.
   const live = useRef({ view, bounds, width, setView });

@@ -20,7 +20,7 @@ import type {
 export type WorkerRequest =
   | { kind: "init"; id: number; config?: Partial<EngineConfig> }
   | { kind: "loadTopology"; id: number; url: string }
-  | { kind: "loadTimeline"; id: number; url: string }
+  | { kind: "loadTimeline"; id: number; scopeKey: string; fromNs: string; toNs: string; liveUrl: string; url?: string }
   /** Machines and instances for the infrastructure layer (`InfrastructureSnapshot`). */
   | { kind: "loadInfrastructure"; id: number; url: string }
   | { kind: "evictBefore"; id: number; beforeNs: string }
@@ -43,7 +43,7 @@ export type WorkerRequest =
   | { kind: "diagnostics"; id: number }
   | { kind: "topology"; id: number }
   /** Open (or re-target) the live WebSocket; `url` is a same-origin path. */
-  | { kind: "liveStart"; id: number; url: string }
+  | { kind: "liveStart"; id: number; url: string; scopeKey?: string }
   | { kind: "subscribeEdge"; source: string; target: string; relation: string; afterCursorNs: string }
   | { kind: "unsubscribeEdge" }
   | { kind: "liveStop"; id: number };
@@ -63,6 +63,13 @@ export type LiveEvent =
   | { type: "gap"; resume: string }
   | { type: "error"; message: string }
   | { type: "edge_change"; resume: string; change: EdgeChange };
+
+/** Internal history-transfer frames parsed by the Worker without parsing chunk item arrays on the UI thread. */
+export type TimelineHistoryFrame =
+  | { type: "chunk"; requestId: string; sequence: number; fromNs: string; toNs: string }
+  | { type: "range_complete"; requestId: string; sequence: number; fromNs: string; toNs: string }
+  | { type: "complete"; requestId: string; truncated: boolean; completeness: unknown; logsSource?: string }
+  | { type: "error"; requestId: string; message: string };
 
 export interface EdgeChange {
   id: string;
@@ -104,6 +111,8 @@ export interface LoadResult {
   toNs?: string;
   /** Timeline only: where the log items came from (`hot`, `archive`, `mixed`). */
   logsSource?: string;
+  /** Timeline items received from the network during this request (not cache replays). */
+  newItems?: number;
 }
 
 export interface ResultMap {

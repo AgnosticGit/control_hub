@@ -45,6 +45,8 @@ export interface DrawInput {
   range: View | null;
   /** Machine CPU and memory for machine rows. */
   machines?: InfraTimeline | null;
+  /** Progress of a newly loaded time window, from 0 to 1. */
+  reveal?: { from: bigint; to: bigint; progress: number } | null;
 }
 
 export interface RulerInput {
@@ -118,6 +120,16 @@ export function rowTop(rows: Row[], index: number): number {
 
 export function totalHeight(rows: Row[]): number {
   return rows.reduce((h, r) => h + r.height, 0);
+}
+
+export function timelineRevealAlpha(now: number, startedAt: number, durationMs = 420, reducedMotion = false): number {
+  if (reducedMotion || durationMs <= 0) return 1;
+  return Math.max(0, Math.min(1, (now - startedAt) / durationMs));
+}
+
+export function liveSignalTimeNs(record: Record<string, unknown>): bigint | null {
+  const value = [record.start_ns, record.time_ns, record.end_ns].find((candidate) => typeof candidate === "string" && /^\d+$/.test(candidate));
+  return typeof value === "string" ? BigInt(value) : null;
 }
 
 /** Geometry of the tracks' buckets in the current view. */
@@ -345,12 +357,38 @@ export function draw(ctx: CanvasRenderingContext2D, d: DrawInput) {
   const height = totalHeight(rows);
   ctx.clearRect(0, 0, width, height);
 
-  rows.forEach((r, i) => {
+  const paintRows = () => rows.forEach((r, i) => {
     if (i % 2 === 1) {
       ctx.fillStyle = C.rowAlt;
       ctx.fillRect(0, rowTop(rows, i), width, r.height);
     }
   });
+  const reveal = d.reveal;
+  if (!reveal || reveal.progress >= 1 || reveal.to <= reveal.from) {
+    paintRows();
+  } else {
+    const x1 = Math.max(0, Math.min(width, xOf(reveal.from, view, width)));
+    const x2 = Math.max(0, Math.min(width, xOf(reveal.to, view, width)));
+    if (x2 <= x1) paintRows();
+    else {
+      // Paint the existing timeline outside the new interval, then reveal only that interval.
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, width, height);
+      ctx.rect(x1, 0, x2 - x1, height);
+      ctx.clip("evenodd");
+      paintRows();
+      ctx.restore();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x1, 0, x2 - x1, height);
+      ctx.clip();
+      ctx.globalAlpha = Math.max(0, Math.min(1, reveal.progress));
+      paintRows();
+      ctx.restore();
+    }
+  }
 
   const step = tickStep(view, width);
   ctx.fillStyle = C.grid;

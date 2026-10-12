@@ -2,6 +2,7 @@
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
+use karbird_archive::index::segment_index;
 use karbird_archive::{LogRecord, decode, encode};
 
 fn records(count: usize) -> Vec<LogRecord> {
@@ -38,6 +39,7 @@ fn archive(c: &mut Criterion) {
     c.bench_function("archive/decode_512_logs", |b| {
         b.iter(|| decode(black_box(&encoded.bytes), None).expect("decode"))
     });
+    c.bench_function("archive/index_512_logs", |b| b.iter(|| segment_index(black_box(&input))));
 }
 
 criterion_group!(benches, archive);

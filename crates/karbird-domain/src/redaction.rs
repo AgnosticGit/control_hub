@@ -79,20 +79,9 @@ const QUERY_KEYS: &[&str] = &["url.query", "http.query"];
 /// URL attributes replaced by `[REDACTED]` (the path and fragment are kept). Returns the value
 /// and whether a query was removed.
 pub fn sanitize_attribute(key: &str, value: &str) -> (String, bool) {
-    let v = sanitize_value(value);
-    let lower = key.to_ascii_lowercase();
-    if QUERY_KEYS.iter().any(|k| *k == lower) {
-        return if v.is_empty() { (v, false) } else { (REDACTED.to_owned(), true) };
-    }
-    if URL_KEYS.iter().any(|k| *k == lower)
-        && let Some(q) = v.find('?')
-    {
-        let end = v[q..].find('#').map_or(v.len(), |f| q + f);
-        if end > q + 1 {
-            return (format!("{}?{REDACTED}{}", &v[..q], &v[end..]), true);
-        }
-    }
-    (v, false)
+    let mut sanitized = value.to_owned();
+    let removed_query = sanitize_attribute_in_place(key, &mut sanitized);
+    (sanitized, removed_query)
 }
 
 /// First ASCII-case-insensitive `scheme` followed by a space or tab.
@@ -111,10 +100,11 @@ fn find_next_scheme(text: &str) -> Option<(usize, usize)> {
 
 /// Mask `Bearer <token>` / `Basic <token>` fragments in free text (log bodies, messages).
 pub fn mask_bearer(text: &str) -> String {
-    let mut hit = find_next_scheme(text);
-    if hit.is_none() {
-        return text.to_owned();
-    }
+    mask_bearer_if_needed(text).unwrap_or_else(|| text.to_owned())
+}
+
+fn mask_bearer_if_needed(text: &str) -> Option<String> {
+    let mut hit = Some(find_next_scheme(text)?);
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     loop {
@@ -134,10 +124,49 @@ pub fn mask_bearer(text: &str) -> String {
             }
             None => {
                 out.push_str(rest);
-                return out;
+                return Some(out);
             }
         }
     }
+}
+
+/// Sanitize an owned value without allocating a replacement when it needs no masking or truncation.
+pub fn sanitize_value_in_place(value: &mut String) {
+    sanitize_value_in_place_with_limit(value, limits::MAX_ATTRIBUTE_VALUE_LEN);
+}
+
+/// Sanitize an owned string with the caller's existing length bound.
+pub fn sanitize_value_in_place_with_limit(value: &mut String, max_len: usize) {
+    let length = truncate(value, max_len).len();
+    if length < value.len() {
+        value.truncate(length);
+    }
+    if let Some(masked) = mask_bearer_if_needed(value) {
+        *value = masked;
+    }
+}
+
+/// Sanitize one owned string attribute in place; returns whether a URL query was removed.
+pub fn sanitize_attribute_in_place(key: &str, value: &mut String) -> bool {
+    sanitize_value_in_place(value);
+    if QUERY_KEYS.iter().any(|candidate| key.eq_ignore_ascii_case(candidate)) {
+        if value.is_empty() {
+            return false;
+        }
+        value.clear();
+        value.push_str(REDACTED);
+        return true;
+    }
+    if URL_KEYS.iter().any(|candidate| key.eq_ignore_ascii_case(candidate))
+        && let Some(query) = value.find('?')
+    {
+        let end = value[query..].find('#').map_or(value.len(), |offset| query + offset);
+        if end > query + 1 {
+            value.replace_range(query + 1..end, REDACTED);
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -179,6 +208,22 @@ mod tests {
         assert_eq!(sanitize_attribute("url.full", "https://a.example/x?").0, "https://a.example/x?");
         assert_eq!(sanitize_attribute("url.query", ""), (String::new(), false));
         assert_eq!(sanitize_attribute("url.path", "/a?b=c").0, "/a?b=c");
+    }
+
+    #[test]
+    fn in_place_attribute_sanitizing_matches_the_owned_contract() {
+        for (key, value) in [
+            ("http.request.method", "GET"),
+            ("HTTP.TARGET", "/login?password=p#form"),
+            ("url.query", "api_key=k"),
+            ("message", "request failed with Bearer synthetic-token"),
+            ("url.full", "https://api.example/orders/7?token=abc#top"),
+        ] {
+            let (expected, expected_removed) = sanitize_attribute(key, value);
+            let mut actual = value.to_owned();
+            let removed = sanitize_attribute_in_place(key, &mut actual);
+            assert_eq!((actual, removed), (expected, expected_removed), "{key}");
+        }
     }
 
     #[test]
@@ -378,6 +423,14 @@ mod tests {
                 // Every masked token grows by at most REDACTED.len() bytes.
                 let out = sanitize_value(&s);
                 prop_assert!(out.len() <= limits::MAX_ATTRIBUTE_VALUE_LEN + REDACTED.len() * (s.len() / 7 + 1));
+            }
+
+            #[test]
+            fn in_place_value_sanitizing_matches_the_borrowed_input_contract(s in any::<String>()) {
+                let expected = sanitize_value(&s);
+                let mut actual = s;
+                sanitize_value_in_place(&mut actual);
+                prop_assert_eq!(actual, expected);
             }
         }
     }

@@ -46,7 +46,7 @@ function usePersistedSize(key: string, fallback: number, min: number, max: numbe
 
 export function Workspace({ projectId, environmentId, visible = true }: { projectId: string; environmentId: string; visible?: boolean }) {
   const session = useSession();
-  const { state, actions } = useWorkspaceEngine(projectId, environmentId);
+  const { state, actions } = useWorkspaceEngine(projectId, environmentId, session.data?.user.id ?? null);
   const layerPrefsKey = `karbird.workspace.mapLayers.${projectId}.${environmentId}`;
   const layerPrefs = usePersisted(layerPrefsKey, DEFAULT_MAP_LAYERS, parseMapLayers);
   // Survives the map and timeline unmounting while another page is shown.

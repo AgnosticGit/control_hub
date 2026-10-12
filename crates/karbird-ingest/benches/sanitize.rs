@@ -1,10 +1,12 @@
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
-use karbird_ingest::sanitize::{sanitize_metrics, sanitize_traces};
+use karbird_ingest::sanitize::{sanitize_logs, sanitize_metrics, sanitize_traces};
+use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value::Value};
+use opentelemetry_proto::tonic::logs::v1::{LogRecord as OtlpLogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::metrics::v1::{
     Gauge, Metric, NumberDataPoint, ResourceMetrics, ScopeMetrics, metric::Data, number_data_point,
 };
@@ -115,6 +117,36 @@ fn metrics_with_attributes() -> ExportMetricsServiceRequest {
     }
 }
 
+fn logs_with_attributes() -> ExportLogsServiceRequest {
+    ExportLogsServiceRequest {
+        resource_logs: vec![ResourceLogs {
+            resource: Some(Resource {
+                attributes: vec![kv("service.name", "orders"), kv("deployment.environment", "production")],
+                ..Default::default()
+            }),
+            scope_logs: vec![ScopeLogs {
+                log_records: (0..1_000)
+                    .map(|i| OtlpLogRecord {
+                        time_unix_nano: 1_790_000_000_000_000_000 + i,
+                        observed_time_unix_nano: 1_790_000_000_000_000_000 + i,
+                        severity_number: 9,
+                        severity_text: "INFO".into(),
+                        body: Some(AnyValue { value: Some(Value::StringValue(format!("order {i} accepted"))) }),
+                        attributes: vec![
+                            kv("http.request.method", "POST"),
+                            kv("http.route", "/orders/:id"),
+                            kv("http.request.header.authorization", "Bearer synthetic-token"),
+                        ],
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+    }
+}
+
 fn ingest(c: &mut Criterion) {
     let input = traces();
     c.bench_function("ingest/sanitize_1000_traces", |b| {
@@ -136,6 +168,11 @@ fn ingest(c: &mut Criterion) {
             |mut payload| sanitize_metrics(black_box(&mut payload), &mut |_| true),
             BatchSize::SmallInput,
         )
+    });
+
+    let logs = logs_with_attributes();
+    c.bench_function("ingest/sanitize_1000_logs_with_attributes", |b| {
+        b.iter_batched(|| logs.clone(), |mut payload| sanitize_logs(black_box(&mut payload)), BatchSize::SmallInput)
     });
 }
 

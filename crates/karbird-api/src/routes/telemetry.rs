@@ -1138,26 +1138,72 @@ pub async fn timeline(
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let r = resolve_range(q.from.as_deref(), q.to.as_deref(), MAX_RANGE_NS)?;
     let limit = limit(q.limit, 20_000, 100_000);
-    let cutoff = archive_cutoff(&state);
-    let (spans, (logs, logs_source, archive_capped), events) = tokio::try_join!(
-        async { Ok::<_, ApiError>(state.ch.timeline_spans(&scope, r.from, r.to, limit + 1).await?) },
-        timeline_logs(&state, &scope, r, cutoff, limit + 1),
-        async { Ok(state.ch.events(&scope, r.from, r.to, None, limit + 1).await?) },
-    )?;
-    let (items, st, lt, et) = timeline_items(spans, logs, events, limit, &external_clients_id(&scope));
-    let lt = lt || archive_capped;
-    let mut completeness = completeness(&state, &scope, st || lt || et).await?;
-    completeness.notes.extend(archive_note(cutoff, r.from));
-    Ok(Json(TimelineResponse {
-        items,
+    Ok(Json(timeline_for_scope(&state, &scope, r, limit).await?))
+}
+
+/// Query a validated range for a scope already authorized by the caller.
+pub(crate) async fn timeline_for_scope(
+    state: &AppState,
+    scope: &Scope,
+    r: Range,
+    limit: u32,
+) -> ApiResult<TimelineResponse> {
+    let data = timeline_data_for_scope(state, scope, r, limit).await?;
+    let completeness = timeline_completeness_for_scope(
+        state,
+        scope,
+        data.spans_truncated || data.logs_truncated || data.events_truncated,
+        r.from,
+    )
+    .await?;
+    Ok(TimelineResponse {
+        items: data.items,
         from_ns: ns(r.from),
         to_ns: ns(r.to),
-        spans_truncated: st,
-        logs_truncated: lt,
-        events_truncated: et,
-        logs_source,
+        spans_truncated: data.spans_truncated,
+        logs_truncated: data.logs_truncated,
+        events_truncated: data.events_truncated,
+        logs_source: data.logs_source,
         completeness,
-    }))
+    })
+}
+
+pub(crate) async fn timeline_completeness_for_scope(
+    state: &AppState,
+    scope: &Scope,
+    truncated: bool,
+    from_ns: i64,
+) -> ApiResult<Completeness> {
+    let mut value = completeness(state, scope, truncated).await?;
+    value.notes.extend(archive_note(archive_cutoff(state), from_ns));
+    Ok(value)
+}
+
+#[derive(Debug)]
+pub(crate) struct TimelineData {
+    pub items: Vec<TimelineItem>,
+    pub spans_truncated: bool,
+    pub logs_truncated: bool,
+    pub events_truncated: bool,
+    pub logs_source: LogSource,
+}
+
+/// Read one bounded interval without repeating processor-watermark queries for each split.
+pub(crate) async fn timeline_data_for_scope(
+    state: &AppState,
+    scope: &Scope,
+    r: Range,
+    limit: u32,
+) -> ApiResult<TimelineData> {
+    let cutoff = archive_cutoff(state);
+    let (spans, (logs, logs_source, archive_capped), events) = tokio::try_join!(
+        async { Ok::<_, ApiError>(state.ch.timeline_spans(scope, r.from, r.to, limit + 1).await?) },
+        timeline_logs(state, scope, r, cutoff, limit + 1),
+        async { Ok(state.ch.events(scope, r.from, r.to, None, limit + 1).await?) },
+    )?;
+    let (items, st, lt, et) = timeline_items(spans, logs, events, limit, &external_clients_id(scope));
+    let lt = lt || archive_capped;
+    Ok(TimelineData { items, spans_truncated: st, logs_truncated: lt, events_truncated: et, logs_source })
 }
 
 // ---------------------------------------------------------------- coverage

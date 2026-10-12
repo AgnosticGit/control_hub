@@ -71,11 +71,22 @@ karbird CLI `context` / `mcp` ──read-only API token──▶ karbird-api (GE
 
 ## Timeline and time machine
 
-- The API's `/timeline` returns spans, logs and events for a range as one list with
-  nanosecond-string timestamps. It also returns a watermark and a completeness indicator, which
-  the UI shows as a badge.
-- The Worker fetches the JSON itself and hands the raw text to WASM, so the UI thread never parses
-  large payloads.
+- The Worker requests historical spans, logs and events with `timeline_load` on its authenticated
+  `/live` WebSocket. The API scopes the query from the socket principal, subdivides capped ranges,
+  and streams bounded `timeline_chunk` frames. Only one chunk is outstanding; the Worker ACKs after
+  applying it to WASM and attempting to persist it. Live signals and history share the same socket.
+- A `timeline_range_complete` ACK is sent only after all chunks in that leaf range have been
+  applied and their cache writes attempted. Only successful writes let the Worker record durable
+  coverage. If caching is unavailable, the session still proceeds, but the interval is not marked
+  as a cache hit. Reconnect requests only uncovered
+  intervals; an interrupted leaf can be replayed and engine identity deduplication handles overlap.
+- The Worker caches raw timeline item arrays in IndexedDB, partitioned by account, project and
+  environment. The serialized payload budget is 1 GiB; least-recently-used completed ranges are
+  evicted first. The database version combines the cache schema and engine ABI; a version upgrade
+  clears records and coverage. Logout clears the cache. IndexedDB quota failures never block WASM.
+- The Worker applies raw chunk JSON to WASM, so the UI thread never parses large payloads. The
+  canvas briefly reveals newly loaded historical time windows and coalesced live signal windows;
+  reduced-motion preferences disable the animation.
 - The engine keeps sorted per-kind indexes and a checkpoint every N items. `seek(t)` restores the
   nearest checkpoint and replays forward.
 - Every seek carries a generation number. The engine drops stale seeks, and the UI ignores frames
@@ -89,7 +100,7 @@ karbird CLI `context` / `mcp` ──read-only API token──▶ karbird-api (GE
   matching span records from the same WebSocket. Its storage cursor keeps catch-up and reconnects
   from counting records already included in the chart baseline.
 - Modes:
-  - LIVE: WebSocket `…/live` owned by the Worker (`hello`/`span`/`log`/`event`/`gap`/`heartbeat`),
+  - LIVE: WebSocket `…/live` owned by the Worker (`hello`/`span`/`log`/`event`/`timeline_*`/`gap`/`heartbeat`),
     with a resume cursor on reconnect. The API pages durable ClickHouse catch-up results and sends
     each record in its own frame. A closed or delayed socket marks the view stale and reconnects
     with backoff; live telemetry never falls back to periodic HTTP polling.

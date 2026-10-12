@@ -161,10 +161,12 @@ fn host_metrics(id: &str, rows: &[&InfraSeriesRow]) -> HostDto {
     let named = |n: &'static str| by_name(rows, n);
     let name = rows.iter().map(|r| r.host_name.as_str()).find(|n| !n.is_empty()).unwrap_or(id).to_owned();
     let (mut busy, mut total) = (0.0, 0.0);
-    let mut cpus = std::collections::BTreeSet::new();
+    let mut cpus = Vec::new();
     for r in named("system.cpu.time") {
-        if let Some(cpu) = attr(r, "cpu") {
-            cpus.insert(cpu.to_owned());
+        if let Some(cpu) = attr(r, "cpu")
+            && !cpus.contains(&cpu)
+        {
+            cpus.push(cpu);
         }
         if let Some(d) = delta(r) {
             total += d;
@@ -175,12 +177,11 @@ fn host_metrics(id: &str, rows: &[&InfraSeriesRow]) -> HostDto {
     }
     let mut cpu_utilization = (total > 0.0).then(|| (busy / total).clamp(0.0, 1.0));
     if cpu_utilization.is_none() {
-        let idle: Vec<f64> = named("system.cpu.utilization")
+        let (idle_total, idle_count) = named("system.cpu.utilization")
             .filter(|r| attr(r, "state") == Some("idle"))
-            .map(|r| r.last_value)
-            .collect();
-        if !idle.is_empty() {
-            cpu_utilization = Some((1.0 - idle.iter().sum::<f64>() / idle.len() as f64).clamp(0.0, 1.0));
+            .fold((0.0, 0usize), |(total, count), row| (total + row.last_value, count + 1));
+        if idle_count > 0 {
+            cpu_utilization = Some((1.0 - idle_total / idle_count as f64).clamp(0.0, 1.0));
         }
     }
     let cpu_cores = named("system.cpu.logical.count")
@@ -195,16 +196,22 @@ fn host_metrics(id: &str, rows: &[&InfraSeriesRow]) -> HostDto {
         .reduce(f64::max)
         .or_else(|| sum_some(named("system.memory.usage").map(|r| Some(r.last_value))));
 
-    let mut fs: BTreeMap<&str, (f64, f64)> = BTreeMap::new();
+    let mut fs: Vec<(&str, f64, f64)> = Vec::new();
     for r in named("system.filesystem.usage") {
         let mount = attr(r, "mountpoint").unwrap_or("");
-        let e = fs.entry(mount).or_default();
-        e.1 += r.last_value;
-        if attr(r, "state") == Some("used") {
-            e.0 += r.last_value;
+        if let Some((_, used, total)) = fs.iter_mut().find(|(path, _, _)| *path == mount) {
+            *total += r.last_value;
+            if attr(r, "state") == Some("used") {
+                *used += r.last_value;
+            }
+        } else {
+            let used = if attr(r, "state") == Some("used") { r.last_value } else { 0.0 };
+            fs.push((mount, used, r.last_value));
         }
     }
-    let disk = fs.get("/").copied().or_else(|| fs.values().copied().max_by(|a, b| a.1.total_cmp(&b.1)));
+    let disk = fs.iter().find(|(mount, _, _)| *mount == "/").map(|(_, used, total)| (*used, *total)).or_else(|| {
+        fs.iter().max_by(|a, b| a.2.total_cmp(&b.2).then_with(|| a.0.cmp(b.0))).map(|(_, used, total)| (*used, *total))
+    });
 
     let net = |direction: &str| {
         sum_some(
@@ -576,12 +583,17 @@ fn resolve<'a>(
         });
     }
     let unique = |pred: &dyn Fn(&Ctr<'_>) -> bool| -> Option<&'a Ctr<'a>> {
-        let pick = |cands: Vec<&'a Ctr<'a>>| (cands.len() == 1).then(|| cands[0]);
-        let local: Vec<&Ctr<'_>> = ctrs.iter().filter(|c| Some(c.host) == caller_host && pred(c)).collect();
-        if !local.is_empty() {
-            return pick(local);
+        let local: Vec<_> = ctrs.iter().filter(|c| Some(c.host) == caller_host && pred(c)).collect();
+        match local.as_slice() {
+            [only] => return Some(*only),
+            [] => {}
+            _ => return None,
         }
-        pick(ctrs.iter().filter(|c| pred(c)).collect())
+        let global: Vec<_> = ctrs.iter().filter(|c| pred(c)).collect();
+        match global.as_slice() {
+            [only] => Some(*only),
+            _ => None,
+        }
     };
     let rules: [(ResourceMatch, &CtrPredicate); 3] = [
         (ResourceMatch::ComposeService, &|c| c.service == address),
@@ -910,6 +922,35 @@ mod tests {
         assert_eq!(h.network_rx_bytes_per_sec, Some(100_000.0), "loopback excluded");
         assert_eq!(h.network_tx_bytes_per_sec, Some(50_000.0));
         assert_eq!(h.last_seen_ns, Some(T));
+    }
+
+    #[test]
+    fn host_metrics_count_distinct_cpus_and_keep_the_largest_non_root_mount() {
+        let rows = vec![
+            series("machine", "", "system.cpu.time", &[("cpu", "0"), ("state", "user")], 0.0, 1.0),
+            series("machine", "", "system.cpu.time", &[("cpu", "0"), ("state", "system")], 0.0, 1.0),
+            series("machine", "", "system.cpu.time", &[("cpu", "1"), ("state", "idle")], 0.0, 1.0),
+            series("machine", "", "system.filesystem.usage", &[("mountpoint", "/a"), ("state", "used")], 0.0, 10.0),
+            series("machine", "", "system.filesystem.usage", &[("mountpoint", "/a"), ("state", "free")], 0.0, 90.0),
+            series("machine", "", "system.filesystem.usage", &[("mountpoint", "/b"), ("state", "used")], 0.0, 20.0),
+            series("machine", "", "system.filesystem.usage", &[("mountpoint", "/b"), ("state", "free")], 0.0, 80.0),
+        ];
+        let host = &hosts_from_series(&rows)[0];
+        assert_eq!(host.cpu_cores, Some(2.0));
+        assert_eq!((host.disk_used_bytes, host.disk_total_bytes), (Some(20.0), Some(100.0)));
+    }
+
+    #[test]
+    fn equal_sized_non_root_mounts_keep_the_lexically_last_mount() {
+        let rows = vec![
+            series("machine", "", "system.filesystem.usage", &[("mountpoint", "/a"), ("state", "used")], 0.0, 5.0),
+            series("machine", "", "system.filesystem.usage", &[("mountpoint", "/a"), ("state", "free")], 0.0, 5.0),
+            series("machine", "", "system.filesystem.usage", &[("mountpoint", "/b"), ("state", "used")], 0.0, 4.0),
+            series("machine", "", "system.filesystem.usage", &[("mountpoint", "/b"), ("state", "free")], 0.0, 6.0),
+        ];
+
+        let host = &hosts_from_series(&rows)[0];
+        assert_eq!((host.disk_used_bytes, host.disk_total_bytes), (Some(4.0), Some(10.0)));
     }
 
     #[test]

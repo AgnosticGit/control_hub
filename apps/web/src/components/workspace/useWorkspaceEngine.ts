@@ -11,6 +11,7 @@ import { firstItemStart, playStart, replayStep } from "./timeline/range";
 import { clampRangeToNow, hasFuture, rangeCoveredBy } from "./timeline/scale";
 import { asLogSource, type LogSource } from "./logs-query";
 import { ENGINE_ROLLING_WINDOW_NS } from "./service-card-metrics";
+import { liveSignalTimeNs } from "./timeline/draw";
 
 export type Mode = "live" | "paused" | "replay" | "historical";
 export const SPEED_MIN = 0.001;
@@ -72,7 +73,6 @@ const LIVE_TICK_MS = 2000;
 const EVICT_EVERY_MS = 10_000;
 const TOPOLOGY_POLL_MS = 10_000;
 const OVERLAP_NS = 10n * NS_PER_SEC;
-const TIMELINE_LIMIT = "50000";
 const EVICT_ALL = 9223372036854775807n;
 
 export interface Completeness {
@@ -112,13 +112,15 @@ export interface EngineState {
   load: LoadInfo | null;
   loading: boolean;
   liveTransport: "off" | "connecting" | "websocket" | "stale";
+  timelineReveal: { from: bigint; to: bigint; startedAt: number } | null;
 }
 
 export function asCompleteness(v: unknown): Completeness | null {
   return v && typeof v === "object" && "processing_caught_up" in v ? (v as Completeness) : null;
 }
 
-export function useWorkspaceEngine(projectId: string, environmentId: string) {
+export function useWorkspaceEngine(projectId: string, environmentId: string, userId: string | null) {
+  const cacheScopeKey = userId ? `${userId}:${projectId}:${environmentId}` : "";
   const clientRef = useRef<EngineClient | null>(null);
   const infrastructureLayoutEnabledRef = useRef(false);
   const infrastructureFeedEnabledRef = useRef(false);
@@ -153,6 +155,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       load: null,
       loading: false,
       liveTransport: "off",
+      timelineReveal: null,
     };
   });
   // Mirrors `state` synchronously so callbacks (rAF loop, timers) never read a
@@ -178,6 +181,17 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     [projectId, environmentId],
   );
 
+  const loadTimelineRange = useCallback(
+    (client: EngineClient, from: bigint, to: bigint) => client.call({
+      kind: "loadTimeline",
+      scopeKey: cacheScopeKey,
+      fromNs: from.toString(),
+      toNs: to.toString(),
+      liveUrl: scopedUrl(projectId, environmentId, "live", infrastructureFeedQuery(infrastructureFeedEnabledRef.current)),
+    }),
+    [projectId, environmentId, cacheScopeKey],
+  );
+
   const refreshTopologyView = useCallback(async () => {
     const c = clientRef.current;
     if (!c) return;
@@ -187,7 +201,11 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
 
   const recordLoad = useCallback(
     (r: LoadResult) => {
+      const reveal = r.newItems && r.newItems > 0 && r.fromNs && r.toNs
+        ? { from: BigInt(r.fromNs), to: BigInt(r.toNs), startedAt: performance.now() }
+        : stateRef.current.timelineReveal;
       patch({
+        timelineReveal: reveal,
         load: {
           items: r.count,
           fetchMs: r.fetchMs,
@@ -201,6 +219,20 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     },
     [patch],
   );
+
+  const revealLiveSignals = useCallback((signals: LiveSignal[]) => {
+    const times = signals.map((signal) => liveSignalTimeNs(signal.record)).filter((value): value is bigint => value !== null);
+    if (!times.length) return;
+    const firstTime = times[0];
+    if (firstTime === undefined) return;
+    const now = performance.now();
+    const previous = stateRef.current.timelineReveal;
+    const merge = previous !== null && now - previous.startedAt < 420 && previous.to - previous.from <= 2n * NS_PER_SEC;
+    const margin = NS_PER_SEC / 2n;
+    const from = times.reduce((min, time) => time - margin < min ? time - margin : min, merge && previous ? previous.from : firstTime - margin);
+    const to = times.reduce((max, time) => time + margin > max ? time + margin : max, merge && previous ? previous.to : firstTime + margin);
+    patch({ timelineReveal: { from, to, startedAt: merge && previous ? previous.startedAt : now } });
+  }, [patch]);
 
   const loadRange = useCallback(
     async (from: bigint, to: bigint, opts: { reset: boolean; topology: boolean }) => {
@@ -221,7 +253,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
         if (opts.topology) {
           await c.call({ kind: "loadTopology", url: url("topology", from, to, { ...(stateRef.current.mode === "historical" ? {} : { live: "true" }),...(infrastructureLayoutEnabledRef.current ? {at:stateRef.current.cursor.toString()}: {}) }) });
         }
-        const r = await c.call({ kind: "loadTimeline", url: url("timeline", from, to, { limit: TIMELINE_LIMIT }) });
+        const r = await loadTimelineRange(c, from, to);
         loadedChunksRef.current.push({ from, to });
         recordLoad(r);
         if (opts.topology) await refreshTopologyView();
@@ -233,7 +265,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
         done();
       }
     },
-    [patch, url, recordLoad, refreshTopologyView],
+    [patch, url, recordLoad, refreshTopologyView, loadTimelineRange],
   );
 
   const loadTimelineChunk = useCallback(async (from: bigint, to: bigint) => {
@@ -259,7 +291,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
             ...(infrastructureLayoutEnabledRef.current ? { at: stateRef.current.cursor.toString() } : {}),
           }),
         });
-        const result = await c.call({ kind: "loadTimeline", url: url("timeline", boundedFrom, boundedTo, { limit: TIMELINE_LIMIT }) });
+        const result = await loadTimelineRange(c, boundedFrom, boundedTo);
         if (c !== clientRef.current) return;
         loadedChunksRef.current.push({ from: boundedFrom, to: boundedTo });
         recordLoad(result);
@@ -276,7 +308,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     })();
     chunkLoadsRef.current.set(key, task);
     return task;
-  }, [patch, recordLoad, refreshTopologyView, url]);
+  }, [patch, recordLoad, refreshTopologyView, loadTimelineRange, url]);
 
   const seek = useCallback(
     (t: bigint) => {
@@ -385,6 +417,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
           return;
         case "signal": {
           recentLiveSignals.current = [...recentLiveSignals.current, ...ev.signals].slice(-2000);
+          revealLiveSignals(ev.signals);
           for (const listener of liveSignalListeners.current) listener(ev.signals);
           const prev = stateRef.current.load;
           patch({
@@ -401,6 +434,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
           return;
         }
         case "batch": {
+          revealLiveSignals(ev.signals);
           if (ev.signals.length) {
             recentLiveSignals.current = [...recentLiveSignals.current, ...ev.signals].slice(-2000);
             for (const listener of liveSignalListeners.current) listener(ev.signals);
@@ -446,7 +480,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       }
     });
     patch({ liveTransport: "connecting" });
-    void c.call({ kind: "liveStart", url: scopedUrl(projectId, environmentId, "live", infrastructureFeedQuery(infrastructureFeedEnabledRef.current)) });
+    void c.call({ kind: "liveStart", url: scopedUrl(projectId, environmentId, "live", infrastructureFeedQuery(infrastructureFeedEnabledRef.current)), scopeKey: cacheScopeKey });
     const id = setInterval(() => void tick(), LIVE_TICK_MS);
     return () => {
       cancelled = true;
@@ -455,7 +489,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       void c.call({ kind: "liveStop" });
       patch({ liveTransport: "off" });
     };
-  }, [state.phase, state.mode, patch, projectId, environmentId]);
+  }, [state.phase, state.mode, patch, projectId, environmentId, cacheScopeKey, revealLiveSignals]);
 
   useEffect(() => {
     if (state.phase !== "ready") return;
@@ -478,7 +512,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
         try {
           await client.call({kind:"loadTopology",url:url("topology",rangeFrom,rangeTo,{...(stateRef.current.mode==="historical" ? {} : {live:"true"}),...(infrastructureLayoutEnabledRef.current ? {at:stateRef.current.cursor.toString()}: {})})});
           if(cancelled || client!==clientRef.current) return;
-          const result=await client.call({kind:"loadTimeline",url:url("timeline",rangeFrom,rangeTo,{limit:TIMELINE_LIMIT})});
+          const result=await loadTimelineRange(client,rangeFrom,rangeTo);
           if(!cancelled && client===clientRef.current) {
             recordLoad(result);
             client.seek(stateRef.current.cursor);
@@ -489,7 +523,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       })();
     },TOPOLOGY_POLL_MS);
     return ()=>{cancelled=true;clearInterval(timer);};
-  },[state.phase,state.mode,state.rangeFrom,state.rangeTo,url,recordLoad,patch]);
+  },[state.phase,state.mode,state.rangeFrom,state.rangeTo,url,recordLoad,patch,loadTimelineRange]);
 
   // Replay: advance the cursor at `speed` x real time; stop at the loaded end or loop the range.
   useEffect(() => {
@@ -612,7 +646,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
       infrastructureFeedEnabledRef.current = enabled;
       if (stateRef.current.mode === "live") {
         const client = clientRef.current;
-        if (client) void client.call({ kind: "liveStart", url: scopedUrl(projectId, environmentId, "live", infrastructureFeedQuery(enabled)) });
+        if (client) void client.call({ kind: "liveStart", url: scopedUrl(projectId, environmentId, "live", infrastructureFeedQuery(enabled)), scopeKey: cacheScopeKey });
       }
     },
     onLiveSignals: (listener: (signals: LiveSignal[]) => void) => {
@@ -665,7 +699,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string) {
     },
     };
     return a;
-  }, [seek, loadRange, loadTimelineChunk, patch, projectId, environmentId]);
+  }, [seek, loadRange, loadTimelineChunk, patch, projectId, environmentId, cacheScopeKey]);
 
   return { state, actions };
 }

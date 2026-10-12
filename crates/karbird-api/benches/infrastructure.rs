@@ -1,8 +1,9 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
-use karbird_api::routes::infrastructure::hosts_from_series;
-use karbird_storage::ch::InfraSeriesRow;
+use karbird_api::routes::infrastructure::{hosts_from_series, place_resources};
+use karbird_engine_core::InfrastructureSnapshot;
+use karbird_storage::ch::{InfraSeriesRow, ResourceAddressRow};
 
 fn series(hosts: usize) -> Vec<InfraSeriesRow> {
     (0..hosts)
@@ -143,11 +144,75 @@ fn realistic_series(hosts: usize) -> Vec<InfraSeriesRow> {
     rows
 }
 
+fn utilization_fallback_series(hosts: usize) -> Vec<InfraSeriesRow> {
+    let mut rows = Vec::with_capacity(hosts * 4);
+    for i in 0..hosts {
+        let host_id = format!("host-{i:04}");
+        for cpu in 0..4 {
+            let cpu_id = cpu.to_string();
+            rows.push(metric_series(
+                &host_id,
+                "",
+                "system.cpu.utilization",
+                &[("cpu", cpu_id.as_str()), ("state", "idle")],
+                0.0,
+                0.1,
+            ));
+        }
+    }
+    rows
+}
+
+fn resource_placement_fixture(hosts: usize) -> (InfrastructureSnapshot, Vec<InfraSeriesRow>, Vec<ResourceAddressRow>) {
+    let mut rows = realistic_series(hosts);
+    let mut addresses = Vec::with_capacity(hosts * 3);
+    for i in 0..hosts {
+        let host_id = format!("host-{i:04}");
+        let container_id = format!("postgres-{i:04}");
+        let mut db = metric_series(&host_id, &container_id, "container.cpu.usage.total", &[], 0.0, 1.0e9);
+        db.container_name = format!("postgres-{i:04}");
+        db.container_hostname = format!("postgres-{i:04}");
+        db.container_image = "postgres:16-alpine".into();
+        db.container_service = "db".into();
+        rows.push(db);
+
+        for _ in 0..3 {
+            addresses.push(ResourceAddressRow {
+                target_entity_id: format!("resource-{i:04}"),
+                target_name: "postgresql: primary".into(),
+                target_kind: "database".into(),
+                address: "db".into(),
+                port: "5432".into(),
+                caller_service_id: format!("orders-{i:04}"),
+                caller_host_name: format!("node-{host_id}"),
+                caller_host_id: host_id.clone(),
+                caller_container_id: format!("container-{i:04}"),
+                calls: 10,
+            });
+        }
+    }
+    let snapshot = InfrastructureSnapshot { hosts: hosts_from_series(&rows), ..InfrastructureSnapshot::default() };
+    (snapshot, rows, addresses)
+}
+
 fn api(c: &mut Criterion) {
     let rows = series(500);
     c.bench_function("api/group_500_hosts_and_containers", |b| b.iter(|| hosts_from_series(black_box(&rows))));
     let realistic = realistic_series(500);
     c.bench_function("api/group_500_hosts_realistic_metrics", |b| b.iter(|| hosts_from_series(black_box(&realistic))));
+    let utilization_fallback = utilization_fallback_series(500);
+    c.bench_function("api/group_500_hosts_cpu_utilization_fallback", |b| {
+        b.iter(|| hosts_from_series(black_box(&utilization_fallback)))
+    });
+
+    let (snapshot, placement_series, addresses) = resource_placement_fixture(200);
+    c.bench_function("api/place_200_resources_600_addresses", |b| {
+        b.iter_batched(
+            || snapshot.clone(),
+            |mut snapshot| place_resources(&mut snapshot, black_box(&placement_series), black_box(&addresses)),
+            criterion::BatchSize::SmallInput,
+        )
+    });
 }
 
 criterion_group!(benches, api);

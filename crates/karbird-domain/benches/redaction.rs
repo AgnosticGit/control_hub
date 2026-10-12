@@ -1,14 +1,24 @@
 #![allow(clippy::expect_used)]
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
-use karbird_domain::redaction::{classify_key, mask_bearer, sanitize_attribute};
+use karbird_domain::redaction::{classify_key, mask_bearer, sanitize_attribute, sanitize_attribute_in_place};
 use karbird_domain::{EnvironmentId, ProjectId, Scope, ServiceId, TenantId};
 
 fn domain(c: &mut Criterion) {
     let value = "https://api.example/orders/123?access_token=secret&customer=123#summary";
     c.bench_function("domain/redact_url_attribute", |b| {
         b.iter(|| sanitize_attribute(black_box("http.url"), black_box(value)))
+    });
+    c.bench_function("domain/sanitize_common_string_attribute", |b| {
+        b.iter(|| sanitize_attribute(black_box("http.request.method"), black_box("GET")))
+    });
+    c.bench_function("domain/sanitize_common_string_attribute_in_place", |b| {
+        b.iter_batched(
+            || "GET".to_owned(),
+            |mut value| sanitize_attribute_in_place(black_box("http.request.method"), &mut value),
+            BatchSize::SmallInput,
+        )
     });
     c.bench_function("domain/classify_header", |b| b.iter(|| classify_key(black_box("http.request.header.x-api-key"))));
     c.bench_function("domain/classify_common_attribute", |b| b.iter(|| classify_key(black_box("http.request.method"))));

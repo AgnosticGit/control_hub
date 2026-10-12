@@ -1,5 +1,11 @@
 import type { EdgeChange, InfrastructureSnapshot, LiveSignal } from "@karbird/web-engine";
 
+export type TimelineFrame =
+  | { type: "chunk"; requestId: string; sequence: number; fromNs: string; toNs: string }
+  | { type: "range_complete"; requestId: string; sequence: number; fromNs: string; toNs: string }
+  | { type: "complete"; requestId: string; truncated: boolean; completeness: unknown; logsSource?: string }
+  | { type: "error"; requestId: string; message: string };
+
 // Pure helpers of the engine Worker (no WASM, no `self`), kept separate so they can be unit tested.
 
 /** Refuse responses above this size instead of exhausting Worker memory. */
@@ -49,6 +55,100 @@ export function parseLiveHead(text: string): { type: string; resume: string | un
   const head = /^\{"type":"(\w+)"(?:,"resume":"(\d+)")?/.exec(text.slice(0, 128));
   if (!head || head[1] === undefined) return null;
   return { type: head[1], resume: head[2] };
+}
+
+/** Parse only the small protocol header; history item arrays remain raw for the WASM engine. */
+export function parseTimelineFrame(text: string): TimelineFrame | null {
+  const type = parseLiveHead(text)?.type;
+  if (type === "timeline_chunk") {
+    const marker = ',"items":[';
+    const at = text.indexOf(marker);
+    if (at < 0) return null;
+    try {
+      const head = JSON.parse(`${text.slice(0, at)}}`) as Record<string, unknown>;
+      const range = timelineRange(head.request_id, head.from_ns, head.to_ns);
+      if (!range || !Number.isSafeInteger(head.sequence) || (head.sequence as number) < 0 || !findJsonArrayEnd(text, at + marker.length - 1)) return null;
+      return { type: "chunk", requestId: range.requestId, fromNs: range.fromNs, toNs: range.toNs, sequence: head.sequence as number };
+    } catch {
+      return null;
+    }
+  }
+  try {
+    const value = JSON.parse(text) as Record<string, unknown>;
+    if (type === "timeline_range_complete") {
+      const range = timelineRange(value.request_id, value.from_ns, value.to_ns);
+      return range && Number.isSafeInteger(value.sequence) && (value.sequence as number) >= 0
+        ? { type: "range_complete", ...range, sequence: value.sequence as number }
+        : null;
+    }
+    if (type === "timeline_complete") {
+      const requestId = value.request_id;
+      if (typeof requestId !== "string" || requestId.length === 0 || requestId.length > 128 || typeof value.truncated !== "boolean") return null;
+      return {
+        type: "complete", requestId, truncated: value.truncated,
+        completeness: value.completeness ?? null,
+        ...(typeof value.logs_source === "string" ? { logsSource: value.logs_source } : {}),
+      };
+    }
+    if (type === "timeline_error" && typeof value.request_id === "string" && value.request_id.length > 0
+      && value.request_id.length <= 128 && typeof value.message === "string") {
+      return { type: "error", requestId: value.request_id, message: value.message };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Wrap a history chunk as the raw envelope expected by `WebEngine.applyBatch`. */
+export function timelineChunkEnvelope(text: string): string | null {
+  const marker = ',"items":[';
+  const at = text.indexOf(marker);
+  if (at < 0 || parseTimelineFrame(text)?.type !== "chunk") return null;
+  const start = at + marker.length - 1;
+  const end = findJsonArrayEnd(text, start);
+  return end === null ? null : `{"items":${text.slice(start, end + 1)}}`;
+}
+
+/** Extract the raw JSON item array for IndexedDB without building JS objects. */
+export function timelineChunkItemsJson(text: string): string | null {
+  const envelope = timelineChunkEnvelope(text);
+  return envelope?.startsWith('{"items":[') && envelope.endsWith("}")
+    ? envelope.slice('{"items":'.length, -1)
+    : null;
+}
+
+function timelineRange(requestId: unknown, fromNs: unknown, toNs: unknown) {
+  if (typeof requestId !== "string" || requestId.length === 0 || requestId.length > 128
+    || typeof fromNs !== "string" || !/^\d+$/.test(fromNs)
+    || typeof toNs !== "string" || !/^\d+$/.test(toNs)) return null;
+  try {
+    if (BigInt(fromNs) >= BigInt(toNs)) return null;
+    return { requestId, fromNs, toNs };
+  } catch {
+    return null;
+  }
+}
+
+/** Find the closing bracket while respecting quoted strings and escaped characters. */
+function findJsonArrayEnd(text: string, start: number): number | null {
+  if (text[start] !== "[") return null;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    else if (char === "[") depth++;
+    else if (char === "]" && --depth === 0) return i;
+  }
+  return null;
 }
 
 export function parseLiveSignals(text: string): LiveSignal[] {
