@@ -91,6 +91,8 @@ pub struct TimelineSummary {
     pub from_ns: String,
     /// Exclusive end, Unix epoch nanoseconds as a decimal string.
     pub to_ns: String,
+    /// Oldest retained timeline signal for this authorized scope, if any.
+    pub oldest_ns: Option<String>,
     pub buckets: u32,
     /// Width of one bucket in nanoseconds as a decimal string.
     pub bucket_ns: String,
@@ -124,7 +126,10 @@ pub async fn timeline_summary(
     let infrastructure =
         super::infra_timeline::build(&infra_geometry, &infra_rows, infra_rows.len() >= MAX_SUMMARY_ROWS as usize);
 
-    Ok(Json(build_summary(geometry, signals, error_logs, events, services, infrastructure.hosts)))
+    let oldest_ns = super::telemetry::earliest_timeline_time_ns(&state, &scope).await?.map(|time| time.to_string());
+    let mut summary = build_summary(geometry, signals, error_logs, events, services, infrastructure.hosts);
+    summary.oldest_ns = oldest_ns;
+    Ok(Json(summary))
 }
 
 fn build_summary(
@@ -180,6 +185,7 @@ fn build_summary(
     TimelineSummary {
         from_ns: geometry.from.to_string(),
         to_ns: geometry.to.to_string(),
+        oldest_ns: None,
         buckets: geometry.buckets,
         bucket_ns: geometry.bucket_ns.to_string(),
         signals: signal_buckets,

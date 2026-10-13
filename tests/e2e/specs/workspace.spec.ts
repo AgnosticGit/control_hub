@@ -192,11 +192,12 @@ test.describe("workspace on demo data", () => {
       );
     const missing = (all: Set<string>, now: Set<string>) => [...all].filter((i) => !now.has(i));
 
-    const systemMap = page.getByRole("main", { name: "System map" });
-    await systemMap.getByRole("button", { name: "Fit to screen" }).click();
+    await map.focus();
+    await map.press("0");
     const all = await drawnAfterFrames();
     expect(all.size).toBeGreaterThan(3);
-    for (let i = 0; i < 3; i++) await systemMap.getByRole("button", { name: "Zoom in" }).click();
+    await canvas.focus();
+    for (let i = 0; i < 3; i++) await page.keyboard.press("+");
     // Zoomed in, cards beyond the screen edge are still drawn.
     expect(missing(all, await drawnAfterFrames())).toEqual([]);
 
@@ -224,10 +225,10 @@ test.describe("workspace on demo data", () => {
     test.skip((await page.getByText(/WebGL is unavailable/).count()) > 0, "no WebGL in this browser");
     const map = page.getByRole("application", { name: /Service map/ });
     await expect(map).toHaveAttribute("data-drawn-nodes", /\d/);
-    const systemMap = page.getByRole("main", { name: "System map" });
-    await systemMap.getByRole("button", { name: "Fit to screen" }).click();
+    await map.focus();
+    await map.press("0");
     // Far past the minimum zoom; the old level of detail hid all names below 0.45×.
-    for (let i = 0; i < 15; i++) await systemMap.getByRole("button", { name: "Zoom out" }).click();
+    for (let i = 0; i < 15; i++) await page.keyboard.press("-");
     const ids = (attr: string | null) => (attr ?? "").split(",").filter(Boolean).sort().join(",");
     await expect
       .poll(async () => {
@@ -666,12 +667,12 @@ test.describe("workspace on demo data", () => {
     await expect(page.getByRole("region", { name: "Signals" }).getByLabel("Log records")).toBeVisible();
   });
 
-  test("live mode streams over WebSocket and survives pause and reload", async ({ page }) => {
+  test("live mode keeps streaming over WebSocket while paused and after reload", async ({ page }) => {
     const transport = page.getByLabel("Live transport");
     await expect(transport).toHaveText("Live: WebSocket");
     const timeline = page.getByLabel("Timeline");
     await timeline.getByRole("button", { name: "Pause live" }).click();
-    await expect(transport).toHaveCount(0);
+    await expect(transport).toHaveText("Live: WebSocket");
     await timeline.getByRole("button", { name: "Return to live" }).click();
     await expect(transport).toHaveText("Live: WebSocket");
 

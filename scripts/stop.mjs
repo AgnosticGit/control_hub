@@ -1,13 +1,21 @@
 #!/usr/bin/env node
-// Stop processes started by `just dev` / `just demo` that are still running, e.g. after the
-// terminal running them was closed. Only PIDs recorded by those scripts are touched.
-// Infrastructure containers are left alone (`just down` stops them).
+// Stop processes started by `just dev` / `just demo`. Docker state is unchanged.
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { stopGroup } from "./lib.mjs";
 
-let total = 0;
-for (const group of ["dev", "demo"]) {
-  const stopped = stopGroup(group);
-  total += stopped.length;
-  for (const e of stopped) console.error(`[stop] ${group}: ${e.name} (pid ${e.pid})`);
+const isMain = process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+
+export async function stopAll({ stopProcessGroup = stopGroup, log = console.error } = {}) {
+  let total = 0;
+  for (const group of ["dev", "demo"]) {
+    const stopped = stopProcessGroup(group);
+    total += stopped.length;
+    for (const entry of stopped) log(`[stop] ${group}: ${entry.name} (pid ${entry.pid})`);
+  }
+  log(total ? `[stop] stopped ${total} process(es)` : "[stop] no application processes were running");
+
+  return 0;
 }
-console.error(total ? `[stop] stopped ${total} process(es)` : "[stop] nothing running");
+
+if (isMain) process.exitCode = await stopAll();

@@ -7,9 +7,26 @@ export interface View {
   to: bigint;
 }
 
+export type TimelineStartBoundary = { status: "unknown" } | { status: "known"; oldestNs: bigint | null };
+
+/** Clamp leftward navigation only after the server confirms the history boundary. */
+export function timelineBounds(boundary: TimelineStartBoundary, latest: bigint): View {
+  const from = boundary.status === "unknown" ? 0n : boundary.oldestNs ?? latest - MAX_VIEW_NS;
+  return { from: from > latest ? latest : from, to: latest };
+}
+
 export interface VisibleRangeSegment {
   left: number;
   width: number;
+}
+
+/** Expand one contiguous loaded/requested window while preserving all prior coverage. */
+export function expandRange(previous: View | null, requested: View): View {
+  if (!previous) return { ...requested };
+  return {
+    from: previous.from < requested.from ? previous.from : requested.from,
+    to: previous.to > requested.to ? previous.to : requested.to,
+  };
 }
 
 /** Maps the part of a loading range visible in the current timeline view to pixels. */
@@ -21,12 +38,62 @@ export function visibleRangeSegment(range: View, view: View, width: number): Vis
   return { left, width: xOf(to, view, width) - left };
 }
 
+/** Merge loaded time intervals so adjacent live frames form one covered timeline. */
+export function mergeRanges(ranges: readonly View[], addition: View): View[] {
+  const sorted = [...ranges, addition].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+  const merged: View[] = [];
+  for (const range of sorted) {
+    const previous = merged[merged.length - 1];
+    if (!previous || range.from > previous.to) merged.push({ ...range });
+    else if (range.to > previous.to) merged[merged.length - 1] = { from: previous.from, to: range.to };
+  }
+  return merged;
+}
+
+/** Drop evicted coverage and clip a surviving interval at the engine's retention edge. */
+export function trimRangesBefore(ranges: readonly View[], cutoff: bigint): View[] {
+  return ranges.flatMap((range) => range.to <= cutoff ? [] : [{ from: range.from < cutoff ? cutoff : range.from, to: range.to }]);
+}
+
+/** In non-live modes, keep every interval the user has already loaded in the engine. */
+export function timelineEvictionFloor(
+  mode: "live" | "paused" | "replay" | "historical",
+  rangeFrom: bigint,
+  rollingFrom: bigint,
+  loaded: readonly View[],
+): bigint {
+  if (mode === "live") return rollingFrom;
+  let floor = rangeFrom < rollingFrom ? rangeFrom : rollingFrom;
+  for (const range of loaded) if (range.from < floor) floor = range.from;
+  return floor;
+}
+
+/** Keep a point request indicator local to the selected time, even when its fetch is a large chunk. */
+export function pointLoadingRange(time: bigint, bounds: View, radius = 2n * SEC): View {
+  const from = time - radius < bounds.from ? bounds.from : time - radius;
+  const to = time + radius > bounds.to ? bounds.to : time + radius;
+  return to > from ? { from, to } : { from: bounds.from, to: bounds.to };
+}
+
 const US = 1_000n;
 const MS = 1_000_000n;
 const SEC = 1_000_000_000n;
+const LIVE_SUMMARY_STEP_NS = 10n * SEC;
 const MIN = 60n * SEC;
 const HOUR = 60n * MIN;
 const DAY = 24n * HOUR;
+
+/** Stable, 10-second-aligned summary bounds prevent a new live query on every cursor tick. */
+export function liveSummaryWindow(view: View): View {
+  const floorToStep = (value: bigint) => {
+    const remainder = value % LIVE_SUMMARY_STEP_NS;
+    return remainder < 0n ? value - remainder - LIVE_SUMMARY_STEP_NS : value - remainder;
+  };
+  const from = floorToStep(view.from);
+  const toFloor = floorToStep(view.to);
+  const to = toFloor === view.to ? view.to : toFloor + LIVE_SUMMARY_STEP_NS;
+  return { from, to };
+}
 
 /** Opening live view: one hour of summarized history, while the engine keeps its smaller raw window. */
 export const DEFAULT_LIVE_VIEW_NS = HOUR;

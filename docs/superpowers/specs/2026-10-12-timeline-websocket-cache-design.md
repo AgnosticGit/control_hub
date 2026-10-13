@@ -33,7 +33,7 @@ Use an explicit IndexedDB version for the timeline cache. On a version mismatch,
 
 ### Timeline appearance
 
-When a historical interval is applied, the canvas briefly animates only the newly loaded time region with a restrained opacity/glow reveal. Existing signals, cursor, and ruler remain stable; repeated seeks and ordinary canvas redraws do not replay the effect. Live signals use the same visual treatment in bounded short windows. `prefers-reduced-motion` switches to a static accent, and animation state is cleared after completion or cancellation.
+When a historical interval is applied, the canvas briefly animates only the newly loaded time region with a restrained opacity/glow reveal. Existing signals, cursor, and ruler remain stable; repeated seeks and ordinary canvas redraws do not replay the effect. Continuous live signals render directly without per-batch fades, so high-frequency updates do not make the live edge pulse. `prefers-reduced-motion` switches to a static accent, and animation state is cleared after completion or cancellation.
 
 ### Reliability and resource bounds
 

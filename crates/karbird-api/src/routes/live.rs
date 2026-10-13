@@ -123,6 +123,7 @@ enum ServerMessage<'a> {
         truncated: bool,
         completeness: &'a super::telemetry::Completeness,
         logs_source: super::telemetry::LogSource,
+        oldest_ns: Option<String>,
     },
     TimelineError {
         request_id: &'a str,
@@ -154,6 +155,7 @@ enum HistoryOutput {
         truncated: bool,
         completeness: super::telemetry::Completeness,
         logs_source: super::telemetry::LogSource,
+        oldest_ns: Option<String>,
     },
     Error {
         request_id: String,
@@ -473,12 +475,23 @@ async fn stream_timeline_history(
                 return;
             }
         };
+    let oldest_ns = match super::telemetry::earliest_timeline_time_ns(&state, &scope).await {
+        Ok(value) => value.map(|time| time.to_string()),
+        Err(error) => {
+            tracing::warn!(%error, request_id = %load.request_id, "timeline oldest boundary query failed");
+            let _ = output
+                .send(HistoryOutput::Error { request_id: load.request_id, message: "timeline boundary unavailable" })
+                .await;
+            return;
+        }
+    };
     let _ = output
         .send(HistoryOutput::Complete {
             request_id: load.request_id,
             truncated,
             completeness,
             logs_source: logs_source.unwrap_or(super::telemetry::LogSource::Hot),
+            oldest_ns,
         })
         .await;
 }
@@ -789,8 +802,8 @@ async fn run(socket: WebSocket, state: AppState, scope: Scope, mut cursor: i64, 
                         history_acks.insert((request_id.clone(), sequence), ack);
                         send(&mut tx, &ServerMessage::TimelineRangeComplete { request_id: &request_id, sequence, from_ns: from_ns.to_string(), to_ns: to_ns.to_string() }).await
                     }
-                    HistoryOutput::Complete { request_id, truncated, completeness, logs_source } => {
-                        let result = send(&mut tx, &ServerMessage::TimelineComplete { request_id: &request_id, truncated, completeness: &completeness, logs_source }).await;
+                    HistoryOutput::Complete { request_id, truncated, completeness, logs_source, oldest_ns } => {
+                        let result = send(&mut tx, &ServerMessage::TimelineComplete { request_id: &request_id, truncated, completeness: &completeness, logs_source, oldest_ns }).await;
                         if history_task.as_ref().is_some_and(|(active, _)| active == &request_id) { history_task = None; }
                         result
                     }
@@ -961,6 +974,23 @@ mod tests {
             complete,
             r#"{"type":"timeline_range_complete","request_id":"load-1","sequence":8,"from_ns":"100","to_ns":"200"}"#
         );
+
+        let final_frame = serde_json::to_string(&ServerMessage::TimelineComplete {
+            request_id: "load-1",
+            truncated: false,
+            completeness: &super::super::telemetry::Completeness {
+                watermark_ns: None,
+                processing_caught_up: true,
+                unresolved_processing_errors: 0,
+                truncated: false,
+                sampling: "none".into(),
+                notes: vec![],
+            },
+            logs_source: super::super::telemetry::LogSource::Hot,
+            oldest_ns: Some("100".into()),
+        })
+        .unwrap();
+        assert!(final_frame.contains(r#""oldest_ns":"100""#), "{final_frame}");
     }
 
     #[tokio::test]

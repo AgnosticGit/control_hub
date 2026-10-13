@@ -135,6 +135,19 @@ describe("fan-out into targets far below", () => {
 });
 
 describe("routeEdges", () => {
+  it.each(EDGE_STYLES)("%s reroutes a Catalog link around an intervening Orders card", (style) => {
+    const sameColumn: RouteNode[] = [
+      { index: 0, x: 0, y: 0 }, // Orders
+      { index: 1, x: 100, y: 0 }, // intervening service
+      { index: 2, x: 200, y: 0 }, // Catalog
+    ];
+    const compact = { hw: 20, hh: 12, portSpan: 20 };
+    const path = routeEdges(style, sameColumn, [{ index: 7, source: 2, target: 0, points: [] }], compact).get(7);
+
+    expect(path).toBeDefined();
+    expect(pathAvoidsCard(path?.pts ?? [], 1, sameColumn, compact)).toBe(true);
+  });
+
   it("routes between compact and expanded card bounds independently", () => {
     const compact = { hw: CARD_W / 2 + 4, hh: CARD_H / 2 + 4, portSpan: CARD_H - 12 };
     const expanded = routeBoxForCard(EXPANDED_CARD_SIZE);
@@ -201,3 +214,32 @@ describe("routeEdges", () => {
     expect(back.get(9)?.length).toBeGreaterThan(0);
   });
 });
+
+function pathAvoidsCard(points: number[], obstacle: number, nodes: RouteNode[], box: { hw: number; hh: number }): boolean {
+  const card = nodes.find((node) => node.index === obstacle);
+  if (!card) return false;
+  for (let i = 0; i + 3 < points.length; i += 2) {
+    const x0 = points[i] ?? 0;
+    const y0 = points[i + 1] ?? 0;
+    const x1 = points[i + 2] ?? 0;
+    const y1 = points[i + 3] ?? 0;
+    let t0 = 0;
+    let t1 = 1;
+    let possible = true;
+    const clips: Array<[number, number]> = [
+      [-(x1 - x0), x0 - (card.x - box.hw)],
+      [x1 - x0, card.x + box.hw - x0],
+      [-(y1 - y0), y0 - (card.y - box.hh)],
+      [y1 - y0, card.y + box.hh - y0],
+    ];
+    for (const [p, q] of clips) {
+      if (p === 0) { if (q <= 0) { possible = false; break; } continue; }
+      const t = q / p;
+      if (p < 0) t0 = Math.max(t0, t);
+      else t1 = Math.min(t1, t);
+      if (t0 >= t1) { possible = false; break; }
+    }
+    if (possible && t0 < t1 && t1 > 0 && t0 < 1) return false;
+  }
+  return true;
+}

@@ -13,7 +13,8 @@ export interface TimelineRange { fromNs: string; toNs: string }
 interface CachedRange extends TimelineRange { id: string; scopeKey: string; fromSort: string; touchedAt: number; bytes: number }
 interface CachedChunk extends TimelineRange { id: string; scopeKey: string; rangeId: string; fromSort: string; sequence: number; itemsJson: string; bytes: number; touchedAt: number }
 interface CacheMeta { id: "size"; bytes: number }
-export interface CachedTimeline { chunks: Array<{ itemsJson: string }>; covered: TimelineRange[] }
+interface CachedBoundary { id: string; oldestNs: string | null }
+export interface CachedTimeline { chunks: Array<{ itemsJson: string }>; covered: TimelineRange[]; oldestNs?: string | null }
 
 export function missingTimelineRanges(from: bigint, to: bigint, coverage: readonly TimelineRange[]): TimelineRange[] {
   const ranges = coverage
@@ -83,21 +84,25 @@ function rangeId(scopeKey: string, fromNs: string, toNs: string): string {
   return `${scopeKey}|${fromNs}|${toNs}`;
 }
 
+function boundaryId(scopeKey: string): string { return `oldest|${scopeKey}`; }
+
 function sortNs(value: string): string { return value.padStart(20, "0"); }
 
 export class TimelineCache {
   constructor(private readonly db: IDBDatabase, private readonly maxBytes = TIMELINE_CACHE_LIMIT_BYTES) {}
 
   async read(scopeKey: string, fromNs: string, toNs: string): Promise<CachedTimeline> {
-    const tx = this.db.transaction([CHUNKS, RANGES], "readwrite");
+    const tx = this.db.transaction([CHUNKS, RANGES, META], "readwrite");
     const chunksStore = tx.objectStore(CHUNKS);
     const rangesStore = tx.objectStore(RANGES);
+    const metaStore = tx.objectStore(META);
     const from = BigInt(fromNs);
     const to = BigInt(toNs);
     const keyRange = IDBKeyRange.bound([scopeKey, "0"], [scopeKey, sortNs(toNs)], false, true);
-    const [candidateChunks, candidateRanges] = await Promise.all([
+    const [candidateChunks, candidateRanges, boundary] = await Promise.all([
       request(chunksStore.index("scopeFrom").getAll(keyRange)) as Promise<CachedChunk[]>,
       request(rangesStore.index("scopeFrom").getAll(keyRange)) as Promise<CachedRange[]>,
+      request(metaStore.get(boundaryId(scopeKey))) as Promise<CachedBoundary | undefined>,
     ]);
     const matches = (range: TimelineRange) => BigInt(range.fromNs) < to && BigInt(range.toNs) > from;
     const chunks = candidateChunks.filter(matches).sort((a, b) => BigInt(a.fromNs) < BigInt(b.fromNs) ? -1 : BigInt(a.fromNs) > BigInt(b.fromNs) ? 1 : a.sequence - b.sequence);
@@ -106,7 +111,8 @@ export class TimelineCache {
     for (const range of covered) rangesStore.put({ ...range, touchedAt });
     for (const chunk of chunks) chunksStore.put({ ...chunk, touchedAt });
     await done(tx);
-    return { chunks: chunks.map(({ itemsJson }) => ({ itemsJson })), covered };
+    const oldestNs = boundary && (boundary.oldestNs === null || /^\d+$/.test(boundary.oldestNs)) ? boundary.oldestNs : undefined;
+    return { chunks: chunks.map(({ itemsJson }) => ({ itemsJson })), covered, ...(oldestNs === undefined ? {} : { oldestNs }) };
   }
 
   async putChunk(scopeKey: string, fromNs: string, toNs: string, sequence: number, itemsJson: string): Promise<boolean> {
@@ -135,6 +141,12 @@ export class TimelineCache {
     await done(tx);
   }
 
+  async markOldest(scopeKey: string, oldestNs: string | null): Promise<void> {
+    const tx = this.db.transaction(META, "readwrite");
+    tx.objectStore(META).put({ id: boundaryId(scopeKey), oldestNs } satisfies CachedBoundary);
+    await done(tx);
+  }
+
   async clearScope(scopeKey: string): Promise<void> {
     const chunksTx = this.db.transaction(CHUNKS, "readonly");
     const rangesTx = this.db.transaction(RANGES, "readonly");
@@ -146,6 +158,7 @@ export class TimelineCache {
     const tx = this.db.transaction([CHUNKS, RANGES, META], "readwrite");
     for (const chunk of removeChunks) tx.objectStore(CHUNKS).delete(chunk.id);
     for (const range of removeRanges) tx.objectStore(RANGES).delete(range.id);
+    tx.objectStore(META).delete(boundaryId(scopeKey));
     await this.adjustSize(tx, -removeChunks.reduce((sum, chunk) => sum + chunk.bytes, 0));
     await done(tx);
   }

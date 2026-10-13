@@ -7,6 +7,7 @@
 // orchestrator (`scripts/demo-control.mjs`) restarts, scales and releases the services for the
 // executor's demo actions.
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { CONTROL_PORT, createDemoControl, listenControl } from "./demo-control.mjs";
 import { CATALOG_PORTS, PORTS, demoPlacement } from "./demo-placement.mjs";
 import { assertNotRunning, compose, loadEnvFile, root, supervise } from "./lib.mjs";
@@ -100,6 +101,27 @@ const control = createDemoControl({
   scalable: { catalog: { replicas: catalogReplicas, router: "gateway" } },
   releases: { orders: { instance: "orders", versions: ["0.1.0", "0.2.0"], version: base.KARBIRD_SERVICE_VERSION } },
   log: (msg) => console.error(`[demo-control] ${msg}`),
+  onRelease: async (change) => {
+    const endpoint = demo.KARBIRD_OTLP_ENDPOINT.replace(/\/$/, "");
+    const response = await fetch(`${endpoint}/api/v1/events/batch`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${demo.KARBIRD_INGEST_TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ events: [{
+        event_id: randomUUID(),
+        event_type: "deployment.finished",
+        service: { name: change.service, namespace: "demo" },
+        event_time: (BigInt(Date.now()) * 1_000_000n).toString(),
+        attributes: {
+          "service.version": change.to_version,
+          "deployment.from_version": change.from_version,
+          "deployment.kind": change.kind,
+        },
+      }] }),
+    });
+    if (!response.ok) throw new Error(`ingest returned ${response.status}`);
+    const receipt = await response.json();
+    if (receipt.accepted !== 1) throw new Error("ingest did not accept the deployment event");
+  },
 });
 const controlPort = Number(process.env.DEMO_CONTROL_PORT ?? CONTROL_PORT);
 try {

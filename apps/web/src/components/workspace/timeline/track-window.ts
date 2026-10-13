@@ -5,6 +5,11 @@ export interface StableTrackWindow extends View {
   bucketNs: bigint;
 }
 
+/** Cache each stable timeline window independently so panning back can reuse its tracks. */
+export function timelineTrackQueryKey(cacheScope: string, window: StableTrackWindow, clipCap: number) {
+  return ["timeline-tracks", cacheScope, window.from.toString(), window.to.toString(), window.buckets, clipCap] as const;
+}
+
 function ceilDiv(value: bigint, divisor: bigint): bigint {
   return value <= 0n ? 0n : (value + divisor - 1n) / divisor;
 }

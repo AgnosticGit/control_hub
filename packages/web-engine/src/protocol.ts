@@ -68,7 +68,7 @@ export type LiveEvent =
 export type TimelineHistoryFrame =
   | { type: "chunk"; requestId: string; sequence: number; fromNs: string; toNs: string }
   | { type: "range_complete"; requestId: string; sequence: number; fromNs: string; toNs: string }
-  | { type: "complete"; requestId: string; truncated: boolean; completeness: unknown; logsSource?: string }
+  | { type: "complete"; requestId: string; truncated: boolean; completeness: unknown; logsSource?: string; oldestNs?: string | null }
   | { type: "error"; requestId: string; message: string };
 
 export interface EdgeChange {
@@ -111,6 +111,8 @@ export interface LoadResult {
   toNs?: string;
   /** Timeline only: where the log items came from (`hot`, `archive`, `mixed`). */
   logsSource?: string;
+  /** Oldest retained timeline timestamp; null confirms this scope has no timeline data. */
+  oldestNs?: string | null;
   /** Timeline items received from the network during this request (not cache replays). */
   newItems?: number;
 }

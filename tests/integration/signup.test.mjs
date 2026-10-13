@@ -52,7 +52,7 @@ test('the first-run wizard creates an owner of a fresh, non-demo project and sig
   assert.equal(project.name, 'Shop backend');
   assert.equal(project.role, 'owner');
   assert.equal(project.role_name, 'Owner');
-  assert.equal(project.permissions.length, 10, `all permissions: ${project.permissions}`);
+  assert.equal(project.permissions.length, 11, `all permissions: ${project.permissions}`);
   assert.match(project.id, /^p-[0-9a-f]{32}$/);
   assert.match(project.tenant_id, /^t-[0-9a-f]{32}$/);
   assert.deepEqual([env.name, env.is_demo], ['production', false]);

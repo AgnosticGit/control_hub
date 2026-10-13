@@ -51,6 +51,7 @@ pub trait PermissionKind: Copy + Ord + Debug + 'static {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Permission {
     TelemetryView,
+    IncidentsManage,
     TokensView,
     TokensManage,
     ActionsView,
@@ -65,8 +66,9 @@ pub enum Permission {
 pub type PermissionSet = BTreeSet<Permission>;
 
 impl Permission {
-    pub const ALL: [Permission; 10] = [
+    pub const ALL: [Permission; 11] = [
         Permission::TelemetryView,
+        Permission::IncidentsManage,
         Permission::TokensView,
         Permission::TokensManage,
         Permission::ActionsView,
@@ -81,6 +83,7 @@ impl Permission {
     pub fn as_str(self) -> &'static str {
         match self {
             Permission::TelemetryView => "telemetry.view",
+            Permission::IncidentsManage => "incidents.manage",
             Permission::TokensView => "tokens.view",
             Permission::TokensManage => "tokens.manage",
             Permission::ActionsView => "actions.view",
@@ -96,6 +99,7 @@ impl Permission {
     pub fn label(self) -> &'static str {
         match self {
             Permission::TelemetryView => "View map, timeline, traces and logs",
+            Permission::IncidentsManage => "Create rules and acknowledge incidents",
             Permission::TokensView => "View tokens",
             Permission::TokensManage => "Create, rotate and revoke tokens",
             Permission::ActionsView => "View action plans",
@@ -110,7 +114,7 @@ impl Permission {
 
     pub fn group(self) -> &'static str {
         match self {
-            Permission::TelemetryView => "Telemetry",
+            Permission::TelemetryView | Permission::IncidentsManage => "Telemetry",
             Permission::TokensView | Permission::TokensManage => "Tokens",
             Permission::ActionsView | Permission::ActionsPropose | Permission::ActionsApprove => "Actions",
             Permission::MembersView | Permission::MembersManage | Permission::RolesManage => "Team",
@@ -122,6 +126,7 @@ impl Permission {
     fn implies(self) -> Option<Permission> {
         match self {
             Permission::TokensManage => Some(Permission::TokensView),
+            Permission::IncidentsManage => Some(Permission::TelemetryView),
             Permission::ActionsPropose | Permission::ActionsApprove => Some(Permission::ActionsView),
             Permission::MembersManage | Permission::RolesManage => Some(Permission::MembersView),
             _ => None,
@@ -219,7 +224,9 @@ impl Builtin {
         use Permission::*;
         match self {
             Builtin::Owner | Builtin::Admin => Permission::ALL.into_iter().collect(),
-            Builtin::Operator => [TelemetryView, TokensView, ActionsView, ActionsPropose, MembersView].into(),
+            Builtin::Operator => {
+                [TelemetryView, IncidentsManage, TokensView, ActionsView, ActionsPropose, MembersView].into()
+            }
             Builtin::Viewer => [TelemetryView, ActionsView, MembersView].into(),
         }
     }
@@ -414,7 +421,7 @@ mod tests {
         assert_eq!(Builtin::Admin.permissions(), Builtin::Owner.permissions());
         assert_eq!(
             Builtin::Operator.permissions(),
-            set(&[TelemetryView, TokensView, ActionsView, ActionsPropose, MembersView])
+            set(&[TelemetryView, IncidentsManage, TokensView, ActionsView, ActionsPropose, MembersView])
         );
         assert_eq!(Builtin::Viewer.permissions(), set(&[TelemetryView, ActionsView, MembersView]));
         for b in Builtin::ALL {
@@ -426,7 +433,7 @@ mod tests {
 
     #[test]
     fn builtin_roles_in_the_migration_match_the_code() {
-        let sql = include_str!("../../../infra/migrations/postgres/0004_roles.sql");
+        let sql = include_str!("../../../infra/migrations/postgres/0015_incidents.sql");
         for b in Builtin::ALL {
             let name = format!("{}{}", b.key()[..1].to_ascii_uppercase(), &b.key()[1..]);
             let start = sql.find(&format!("'{name}', ARRAY[")).unwrap_or_else(|| panic!("{name} missing"));

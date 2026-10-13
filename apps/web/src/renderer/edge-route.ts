@@ -11,6 +11,7 @@
 // Edges that do not go left to right (cycles, same column) fall back to `edgePath`.
 
 import { build, edgePath, rounded, type CardBox, type EdgePath, type EdgeStyle } from "./edge-path";
+import { routeBetweenCards, type EdgeObstacle } from "./replica-edge-paths";
 
 export interface RouteNode {
   index: number;
@@ -108,6 +109,7 @@ export function routeEdges(
   }), { hw: 0, hh: 0, portSpan: 0 });
   const boxAt = (node: number) => boxes.get(node) ?? maxBox;
   const out = new Map<number, EdgePath>();
+  const obstacles: EdgeObstacle[] = nodes.map((node) => ({ node: node.index, x: node.x, y: node.y, box: boxAt(node.index) }));
 
   // Stations of each forward edge: centre of the source, corridor points, centre of the target.
   const forward: Array<{ e: RouteEdge; stations: Array<[number, number]> }> = [];
@@ -120,7 +122,10 @@ export function routeEdges(
     if (t.x <= s.x) {
       const points=[s.x+sourceBox.hw,s.y,...e.points.flatMap(([x,y])=>[x,y]),t.x-targetBox.hw,t.y];
       const p = e.points.length>0 ? build(style==="orthogonal" ? points : rounded(points,12)) : edgePath(style, s.x, s.y, t.x, t.y, sourceBox, targetBox);
-      if (p) out.set(e.index, p);
+      const safe = p && pathHitsOtherCards(p, e.source, e.target, obstacles)
+        ? routeBetweenCards({ node: s.index, x: s.x, y: s.y }, sourceBox, { node: t.index, x: t.x, y: t.y }, targetBox, obstacles, style)
+        : p;
+      if (safe) out.set(e.index, safe);
       continue;
     }
     forward.push({ e, stations: [[s.x, s.y], ...e.points.map(([x, y]): [number, number] => [x, y]), [t.x, t.y]] });
@@ -251,9 +256,49 @@ export function routeEdges(
       });
       pts.push(...rounded(dedupe(corners), style === "metro" ? 10 : 12));
     }
-    out.set(e.index, build(pts));
+    const path = build(pts);
+    const source = pos.get(e.source);
+    const target = pos.get(e.target);
+    if (!source || !target) continue;
+    const safe = pathHitsOtherCards(path, e.source, e.target, obstacles)
+      ? routeBetweenCards({ node: source.index, x: source.x, y: source.y }, boxAt(e.source), { node: target.index, x: target.x, y: target.y }, boxAt(e.target), obstacles, style)
+      : path;
+    if (safe) out.set(e.index, safe);
   }
   return out;
+}
+
+function pathHitsOtherCards(path: EdgePath, source: number, target: number, obstacles: readonly EdgeObstacle[]): boolean {
+  for (let i = 0; i + 3 < path.pts.length; i += 2) {
+    const a = { x: path.pts[i] ?? 0, y: path.pts[i + 1] ?? 0 };
+    const b = { x: path.pts[i + 2] ?? 0, y: path.pts[i + 3] ?? 0 };
+    for (const card of obstacles) {
+      if (card.node === source || card.node === target) continue;
+      if (segmentCrossesCard(a, b, card)) return true;
+    }
+  }
+  return false;
+}
+
+function segmentCrossesCard(a: { x: number; y: number }, b: { x: number; y: number }, card: EdgeObstacle): boolean {
+  const left = card.x - card.box.hw;
+  const right = card.x + card.box.hw;
+  const top = card.y - card.box.hh;
+  const bottom = card.y + card.box.hh;
+  let t0 = 0;
+  let t1 = 1;
+  const clips: Array<[number, number]> = [
+    [-(b.x - a.x), a.x - left], [b.x - a.x, right - a.x],
+    [-(b.y - a.y), a.y - top], [b.y - a.y, bottom - a.y],
+  ];
+  for (const [p, q] of clips) {
+    if (p === 0) { if (q <= 0) return false; continue; }
+    const t = q / p;
+    if (p < 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+    if (t0 >= t1) return false;
+  }
+  return t0 < t1 && t1 > 0 && t0 < 1;
 }
 
 /** S-curve with horizontal tangents from (x0, y0) to (x1, y1), end points excluded. */

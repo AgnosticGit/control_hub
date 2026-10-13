@@ -757,7 +757,7 @@ pub async fn trace_detail(
     };
     let (logs, events) = tokio::try_join!(
         state.ch.logs(&scope, &log_query),
-        state.ch.events(&scope, from, to, Some(trace_id.as_str()), 1_000),
+        state.ch.events(&scope, from, to, Some(trace_id.as_str()), None, 1_000),
     )?;
     let missing = missing_parents(&spans);
     let span_dtos = spans.into_iter().take(SPAN_LIMIT as usize).map(span_dto).collect();
@@ -967,6 +967,8 @@ pub struct EventParams {
     pub from: Option<String>,
     pub to: Option<String>,
     pub trace_id: Option<String>,
+    /// Exact event type, for example `deployment.finished`.
+    pub event_type: Option<String>,
     pub limit: Option<u32>,
 }
 
@@ -988,7 +990,7 @@ pub async fn events(
     let (scope, _) = authorize(&state, &user, &project_id, &environment_id, Permission::TelemetryView).await?;
     let r = resolve_range(q.from.as_deref(), q.to.as_deref(), MAX_RANGE_NS)?;
     let limit = limit(q.limit, 200, 1_000);
-    let rows = state.ch.events(&scope, r.from, r.to, q.trace_id.as_deref(), limit + 1).await?;
+    let rows = state.ch.events(&scope, r.from, r.to, q.trace_id.as_deref(), q.event_type.as_deref(), limit + 1).await?;
     let truncated = rows.len() > limit as usize;
     Ok(Json(EventListResponse {
         events: rows.into_iter().take(limit as usize).map(event_dto).collect(),
@@ -1013,6 +1015,8 @@ pub struct TimelineResponse {
     pub items: Vec<TimelineItem>,
     pub from_ns: String,
     pub to_ns: String,
+    /// Oldest retained timeline signal for this authorized scope, if any.
+    pub oldest_ns: Option<String>,
     /// Per-signal truncation: when true, the range holds more items than returned.
     pub spans_truncated: bool,
     pub logs_truncated: bool,
@@ -1156,16 +1160,25 @@ pub(crate) async fn timeline_for_scope(
         r.from,
     )
     .await?;
+    let oldest_ns = earliest_timeline_time_ns(state, scope).await?.map(ns);
     Ok(TimelineResponse {
         items: data.items,
         from_ns: ns(r.from),
         to_ns: ns(r.to),
+        oldest_ns,
         spans_truncated: data.spans_truncated,
         logs_truncated: data.logs_truncated,
         events_truncated: data.events_truncated,
         logs_source: data.logs_source,
         completeness,
     })
+}
+
+/// Oldest retained signal across hot telemetry, infrastructure metrics, and archived logs.
+pub(crate) async fn earliest_timeline_time_ns(state: &AppState, scope: &Scope) -> ApiResult<Option<i64>> {
+    let (hot, archive) =
+        tokio::try_join!(state.ch.earliest_timeline_time(scope), state.pg.earliest_archive_log_time(scope),)?;
+    Ok([hot, archive].into_iter().flatten().min())
 }
 
 pub(crate) async fn timeline_completeness_for_scope(
@@ -1199,7 +1212,7 @@ pub(crate) async fn timeline_data_for_scope(
     let (spans, (logs, logs_source, archive_capped), events) = tokio::try_join!(
         async { Ok::<_, ApiError>(state.ch.timeline_spans(scope, r.from, r.to, limit + 1).await?) },
         timeline_logs(state, scope, r, cutoff, limit + 1),
-        async { Ok(state.ch.events(scope, r.from, r.to, None, limit + 1).await?) },
+        async { Ok(state.ch.events(scope, r.from, r.to, None, None, limit + 1).await?) },
     )?;
     let (items, st, lt, et) = timeline_items(spans, logs, events, limit, &external_clients_id(scope));
     let lt = lt || archive_capped;
@@ -1688,6 +1701,7 @@ mod tests {
             items: vec![],
             from_ns: "1".into(),
             to_ns: "2".into(),
+            oldest_ns: None,
             spans_truncated: false,
             logs_truncated: false,
             events_truncated: false,
@@ -1697,6 +1711,7 @@ mod tests {
         let text = serde_json::to_string(&r).unwrap();
         // The Worker reads the tail after `items` without parsing the item array.
         assert!(text.starts_with(r#"{"items":[],"from_ns":"1""#), "{text}");
+        assert!(text.contains(r#""oldest_ns":null"#), "{text}");
         assert!(text.contains(r#""logs_source":"mixed""#), "{text}");
     }
 

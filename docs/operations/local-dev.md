@@ -43,12 +43,21 @@ Postgres, ClickHouse or Kafka. See ADR-0006.
 
 ```
 just bootstrap   # idempotent
-just dev         # Ctrl+C stops everything
+just dev         # Ctrl+C stops application processes; infrastructure stays running
 just demo
-just stop        # stop leftovers of `just dev`/`just demo` (e.g. after closing their terminal)
-just down        # stop containers, keep data
+just stop        # stop dev/demo processes; Docker state is unchanged
+just down        # stop and remove Docker containers; keep data volumes
 just reset       # asks for confirmation, then deletes volumes (all local telemetry and metadata)
 ```
+
+Start the local infrastructure after `just down` with:
+
+```powershell
+docker compose --env-file .karbird/infra.env -f infra/compose/compose.yaml up -d --wait --wait-timeout 240
+```
+
+Add `--profile demo` before `up` when you also need the Compose `demo` profile. `just bootstrap`
+also starts infrastructure as part of local setup, then applies migrations and seeds the stand.
 
 ## Changing retention
 

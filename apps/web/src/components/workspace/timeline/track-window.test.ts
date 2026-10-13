@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stableTrackWindow } from "./track-window";
+import { stableTrackWindow, timelineTrackQueryKey } from "./track-window";
 
 const BUCKET = 5_000_000_000n;
 const SPAN = 900n * 1_000_000_000n;
@@ -24,5 +24,17 @@ describe("stableTrackWindow", () => {
     expect(next.to - first.to).toBe(BUCKET);
     expect(next.from).toBeLessThanOrEqual(BUCKET + 1n);
     expect(next.to).toBeGreaterThanOrEqual(BUCKET + 1n + SPAN);
+  });
+});
+
+describe("timelineTrackQueryKey", () => {
+  it("reuses the cache key when returning to the same aligned window", () => {
+    const scope = "project|environment|filters";
+    const left = stableTrackWindow({ from: 1n, to: 1n + SPAN }, 180);
+    const right = stableTrackWindow({ from: BUCKET + 1n, to: BUCKET + 1n + SPAN }, 180);
+    const returned = stableTrackWindow({ from: 1n, to: 1n + SPAN }, 180);
+    expect(timelineTrackQueryKey(scope, returned, 400)).toEqual(timelineTrackQueryKey(scope, left, 400));
+    expect(timelineTrackQueryKey(scope, right, 400)).not.toEqual(timelineTrackQueryKey(scope, left, 400));
+    expect(timelineTrackQueryKey("other|environment|filters", left, 400)).not.toEqual(timelineTrackQueryKey(scope, left, 400));
   });
 });

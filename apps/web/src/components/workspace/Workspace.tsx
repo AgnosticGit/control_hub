@@ -6,6 +6,7 @@ import { NODE_STRIDE, type Diagnostics, type NodeDiff } from "@karbird/web-engin
 import { AppShell, StatusRow } from "@/components/shell/AppShell";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { useSession } from "@/lib/session";
+import { parseIncidentMoment } from "@/components/incidents/model";
 import { formatClock, parseNs } from "@/lib/time";
 import { Splitter } from "@/components/ui/Splitter";
 import { usePersisted, writePersisted } from "@/lib/persisted";
@@ -73,11 +74,13 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const [dockContentHeight, setDockContentHeight] = useState(DOCK_MAX);
   const [dockAvailableHeight, setDockAvailableHeight] = useState(DOCK_MAX);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const handledIncidentMoment = useRef<string | null>(null);
   const dockMax = Math.max(DOCK_MIN, Math.min(DOCK_MAX, dockContentHeight, dockAvailableHeight));
   const selectedNode = state.topology?.nodes.find((n) => n.id === selectedId) ?? null;
-  const infra = useInfrastructure(actions, `${projectId}/${environmentId}`, state.phase === "ready", needsInfrastructureSnapshot(layerPrefs), state.mode, state.cursor);
+  const infra = useInfrastructure(actions, `${projectId}/${environmentId}`, state.phase === "ready", needsInfrastructureSnapshot(), state.mode, state.cursor);
   const infraSnapshot = layerPrefs.infrastructure ? infra.snapshot : null;
-  const serviceMetricSnapshot = layerPrefs.serviceMetrics ? infra.snapshot : null;
+  // Replica counts remain visible on compact cards even when the infrastructure layer is off.
+  const serviceMetricSnapshot = infra.snapshot;
   const changeLayer = (layer: keyof MapLayers, enabled: boolean) =>
     writePersisted(layerPrefsKey, JSON.stringify({ ...layerPrefs, [layer]: enabled }));
 
@@ -169,8 +172,21 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const env = project?.environments.find((e) => e.id === environmentId);
 
   useEffect(() => {
+    if (!visible || state.phase !== "ready") return;
+    const target = parseIncidentMoment(window.location.search);
+    if (!target) return;
+    const key = `${projectId}/${environmentId}/${target.at}/${target.serviceId}`;
+    if (handledIncidentMoment.current === key) return;
+    handledIncidentMoment.current = key;
+    const from = target.at - 5n * 60n * 1_000_000_000n;
+    void actions.loadHistorical(from > 0n ? from : 0n, target.at + 60n * 1_000_000_000n);
+    setSelectedId(target.serviceId);
+    setSide("details");
+  }, [visible, state.phase, actions, projectId, environmentId]);
+
+  useEffect(() => {
     if (state.phase !== "ready") return;
-    actions.setInfrastructureFeedEnabled(needsInfrastructureSnapshot(layerPrefs));
+    actions.setInfrastructureFeedEnabled(needsInfrastructureSnapshot());
     actions.setFilters({
       search: "",
       hide_inferred: layerPrefs.hideInferred,
@@ -219,17 +235,11 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
 
   return (
     <AppShell projectId={projectId} environmentId={environmentId} active="overview" status={status}>
-      <div ref={workspaceRef} className="flex h-full min-h-0 flex-col p-3">
+      <div ref={workspaceRef} className="flex h-full min-h-0 min-w-0 flex-col p-3">
         <KpiRow state={state} actions={actions} />
 
-        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1">
           <main ref={mapPanelRef} className="system-map-fullscreen card relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" aria-label="System map">
-            <div className="card-header">
-              <span className="card-title-icon">
-                <Icon name="layers" className="h-3.5 w-3.5" />
-              </span>
-              <h1>System Map</h1>
-            </div>
             <div className="relative min-h-0 flex-1">
               {state.phase === "error" ? (
                 <div role="alert" className="p-6 text-sm text-error">

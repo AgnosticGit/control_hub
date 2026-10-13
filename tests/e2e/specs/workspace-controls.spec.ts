@@ -49,12 +49,78 @@ test.describe("workspace controls on demo data", () => {
     await (await mapLayer(page, "Infrastructure")).check();
     const machines = page.getByRole("region", { name: "Machines" });
     await expect(machines.getByRole("button", { name: /^vps-/ }).first()).toBeVisible();
+    const map = page.getByRole("application", { name: /Service map/ });
+    await expect.poll(async () => Number(await map.getAttribute("data-replica-edge-branches"))).toBeGreaterThan(0);
+    const [machinesBox, mapBox] = await Promise.all([machines.boundingBox(), map.boundingBox()]);
+    if (!machinesBox || !mapBox) throw new Error("map or machines panel has no box");
+    expect(machinesBox.y).toBeGreaterThanOrEqual(mapBox.y);
+    expect(machinesBox.y + machinesBox.height).toBeLessThanOrEqual(mapBox.y + mapBox.height);
+    const titleBox = await page.getByRole("heading", { name: "System Map" }).boundingBox();
+    if (!titleBox) throw new Error("System Map title has no box");
+    expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(machinesBox.y);
+    await map.focus();
+    await map.press("0");
+    await expect
+      .poll(async () => {
+        const [panel, viewport, top] = await Promise.all([machines.boundingBox(), map.boundingBox(), map.getAttribute("data-fit-top")]);
+        if (!panel || !viewport || top === null) return -1;
+        return Number(top) - (panel.y + panel.height - viewport.y);
+      })
+      .toBeGreaterThanOrEqual(0);
     await machines.getByRole("button", { name: "Collapse machine list" }).click();
     await expect(machines.getByRole("button", { name: /^vps-/ })).toHaveCount(0);
     await expect(machines.getByRole("button", { name: "Expand machine list" })).toBeVisible();
 
-    await (await mapLayer(page, "Table view")).check();
+    await (await mapLayer(page, "Table view")).click();
     await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
+  });
+
+  test("map corner title and toolbar move with the Machines overlay", async ({ page }) => {
+    const mapPanel = page.getByRole("main", { name: "System map" });
+    const title = page.getByRole("heading", { name: "System Map" });
+    const fullscreen = page.getByRole("button", { name: "Full screen" });
+    const initial = await fullscreen.boundingBox();
+    if (!initial) throw new Error("full screen button has no box");
+
+    await (await mapLayer(page, "Infrastructure")).check();
+    const machines = page.getByRole("region", { name: "Machines" });
+    await expect(machines).toBeVisible();
+    const [mapBox, titleBox, machinesBox, fullscreenBox] = await Promise.all([
+      mapPanel.boundingBox(),
+      title.boundingBox(),
+      machines.boundingBox(),
+      fullscreen.boundingBox(),
+    ]);
+    if (!mapBox || !titleBox || !machinesBox || !fullscreenBox) throw new Error("map overlay controls have no box");
+    expect(titleBox.x).toBeGreaterThanOrEqual(mapBox.x);
+    expect(titleBox.y).toBeGreaterThanOrEqual(mapBox.y);
+    expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(machinesBox.y);
+    expect(machinesBox.y + machinesBox.height + 8).toBeLessThanOrEqual(fullscreenBox.y);
+    expect(fullscreenBox.y).toBeGreaterThan(initial.y);
+
+    await (await mapLayer(page, "Infrastructure")).uncheck();
+    await expect(machines).toHaveCount(0);
+    await expect
+      .poll(async () => (await fullscreen.boundingBox())?.y ?? Number.POSITIVE_INFINITY)
+      .toBeLessThan(fullscreenBox.y);
+  });
+
+  test("map fills the workspace when the sidebar is collapsed", async ({ page }) => {
+    const mapPanel = page.getByRole("main", { name: "System map" });
+    const canvas = mapPanel.locator("canvas").first();
+    await expect(canvas).toBeVisible();
+    const before = await mapPanel.boundingBox();
+    const canvasBefore = await canvas.boundingBox();
+    if (!before || !canvasBefore) throw new Error("System map or canvas has no box");
+
+    await page.getByRole("button", { name: "Hide sidebar" }).click();
+    await expect(page.getByRole("button", { name: "Show sidebar" })).toBeVisible();
+    await expect
+      .poll(async () => (await mapPanel.boundingBox())?.width ?? 0)
+      .toBeGreaterThan(before.width + 100);
+    await expect
+      .poll(async () => (await canvas.boundingBox())?.width ?? 0)
+      .toBeGreaterThan(canvasBefore.width + 100);
   });
 
   test("replay controls keep a readable pace without exposing a speed setting", async ({ page }) => {
@@ -159,14 +225,15 @@ test.describe("workspace controls on demo data", () => {
     await expect(inspector.getByText("Select a component on the map to inspect it.")).toBeVisible();
   });
 
-  test("map zoom buttons and keyboard fit work without errors", async ({ page }) => {
+  test("map zoom uses the keyboard and fit key without zoom buttons", async ({ page }) => {
     const errors = collectErrors(page);
     const map = page.getByRole("application", { name: /Service map/ });
+    const systemMap = page.getByRole("main", { name: "System map" });
     test.skip((await page.getByText(/WebGL is unavailable/).count()) > 0, "no WebGL in this browser");
     await expect(map).toBeVisible();
-    for (const name of ["Zoom in", "Zoom in", "Zoom out"]) {
-      await page.getByRole("button", { name, exact: true }).click();
-    }
+    await expect(systemMap.getByRole("heading", { level: 1, name: "System Map" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Zoom in", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Zoom out", exact: true })).toHaveCount(0);
     await map.focus();
     for (const key of ["+", "-", "ArrowLeft", "ArrowUp", "0", "Escape"]) await page.keyboard.press(key);
     await expect(page.getByRole("button", { name: "Full screen", exact: true })).toBeVisible();

@@ -29,9 +29,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *   healthTimeoutMs?: number,
  *   pollMs?: number,
  *   log?: (msg: string) => void,
+ *   onRelease?: (change: { service: string, from_version: string, to_version: string, kind: 'deploy' | 'rollback' }) => Promise<void>,
  * }} opts
  */
-export function createDemoControl({ supervisor, instances, scalable = {}, releases = {}, healthTimeoutMs = 30_000, pollMs = 200, log = () => {} }) {
+export function createDemoControl({ supervisor, instances, scalable = {}, releases = {}, healthTimeoutMs = 30_000, pollMs = 200, log = () => {}, onRelease = async () => {} }) {
   const overrides = new Map();
   const releaseState = Object.fromEntries(
     Object.entries(releases).map(([service, r]) => [service, { ...r, history: [] }]),
@@ -191,6 +192,11 @@ export function createDemoControl({ supervisor, instances, scalable = {}, releas
     const restarted = await switchVersion(service, version);
     r.history.push(from);
     log(`released ${service} ${version}`);
+    try {
+      await onRelease({ service, from_version: from, to_version: version, kind: 'deploy' });
+    } catch (error) {
+      log(`release event failed for ${service}: ${error instanceof Error ? error.message : String(error)}`);
+    }
     return { ...restarted, service, from_version: from, to_version: version };
   }
 
@@ -202,6 +208,11 @@ export function createDemoControl({ supervisor, instances, scalable = {}, releas
     const restarted = await switchVersion(service, to);
     r.history.pop();
     log(`rolled back ${service} ${from} -> ${to}`);
+    try {
+      await onRelease({ service, from_version: from, to_version: to, kind: 'rollback' });
+    } catch (error) {
+      log(`release event failed for ${service}: ${error instanceof Error ? error.message : String(error)}`);
+    }
     return { ...restarted, service, from_version: from, to_version: to };
   }
 

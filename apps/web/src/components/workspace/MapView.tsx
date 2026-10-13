@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Frame, FrameSummary, InfrastructureSnapshot, TopologyView } from "@karbird/web-engine";
-import { Icon, type IconName } from "@/components/ui/Icon";
+import { Icon } from "@/components/ui/Icon";
 import type { EdgeStyle } from "@/renderer/edge-path";
 import type { PixiMap } from "@/renderer/pixi-map";
 import { edgeEnds, edgeIndex, type SelectedEdge } from "./edge-traffic";
@@ -13,12 +13,6 @@ import { NodeTable } from "./NodeTable";
 import type { WorkspaceMemory } from "./workspace-memory";
 import { toggleSelection } from "@/renderer/selection-style";
 import { mapLayerAvailability, type MapLayerAvailability } from "@/renderer/map-layer-availability";
-
-type ZoomAction = "in" | "out" | "fullscreen";
-const ZOOM_BUTTONS: Array<{ label: string; icon: IconName; action: ZoomAction }> = [
-  { label: "Zoom in", icon: "plus", action: "in" },
-  { label: "Zoom out", icon: "minus", action: "out" },
-];
 
 /** Icon paths in a 20 × 12 box: the same two cards joined in each style. */
 const LINE_STYLES: Array<{ style: EdgeStyle; label: string; path: string }> = [
@@ -47,7 +41,7 @@ interface Props {
   onSelectEdge?: (edge: SelectedEdge | null) => void;
   /** Line open in the inspector; it is highlighted. */
   selectedEdge?: SelectedEdge | null;
-  /** Screen pixels at the top of the map covered by an overlay. */
+  /** Screen-space height reserved below the Machines overlay when fitting the map. */
   topInset?: number;
   infrastructure: boolean;
   onInfrastructureChange: (enabled: boolean) => void;
@@ -109,11 +103,15 @@ export function MapView({
   const clockRef = useRef(animClockFor(mode, speed));
   const edgeStyle = useEdgeStyle();
   const edgeStyleRef = useRef(edgeStyle);
-  const topInsetRef = useRef(topInset);
   const selectedHostRef = useRef(selectedHost);
   const serviceMetricsRef = useRef(serviceMetrics);
   const serviceMetricSnapshotRef = useRef(serviceMetricSnapshot);
   const serviceMetricsLoadingRef = useRef(serviceMetricsLoading);
+  const topInsetRef = useRef(topInset);
+  useEffect(() => {
+    topInsetRef.current = topInset;
+    mapRef.current?.setTopInset(topInset);
+  }, [topInset]);
   useEffect(() => {
     selectedHostRef.current = selectedHost;
     mapRef.current?.setSelectedHost(selectedHost);
@@ -149,10 +147,6 @@ export function MapView({
     if (!availability.problems && onlyProblems) onOnlyProblemsChange(false);
     if (!availability.inferred && hideInferred) onHideInferredChange(false);
   }, [availability, hideInferred, onHideInferredChange, onOnlyProblemsChange, onlyProblems]);
-  useEffect(() => {
-    topInsetRef.current = topInset;
-    mapRef.current?.setTopInset(topInset);
-  }, [topInset]);
   useEffect(() => {
     edgeStyleRef.current = edgeStyle;
     mapRef.current?.setEdgeStyle(edgeStyle);
@@ -206,12 +200,12 @@ export function MapView({
           return;
         }
         mapRef.current = map;
+        map.setTopInset(topInsetRef.current);
         const camera = memory.camera();
         if (camera) map.setCamera(camera);
         const topo = topologyRef.current;
         map.setClock(clockRef.current);
         map.setEdgeStyle(edgeStyleRef.current);
-        map.setTopInset(topInsetRef.current);
         map.setSelectedHost(selectedHostRef.current);
         map.setServiceMetricsEnabled(serviceMetricsRef.current);
         map.setServiceMetricSnapshot(serviceMetricSnapshotRef.current);
@@ -274,17 +268,6 @@ export function MapView({
     });
   }, [actions, showTable]);
 
-  function zoomControl(action: ZoomAction) {
-    if (action === "fullscreen") {
-      onToggleFullscreen();
-      return;
-    }
-    const m = mapRef.current;
-    if (!m) return;
-    if (action === "in") m.zoomBy(1.2);
-    else m.zoomBy(1 / 1.2);
-  }
-
   function onKeyDown(e: React.KeyboardEvent) {
     const m = mapRef.current;
     if (!m) return;
@@ -312,7 +295,8 @@ export function MapView({
   if (showTable) {
     return (
       <div className="relative h-full w-full">
-        <div className="absolute inset-0 overflow-auto">
+        <h1 className="absolute top-3 left-3 z-10 rounded-lg bg-surface/90 px-2.5 py-1.5 text-sm font-semibold text-text shadow-lg backdrop-blur">System Map</h1>
+        <div className="absolute inset-x-0 bottom-0 top-10 overflow-auto">
           {webglError ? (
             <p role="status" className="border-b border-border bg-surface px-4 py-2 text-xs text-warn">
               WebGL is unavailable ({webglError}). Showing the table view.
@@ -341,31 +325,23 @@ export function MapView({
 
   return (
     <div className="relative h-full w-full">
+      <h1 className="pointer-events-none absolute top-3 left-3 z-10 rounded-lg border border-border bg-surface/90 px-2.5 py-1.5 text-sm font-semibold text-text shadow-lg backdrop-blur">
+        System Map
+      </h1>
       <div className="absolute inset-0">
       <div
         ref={hostRef}
         tabIndex={0}
         role="application"
-        aria-label="Service map. Use arrow keys to pan, plus and minus to zoom, 0 to fit. Switch to table view for a list."
+        aria-label="Service map. Use arrow keys to pan, plus and minus keys or the mouse wheel to zoom, 0 to fit. Switch to table view for a list."
         onKeyDown={onKeyDown}
         className="absolute inset-0 overflow-hidden outline-none"
       />
-      <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2">
+      <div
+        className="pointer-events-none absolute inset-x-3 flex items-start justify-between gap-2 transition-[top] duration-200 ease-out"
+        style={{ top: Math.max(42, topInset + 16) }}
+      >
         <div className="pointer-events-auto flex flex-col gap-1.5">
-          <div className="flex w-8 flex-col overflow-hidden rounded-lg border border-border bg-surface/95 shadow-lg backdrop-blur" role="group" aria-label="Map zoom">
-            {ZOOM_BUTTONS.map((b, index) => (
-              <button
-                key={b.label}
-                type="button"
-                aria-label={b.label}
-                title={b.label}
-                onClick={() => zoomControl(b.action)}
-                className={`flex h-8 w-8 items-center justify-center text-muted transition-colors hover:bg-surface-2 hover:text-text ${index === 1 ? "border-t border-border" : ""}`}
-              >
-                <Icon name={b.icon} className="h-4 w-4" />
-              </button>
-            ))}
-          </div>
           <button
             type="button"
             aria-label={fullscreen ? "Exit full screen" : "Full screen"}

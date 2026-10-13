@@ -4,7 +4,15 @@ import {
   MAX_VIEW_NS,
   MAX_DETAIL_RANGE_NS,
   clampRangeToNow,
+  clampView,
   visibleRangeSegment,
+  liveSummaryWindow,
+  expandRange,
+  timelineBounds,
+  mergeRanges,
+  trimRangesBefore,
+  timelineEvictionFloor,
+  pointLoadingRange,
   detailChunkFor,
   defaultLiveView,
   needsTimelineSummary,
@@ -112,6 +120,40 @@ describe("needsTimelineSummary", () => {
   });
 });
 
+describe("expandRange", () => {
+  it("keeps a loaded summary start stable while extending its right edge", () => {
+    expect(expandRange(
+      { from: T0 - 3_600n * SEC, to: T0 + 10n * SEC },
+      { from: T0 - 3_000n * SEC, to: T0 + 20n * SEC },
+    )).toEqual({ from: T0 - 3_600n * SEC, to: T0 + 20n * SEC });
+  });
+
+  it("extends coverage when the user pans into earlier history", () => {
+    expect(expandRange(
+      { from: T0 - 3_000n * SEC, to: T0 + 20n * SEC },
+      { from: T0 - 3_600n * SEC, to: T0 + 10n * SEC },
+    )).toEqual({ from: T0 - 3_600n * SEC, to: T0 + 20n * SEC });
+  });
+});
+
+describe("timelineBounds", () => {
+  it("allows older history until the server confirms the oldest available timestamp", () => {
+    const latest = T0 + 60n * SEC;
+    expect(timelineBounds({ status: "unknown" }, latest)).toEqual({ from: 0n, to: latest });
+    expect(timelineBounds({ status: "known", oldestNs: T0 }, latest)).toEqual({ from: T0, to: latest });
+  });
+
+  it("stops navigation when the server confirms there is no timeline data", () => {
+    expect(timelineBounds({ status: "known", oldestNs: null }, T0)).toEqual({ from: T0 - MAX_VIEW_NS, to: T0 });
+  });
+
+  it("clamps a remembered view when the server confirms an older boundary", () => {
+    const oldest = T0;
+    const allowed = timelineBounds({ status: "known", oldestNs: oldest }, T0 + 3n * MAX_VIEW_NS);
+    expect(clampView({ from: oldest - 10n * SEC, to: oldest + 10n * SEC }, allowed).from).toBe(oldest);
+  });
+});
+
 describe("clampRangeToNow", () => {
   it("clamps the requested end to now and rejects future-only windows", () => {
     const now = T0 + 100n;
@@ -137,6 +179,49 @@ describe("visibleRangeSegment", () => {
     expect(visibleRangeSegment({ from: 200n, to: 300n }, view, 400)).toBeNull();
     expect(visibleRangeSegment({ from: 125n, to: 175n }, view, 0)).toBeNull();
   });
+});
+
+describe("timeline loading coverage", () => {
+  it("merges overlapping and adjacent loaded intervals", () => {
+    expect(mergeRanges([{ from: 10n, to: 20n }, { from: 30n, to: 40n }], { from: 20n, to: 32n }))
+      .toEqual([{ from: 10n, to: 40n }]);
+  });
+
+  it("trims evicted coverage at the retention edge", () => {
+    expect(trimRangesBefore([{ from: 0n, to: 10n }, { from: 15n, to: 30n }], 20n))
+      .toEqual([{ from: 20n, to: 30n }]);
+  });
+
+  it("retains previously loaded history while paused and uses the rolling window in live mode", () => {
+    const loaded = [{ from: 10n, to: 20n }, { from: 90n, to: 100n }];
+    expect(timelineEvictionFloor("paused", 80n, 95n, loaded)).toBe(10n);
+    expect(timelineEvictionFloor("historical", 5n, 95n, loaded)).toBe(5n);
+    expect(timelineEvictionFloor("live", 80n, 95n, loaded)).toBe(95n);
+  });
+
+  it("marks only a narrow interval around a selected point", () => {
+    expect(pointLoadingRange(50n, { from: 0n, to: 100n }, 5n)).toEqual({ from: 45n, to: 55n });
+    expect(pointLoadingRange(2n, { from: 0n, to: 100n }, 5n)).toEqual({ from: 0n, to: 7n });
+  });
+});
+
+describe("live summary range", () => {
+  it("keeps the live summary request stable within its 10-second bucket", () => {
+    const first = { from: 101n * SEC, to: 4_601n * SEC };
+    const shifted = { from: first.from + SEC, to: first.to + SEC };
+    expect(liveSummaryWindow(shifted)).toEqual(liveSummaryWindow(first));
+    expect(liveSummaryWindow({ from: first.from + 10n * SEC, to: first.to + 10n * SEC }))
+      .not.toEqual(liveSummaryWindow(first));
+  });
+
+  it("extends the loaded summary horizon while its viewed start stays fixed", () => {
+    const from = 101n * SEC;
+    const first = liveSummaryWindow({ from, to: 4_601n * SEC });
+    const later = liveSummaryWindow({ from, to: 4_611n * SEC });
+    expect(later.from).toBe(first.from);
+    expect(later.to).toBeGreaterThan(first.to);
+  });
+
 });
 
 describe("rangeCoveredBy", () => {

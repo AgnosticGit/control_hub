@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api, scopedPath, unwrap } from "@/lib/api";
@@ -118,6 +119,11 @@ export function EventsPanel({ scope, actions, onTrace, onSelectRecord }: { scope
                         ))}
                       </dl>
                       {traceId ? <button type="button" className="btn btn-sm mt-2 text-accent" onClick={() => onTrace(traceId)}>Open trace</button> : null}
+                      {event.event_type === "deployment.finished" ? (
+                        <Link className="btn btn-sm mt-2 ml-2 text-accent" href={`/app/${encodeURIComponent(scope.projectId)}/${encodeURIComponent(scope.environmentId)}/changes?event=${encodeURIComponent(event.id)}`}>
+                          Compare release
+                        </Link>
+                      ) : null}
                       {traceId || event.span_id ? <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-[10px]">
                         {traceId ? <><dt className="text-muted">Trace ID</dt><dd className="break-all">{traceId}</dd></> : null}
                         {event.span_id ? <><dt className="text-muted">Span ID</dt><dd className="break-all">{event.span_id}</dd></> : null}

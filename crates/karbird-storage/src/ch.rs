@@ -546,13 +546,16 @@ fn logs_sql(lq: &LogQuery) -> String {
     sql
 }
 
-fn events_sql(with_trace: bool) -> String {
+fn events_sql(with_trace: bool, with_event_type: bool) -> String {
     let mut sql = format!(
         "SELECT ?fields FROM events FINAL
          WHERE {SCOPE_WHERE} AND event_time >= fromUnixTimestamp64Nano(?) AND event_time < fromUnixTimestamp64Nano(?)"
     );
     if with_trace {
         sql.push_str(" AND trace_id = ?");
+    }
+    if with_event_type {
+        sql.push_str(" AND event_type = ?");
     }
     sql.push_str(" ORDER BY event_time DESC, event_id DESC LIMIT ?");
     sql
@@ -1291,11 +1294,15 @@ impl ChStore {
         from: i64,
         to: i64,
         trace_id: Option<&str>,
+        event_type: Option<&str>,
         limit: u32,
     ) -> Result<Vec<EventRow>> {
-        let sql = events_sql(trace_id.is_some());
+        let sql = events_sql(trace_id.is_some(), event_type.is_some());
         let mut q = bind_scope(self.client.query(&sql), s).bind(from).bind(to);
         if let Some(t) = trace_id {
+            q = q.bind(t);
+        }
+        if let Some(t) = event_type {
             q = q.bind(t);
         }
         Ok(q.bind(limit).fetch_all().await?)
@@ -1327,6 +1334,24 @@ impl ChStore {
     pub async fn earliest_log_time(&self) -> Result<Option<i64>> {
         let row: EarliestRow =
             self.client.query("SELECT min(time) AS earliest, count() AS rows FROM logs").fetch_one().await?;
+        Ok((row.rows > 0).then_some(row.earliest))
+    }
+
+    /// Oldest scoped signal or infrastructure point currently retained in ClickHouse.
+    pub async fn earliest_timeline_time(&self, s: &Scope) -> Result<Option<i64>> {
+        let (spans, logs, events, metrics) = tokio::try_join!(
+            self.earliest_scoped_time("spans", "start_time", s),
+            self.earliest_scoped_time("logs", "time", s),
+            self.earliest_scoped_time("events", "event_time", s),
+            self.earliest_scoped_time("metrics", "time", s),
+        )?;
+        Ok([spans, logs, events, metrics].into_iter().flatten().min())
+    }
+
+    async fn earliest_scoped_time(&self, table: &str, column: &str, s: &Scope) -> Result<Option<i64>> {
+        // Identifiers are selected only from the fixed table/column names above.
+        let query = format!("SELECT min({column}) AS earliest, count() AS rows FROM {table} WHERE {SCOPE_WHERE}");
+        let row: EarliestRow = bind_scope(self.client.query(&query), s).fetch_one().await?;
         Ok((row.rows > 0).then_some(row.earliest))
     }
 
@@ -1752,9 +1777,11 @@ mod tests {
 
     #[test]
     fn event_sql_placeholders_match_binds() {
-        assert_eq!(placeholders(&events_sql(false)), 3 + 2 + 1);
-        assert_eq!(placeholders(&events_sql(true)), 3 + 2 + 1 + 1);
-        assert_eq!(scoped_where_count(&events_sql(true)), 1);
+        assert_eq!(placeholders(&events_sql(false, false)), 3 + 2 + 1);
+        assert_eq!(placeholders(&events_sql(true, false)), 3 + 2 + 1 + 1);
+        assert_eq!(placeholders(&events_sql(false, true)), 3 + 2 + 1 + 1);
+        assert!(events_sql(false, true).contains("AND event_type = ?"));
+        assert_eq!(scoped_where_count(&events_sql(true, true)), 1);
     }
 
     #[test]

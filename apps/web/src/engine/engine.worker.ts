@@ -443,6 +443,12 @@ async function onTimelineHistoryFrame(l: LiveState, text: string, frame: NonNull
       return;
     }
   }
+  if (pending.scopeKey && frame.oldestNs !== undefined) {
+    try {
+      const cache = await openTimelineCache();
+      await cache.markOldest(pending.scopeKey, frame.oldestNs);
+    } catch { /* Continue without durable boundary caching. */ }
+  }
   pendingHistory = null;
   const result: LoadResult = {
     count: pending.count,
@@ -453,6 +459,7 @@ async function onTimelineHistoryFrame(l: LiveState, text: string, frame: NonNull
     fromNs: pending.fromNs,
     toNs: pending.toNs,
     logsSource: frame.logsSource,
+    oldestNs: frame.oldestNs,
     newItems: pending.networkCount,
   };
   pending.resolve(result);
@@ -499,11 +506,13 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       const completed: TimelineRange[] = [];
       let cachedCount = 0;
       let cachedApplyMs = 0;
+      let cachedOldestNs: string | null | undefined;
       if (msg.scopeKey) {
         try {
           const cache = await openTimelineCache();
           const cached = await cache.read(msg.scopeKey, msg.fromNs, msg.toNs);
           completed.push(...cached.covered);
+          cachedOldestNs = cached.oldestNs;
           const t0 = performance.now();
           for (const chunk of cached.chunks) {
             e.applyBatch(`{"items":${chunk.itemsJson}}`);
@@ -515,7 +524,7 @@ async function handle(msg: WorkerRequest): Promise<unknown> {
       }
       const ranges = missingTimelineRanges(BigInt(msg.fromNs), BigInt(msg.toNs), completed);
       if (ranges.length === 0) {
-        return { count: cachedCount, fetchMs: performance.now() - startedAt, applyMs: cachedApplyMs, truncated: false, completeness: null, fromNs: msg.fromNs, toNs: msg.toNs, newItems: 0 } satisfies LoadResult;
+        return { count: cachedCount, fetchMs: performance.now() - startedAt, applyMs: cachedApplyMs, truncated: false, completeness: null, fromNs: msg.fromNs, toNs: msg.toNs, oldestNs: cachedOldestNs, newItems: 0 } satisfies LoadResult;
       }
       if (pendingHistory) throw new Error("another timeline load is already active");
       return new Promise<LoadResult>((resolve, reject) => {

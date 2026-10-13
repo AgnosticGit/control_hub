@@ -7,14 +7,14 @@ import type { TimelineTracks } from "@karbird/web-engine";
 import { Icon } from "@/components/ui/Icon";
 import { api, scopedPath, unwrap, type Schemas } from "@/lib/api";
 import { RESOURCE_COLOR, cssColor, serviceColors } from "@/renderer/service-colors";
-import { NS_PER_MS, formatClock, formatClockMicros, formatDateTime } from "@/lib/time";
+import { NS_PER_MS, NS_PER_SEC, formatClock, formatClockMicros, formatDateTime } from "@/lib/time";
 import type { EngineState, WorkspaceActions } from "../useWorkspaceEngine";
 import type { WorkspaceMemory } from "../workspace-memory";
 import { RULER_H, bucketGeometry, draw, drawRuler, rowTop, timelineRevealAlpha, timelineRevealProgressFor, totalHeight, type ActionBar, type Row } from "./draw";
 import { EVENT_COLOR, eventLabel, eventMarkers, formatShare, holdSamples, machineAt, machineWindow, type EventMarker, type InfraTimeline } from "./machines";
 import { centeredOn, nearestItems, tracksMatch, viewIsEmpty } from "./neighbours";
 import { placeAbove, rangeBetween, viewAround } from "./range";
-import { stableTrackWindow } from "./track-window";
+import { stableTrackWindow, timelineTrackQueryKey } from "./track-window";
 import {
   clampView,
   defaultLiveView,
@@ -23,9 +23,14 @@ import {
   followLive,
   formatSpan,
   isNearPlayhead,
+  liveSummaryWindow,
+  MAX_VIEW_NS,
   needsTimelineSummary,
+  expandRange,
   panBy,
+  pointLoadingRange,
   timeAt,
+  timelineBounds,
   uncoveredRanges,
   visibleRangeSegment,
   xOf,
@@ -34,11 +39,11 @@ import {
   type View,
 } from "./scale";
 import { summaryTracks } from "./summary-tracks";
+import { setupCanvas } from "./canvas";
 
 /** Data resolution stays stable while the canvas adapts to the viewport. */
 export const TIMELINE_TRACK_BUCKETS = 180;
 const CLIP_CAP = 400;
-const REFETCH_MS = 100;
 const LOAD_SWEEP_MS = 1500;
 const LOAD_FADE_MS = 240;
 export const LABEL_W = 168;
@@ -71,41 +76,40 @@ function isoNs(iso: string | null | undefined): bigint | null {
   return Number.isFinite(ms) ? BigInt(ms) * NS_PER_MS : null;
 }
 
-function useTracks(actions: WorkspaceActions, view: View, buckets: number, clipCap: number, key: string, enabled: boolean) {
-  const [tracks, setTracks] = useState<TimelineTracks | null>(null);
-  const busy = useRef(false);
+function useTracks(
+  actions: WorkspaceActions,
+  view: View,
+  buckets: number,
+  clipCap: number,
+  cacheScope: string,
+  dataRevision: string,
+  enabled: boolean,
+) {
   const window = stableTrackWindow(view, buckets);
+  const windowFrom = window.from;
+  const windowTo = window.to;
+  const windowBuckets = window.buckets;
+  const windowBucketNs = window.bucketNs;
+  const queryClient = useQueryClient();
+  const queryKey = useMemo(
+    () => timelineTrackQueryKey(cacheScope, { from: windowFrom, to: windowTo, buckets: windowBuckets, bucketNs: windowBucketNs }, clipCap),
+    [cacheScope, windowFrom, windowTo, windowBuckets, windowBucketNs, clipCap],
+  );
+  const previousRevision = useRef(dataRevision);
+  const query = useQuery({
+    queryKey,
+    queryFn: () => actions.timelineTracks(window.from, window.to, window.buckets, clipCap),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 5_000,
+    gcTime: 10 * 60_000,
+  });
   useEffect(() => {
-    if (!enabled || buckets <= 0) return;
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      if (busy.current) return;
-      busy.current = true;
-      void actions
-        .timelineTracks(window.from, window.to, window.buckets, clipCap)
-        .then((t) => {
-          if (!cancelled && t) setTracks(t);
-        })
-        .finally(() => {
-          busy.current = false;
-        });
-    }, REFETCH_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [actions, window.from, window.to, window.buckets, buckets, clipCap, key, enabled]);
-  return tracks;
-}
-
-function setupCanvas(canvas: HTMLCanvasElement | null, width: number, height: number) {
-  if (!canvas || width <= 0 || height <= 0) return null;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.floor(width * dpr);
-  canvas.height = Math.floor(height * dpr);
-  const ctx = canvas.getContext("2d");
-  ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return ctx;
+    if (previousRevision.current === dataRevision) return;
+    previousRevision.current = dataRevision;
+    void queryClient.invalidateQueries({ queryKey, exact: true });
+  }, [dataRevision, queryClient, queryKey]);
+  return query.data ?? null;
 }
 
 type Drag =
@@ -128,7 +132,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const data = useMemo<View>(() => ({ from: state.rangeFrom, to: state.rangeTo }), [state.rangeFrom, state.rangeTo]);
   const [width, setWidth] = useState(0);
   // The viewport is capped at 30 days, but the user can page through older history indefinitely.
-  const bounds = useMemo<View>(() => ({ from: 0n, to: data.to }), [data.to]);
+  const bounds = useMemo<View>(() => timelineBounds(state.timelineStartBoundary, data.to), [state.timelineStartBoundary, data.to]);
   const [userView, setUserView] = useState<View | null>(() => memory?.timelineView() ?? (state.mode === "live" ? defaultLiveView(data.to) : null));
   useEffect(() => memory?.saveTimelineView(userView), [memory, userView]);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -152,8 +156,15 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const wheelRef = useRef<HTMLDivElement | null>(null);
   const rulerRef = useRef<HTMLCanvasElement | null>(null);
   const rowsRef = useRef<HTMLCanvasElement | null>(null);
+  const [previousMode, setPreviousMode] = useState(state.mode);
 
   let view = userView ? clampView(userView, bounds) : data;
+  if (previousMode !== state.mode) {
+    setPreviousMode(state.mode);
+    // Freeze the fitted window when leaving live mode. The data horizon can keep extending
+    // behind a paused, replayed or historical view without changing its scale or position.
+    if (state.mode !== "live" && userView === null) setUserView(view);
+  }
   if (userView) {
     // Keep the playhead in view (derived-state update during render): live keeps the free
     // stretch on the right, replay pages along.
@@ -179,18 +190,37 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const [loaderRanges, setLoaderRanges] = useState<View[]>([]);
   const loadDirection = view.from + (view.to - view.from) / 2n < data.from ? "left" : "right";
   const summaryView = needsTimelineSummary(view);
-  const tracks = useTracks(actions, view, TIMELINE_TRACK_BUCKETS, CLIP_CAP, dataKey, ready && !summaryView);
+  // Keep the summary's loaded horizon moving with incoming data in every mode. The viewport
+  // stays fixed while paused or historical; only the off-screen coverage to its right grows.
+  const summaryCanReachLiveHead = state.rangeTo - view.from <= MAX_VIEW_NS - 20n * NS_PER_SEC;
+  const summaryRequest = summaryCanReachLiveHead
+    ? liveSummaryWindow({ from: view.from, to: state.rangeTo })
+    : view;
+  const { from: summaryRequestFrom, to: summaryRequestTo } = summaryRequest;
+  const tracks = useTracks(
+    actions,
+    view,
+    TIMELINE_TRACK_BUCKETS,
+    CLIP_CAP,
+    `${projectId}|${environmentId}|${filterKey}`,
+    dataKey,
+    ready && !summaryView,
+  );
   const [summaryWindow, setSummaryWindow] = useState<View | null>(null);
   const summaryDataRangeRef = useRef<View | null>(null);
   useEffect(() => {
     if (!summaryView) return;
+    const requested = { from: summaryRequestFrom, to: summaryRequestTo };
+    const request = expandRange(summaryWindow, requested);
+    setLoaderRanges(uncoveredRanges(summaryDataRangeRef.current ? [summaryDataRangeRef.current] : [], request));
     const timer = setTimeout(() => {
-      const previous = summaryDataRangeRef.current;
-      setLoaderRanges(uncoveredRanges(previous ? [previous] : [], view));
-      setSummaryWindow(view);
+      setSummaryWindow((current) => {
+        const expanded = expandRange(current, requested);
+        return current && current.from === expanded.from && current.to === expanded.to ? current : expanded;
+      });
     }, 250);
     return () => clearTimeout(timer);
-  }, [summaryView, data.from, view]);
+  }, [summaryView, data.from, summaryRequestFrom, summaryRequestTo, summaryWindow]);
   const summary = useQuery({
     queryKey: ["timeline-summary", projectId, environmentId, summaryWindow?.from.toString(), summaryWindow?.to.toString()],
     enabled: ready && summaryView && summaryWindow !== null,
@@ -209,26 +239,43 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   });
   const [summaryReveal, setSummaryReveal] = useState<EngineState["timelineReveal"]>(null);
   useEffect(() => {
+    if (summary.data?.oldest_ns !== undefined) actions.setTimelineStartBoundary(summary.data.oldest_ns);
+  }, [actions, summary.data]);
+  useEffect(() => {
     if (!summary.data) return;
     const received = { from: BigInt(summary.data.from_ns), to: BigInt(summary.data.to_ns) };
     const previous = summaryDataRangeRef.current;
     summaryDataRangeRef.current = received;
+    const loaderFrame = requestAnimationFrame(() => {
+      setLoaderRanges(uncoveredRanges([received], summaryWindow ?? received));
+    });
     const fresh = uncoveredRanges(previous ? [previous] : [], received);
-    if (fresh.length !== 1) return;
+    if (fresh.length !== 1) return () => cancelAnimationFrame(loaderFrame);
     const interval = fresh[0];
-    if (!interval) return;
+    if (!interval) return () => cancelAnimationFrame(loaderFrame);
     const reveal = { ...interval, startedAt: performance.now() };
     const frame = requestAnimationFrame(() => setSummaryReveal(reveal));
-    return () => cancelAnimationFrame(frame);
-  }, [summary.data]);
+    return () => {
+      cancelAnimationFrame(loaderFrame);
+      cancelAnimationFrame(frame);
+    };
+  }, [summary.data, summaryWindow]);
   const activeReveal = summaryView ? summaryReveal : state.timelineReveal;
   const revealProgress = timelineRevealProgressFor(activeReveal?.startedAt ?? null, revealFrame);
   const timelineDataLoading = chunkLoading || (summaryView && summary.isFetching);
   const [keepTimelineLoaderVisible, setKeepTimelineLoaderVisible] = useState(false);
   const [timelineLoaderFadingOut, setTimelineLoaderFadingOut] = useState(false);
   const loaderStartedAtRef = useRef<number | null>(null);
-  const showTimelineLoader = timelineDataLoading || keepTimelineLoaderVisible;
   useEffect(() => {
+    if (state.mode === "live") {
+      loaderStartedAtRef.current = null;
+      const clearLoader = setTimeout(() => {
+        setKeepTimelineLoaderVisible(false);
+        setTimelineLoaderFadingOut(false);
+        setLoaderRanges([]);
+      }, 0);
+      return () => clearTimeout(clearLoader);
+    }
     if (timelineDataLoading) {
       loaderStartedAtRef.current ??= performance.now();
       const revealTimer = setTimeout(() => {
@@ -258,7 +305,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
       clearTimeout(cycleTimer);
       if (fadeTimer !== null) clearTimeout(fadeTimer);
     };
-  }, [timelineDataLoading]);
+  }, [state.mode, timelineDataLoading]);
 
   const plans = useQuery({
     queryKey: actionPlansKey,
@@ -319,23 +366,25 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     if (summaryView) return infrastructureSummary;
     return machines.data ? holdSamples(machines.data) : null;
   }, [summaryView, infrastructureSummary, machines.data]);
-  const loadChunk = useCallback(async (chunk: View) => {
-    setLoaderRanges(actions.unloadedTimelineRanges(chunk.from, chunk.to));
+  const loadChunk = useCallback(async (chunk: View, indicator: View = chunk) => {
+    setLoaderRanges(actions.unloadedTimelineRanges(indicator.from, indicator.to));
     setChunkLoading(true);
     try {
       await actions.loadTimelineChunk(chunk.from, chunk.to);
     } finally {
+      setLoaderRanges(actions.unloadedTimelineRanges(indicator.from, indicator.to));
       setChunkLoading(false);
     }
   }, [actions, setChunkLoading, setLoaderRanges]);
   useEffect(() => {
-    if (!ready || summaryView || actions.hasTimelineRange(view.from, view.to)) return;
+    if (!ready || summaryView || (state.timelineStartBoundary.status === "known" && state.timelineStartBoundary.oldestNs === null)
+      || actions.hasTimelineRange(view.from, view.to)) return;
     const timer = setTimeout(() => {
       const chunk = detailChunkFor(view, data.to);
-      void loadChunk(chunk);
+      void loadChunk(chunk, view);
     }, 250);
     return () => clearTimeout(timer);
-  }, [actions, loadChunk, summaryView, data.from, data.to, ready, view]);
+  }, [actions, loadChunk, summaryView, data.from, data.to, ready, state.timelineStartBoundary, view]);
 
   const nodeIds = useMemo(() => {
     const ids = new Map<number, string>();
@@ -391,10 +440,12 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   useEffect(() => onContentHeight(height + RULER_H), [height, onContentHeight]);
   const groupAt = rows.findIndex((r) => r.kind === "group" || r.kind === "heading");
   const markers = useMemo(() => (infra && width > 0 ? eventMarkers(infra, view, width) : []), [infra, view, width]);
-  const loaderSegments = loaderRanges.flatMap((range) => {
-    const segment = visibleRangeSegment(range, view, width);
-    return segment ? [{ range, segment }] : [];
+  const loaderSegments = state.mode === "live" ? [] : loaderRanges.flatMap((range) => {
+    const visible = visibleRangeSegment(range, view, width);
+    if (!visible) return [];
+    return [{ range, segment: visible }];
   });
+  const showTimelineLoader = state.mode !== "live" && loaderSegments.length > 0 && (timelineDataLoading || keepTimelineLoaderVisible);
   const hostRowTop = (host: number) => {
     const i = rows.findIndex((r) => r.kind === "machine" && r.host === host);
     return i === -1 ? null : rowTop(rows, i);
@@ -403,12 +454,13 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
 
   // Zoomed into a stretch with nothing in it: offer the nearest item on either side.
   const neighbours = !summaryView && !fitted && tracksMatch(displayedTracks, view) && viewIsEmpty(displayedTracks, view, actionBars) ? nearestItems(displayedTracks, view, actionBars) : null;
-  const seekToTime = async (time: bigint) => {
+  const seekToTime = (time: bigint) => {
+    actions.seek(time);
     if (!actions.hasTimelineRange(time, time + 1n)) {
       const chunk = detailChunkFor({ from: time, to: time + 1n }, data.to);
-      await loadChunk(chunk);
+      const indicator = pointLoadingRange(time, view);
+      void loadChunk(chunk, indicator);
     }
-    actions.seek(time);
   };
   const goToItem = (t: bigint) => {
     setView(centeredOn(view, t, bounds));
@@ -504,7 +556,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
       raf.current = 0;
       const px = pending.current;
       const { view: v, width: w } = live.current;
-      if (px !== null) actions.seek(timeAt(px, v, w));
+      if (px !== null) seekToTime(timeAt(px, v, w));
     });
   };
   useEffect(() => () => cancelAnimationFrame(raf.current), []);

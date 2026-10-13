@@ -4,6 +4,7 @@
 mod auth;
 mod bootstrap;
 mod error;
+mod incident_evaluator;
 mod live_consumer;
 mod live_hub;
 mod live_metrics;
@@ -376,6 +377,14 @@ fn router(state: state::AppState) -> Router {
         .route(&format!("{scoped}/actions/{{plan_id}}/approve"), post(routes::actions::approve))
         .route(&format!("{scoped}/actions/{{plan_id}}/reject"), post(routes::actions::reject))
         .route(&format!("{scoped}/actions/{{plan_id}}/cancel"), post(routes::actions::cancel))
+        .route(
+            &format!("{scoped}/incident-rules"),
+            get(routes::incidents::list_rules).post(routes::incidents::create_rule),
+        )
+        .route(&format!("{scoped}/incident-rules/{{rule_id}}"), patch(routes::incidents::update_rule))
+        .route(&format!("{scoped}/incidents"), get(routes::incidents::list_incidents))
+        .route(&format!("{scoped}/incidents/{{incident_id}}"), get(routes::incidents::incident_detail))
+        .route(&format!("{scoped}/incidents/{{incident_id}}/acknowledge"), post(routes::incidents::acknowledge))
         .route("/api/v1/admin/overview", get(admin::overview))
         .route("/api/v1/admin/permissions", get(admin::catalog))
         .route("/api/v1/admin/projects", get(admin::list_projects).post(admin::create_project))
@@ -483,6 +492,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let mut action_listener = PgListener::connect_with(state.pg.pool()).await?;
     action_listener.listen("karbird_action_plan_changed").await?;
     let action_task = tokio::spawn(run_action_notifications(action_listener, state.clone()));
+    let incident_task = tokio::spawn(incident_evaluator::run(state.clone()));
     let live_consumer: StreamConsumer = kafka_config
         .clone()
         .set("group.id", &live_group_id)
@@ -498,6 +508,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     axum::serve(listener, router(state)).with_graceful_shutdown(shutdown_signal()).await?;
     live_task.abort();
     action_task.abort();
+    incident_task.abort();
     Ok(())
 }
 
@@ -588,6 +599,9 @@ mod tests {
             "/tokens",
             "/actions",
             "/actions/catalog",
+            "/incident-rules",
+            "/incidents",
+            "/incidents/00000000-0000-0000-0000-000000000000",
         ]
         .iter()
         .map(|p| format!("{SCOPED}{p}"))
@@ -610,6 +624,23 @@ mod tests {
             (Method::PATCH, format!("{PROJECT_MEMBERS}/{PLAN}")),
             (Method::DELETE, format!("{PROJECT_MEMBERS}/{PLAN}")),
         ]
+    }
+
+    #[tokio::test]
+    async fn incident_mutations_require_a_session_and_reject_api_tokens() {
+        let routes = [
+            (Method::POST, format!("{SCOPED}/incident-rules")),
+            (Method::PATCH, format!("{SCOPED}/incident-rules/{PLAN}")),
+            (Method::POST, format!("{SCOPED}/incidents/{PLAN}/acknowledge")),
+        ];
+        for (method, uri) in routes {
+            let (status, _, _) = send(state(), req(method.clone(), &uri, &[], "{}")).await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {uri}");
+            let (status, _, body) =
+                send(state(), req(method.clone(), &uri, &[("authorization", "Bearer cha_x")], "{}")).await;
+            assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}");
+            assert_eq!(body["message"], "forbidden: API tokens are read-only");
+        }
     }
 
     #[tokio::test]
@@ -1051,6 +1082,12 @@ mod tests {
             ("/actions/{plan_id}/approve", "post"),
             ("/actions/{plan_id}/reject", "post"),
             ("/actions/{plan_id}/cancel", "post"),
+            ("/incident-rules", "get"),
+            ("/incident-rules", "post"),
+            ("/incident-rules/{rule_id}", "patch"),
+            ("/incidents", "get"),
+            ("/incidents/{incident_id}", "get"),
+            ("/incidents/{incident_id}/acknowledge", "post"),
         ] {
             expected.push((format!("{tpl}{p}"), m));
         }

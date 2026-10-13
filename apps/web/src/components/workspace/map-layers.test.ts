@@ -23,9 +23,7 @@ describe("map layer preferences", () => {
 });
 
 describe("infrastructure snapshot requirements", () => {
-  it("loads the existing snapshot for either visual layer and stops when both are off", () => {
-    expect(needsInfrastructureSnapshot({ infrastructure: true, serviceMetrics: false })).toBe(true);
-    expect(needsInfrastructureSnapshot({ infrastructure: false, serviceMetrics: true })).toBe(true);
-    expect(needsInfrastructureSnapshot({ infrastructure: false, serviceMetrics: false })).toBe(false);
+  it("keeps the shared snapshot loaded for replica counts when optional layers are off", () => {
+    expect(needsInfrastructureSnapshot()).toBe(true);
   });
 });

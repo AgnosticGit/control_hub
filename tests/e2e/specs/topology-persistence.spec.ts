@@ -25,7 +25,8 @@ test("open maps adopt backend revisions together while keeping camera and existi
     await other.goto("/app/isolation/isolation-test");
     const otherMap=other.getByRole("application",{name:/^Service map/});
     await expect.poll(async()=>(await nodes(otherMap)).find(n=>n.id===initial.id)).toEqual(initial);
-    await page.getByRole("button",{name:"Zoom in",exact:true}).click();
+    await map.focus();
+    await map.press("+");
     const camera=await map.getAttribute("data-camera");
     const next=`map-new-${randomHex(4)}`;
     await send(next);

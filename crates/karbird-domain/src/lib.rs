@@ -4,6 +4,7 @@
 //! dependencies: it is compiled both natively and to `wasm32-unknown-unknown`.
 
 pub mod ids;
+pub mod incidents;
 pub mod model;
 pub mod redaction;
 pub mod time;

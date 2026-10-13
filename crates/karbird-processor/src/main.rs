@@ -12,7 +12,9 @@ use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(test)]
+use std::time::Instant;
 
 use clap::Parser;
 use futures::{FutureExt, StreamExt, TryStreamExt};
@@ -433,7 +435,8 @@ async fn run_consumer(config: &ClientConfig, partitions: i32, ctx: Ctx) -> anyho
     consumer.subscribe(&[TELEMETRY_TOPIC])?;
     tracing::info!(partitions, "processor joined Kafka consumer group");
     let mut stop = ctx.stop.clone();
-    let mut last_watermark_refresh = Instant::now();
+    let mut watermark_refresh = tokio::time::interval(IDLE_TOUCH_INTERVAL);
+    watermark_refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         tokio::select! {
             message = consumer.recv() => match message {
@@ -506,7 +509,7 @@ async fn run_consumer(config: &ClientConfig, partitions: i32, ctx: Ctx) -> anyho
             changed = stop.changed() => {
                 if changed.is_err() || *stop.borrow() { break; }
             },
-            _ = tokio::time::sleep(Duration::from_secs(1)), if last_watermark_refresh.elapsed() >= IDLE_TOUCH_INTERVAL => {
+            _ = watermark_refresh.tick() => {
                 for partition in 0..partitions {
                     let (low, high) = consumer.fetch_watermarks(TELEMETRY_TOPIC, partition, Timeout::After(Duration::from_secs(2)))?;
                     if let Some(watermark) = ctx.metrics.watermarks.get(partition as usize) {
@@ -521,7 +524,6 @@ async fn run_consumer(config: &ClientConfig, partitions: i32, ctx: Ctx) -> anyho
                         lag.store(high.saturating_sub(next_offset), Ordering::Relaxed);
                     }
                 }
-                last_watermark_refresh = Instant::now();
             }
         }
     }

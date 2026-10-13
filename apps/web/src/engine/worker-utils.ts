@@ -3,7 +3,7 @@ import type { EdgeChange, InfrastructureSnapshot, LiveSignal } from "@karbird/we
 export type TimelineFrame =
   | { type: "chunk"; requestId: string; sequence: number; fromNs: string; toNs: string }
   | { type: "range_complete"; requestId: string; sequence: number; fromNs: string; toNs: string }
-  | { type: "complete"; requestId: string; truncated: boolean; completeness: unknown; logsSource?: string }
+  | { type: "complete"; requestId: string; truncated: boolean; completeness: unknown; logsSource?: string; oldestNs?: string | null }
   | { type: "error"; requestId: string; message: string };
 
 // Pure helpers of the engine Worker (no WASM, no `self`), kept separate so they can be unit tested.
@@ -84,10 +84,13 @@ export function parseTimelineFrame(text: string): TimelineFrame | null {
     if (type === "timeline_complete") {
       const requestId = value.request_id;
       if (typeof requestId !== "string" || requestId.length === 0 || requestId.length > 128 || typeof value.truncated !== "boolean") return null;
+      if (value.oldest_ns !== undefined && value.oldest_ns !== null
+        && (typeof value.oldest_ns !== "string" || !/^\d+$/.test(value.oldest_ns))) return null;
       return {
         type: "complete", requestId, truncated: value.truncated,
         completeness: value.completeness ?? null,
         ...(typeof value.logs_source === "string" ? { logsSource: value.logs_source } : {}),
+        ...(value.oldest_ns === undefined ? {} : { oldestNs: value.oldest_ns as string | null }),
       };
     }
     if (type === "timeline_error" && typeof value.request_id === "string" && value.request_id.length > 0

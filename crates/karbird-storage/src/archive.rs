@@ -280,6 +280,20 @@ impl PgStore {
         .await?)
     }
 
+    /// Oldest archived log for a scope, or `None` when no archived log is catalogued.
+    pub async fn earliest_archive_log_time(&self, s: &Scope) -> Result<Option<i64>> {
+        Ok(sqlx::query_scalar(
+            "SELECT min(min_time_ns) FROM archive_segments
+             WHERE tenant_id = $1 AND project_id = $2 AND environment_id = $3
+               AND signal = 'logs' AND rows > 0",
+        )
+        .bind(s.tenant_id.as_str())
+        .bind(s.project_id.as_str())
+        .bind(s.environment_id.as_str())
+        .fetch_one(self.pool())
+        .await?)
+    }
+
     /// Newest dictionary of a service: (version, object key).
     pub async fn latest_archive_dictionary(&self, s: &Scope, service_id: &str) -> Result<Option<(u32, String)>> {
         let row: Option<(i32, String)> = sqlx::query_as(

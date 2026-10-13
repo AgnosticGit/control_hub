@@ -40,6 +40,7 @@ export function parseMapLayers(raw: string): MapLayers | null {
   }
 }
 
-export function needsInfrastructureSnapshot(layers: Pick<MapLayers, "infrastructure" | "serviceMetrics">): boolean {
-  return layers.infrastructure || layers.serviceMetrics;
+export function needsInfrastructureSnapshot(): boolean {
+  // Compact map cards always show replica counts, which come from this shared snapshot.
+  return true;
 }

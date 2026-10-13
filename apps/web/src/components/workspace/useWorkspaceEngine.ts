@@ -8,10 +8,9 @@ import { scopedUrl } from "@/lib/api";
 import { NS_PER_MS, NS_PER_SEC, clampNs, nowNs, parseNs } from "@/lib/time";
 import type { AnimClock } from "@/renderer/hops";
 import { firstItemStart, playStart, replayStep } from "./timeline/range";
-import { clampRangeToNow, hasFuture, rangeCoveredBy, uncoveredRanges } from "./timeline/scale";
+import { clampRangeToNow, hasFuture, mergeRanges, rangeCoveredBy, timelineEvictionFloor, trimRangesBefore, uncoveredRanges, type TimelineStartBoundary } from "./timeline/scale";
 import { asLogSource, type LogSource } from "./logs-query";
 import { ENGINE_ROLLING_WINDOW_NS } from "./service-card-metrics";
-import { liveSignalTimeNs } from "./timeline/draw";
 
 export type Mode = "live" | "paused" | "replay" | "historical";
 export const SPEED_MIN = 0.001;
@@ -72,8 +71,13 @@ const LIVE_WINDOW_NS = 15n * 60n * NS_PER_SEC;
 const LIVE_TICK_MS = 2000;
 const EVICT_EVERY_MS = 10_000;
 const TOPOLOGY_POLL_MS = 10_000;
-const OVERLAP_NS = 10n * NS_PER_SEC;
 const EVICT_ALL = 9223372036854775807n;
+
+/** Advance the live data horizon while only moving the playhead for a live-following view. */
+export function advanceLiveHead(mode: Mode, rangeFrom: bigint, now: bigint, liveWindow: bigint) {
+  if (mode === "live") return { rangeFrom: now - liveWindow, rangeTo: now, cursor: now };
+  return { rangeFrom, rangeTo: now };
+}
 
 export interface Completeness {
   watermark_ns: string | null;
@@ -113,6 +117,7 @@ export interface EngineState {
   loading: boolean;
   liveTransport: "off" | "connecting" | "websocket" | "stale";
   timelineReveal: { from: bigint; to: bigint; startedAt: number } | null;
+  timelineStartBoundary: TimelineStartBoundary;
 }
 
 /** A background timeline fetch must not change playback or the selected time. */
@@ -132,6 +137,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
   /** Settles once every range load started so far is done (success or not). */
   const loadsRef = useRef<Promise<void>>(Promise.resolve());
   const loadedChunksRef = useRef<Array<{ from: bigint; to: bigint }>>([]);
+  const liveCoverageEndRef = useRef<bigint | null>(null);
   const chunkLoadsRef = useRef(new Map<string, Promise<void>>());
   const frameListeners = useRef(new Set<(f: Frame) => void>());
   const liveSignalListeners = useRef(new Set<(signals: LiveSignal[]) => void>());
@@ -142,6 +148,10 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
   const recentLiveSignals = useRef<LiveSignal[]>([]);
   const latestInfrastructure = useRef<InfrastructureSnapshot | null>(null);
   const lastFrameRef = useRef<Frame | null>(null);
+  const [timelineBoundary, setTimelineBoundary] = useState<{ scopeKey: string; value: TimelineStartBoundary }>(() => ({
+    scopeKey: cacheScopeKey,
+    value: { status: "unknown" },
+  }));
   const [state, setState] = useState<EngineState>(() => {
     const now = nowNs();
     return {
@@ -161,6 +171,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
       loading: false,
       liveTransport: "off",
       timelineReveal: null,
+      timelineStartBoundary: { status: "unknown" },
     };
   });
   // Mirrors `state` synchronously so callbacks (rAF loop, timers) never read a
@@ -172,6 +183,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
     recentLiveSignals.current = [];
     latestInfrastructure.current = null;
     loadedChunksRef.current = [];
+    liveCoverageEndRef.current = null;
     chunkLoadsRef.current.clear();
   }, [projectId, environmentId]);
 
@@ -211,7 +223,16 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
       const reveal = r.newItems && r.newItems > 0 && revealFrom !== null && revealTo !== null
         ? { from: revealFrom, to: revealTo, startedAt: performance.now() }
         : stateRef.current.timelineReveal;
+      if (r.oldestNs !== undefined) {
+        setTimelineBoundary({
+          scopeKey: cacheScopeKey,
+          value: { status: "known", oldestNs: r.oldestNs === null ? null : BigInt(r.oldestNs) },
+        });
+      }
       patch({
+        ...(r.oldestNs !== undefined
+          ? { timelineStartBoundary: { status: "known" as const, oldestNs: r.oldestNs === null ? null : BigInt(r.oldestNs) } }
+          : {}),
         ...(revealItems ? { timelineReveal: reveal } : {}),
         load: {
           items: r.count,
@@ -224,22 +245,16 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
         },
       });
     },
-    [patch],
+    [cacheScopeKey, patch],
   );
 
-  const revealLiveSignals = useCallback((signals: LiveSignal[]) => {
-    const times = signals.map((signal) => liveSignalTimeNs(signal.record)).filter((value): value is bigint => value !== null);
-    if (!times.length) return;
-    const firstTime = times[0];
-    if (firstTime === undefined) return;
-    const now = performance.now();
-    const previous = stateRef.current.timelineReveal;
-    const merge = previous !== null && now - previous.startedAt < 420 && previous.to - previous.from <= 2n * NS_PER_SEC;
-    const margin = NS_PER_SEC / 2n;
-    const from = times.reduce((min, time) => time - margin < min ? time - margin : min, merge && previous ? previous.from : firstTime - margin);
-    const to = times.reduce((max, time) => time + margin > max ? time + margin : max, merge && previous ? previous.to : firstTime + margin);
-    patch({ timelineReveal: { from, to, startedAt: merge && previous ? previous.startedAt : now } });
-  }, [patch]);
+  const setTimelineStartBoundary = useCallback((oldestNs: string | null) => {
+    const value = oldestNs === null ? null : BigInt(oldestNs);
+    const sameScope = timelineBoundary.scopeKey === cacheScopeKey;
+    if (sameScope && timelineBoundary.value.status === "known" && timelineBoundary.value.oldestNs === value) return;
+    setTimelineBoundary({ scopeKey: cacheScopeKey, value: { status: "known", oldestNs: value } });
+    patch({ timelineStartBoundary: { status: "known", oldestNs: value } });
+  }, [cacheScopeKey, patch, timelineBoundary]);
 
   const loadRange = useCallback(
     async (from: bigint, to: bigint, opts: { reset: boolean; topology: boolean }) => {
@@ -261,7 +276,8 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
           await c.call({ kind: "loadTopology", url: url("topology", from, to, { ...(stateRef.current.mode === "historical" ? {} : { live: "true" }),...(infrastructureLayoutEnabledRef.current ? {at:stateRef.current.cursor.toString()}: {}) }) });
         }
         const r = await loadTimelineRange(c, from, to);
-        loadedChunksRef.current.push({ from, to });
+        loadedChunksRef.current = mergeRanges(loadedChunksRef.current, { from, to });
+        if (stateRef.current.mode === "live") liveCoverageEndRef.current = to;
         recordLoad(r);
         if (opts.topology) await refreshTopologyView();
         patch({ error: null });
@@ -300,7 +316,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
         const result = await loadTimelineRange(c, boundedFrom, boundedTo);
         if (c !== clientRef.current) return;
         const missing = uncoveredRanges(loadedChunksRef.current, { from: boundedFrom, to: boundedTo });
-        loadedChunksRef.current.push({ from: boundedFrom, to: boundedTo });
+        loadedChunksRef.current = mergeRanges(loadedChunksRef.current, { from: boundedFrom, to: boundedTo });
         recordLoad(result, missing.length === 1, missing[0]);
         await refreshTopologyView();
         const s = stateRef.current;
@@ -319,8 +335,9 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
   const seek = useCallback(
     (t: bigint) => {
       const s = stateRef.current;
-      const loadedFrom = loadedChunksRef.current.reduce((from, range) => range.from < from ? range.from : from, s.rangeFrom);
-      const cursor = clampNs(t, loadedFrom, s.rangeTo);
+      // A timeline click may target a visible range that is not loaded yet. Keep that
+      // exact cursor while the corresponding detail chunk is fetched in the background.
+      const cursor = clampNs(t, 0n, s.rangeTo);
       clientRef.current?.seek(cursor);
       patch({ cursor });
     },
@@ -387,12 +404,13 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
   // Live: the Worker holds a WebSocket that pushes new items straight into the engine.
   // A failed socket marks the view stale and reconnects with backoff; it never polls HTTP.
   useEffect(() => {
-    if (state.phase !== "ready" || state.mode !== "live") return;
+    if (state.phase !== "ready") return;
     const c = clientRef.current;
     if (!c) return;
     let cancelled = false;
     let busy = false;
     let lastEvict = Date.now();
+    liveCoverageEndRef.current ??= stateRef.current.rangeTo;
 
     const tick = async () => {
       if (cancelled || busy) return;
@@ -401,12 +419,21 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
         const now = nowNs();
         if (Date.now() - lastEvict > EVICT_EVERY_MS) {
           lastEvict = Date.now();
-          await c.call({ kind: "evictBefore", beforeNs: (now - LIVE_WINDOW_NS).toString() });
+          const current = stateRef.current;
+          const rollingFrom = now - LIVE_WINDOW_NS;
+          const before = timelineEvictionFloor(current.mode, current.rangeFrom, rollingFrom, loadedChunksRef.current);
+          await c.call({ kind: "evictBefore", beforeNs: before.toString() });
+          loadedChunksRef.current = trimRangesBefore(loadedChunksRef.current, before);
         }
-        // The user may have paused or seeked while this tick was awaiting; never move their cursor.
-        if (cancelled || stateRef.current.mode !== "live") return;
-        c.seek(now);
-        patch({ rangeFrom: now - LIVE_WINDOW_NS, rangeTo: now, cursor: now, error: null });
+        if (cancelled) return;
+        const current = stateRef.current;
+        if (current.liveTransport === "websocket") {
+          const coveredFrom = liveCoverageEndRef.current ?? current.rangeTo;
+          if (now > coveredFrom) loadedChunksRef.current = mergeRanges(loadedChunksRef.current, { from: coveredFrom, to: now });
+          liveCoverageEndRef.current = now;
+        }
+        if (current.mode === "live") c.seek(now);
+        patch({ ...advanceLiveHead(current.mode, current.rangeFrom, now, LIVE_WINDOW_NS), error: null });
       } catch (e) {
         patch({ error: e instanceof Error ? e.message : String(e) });
       } finally {
@@ -424,7 +451,6 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
           return;
         case "signal": {
           recentLiveSignals.current = [...recentLiveSignals.current, ...ev.signals].slice(-2000);
-          revealLiveSignals(ev.signals);
           for (const listener of liveSignalListeners.current) listener(ev.signals);
           const prev = stateRef.current.load;
           patch({
@@ -441,7 +467,6 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
           return;
         }
         case "batch": {
-          revealLiveSignals(ev.signals);
           if (ev.signals.length) {
             recentLiveSignals.current = [...recentLiveSignals.current, ...ev.signals].slice(-2000);
             for (const listener of liveSignalListeners.current) listener(ev.signals);
@@ -496,7 +521,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
       void c.call({ kind: "liveStop" });
       patch({ liveTransport: "off" });
     };
-  }, [state.phase, state.mode, patch, projectId, environmentId, cacheScopeKey, revealLiveSignals]);
+  }, [state.phase, patch, projectId, environmentId, cacheScopeKey]);
 
   useEffect(() => {
     if (state.phase !== "ready") return;
@@ -620,23 +645,18 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
       if (n !== null) a.seek(n);
     },
     jump: (deltaMs: number) => a.seek(stateRef.current.cursor + BigInt(deltaMs) * NS_PER_MS),
-    returnToLive: async () => {
-      const s = stateRef.current;
+    returnToLive: () => {
       const now = nowNs();
-      const wasHistorical = s.mode === "historical" || now - s.rangeTo > LIVE_WINDOW_NS;
       patch({ mode: "live", rangeFrom: now - LIVE_WINDOW_NS, rangeTo: now, cursor: now, loop: null });
-      await loadRange(wasHistorical ? now - LIVE_WINDOW_NS : s.rangeTo - OVERLAP_NS, now, {
-        reset: wasHistorical,
-        topology: true,
-      });
       clientRef.current?.seek(now);
     },
     loadHistorical: async (from: bigint, to: bigint) => {
       patch({ mode: "historical", rangeFrom: from, rangeTo: to, cursor: to, loop: null });
-      await loadRange(from, to, { reset: true, topology: true });
+      await loadRange(from, to, { reset: false, topology: true });
       clientRef.current?.seek(to);
     },
     loadTimelineChunk,
+    setTimelineStartBoundary,
     hasTimelineRange: (from: bigint, to: bigint) => rangeCoveredBy(loadedChunksRef.current, { from, to }),
     unloadedTimelineRanges: (from: bigint, to: bigint) => uncoveredRanges(loadedChunksRef.current, { from, to }),
     /** Machines, instances and saved backend placement at the selected time. */
@@ -707,9 +727,11 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
     },
     };
     return a;
-  }, [seek, loadRange, loadTimelineChunk, patch, projectId, environmentId, cacheScopeKey]);
+  }, [seek, loadRange, loadTimelineChunk, setTimelineStartBoundary, patch, projectId, environmentId, cacheScopeKey]);
 
-  return { state, actions };
+  const activeBoundary = timelineBoundary.scopeKey === cacheScopeKey ? timelineBoundary.value : { status: "unknown" as const };
+  const scopedState = { ...state, timelineStartBoundary: activeBoundary };
+  return { state: scopedState, actions };
 }
 
 export type WorkspaceActions = ReturnType<typeof useWorkspaceEngine>["actions"];

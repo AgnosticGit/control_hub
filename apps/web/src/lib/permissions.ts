@@ -1,6 +1,7 @@
 /** Permission ids, in the API catalog's order (`GET /api/v1/permissions`). */
 export const PERMISSIONS = [
   "telemetry.view",
+  "incidents.manage",
   "tokens.view",
   "tokens.manage",
   "actions.view",

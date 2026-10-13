@@ -1,6 +1,6 @@
 import type { TimelineTracks } from "@karbird/web-engine";
 import { describe, expect, it } from "vitest";
-import { RULER_H, actionColor, bucketGeometry, draw, drawRuler, liveSignalTimeNs, rowTop, timelineRevealAlpha, timelineRevealProgressFor, totalHeight, withAlpha, type DrawInput, type Row } from "./draw";
+import { RULER_H, actionColor, bucketGeometry, draw, drawRuler, rowTop, timelineRevealAlpha, timelineRevealProgressFor, totalHeight, withAlpha, type DrawInput, type Row } from "./draw";
 import type { View } from "./scale";
 
 interface Call {
@@ -46,11 +46,6 @@ describe("timeline reveal animation", () => {
     expect(timelineRevealProgressFor(null, { startedAt: 100, progress: 0.2 })).toBe(1);
   });
 
-  it("reads supported event timestamps without converting nanoseconds to Number", () => {
-    expect(liveSignalTimeNs({ start_ns: "1790000000000000001", end_ns: "1790000000000000009" }))
-      .toBe(1_790_000_000_000_000_001n);
-    expect(liveSignalTimeNs({ time_ns: "invalid" })).toBeNull();
-  });
 });
 
 function tracks(p: Partial<TimelineTracks> = {}): TimelineTracks {

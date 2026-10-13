@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -102,6 +102,18 @@ function fixed64(field: number, n: bigint): Buffer {
 }
 
 export const randomHex = (bytes: number) => randomBytes(bytes).toString("hex");
+
+/** Sends one typed event through the real ingest pipeline. */
+export async function ingestEvent(service: string, eventType: string, timeNs: bigint, attributes: Record<string, string> = {}, env = "isolation-test") {
+  const id = randomUUID();
+  const res = await fetch(`${creds.otlp_http_endpoint}/api/v1/events/batch`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${creds.ingest_tokens[env]}`, "content-type": "application/json" },
+    body: JSON.stringify({ events: [{ event_id: id, event_type: eventType, service: { name: service }, event_time: timeNs.toString(), attributes }] }),
+  });
+  if (res.status !== 200 || (await res.json()).accepted !== 1) throw new Error(`event ingest failed: ${res.status}`);
+  return id;
+}
 
 /**
  * Sends one log record through the real ingest endpoint with the environment's ingestion

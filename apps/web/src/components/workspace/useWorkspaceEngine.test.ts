@@ -1,6 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { NS_PER_MS } from "@/lib/time";
-import { LIVE_ANIM_DELAY_MS, SPEEDS, animClockFor, asCompleteness, beginTimelineChunkLoad, hopWindowFor, infrastructureFeedQuery, seeksIntoFuture, sliderPositionForSpeed, speedFromSlider, type EngineState, type Mode } from "./useWorkspaceEngine";
+import { LIVE_ANIM_DELAY_MS, SPEEDS, advanceLiveHead, animClockFor, asCompleteness, beginTimelineChunkLoad, hopWindowFor, infrastructureFeedQuery, seeksIntoFuture, sliderPositionForSpeed, speedFromSlider, type EngineState, type Mode } from "./useWorkspaceEngine";
+
+describe("advanceLiveHead", () => {
+  const liveWindow = 900n;
+  const now = 2_000n;
+
+  it("advances the live cursor and rolling window while following live", () => {
+    expect(advanceLiveHead("live", 100n, now, liveWindow)).toEqual({ rangeFrom: 1_100n, rangeTo: now, cursor: now });
+  });
+
+  it("extends the data horizon without moving a paused or historical view", () => {
+    for (const mode of ["paused", "replay", "historical"] as const) {
+      expect(advanceLiveHead(mode, 100n, now, liveWindow)).toEqual({ rangeFrom: 100n, rangeTo: now });
+    }
+  });
+});
 
 describe("beginTimelineChunkLoad", () => {
   it("sets loading without interrupting live playback or moving the cursor", () => {

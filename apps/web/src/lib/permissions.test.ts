@@ -24,6 +24,7 @@ describe("can", () => {
   it("knows every permission the API catalog has", () => {
     expect(PERMISSIONS).toEqual([
       "telemetry.view",
+      "incidents.manage",
       "tokens.view",
       "tokens.manage",
       "actions.view",

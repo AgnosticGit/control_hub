@@ -3285,6 +3285,15 @@
             }
           },
           {
+            "name": "event_type",
+            "in": "query",
+            "description": "Exact event type, for example `deployment.finished`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -3315,6 +3324,336 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/incident-rules": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "operationId": "list_rules",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IncidentRuleDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "operationId": "create_rule",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentRuleDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": ""
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/incident-rules/{rule_id}": {
+      "patch": {
+        "tags": [
+          "incidents"
+        ],
+        "operationId": "update_rule",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentRuleDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": ""
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/incidents": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "operationId": "list_incidents",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IncidentDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/incidents/{incident_id}": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "operationId": "incident_detail",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "incident_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/incidents/{incident_id}/acknowledge": {
+      "post": {
+        "tags": [
+          "incidents"
+        ],
+        "operationId": "acknowledge",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "incident_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
           }
         }
       }
@@ -7006,6 +7345,136 @@
           }
         }
       },
+      "IncidentDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "rule_id",
+          "service_id",
+          "kind",
+          "threshold",
+          "state",
+          "opened_window_end_ns",
+          "last_window_end_ns",
+          "requests",
+          "errors",
+          "acknowledged",
+          "created_at"
+        ],
+        "properties": {
+          "acknowledged": {
+            "type": "boolean"
+          },
+          "acknowledged_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "closed_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "errors": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_window_end_ns": {
+            "type": "string"
+          },
+          "opened_window_end_ns": {
+            "type": "string"
+          },
+          "p95_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "recovered_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requests": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "rule_id": {
+            "type": "string"
+          },
+          "service_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "description": "open, recovered or closed (rule reconfigured or disabled)."
+          },
+          "threshold": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "IncidentRuleDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "service_id",
+          "kind",
+          "threshold",
+          "min_requests",
+          "enabled",
+          "last_window_end_ns",
+          "observation_state",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_window_end_ns": {
+            "type": "string"
+          },
+          "min_requests": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "observation_state": {
+            "type": "string",
+            "description": "unknown, healthy or breaching; insufficient data is never healthy."
+          },
+          "service_id": {
+            "type": "string"
+          },
+          "threshold": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "InfraBadge": {
         "type": "object",
         "description": "`×N` on a service card with several instances.",
@@ -8349,6 +8818,32 @@
           }
         }
       },
+      "RuleRequest": {
+        "type": "object",
+        "required": [
+          "service_id",
+          "kind",
+          "threshold",
+          "min_requests"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`error_rate` (threshold in percent) or `p95_latency` (threshold in milliseconds)."
+          },
+          "min_requests": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "service_id": {
+            "type": "string"
+          },
+          "threshold": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "SavedTopologyGeometry": {
         "type": "object",
         "required": [
@@ -8948,6 +9443,13 @@
           "logs_truncated": {
             "type": "boolean"
           },
+          "oldest_ns": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Oldest retained timeline signal for this authorized scope, if any."
+          },
           "spans_truncated": {
             "type": "boolean",
             "description": "Per-signal truncation: when true, the range holds more items than returned."
@@ -8987,6 +9489,13 @@
             "items": {
               "$ref": "#/components/schemas/SummaryHostTrack"
             }
+          },
+          "oldest_ns": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Oldest retained timeline signal for this authorized scope, if any."
           },
           "services": {
             "type": "array",
@@ -9458,6 +9967,27 @@
           }
         }
       },
+      "UpdateRuleRequest": {
+        "type": "object",
+        "required": [
+          "threshold",
+          "min_requests",
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "min_requests": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "threshold": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "UserDto": {
         "type": "object",
         "required": [
@@ -9525,6 +10055,9 @@
     },
     {
       "name": "actions"
+    },
+    {
+      "name": "incidents"
     },
     {
       "name": "members"

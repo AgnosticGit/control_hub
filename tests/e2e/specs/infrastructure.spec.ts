@@ -82,6 +82,15 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
     { "service.instance.id": `${orders}-2`, "container.id": replicaCtr, "host.name": replicaHost, "host.id": replicaHost },
   );
   await ingestSpans(inventory, serverSpans(25, now - 150n * SEC, 5), "isolation-test", { "service.instance.id": `${inventory}-1`, "container.id": inventoryCtr });
+  const [traceId, rootSpanId, clientSpanId] = [randomHex(16), randomHex(8), randomHex(8)];
+  const edgeStart = now - 10n * SEC;
+  await ingestSpans(orders, [
+    { traceId, spanId: rootSpanId, name: "GET /orders", kind: 2, startNs: edgeStart, endNs: edgeStart + 60n * 1_000_000n },
+    { traceId, spanId: clientSpanId, parentSpanId: rootSpanId, name: "GET /inventory", kind: 3, startNs: edgeStart + 1_000_000n, endNs: edgeStart + 50n * 1_000_000n },
+  ], "isolation-test", ordersRes);
+  await ingestSpans(inventory, [
+    { traceId, spanId: randomHex(8), parentSpanId: clientSpanId, name: "GET /inventory", kind: 2, startNs: edgeStart + 2_000_000n, endNs: edgeStart + 45_000_000n },
+  ], "isolation-test", { "service.instance.id": `${inventory}-1`, "container.id": inventoryCtr });
 
   const errors = collectErrors(page);
   await login(page, "isolation@karbird.local", WORKSPACE);
@@ -98,6 +107,7 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   // run ages the first sample out of the two-minute metrics window while asserting it.
   await page.getByRole("button", { name: "Pause live" }).click();
   const map = page.getByRole("application", { name: /Service map/ });
+  await expect(map.getByRole("img", { name: new RegExp(`Service ${orders}.*2 containers`) })).toBeVisible({ timeout: 60_000 });
   await (await mapLayer(page, "Service metrics")).check();
   await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
   await expect
@@ -116,6 +126,14 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   const machineButton = machines.getByRole("button", { name: `${host} · CPU 95% · RAM 870/1024 MB` });
   // The open paused map must adopt processing results without a reload.
   await expect(machineButton).toBeVisible({ timeout: 60_000 });
+  const [machinesBox, mapBox] = await Promise.all([machines.boundingBox(), map.boundingBox()]);
+  if (!machinesBox || !mapBox) throw new Error("map or machines panel has no box");
+  expect(machinesBox.y).toBeGreaterThanOrEqual(mapBox.y);
+  expect(machinesBox.y + machinesBox.height).toBeLessThanOrEqual(mapBox.y + mapBox.height);
+  const titleBox = await page.getByRole("heading", { name: "System Map" }).boundingBox();
+  if (!titleBox) throw new Error("System Map title has no box");
+  expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(machinesBox.y);
+  await expect.poll(async () => Number(await map.getAttribute("data-replica-edge-paths"))).toBeGreaterThan(0);
 
   // Deterministic noisy-neighbour hint on the map.
   const banner = page.getByRole("status", { name: "Noisy neighbour" }).filter({ hasText: orders });
@@ -154,7 +172,7 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   };
   await expect.poll(replicaAnchor).not.toBeNull();
   const [replicaX, replicaY] = (await replicaAnchor()) ?? [0, 0];
-  // Renderer anchors are measured from the canvas; the map section also has a title bar.
+  // Renderer anchors are measured from the canvas.
   const canvasBox = await map.locator("canvas").boundingBox();
   if (!canvasBox) throw new Error("map canvas has no box");
   await page.mouse.click(canvasBox.x + replicaX, canvasBox.y + replicaY);

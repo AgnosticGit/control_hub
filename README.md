@@ -47,8 +47,14 @@ KARBIRD_OWNER_PASSWORD=a long password
 ```
 just bootstrap      # pnpm install, generate secrets into .karbird/, start PG/ClickHouse/Kafka, migrate, seed
 just wasm           # build the WASM engine into apps/web/public/wasm
-just dev            # ingest :4318/:4317, processor, API :8080, web :3000
+just dev            # ingest :4318/:4317, processor, API :8080, web :3000 (infra must be running)
 just demo           # in a second terminal: gateway :7001, orders :7002, demo Postgres, load generator
+```
+
+After stopping infrastructure with `just down`, start it again with:
+
+```powershell
+docker compose --env-file .karbird/infra.env -f infra/compose/compose.yaml up -d --wait --wait-timeout 240
 ```
 
 Open http://127.0.0.1:3000/app and sign in with that owner account (owner of the demo project). It is

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Build and run karbird backend services (+ optionally the web app)
-// against the local infrastructure started by `just bootstrap`.
+// Build and run karbird backend services (+ optionally the web app); infrastructure is managed separately.
+// Run `just bootstrap` once first to create credentials, configuration, and database state.
 // `just dev ngrok` also exposes the web app at KARBIRD_PUBLIC_URL through ngrok.
 //
 // Binaries are copied to .karbird/bin before starting: on Windows a running

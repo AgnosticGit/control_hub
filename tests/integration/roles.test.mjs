@@ -9,6 +9,7 @@ const ROLES = '/api/v1/projects/demo/roles';
 const MEMBERS = '/api/v1/projects/demo/members';
 const ALL = [
   'telemetry.view',
+  'incidents.manage',
   'tokens.view',
   'tokens.manage',
   'actions.view',

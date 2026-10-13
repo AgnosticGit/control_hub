@@ -30,6 +30,14 @@ describe("timeline WebSocket frames", () => {
     expect(parseTimelineFrame('{"type":"timeline_range_complete","request_id":"r-2","sequence":3,"from_ns":"10","to_ns":"20"}'))
       .toEqual({ type: "range_complete", requestId: "r-2", sequence: 3, fromNs: "10", toNs: "20" });
   });
+
+  it("keeps an explicit oldest-history boundary distinct from an unknown boundary", () => {
+    expect(parseTimelineFrame('{"type":"timeline_complete","request_id":"r","truncated":false,"oldest_ns":"1790000000000000000"}'))
+      .toMatchObject({ type: "complete", oldestNs: "1790000000000000000" });
+    expect(parseTimelineFrame('{"type":"timeline_complete","request_id":"r","truncated":false,"oldest_ns":null}'))
+      .toMatchObject({ type: "complete", oldestNs: null });
+    expect(parseTimelineFrame('{"type":"timeline_complete","request_id":"r","truncated":false,"oldest_ns":"-1"}')).toBeNull();
+  });
 });
 
 describe("timelineTail", () => {

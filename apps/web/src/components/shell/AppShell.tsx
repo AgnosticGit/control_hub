@@ -9,7 +9,7 @@ import { usePersisted, writePersisted } from "@/lib/persisted";
 import { useLogout, useSession } from "@/lib/session";
 import { workspaceTarget } from "./scope-switcher";
 
-export type NavId = "overview" | "integration" | "actions" | "tokens" | "settings";
+export type NavId = "overview" | "incidents" | "changes" | "integration" | "actions" | "tokens" | "settings";
 
 interface Props {
   projectId: string;
@@ -42,6 +42,8 @@ export function AppShell({ projectId, environmentId, active, status, children }:
 
   const nav: Array<{ id: NavId; href: string; label: string; icon: IconName; show: boolean }> = [
     { id: "overview", href: base, label: "Overview", icon: "map", show: true },
+    { id: "incidents", href: `${base}/incidents`, label: "Incidents", icon: "alert", show: can(project, "telemetry.view") },
+    { id: "changes", href: `${base}/changes`, label: "Change Replay", icon: "repeat", show: true },
     { id: "integration", href: `${base}/integration`, label: "Integration", icon: "file", show: true },
     { id: "actions", href: `${base}/actions`, label: "Actions", icon: "bolt", show: can(project, "actions.view") },
     { id: "tokens", href: `${base}/tokens`, label: "Tokens", icon: "key", show: can(project, "tokens.view") },
@@ -137,7 +139,7 @@ export function AppShell({ projectId, environmentId, active, status, children }:
         <Icon name={sidebarHidden ? "panelLeft" : "chevronLeft"} className="h-3.5 w-3.5" />
       </button>
       <div className="flex min-h-0 min-w-0 flex-col">
-        <div className="min-h-0 flex-1">{children}</div>
+        <div className="min-h-0 min-w-0 flex-1">{children}</div>
       </div>
     </div>
   );

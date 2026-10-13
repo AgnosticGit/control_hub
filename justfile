@@ -17,7 +17,7 @@ bootstrap *ARGS:
     pnpm install --frozen-lockfile
     node scripts/bootstrap.mjs {{ARGS}}
 
-# Build and run ingest + processor + API + executor + web (Ctrl+C stops all).
+# Run ingest + processor + API + executor + archiver + web; start local infrastructure separately.
 # `just dev ngrok` also exposes the web app at KARBIRD_PUBLIC_URL through ngrok.
 dev *ARGS:
     node scripts/dev.mjs {{ARGS}}
@@ -26,7 +26,7 @@ dev *ARGS:
 dev-backend:
     node scripts/dev.mjs --no-web
 
-# Stop leftovers of `just dev` / `just demo` (e.g. after closing their terminal); keeps containers
+# Stop `just dev` / `just demo` processes; Docker containers are left running
 stop:
     node scripts/stop.mjs
 
@@ -97,11 +97,11 @@ test-php-sdk:
     php packages/sdk-php/test/bootstrap_test.php
     php packages/sdk-php/test/autoload_test.php
 
-# Criterion benchmarks across the Rust workspace (statistical, optimized profile)
+# Criterion and Divan benchmarks across the Rust workspace
 bench *ARGS:
     cargo bench --workspace {{ARGS}}
 
-# Stop infrastructure containers; data volumes are kept
+# Stop and remove infrastructure containers; data volumes are kept
 down:
     node scripts/down.mjs
 

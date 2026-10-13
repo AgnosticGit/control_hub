@@ -724,6 +724,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/incident-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_rules"];
+        put?: never;
+        post: operations["create_rule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/incident-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_rule"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_incidents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/incidents/{incident_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["incident_detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/incidents/{incident_id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["acknowledge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/environments/{environment_id}/infrastructure": {
         parameters: {
             query?: never;
@@ -1625,6 +1705,43 @@ export interface components {
             memory: (number | null)[];
             name: string;
         };
+        IncidentDto: {
+            acknowledged: boolean;
+            acknowledged_at?: string | null;
+            closed_reason?: string | null;
+            created_at: string;
+            /** Format: int64 */
+            errors: number;
+            id: string;
+            kind: string;
+            last_window_end_ns: string;
+            opened_window_end_ns: string;
+            /** Format: double */
+            p95_ms?: number | null;
+            recovered_at?: string | null;
+            /** Format: int64 */
+            requests: number;
+            rule_id: string;
+            service_id: string;
+            /** @description open, recovered or closed (rule reconfigured or disabled). */
+            state: string;
+            /** Format: double */
+            threshold: number;
+        };
+        IncidentRuleDto: {
+            created_at: string;
+            enabled: boolean;
+            id: string;
+            kind: string;
+            last_window_end_ns: string;
+            /** Format: int32 */
+            min_requests: number;
+            /** @description unknown, healthy or breaching; insufficient data is never healthy. */
+            observation_state: string;
+            service_id: string;
+            /** Format: double */
+            threshold: number;
+        };
         /** @description `×N` on a service card with several instances. */
         InfraBadge: {
             /** Format: int32 */
@@ -2085,6 +2202,15 @@ export interface components {
             grace_seconds?: number | null;
             reason?: string | null;
         };
+        RuleRequest: {
+            /** @description `error_rate` (threshold in percent) or `p95_latency` (threshold in milliseconds). */
+            kind: string;
+            /** Format: int32 */
+            min_requests: number;
+            service_id: string;
+            /** Format: double */
+            threshold: number;
+        };
         SavedTopologyGeometry: {
             external?: number[];
             infrastructure?: null | components["schemas"]["TopologyView"];
@@ -2240,6 +2366,8 @@ export interface components {
              */
             logs_source: components["schemas"]["LogSource"];
             logs_truncated: boolean;
+            /** @description Oldest retained timeline signal for this authorized scope, if any. */
+            oldest_ns?: string | null;
             /** @description Per-signal truncation: when true, the range holds more items than returned. */
             spans_truncated: boolean;
             to_ns: string;
@@ -2252,6 +2380,8 @@ export interface components {
             /** @description Unix epoch nanoseconds as decimal strings. */
             from_ns: string;
             hosts: components["schemas"]["SummaryHostTrack"][];
+            /** @description Oldest retained timeline signal for this authorized scope, if any. */
+            oldest_ns?: string | null;
             services: components["schemas"]["SummaryServiceTrack"][];
             signals: components["schemas"]["SummarySignalBucket"][];
             /** @description Exclusive end, Unix epoch nanoseconds as a decimal string. */
@@ -2374,6 +2504,13 @@ export interface components {
         };
         UpdateProjectAssignmentRequest: {
             role_id: string;
+        };
+        UpdateRuleRequest: {
+            enabled: boolean;
+            /** Format: int32 */
+            min_requests: number;
+            /** Format: double */
+            threshold: number;
         };
         UserDto: {
             /** @description RFC 3339. */
@@ -4717,6 +4854,8 @@ export interface operations {
                 from?: string;
                 to?: string;
                 trace_id?: string;
+                /** @description Exact event type, for example `deployment.finished`. */
+                event_type?: string;
                 limit?: number;
             };
             header?: never;
@@ -4743,6 +4882,257 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
+            };
+        };
+    };
+    list_rules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentRuleDto"][];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_rule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentRuleDto"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_rule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRuleRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentRuleDto"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_incidents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentDto"][];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    incident_detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    acknowledge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

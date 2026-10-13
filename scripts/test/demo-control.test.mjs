@@ -17,7 +17,7 @@ const NAMES = ['gateway', 'orders', 'catalog-1', 'catalog-2', 'catalog-3'];
  * Stands in for `supervise()`: "starting" an instance listens on its port with /health, and
  * the gateway also keeps a replica list. `broken` names never become healthy.
  */
-async function fakeDemo({ broken = new Set() } = {}) {
+async function fakeDemo({ broken = new Set(), onRelease = async () => {} } = {}) {
   const ports = Object.fromEntries(await Promise.all(NAMES.map(async (n) => [n, await freePort()])));
   const url = (n) => `http://127.0.0.1:${ports[n]}`;
   const configured = ['catalog-1', 'catalog-2', 'catalog-3'].map(url);
@@ -83,6 +83,7 @@ async function fakeDemo({ broken = new Set() } = {}) {
     instances,
     scalable: { catalog: { replicas: ['catalog-1', 'catalog-2', 'catalog-3'], router: 'gateway' } },
     releases: { orders: { instance: 'orders', versions: ['0.1.0', '0.2.0'], version: '0.1.0' } },
+    onRelease,
     healthTimeoutMs: 1500,
     pollMs: 20,
   });
@@ -199,6 +200,22 @@ test('releases restart the service on another allowlisted version and roll back 
     assert.equal(d.starts.at(-1).env.KARBIRD_SERVICE_VERSION, '0.1.0');
     assert.deepEqual(d.control.release('orders'), { service: 'orders', version: '0.1.0', previous: null, versions: ['0.1.0', '0.2.0'] });
     await assert.rejects(d.control.rollback('orders'), { status: 409 }, 'nothing earlier to return to');
+  } finally {
+    await d.close();
+  }
+});
+
+test('successful deploys and rollbacks announce the completed change once', async () => {
+  const changes = [];
+  const d = await fakeDemo({ onRelease: async (change) => { changes.push(change); } });
+  try {
+    await d.control.deploy('orders', '0.2.0');
+    await d.control.rollback('orders');
+    await assert.rejects(d.control.rollback('orders'), { status: 409 });
+    assert.deepEqual(changes, [
+      { service: 'orders', from_version: '0.1.0', to_version: '0.2.0', kind: 'deploy' },
+      { service: 'orders', from_version: '0.2.0', to_version: '0.1.0', kind: 'rollback' },
+    ]);
   } finally {
     await d.close();
   }

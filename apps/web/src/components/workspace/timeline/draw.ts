@@ -136,11 +136,6 @@ export function timelineRevealProgressFor(
   return Math.max(0, Math.min(1, frame.progress));
 }
 
-export function liveSignalTimeNs(record: Record<string, unknown>): bigint | null {
-  const value = [record.start_ns, record.time_ns, record.end_ns].find((candidate) => typeof candidate === "string" && /^\d+$/.test(candidate));
-  return typeof value === "string" ? BigInt(value) : null;
-}
-
 /** Geometry of the tracks' buckets in the current view. */
 export function bucketGeometry(t: TimelineTracks, view: View, width: number) {
   const from = BigInt(t.from_ns);
