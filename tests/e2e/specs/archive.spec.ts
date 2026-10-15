@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./isolated-test";
 import { ingestLog, login, randomHex, root } from "./helpers";
 
 // The log archive as a user sees it (ADR-0015): an hour older than the API's hot window (13 days),

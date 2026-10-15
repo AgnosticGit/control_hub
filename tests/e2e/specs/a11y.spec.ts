@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./isolated-test";
 import { login } from "./helpers";
 
 /** Structural accessibility problems a screen reader user would hit on the current page. */

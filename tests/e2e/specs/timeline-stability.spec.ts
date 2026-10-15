@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator } from "./isolated-test";
 import { ingestSpans, login, randomHex } from "./helpers";
 
 const WORKSPACE = "/app/isolation/isolation-test";

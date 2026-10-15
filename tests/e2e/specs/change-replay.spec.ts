@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./isolated-test";
 import { ingestEvent, ingestSpans, login, randomHex } from "./helpers";
 
 test("a deployment can be selected and its before/after telemetry compared", async ({ page }) => {

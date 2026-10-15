@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./isolated-test";
 import { collectErrors } from "./helpers";
 
 test.describe("landing page demo", () => {

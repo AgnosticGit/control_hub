@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./isolated-test";
 import { mapLayer, ingestLog, login, randomHex } from "./helpers";
 
 test.describe("security headers", () => {

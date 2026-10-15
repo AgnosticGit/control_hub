@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./isolated-test";
 import { mapLayer, collectErrors, ingestEvents, ingestLog, ingestSpans, login, randomHex } from "./helpers";
 
 const WORKSPACE = "/app/demo/local-demo";
@@ -779,6 +779,7 @@ test.describe("workspace on demo data", () => {
     await expect(panel.getByRole("list", { name: "Span waterfall" })).toBeVisible();
     await expect(panel.getByText(/\d+ spans ·/)).toBeVisible();
 
+    await page.getByRole("button", { name: "Return to live" }).click();
     await panel.getByRole("tab", { name: "Events" }).click();
     const eventList = panel.getByRole("list", { name: "Events" });
     const eventType = eventList.getByText("request.completed", { exact: true });

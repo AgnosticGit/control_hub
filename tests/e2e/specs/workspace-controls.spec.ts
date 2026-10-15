@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./isolated-test";
 import { mapLayer, collectErrors, ingestEvents, ingestSpans, login, randomHex } from "./helpers";
 
 const WORKSPACE = "/app/demo/local-demo";

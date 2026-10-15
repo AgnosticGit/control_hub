@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./isolated-test";
 import { collectErrors, ownerAccount } from "./helpers";
 
 // The developer's own account from .karbird/owner.env, signing in on the page they use.

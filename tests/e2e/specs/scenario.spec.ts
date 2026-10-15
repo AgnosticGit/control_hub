@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./isolated-test";
 import { mapLayer, login } from "./helpers";
 
 // Demo-only: uses the loopback fault-injection endpoint of the demo orders

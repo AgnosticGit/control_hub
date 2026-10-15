@@ -1,12 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDevArgs } from '../dev-args.mjs';
+import { devApiEnv, parseDevArgs } from '../dev-args.mjs';
 import { DEFAULT_PUBLIC_URL } from '../public-url.mjs';
 
 test('plain `just dev` is local only: no public URL', () => {
   assert.deepEqual(parseDevArgs([], {}), { web: true, release: false, build: true, publicUrl: null });
   // A public URL in the environment alone does not expose anything.
   assert.equal(parseDevArgs([], { KARBIRD_PUBLIC_URL: 'https://x.ngrok-free.dev' }).publicUrl, null);
+});
+
+test('local dev permits a full integration and browser test run without exhausting sign-ups', () => {
+  assert.deepEqual(devApiEnv(null, {}), {
+    KARBIRD_ALLOWED_ORIGINS: 'http://localhost:3000,http://127.0.0.1:3000',
+    KARBIRD_SIGNUP: 'open',
+    KARBIRD_SIGNUP_PER_HOUR: '1000',
+  });
+  assert.equal(devApiEnv(null, { KARBIRD_SIGNUP_PER_HOUR: '5' }).KARBIRD_SIGNUP_PER_HOUR, '5');
 });
 
 test('`just dev ngrok` uses the configured public URL', () => {

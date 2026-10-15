@@ -187,7 +187,8 @@ fn has_collapsed_branch(view: &TopologyView, graph: &TopologySnapshot) -> bool {
     branches.into_iter().any(|neighbours| {
         let mut ys = neighbours.iter().filter_map(|id| positions.get(id).map(|point| point.1));
         let Some(first) = ys.next() else { return false };
-        let (min, max) = ys.fold((first, first), |(min, max), y| (min.min(y), max.max(y)));
+        let Some(second) = ys.next() else { return false };
+        let (min, max) = ys.fold((first.min(second), first.max(second)), |(min, max), y| (min.min(y), max.max(y)));
         max - min < crate::layout::ROW_SPACING / 2.0
     })
 }
@@ -270,6 +271,34 @@ mod tests {
                 .iter()
                 .all(|n| n.id == "c" || (n.x, n.y) != (next.plain.nodes[2].x, next.plain.nodes[2].y))
         );
+    }
+
+    #[test]
+    fn adding_a_second_external_call_preserves_the_first_service_position() {
+        let mut initial = graph(&["external", "first"]);
+        initial.edges.push(TopologyEdge {
+            source: "external".into(),
+            target: "first".into(),
+            relation: RelationKindDto::Calls,
+            provenance: ProvenanceDto::Observed,
+            reasons: vec![],
+        });
+        let old = build_server_geometry(&initial, None, None).unwrap();
+        let mut expanded = graph(&["external", "first", "second"]);
+        expanded.edges = initial.edges;
+        expanded.edges.push(TopologyEdge {
+            source: "external".into(),
+            target: "second".into(),
+            relation: RelationKindDto::Calls,
+            provenance: ProvenanceDto::Observed,
+            reasons: vec![],
+        });
+
+        let next = build_server_geometry(&expanded, None, Some(&old)).unwrap();
+        for saved in &old.plain.nodes {
+            let actual = next.plain.nodes.iter().find(|node| node.id == saved.id).unwrap();
+            assert_eq!((actual.x, actual.y), (saved.x, saved.y), "{} moved", saved.id);
+        }
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./isolated-test";
 import { collectErrors, randomHex } from "./helpers";
 
 const PASSWORD = `onboard horse ${randomHex(4)}`;

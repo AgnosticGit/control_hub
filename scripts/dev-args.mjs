@@ -1,5 +1,14 @@
 // Arguments of `just dev`: `just dev` (local), `just dev ngrok` (plus the public tunnel).
 import { publicUrl } from "./public-url.mjs";
+import { allowedOrigins } from "./public-url.mjs";
+
+export function devApiEnv(url, env = process.env) {
+  return {
+    KARBIRD_ALLOWED_ORIGINS: allowedOrigins(url),
+    KARBIRD_SIGNUP: env.KARBIRD_SIGNUP ?? "open",
+    KARBIRD_SIGNUP_PER_HOUR: env.KARBIRD_SIGNUP_PER_HOUR ?? "1000",
+  };
+}
 
 const FLAGS = new Set(["--no-web", "--release", "--no-build", "ngrok"]);
 

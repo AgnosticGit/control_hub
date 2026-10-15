@@ -8,9 +8,8 @@
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { parseDevArgs } from "./dev-args.mjs";
+import { devApiEnv, parseDevArgs } from "./dev-args.mjs";
 import { assertNotRunning, root, run, supervise } from "./lib.mjs";
-import { allowedOrigins } from "./public-url.mjs";
 
 let opts;
 try {
@@ -45,13 +44,7 @@ for (const s of services) {
 const bin = (name) => join(binDir, exe(name));
 
 const pub = opts.publicUrl;
-const apiEnv = {
-  // With ngrok the browser's Origin is the public URL, so the API must accept it too.
-  KARBIRD_ALLOWED_ORIGINS: allowedOrigins(pub),
-  // Dev stand only: self-service sign-up is open here and closed by default elsewhere.
-  KARBIRD_SIGNUP: process.env.KARBIRD_SIGNUP ?? "open",
-  KARBIRD_SIGNUP_PER_HOUR: process.env.KARBIRD_SIGNUP_PER_HOUR ?? "60",
-};
+const apiEnv = devApiEnv(pub);
 const procs = [
   { name: "ingest", cmd: bin("karbird-ingest"), args: [] },
   { name: "processor", cmd: bin("karbird-processor"), args: [] },

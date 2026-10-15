@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./isolated-test";
 
 test("explains when login succeeds but the browser does not retain its session cookie", async ({ page }) => {
   await page.route("**/api/v1/session/login", (route) =>

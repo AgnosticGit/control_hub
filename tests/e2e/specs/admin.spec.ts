@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./isolated-test";
 import { collectErrors, login, randomHex } from "./helpers";
 
 const ADMIN = "/app/admin";

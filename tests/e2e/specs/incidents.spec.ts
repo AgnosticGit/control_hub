@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./isolated-test";
 import { login } from "./helpers";
 
 const ISOLATED_PAGE = "/app/isolation/isolation-test/incidents";

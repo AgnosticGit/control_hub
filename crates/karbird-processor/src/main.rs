@@ -462,7 +462,9 @@ async fn run_consumer(config: &ClientConfig, partitions: i32, ctx: Ctx) -> anyho
                     for (partition, batch) in by_partition {
                         let Some(watermark) = ctx.metrics.watermarks.get(partition as usize) else { continue; };
                         if !watermark.ready.load(Ordering::Acquire) {
-                            let (low, high) = consumer.fetch_watermarks(TELEMETRY_TOPIC, partition, Timeout::After(Duration::from_secs(2)))?;
+                            let Some((low, high)) = retry_until_ok(&ctx, "initial Kafka watermarks", || async {
+                                consumer.fetch_watermarks(TELEMETRY_TOPIC, partition, Timeout::After(Duration::from_secs(2)))
+                            }).await else { break; };
                             watermark.earliest.store(low, Ordering::Relaxed);
                             watermark.high.store(high, Ordering::Relaxed);
                             watermark.ready.store(true, Ordering::Release);
@@ -511,7 +513,9 @@ async fn run_consumer(config: &ClientConfig, partitions: i32, ctx: Ctx) -> anyho
             },
             _ = watermark_refresh.tick() => {
                 for partition in 0..partitions {
-                    let (low, high) = consumer.fetch_watermarks(TELEMETRY_TOPIC, partition, Timeout::After(Duration::from_secs(2)))?;
+                    let Some((low, high)) = retry_until_ok(&ctx, "Kafka watermarks", || async {
+                        consumer.fetch_watermarks(TELEMETRY_TOPIC, partition, Timeout::After(Duration::from_secs(2)))
+                    }).await else { break; };
                     if let Some(watermark) = ctx.metrics.watermarks.get(partition as usize) {
                         watermark.earliest.store(low, Ordering::Relaxed);
                         watermark.high.store(high, Ordering::Relaxed);

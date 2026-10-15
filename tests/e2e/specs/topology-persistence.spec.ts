@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator } from "./isolated-test";
 import { collectErrors, ingestSpans, login, randomHex } from "./helpers";
 
 interface LayoutNode { id: string; name: string; x: number; y: number }

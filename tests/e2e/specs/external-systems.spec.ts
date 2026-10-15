@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./isolated-test";
 import { mapLayer, collectErrors, ingestSpans, login, randomHex } from "./helpers";
 
 const WORKSPACE = "/app/isolation/isolation-test";

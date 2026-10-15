@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./isolated-test";
 import { collectErrors, login } from "./helpers";
 
 test("an empty map shows a loading state until its first topology arrives", async ({ page }) => {

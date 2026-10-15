@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./isolated-test";
 
 test("home page is indexable and links to the app", async ({ page }) => {
   await page.goto("/");
