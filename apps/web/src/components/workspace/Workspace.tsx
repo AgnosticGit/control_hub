@@ -66,8 +66,10 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const [overlayBottom, setOverlayBottom] = useState(0);
   const mapPanelRef = useRef<HTMLElement | null>(null);
   const [mapFullscreen, setMapFullscreen] = useState(false);
+  const fullscreenFallback = useRef(false);
   const [markA, setMarkA] = useState<bigint | null>(null);
   const [compare, setCompare] = useState<{ a: bigint; b: bigint; diffs: NodeDiff[] } | null>(null);
+  const compareRequestGeneration = useRef(0);
   const [side, setSide] = useState<SideTab>("signals");
   const [sideWidth, setSideWidth] = usePersistedSize("karbird.workspace.sideWidth", 400, SIDE_MIN, SIDE_MAX);
   const [dockHeight, setDockHeight] = usePersistedSize("karbird.workspace.timelineHeight", 220, DOCK_MIN, DOCK_MAX);
@@ -78,6 +80,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   const dockMax = Math.max(DOCK_MIN, Math.min(DOCK_MAX, dockContentHeight, dockAvailableHeight));
   const selectedNode = state.topology?.nodes.find((n) => n.id === selectedId) ?? null;
   const infra = useInfrastructure(actions, `${projectId}/${environmentId}`, state.phase === "ready", needsInfrastructureSnapshot(), state.mode, state.cursor);
+  const mapDataLoading = state.loading || ((layerPrefs.infrastructure || layerPrefs.serviceMetrics) && infra.loading);
   const infraSnapshot = layerPrefs.infrastructure ? infra.snapshot : null;
   // Replica counts remain visible on compact cards even when the infrastructure layer is off.
   const serviceMetricSnapshot = infra.snapshot;
@@ -99,10 +102,20 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
   }, [dockHeight, dockMax, setDockHeight]);
 
   useEffect(() => {
-    const syncFullscreen = () => setMapFullscreen(document.fullscreenElement === mapPanelRef.current);
+    const syncFullscreen = () => {
+      if (document.fullscreenElement === mapPanelRef.current) {
+        fullscreenFallback.current = false;
+        setMapFullscreen(true);
+      } else if (!fullscreenFallback.current) {
+        setMapFullscreen(false);
+      }
+    };
     const exitOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && document.fullscreenElement === mapPanelRef.current) {
         void document.exitFullscreen();
+      } else if (event.key === "Escape" && fullscreenFallback.current) {
+        fullscreenFallback.current = false;
+        setMapFullscreen(false);
       }
     };
     document.addEventListener("fullscreenchange", syncFullscreen);
@@ -118,8 +131,14 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
     if (!panel) return;
     if (document.fullscreenElement === panel) {
       void document.exitFullscreen();
+    } else if (fullscreenFallback.current) {
+      fullscreenFallback.current = false;
+      setMapFullscreen(false);
     } else {
-      void panel.requestFullscreen().catch(() => setMapFullscreen(false));
+      void panel.requestFullscreen().catch(() => {
+        fullscreenFallback.current = true;
+        setMapFullscreen(true);
+      });
     }
   };
 
@@ -239,7 +258,12 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
         <KpiRow state={state} actions={actions} />
 
         <div className="flex min-h-0 min-w-0 flex-1">
-          <main ref={mapPanelRef} className="system-map-fullscreen card relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" aria-label="System map">
+          <main
+            ref={mapPanelRef}
+            className={`system-map-fullscreen card relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${mapFullscreen ? "fixed inset-0 z-[100] h-screen w-screen rounded-none" : ""}`}
+            aria-label="System map"
+          >
+            <h1 className="sr-only">System Map</h1>
             <div className="relative min-h-0 flex-1">
               {state.phase === "error" ? (
                 <div role="alert" className="p-6 text-sm text-error">
@@ -303,6 +327,7 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
                   environmentId={environmentId}
                   traceId={traceId}
                   traceOnly={traceOnly}
+                  topInset={layerPrefs.infrastructure ? overlayBottom : 0}
                   onTraceOnly={setTraceOnly}
                   onClose={closeTrace}
                   onFocus={setTraceFocus}
@@ -313,7 +338,23 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
               {state.phase === "starting" ? (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-muted">Starting engine…</div>
               ) : null}
-              {state.phase === "ready" && state.topology && state.topology.nodes.length === 0 && !state.loading ? (
+              {state.phase === "ready" && mapDataLoading && (!state.topology || state.topology.nodes.length === 0) ? (
+                <div role="status" aria-label="Loading system map" className="absolute inset-0 flex items-center justify-center bg-surface/35 backdrop-blur-[2px]">
+                  <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-surface/95 px-7 py-6 shadow-xl">
+                    <span className="relative flex h-11 w-11 items-center justify-center">
+                      <span className="absolute inset-0 animate-ping rounded-full bg-accent/20" />
+                      <span className="h-3 w-3 rounded-full bg-accent shadow-[0_0_24px_var(--color-accent)]" />
+                    </span>
+                    <span className="text-sm font-medium text-text">Loading system map</span>
+                    <span className="flex items-center gap-1" aria-hidden="true">
+                      <i className="h-1 w-1 animate-pulse rounded-full bg-accent" />
+                      <i className="h-1 w-1 animate-pulse rounded-full bg-accent [animation-delay:150ms]" />
+                      <i className="h-1 w-1 animate-pulse rounded-full bg-accent [animation-delay:300ms]" />
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+              {state.phase === "ready" && state.topology && state.topology.nodes.length === 0 && !mapDataLoading ? (
                 <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
                   No telemetry in this time range yet. Start the demo with <code className="mx-1 font-mono">just demo</code> or
                   connect a service.
@@ -411,8 +452,21 @@ export function Workspace({ projectId, environmentId, visible = true }: { projec
           actions={actions}
           markA={markA}
           onMarkA={setMarkA}
+          onReturnToLive={() => {
+            compareRequestGeneration.current += 1;
+            setTraceId(null);
+            setTraceFocus(null);
+            setTraceOnly(true);
+            setCompare(null);
+            setSelectedId(null);
+            setSelectedHost(null);
+            setSelectedEdge(null);
+            setSelectedContainer(null);
+          }}
           onCompare={(a, b) => {
+            const generation = ++compareRequestGeneration.current;
             void actions.compare(a, b).then((diffs) => {
+              if (generation !== compareRequestGeneration.current) return;
               setCompare({ a, b, diffs });
               setSide("details");
             });

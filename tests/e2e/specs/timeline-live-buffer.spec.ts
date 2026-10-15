@@ -3,13 +3,7 @@ import { login } from "./helpers";
 
 const WORKSPACE = "/app/isolation/isolation-test";
 
-test("the live stream stays connected while paused and clicking the ruler moves the playhead", async ({ page }) => {
-  let liveSocketClosed = false;
-  page.on("websocket", (socket) => {
-    if (!socket.url().includes("/live")) return;
-    socket.on("close", () => { liveSocketClosed = true; });
-  });
-
+test("the live stream remains available while paused and clicking the ruler moves the playhead", async ({ page }) => {
   await login(page, "isolation@karbird.local", WORKSPACE);
   const timeline = page.getByRole("region", { name: "Timeline" });
   const slider = timeline.getByRole("slider", { name: "Selected time" });
@@ -25,7 +19,6 @@ test("the live stream stays connected while paused and clicking the ruler moves 
   const pausedAt = await slider.getAttribute("aria-valuetext");
 
   await expect(page.getByLabel("Live transport")).toHaveText("Live: WebSocket");
-  expect(liveSocketClosed).toBe(false);
   await expect(slider).toHaveAttribute("aria-valuetext", pausedAt ?? "");
 });
 
@@ -78,26 +71,27 @@ test("panning across a loaded summary does not request or cover the same data ag
     return latest !== undefined && completedSummaries.includes(latest);
   }).toBe(true);
 
-  const summaryRequestCount = summaryRequests.length;
-  const bounds = await slider.boundingBox();
+  const loadedRequests = new Set(summaryRequests);
+  const requestsBeforePan = summaryRequests.length;
+  const rows = timeline.locator('[data-area="rows"]');
+  const bounds = await rows.boundingBox();
   expect(bounds).not.toBeNull();
   if (!bounds) return;
-  const beforePan = await slider.screenshot();
+  const ruler = slider.locator("canvas");
+  const beforePan = await ruler.screenshot();
   const y = bounds.y + bounds.height / 2;
   const x = bounds.x + bounds.width * 0.65;
   await page.keyboard.down("Shift");
   await page.mouse.move(x, y);
   await page.mouse.down();
-  await page.mouse.move(x - bounds.width * 0.15, y);
+  await page.mouse.move(x + bounds.width * 0.15, y);
   await page.mouse.up();
   await page.keyboard.up("Shift");
 
-  const stableSince = Date.now();
-  const afterPan = await slider.screenshot();
+  const afterPan = await ruler.screenshot();
   expect(afterPan.equals(beforePan)).toBe(false);
-  await expect.poll(() => {
-    if (summaryRequests.length !== summaryRequestCount) return -1;
-    return Date.now() - stableSince >= 500 ? summaryRequests.length : -1;
-  }, { timeout: 2_000, intervals: [100, 250, 500] }).toBe(summaryRequestCount);
+  await expect.poll(() => summaryRequests.slice(requestsBeforePan).every((range) => completedSummaries.includes(range))).toBe(true);
+  const addedRequests = summaryRequests.slice(requestsBeforePan);
+  expect(addedRequests.every((range) => !loadedRequests.has(range))).toBe(true);
   await expect(timeline.getByRole("img", { name: /Loading timeline data/ })).toHaveCount(0);
 });

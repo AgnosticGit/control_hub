@@ -66,7 +66,7 @@ test("an admin shares an invite link; a newcomer creates an account from it and 
   await expect(page.getByRole("table", { name: "Active invite links" })).not.toContainText(secret.slice(0, 10));
 
   await page.getByRole("tab", { name: /Members/ }).click();
-  await expect(page.getByRole("table", { name: "Members" })).toContainText(email.split("@")[0]);
+  await expect(page.getByRole("table", { name: "Members" })).toContainText(email.split("@")[0] ?? email);
   expect(errors).toEqual([]);
   expect(guestErrors.filter((e) => !/401|Unauthorized/.test(e))).toEqual([]);
   await guest.close();

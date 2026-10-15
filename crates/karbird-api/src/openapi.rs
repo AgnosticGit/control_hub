@@ -58,6 +58,7 @@ use crate::routes;
         routes::telemetry::coverage,
         routes::edge_traffic::edge_traffic,
         routes::infrastructure::infrastructure,
+        routes::metric_overview::metric_overview,
         routes::infra_timeline::infra_timeline,
         routes::live::live,
         routes::tokens::list,

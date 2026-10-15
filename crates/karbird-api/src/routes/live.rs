@@ -514,13 +514,13 @@ async fn run(socket: WebSocket, state: AppState, scope: Scope, mut cursor: i64, 
                 return;
             }
         };
-    if !send(&mut tx, &ServerMessage::Hello { resume: cursor.to_string(), poll_ms: 0 }).await {
+    let catchup_after = cursor.saturating_sub(CATCHUP_OVERLAP_NS);
+    if !send(&mut tx, &ServerMessage::Hello { resume: catchup_after.to_string(), poll_ms: 0 }).await {
         return;
     }
     // One bounded catch-up per socket handles API restarts and reconnects. The subscription is
     // installed first, so Kafka items arriving during these queries remain queued for delivery.
     let upto = now_ns().saturating_sub(VISIBILITY_MARGIN_NS);
-    let catchup_after = cursor.saturating_sub(CATCHUP_OVERLAP_NS);
     if upto > catchup_after {
         let event_from = upto.saturating_sub(EVENT_LOOKBACK_NS);
         let mut offset = 0_u32;

@@ -300,7 +300,58 @@ fn convert_metrics(req: ExportMetricsServiceRequest, base: &MetricRow, out: &mut
                     Some(Data::Sum(s)) if s.aggregation_temporality == 1 => (METRIC_KIND_DELTA_SUM, s.data_points),
                     Some(Data::Sum(s)) => (METRIC_KIND_CUMULATIVE_SUM, s.data_points),
                     Some(Data::Histogram(h)) => {
-                        out.dropped_points += h.data_points.len() as u64;
+                        let kind = match h.aggregation_temporality {
+                            1 => METRIC_KIND_DELTA_SUM,
+                            2 => METRIC_KIND_CUMULATIVE_SUM,
+                            _ => {
+                                out.dropped_points += h.data_points.len() as u64;
+                                continue;
+                            }
+                        };
+                        for p in h.data_points {
+                            let valid = p.time_unix_nano > 0
+                                && !p.bucket_counts.is_empty()
+                                && p.bucket_counts.len() <= 65
+                                && p.bucket_counts.len() == p.explicit_bounds.len() + 1
+                                && p.explicit_bounds.iter().all(|b| b.is_finite())
+                                && p.explicit_bounds.windows(2).all(|pair| pair[0] < pair[1])
+                                && p.bucket_counts.iter().try_fold(0u64, |sum, count| sum.checked_add(*count))
+                                    == Some(p.count)
+                                && p.sum.is_none_or(f64::is_finite);
+                            if !valid {
+                                out.dropped_points += 1;
+                                continue;
+                            }
+                            let mut attributes = flatten(&p.attributes);
+                            // The bucket boundary is assigned by the converter, never by source attributes.
+                            attributes.retain(|(key, _)| key != "le");
+                            let time = clamp_ns(p.time_unix_nano);
+                            let mut emit = |suffix: &str, attrs: Vec<(String, String)>, value: f64| {
+                                let metric_name = format!("{}.{}", m.name, suffix);
+                                let prefix = series_id_prefix(&metric_name, &sorted_resource);
+                                out.metrics.push(MetricRow {
+                                    metric_name,
+                                    kind,
+                                    unit: if suffix == "count" { "1".into() } else { m.unit.clone() },
+                                    series_id: series_id_with_prefix(&prefix, &attrs),
+                                    attributes: attrs,
+                                    value,
+                                    time,
+                                    ..template.clone()
+                                });
+                            };
+                            for (index, count) in p.bucket_counts.iter().enumerate() {
+                                let upper =
+                                    p.explicit_bounds.get(index).map_or_else(|| "+Inf".into(), ToString::to_string);
+                                let mut attrs = attributes.clone();
+                                attrs.push(("le".into(), upper));
+                                emit("bucket", attrs, *count as f64);
+                            }
+                            emit("count", attributes.clone(), p.count as f64);
+                            if let Some(sum) = p.sum {
+                                emit("sum", attributes, sum);
+                            }
+                        }
                         continue;
                     }
                     Some(Data::ExponentialHistogram(h)) => {
@@ -1230,6 +1281,40 @@ mod tests {
         assert_eq!(out.metrics[1].kind, METRIC_KIND_GAUGE);
         assert_eq!(out.metrics[1].value, (870u64 << 20) as f64);
         assert_eq!(out.metrics[2].kind, METRIC_KIND_DELTA_SUM);
+    }
+
+    #[test]
+    fn histogram_becomes_bucket_count_and_sum_rows() {
+        let histogram = Metric {
+            name: "http.server.request.duration".into(),
+            unit: "s".into(),
+            data: Some(Data::Histogram(Histogram {
+                aggregation_temporality: 1,
+                data_points: vec![HistogramDataPoint {
+                    time_unix_nano: 42,
+                    count: 3,
+                    sum: Some(0.7),
+                    explicit_bounds: vec![0.1, 0.5],
+                    bucket_counts: vec![1, 1, 1],
+                    attributes: vec![kv("http.route", "/orders/{id}")],
+                    ..Default::default()
+                }],
+            })),
+            ..Default::default()
+        };
+        let out = convert(&metrics_env("t1", vec![kv("service.name", "orders")], vec![histogram]), 8).unwrap();
+        assert_eq!(out.dropped_points, 0);
+        assert_eq!(out.metrics.len(), 5);
+        assert_eq!(out.metrics.iter().map(|r| r.value).collect::<Vec<_>>(), vec![1.0, 1.0, 1.0, 3.0, 0.7]);
+        assert_eq!(out.metrics[0].metric_name, "http.server.request.duration.bucket");
+        assert_eq!(
+            out.metrics[0].attributes,
+            vec![("http.route".into(), "/orders/{id}".into()), ("le".into(), "0.1".into())]
+        );
+        assert_eq!(out.metrics[2].attributes[1], ("le".into(), "+Inf".into()));
+        assert_eq!(out.metrics[3].metric_name, "http.server.request.duration.count");
+        assert_eq!(out.metrics[4].metric_name, "http.server.request.duration.sum");
+        assert_eq!(out.metrics[0].kind, METRIC_KIND_DELTA_SUM);
     }
 
     #[test]

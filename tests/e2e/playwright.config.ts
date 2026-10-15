@@ -12,7 +12,7 @@ export default defineConfig({
   // Specs share one demo system (fault injection, action plans): never run files concurrently.
   workers: 1,
   retries: 0,
-  reporter: [["list"]],
+  reporter: [["list"], ["./isolation-reporter.mjs"]],
   outputDir: "../../test-results/e2e",
   use: {
     baseURL,

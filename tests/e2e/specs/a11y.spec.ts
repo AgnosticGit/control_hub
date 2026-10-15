@@ -63,21 +63,20 @@ test.describe("signed-in pages", () => {
   });
 
   test("workspace: one main landmark, named controls, unique IDs, labelled regions", async ({ page }) => {
+    await expect(page.getByRole("main", { name: "System map" })).toBeVisible();
     const a = await audit(page);
     expect(a.lang).toBe("en");
     expect(a.mains).toBe(1);
     expect(a.duplicateIds).toEqual([]);
     expect(a.unnamedButtons).toEqual([]);
     expect(a.unlabelledInputs).toEqual([]);
-    await expect(page.getByRole("main", { name: "System map" })).toBeVisible();
     await expect(page.getByRole("complementary", { name: "Sidebar" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Timeline" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Signals" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Workspace" })).toBeVisible();
   });
 
-  // Product gap: the workspace (/app/<project>/<env>) renders no <h1> at all (only h2 in the
-  // Inspector), unlike every other page. Screen-reader users get no page heading.
+  // The page heading remains available to screen readers without restoring the map badge.
   test("workspace has exactly one h1", async ({ page }) => {
     await expect(page.getByRole("heading", { level: 1, name: "System Map" })).toBeVisible();
     const a = await audit(page);

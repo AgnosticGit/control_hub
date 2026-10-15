@@ -3,6 +3,7 @@ import type { TimelineTracks } from "@karbird/web-engine";
 import type { ActionBar } from "./draw";
 import { centeredOn, nearestItems, tracksMatch, viewIsEmpty } from "./neighbours";
 import type { View } from "./scale";
+import { stableTrackWindow } from "./track-window";
 
 const S = 1_000_000_000n;
 const VIEW: View = { from: 100n * S, to: 110n * S };
@@ -30,10 +31,17 @@ function tracks(p: Partial<TimelineTracks> = {}): TimelineTracks {
 const bar = (from: bigint, to: bigint): ActionBar => ({ id: `${from}`, title: "Restart", target: "orders", state: "completed", from, to });
 
 describe("timeline neighbours", () => {
-  it("uses tracks only when they were computed for this exact view", () => {
-    expect(tracksMatch(tracks(), VIEW)).toBe(true);
-    expect(tracksMatch(tracks({ to_ns: (111n * S).toString() }), VIEW)).toBe(false);
+  it("uses tracks only when they were computed for the stable window of this view", () => {
+    const window = stableTrackWindow(VIEW, 180);
+    expect(tracksMatch(tracks({ from_ns: window.from.toString(), to_ns: window.to.toString() }), VIEW)).toBe(true);
+    expect(tracksMatch(tracks({ from_ns: window.from.toString(), to_ns: (window.to + S).toString() }), VIEW)).toBe(false);
     expect(tracksMatch(null, VIEW)).toBe(false);
+  });
+
+  it("matches the bucket-aligned track window for a non-aligned viewport", () => {
+    const view = { from: 1_000_000_001n, to: 1_000_000_001n + 10n * S };
+    const window = stableTrackWindow(view, 180);
+    expect(tracksMatch(tracks({ from_ns: window.from.toString(), to_ns: window.to.toString(), buckets: window.buckets }), view)).toBe(true);
   });
 
   it("calls a view empty only when nothing at all is drawn in it", () => {

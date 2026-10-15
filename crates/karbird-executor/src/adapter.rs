@@ -132,6 +132,22 @@ impl Demo {
         }
     }
 
+    /// Exercise a sparse demo workload once so verification observes the effect of checkout-v2.
+    pub async fn probe_verification(&self, action: &Action) -> anyhow::Result<()> {
+        if !matches!(action, Action::DemoFeatureFlagSet { flag: DemoFlag::CheckoutV2, .. }) {
+            return Ok(());
+        }
+        let agent = self.agent.clone();
+        let url = format!("{}/api/orders", self.cfg.gateway_url);
+        tokio::task::spawn_blocking(move || {
+            // A 5xx is expected when the broken flag is enabled. Transport failure is not.
+            agent.post(&url).send_json(json!({})).with_context(|| format!("verification probe {url} unreachable"))?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .await??;
+        Ok(())
+    }
+
     async fn restart_container(&self, container: DemoContainer) -> anyhow::Result<Value> {
         let name = container.as_str();
         let out = self.control(&format!("/instances/{name}/restart"), Some(json!({}))).await?;
@@ -510,6 +526,21 @@ mod tests {
         )
         .await;
         assert!(format!("{:#}", out.unwrap_err()).contains("fault injection"));
+    }
+
+    #[tokio::test]
+    async fn checkout_flag_verification_sends_one_order_write_even_when_it_fails() {
+        let (url, server) = fake_server(vec![(502, r#"{"error":"checkout-v2"}"#)]);
+        let demo = demo_at(&url);
+        demo.probe_verification(&Action::DemoFeatureFlagSet { flag: DemoFlag::CheckoutV2, enabled: true })
+            .await
+            .unwrap();
+        let seen = server.join().unwrap();
+        assert_eq!(seen[0].0, "POST /api/orders");
+        assert_eq!(body(&seen[0]), json!({}));
+        demo.probe_verification(&Action::DemoFeatureFlagSet { flag: DemoFlag::CatalogCache, enabled: true })
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

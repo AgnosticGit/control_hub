@@ -9,7 +9,7 @@ test("requests from outside the project and calls to third-party services are ma
   const extHost = `api.ext-${run}.test`;
   const traceId = randomHex(16);
   const [rootId, callId] = [randomHex(8), randomHex(8)];
-  const t = BigInt(Date.now() - 3_000) * 1_000_000n;
+  const t = BigInt(Date.now() - 30_000) * 1_000_000n;
   const ms = 1_000_000n;
   await ingestSpans(front, [
     { traceId, spanId: rootId, name: "GET /checkout", kind: 2, startNs: t, endNs: t + 40n * ms, attributes: { "http.request.method": "GET" } },
@@ -21,14 +21,32 @@ test("requests from outside the project and calls to third-party services are ma
       kind: 3,
       startNs: t + 5n * ms,
       endNs: t + 25n * ms,
-      attributes: { "http.request.method": "GET", "server.address": extHost },
+      attributes: { "http.request.method": "GET", "server.address": extHost, "url.full": `https://${extHost}/v1/rates?key=secret` },
     },
   ]);
 
   const errors = collectErrors(page);
   await login(page, "isolation@karbird.local", WORKSPACE);
   await expect(page.getByText("Starting engine…")).toBeHidden();
+  const scope = "/api/v1/projects/isolation/environments/isolation-test";
+  const from = (t - 10n * 60n * 1_000_000_000n).toString();
+  const to = (t + 2n * 60n * 1_000_000_000n).toString();
+  await expect.poll(async () => {
+    const response = await page.request.get(`${scope}/services?from=${from}&to=${to}`);
+    if (!response.ok()) return false;
+    const result = await response.json() as { services: Array<{ name: string }> };
+    return result.services.some((service) => service.name === front);
+  }, { timeout: 60_000 }).toBe(true);
+  await expect.poll(async () => {
+    const response = await page.request.get(`${scope}/topology?from=${from}&to=${to}&live=true`);
+    if (!response.ok()) return false;
+    const result = await response.json() as { nodes: Array<{ name: string }> };
+    return result.nodes.some((node) => node.name === extHost);
+  }, { timeout: 60_000 }).toBe(true);
+  await page.reload();
+  await expect(page.getByRole("application", { name: /Service map/ })).toBeVisible();
   await (await mapLayer(page, "Table view")).check();
+  await page.getByRole("button", { name: "Map layers" }).click();
   const table = page.getByRole("table");
   const row = (name: string) => table.getByRole("row").filter({ has: page.getByRole("button", { name, exact: true }) });
 

@@ -32,9 +32,13 @@ async function resetDemo() {
   if (release.version !== '0.1.0') assert.equal((await postJson(`${DEMO_CONTROL}/releases/orders`, { version: '0.1.0' })).status, 200);
 }
 
-after(resetDemo);
+after(async () => {
+  await resetDemo();
+  assert.equal((await postJson(`${DEMO_CONTROL}/incident-cycle`, { enabled: true })).status, 200);
+});
 
 before(async () => {
+  assert.equal((await postJson(`${DEMO_CONTROL}/incident-cycle`, { enabled: false })).status, 200);
   await resetDemo();
   admin = new Session();
   await admin.login('admin@karbird.local');

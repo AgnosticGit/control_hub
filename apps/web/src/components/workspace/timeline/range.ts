@@ -4,6 +4,8 @@ import type { View } from "./scale";
 
 /** Narrowest selectable replay range. */
 export const MIN_LOOP_NS = 1_000n;
+/** Allow for live head movement between selecting the end and pressing Play. */
+export const REPLAY_END_TOLERANCE_NS = 5_000_000_000n;
 
 /** Ordered range between two picked times, clamped to `bounds`; null when too narrow. */
 export function rangeBetween(a: bigint, b: bigint, bounds: View): View | null {
@@ -34,7 +36,7 @@ export function replayStep(cursor: bigint, advance: bigint, rangeTo: bigint, loo
 /** Where Play starts: the loop start when the cursor is outside it, else where it is. */
 export function playStart(cursor: bigint, rangeFrom: bigint, rangeTo: bigint, loop: View | null): bigint {
   if (loop) return cursor < loop.from || cursor >= loop.to ? loop.from : cursor;
-  return cursor >= rangeTo ? rangeFrom : cursor;
+  return cursor >= rangeTo || rangeTo - cursor <= REPLAY_END_TOLERANCE_NS ? rangeFrom : cursor;
 }
 
 /** Where a replay that starts over begins: the first recorded item in the range, else its start. */

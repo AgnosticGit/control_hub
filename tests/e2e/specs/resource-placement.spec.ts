@@ -63,28 +63,32 @@ test("a database in a container on our machine runs there; a managed one is exte
   const errors = collectErrors(page);
   await login(page, "isolation@karbird.local", WORKSPACE);
   await expect(page.getByText("Starting engine…")).toBeHidden();
+  const scope = "/api/v1/projects/isolation/environments/isolation-test";
+  await expect.poll(async () => {
+    const response = await page.request.get(`${scope}/services?from=${now - 5n * 60n * SEC}&to=${now + 60n * SEC}`);
+    if (!response.ok()) return false;
+    const result = await response.json() as { services: Array<{ name: string }> };
+    return result.services.some((service) => service.name === orders);
+  }, { timeout: 60_000 }).toBe(true);
+  await expect.poll(async () => {
+    const response = await page.request.get(`${scope}/infrastructure?at=${now}`);
+    if (!response.ok()) return false;
+    const result = await response.json() as { hosts: Array<{ name: string }>; resources: Array<{ name: string }> };
+    return result.hosts.some((machine) => machine.name === host)
+      && result.resources.some((resource) => resource.name.includes(ownDb));
+  }, { timeout: 60_000 }).toBe(true);
+  await page.reload();
+  await expect(page.getByRole("application", { name: /Service map/ })).toBeVisible();
   await (await mapLayer(page, "Infrastructure")).check();
+  await page.getByRole("button", { name: "Map layers" }).click();
   const machines = page.getByRole("region", { name: "Machines" });
   const machine = machines.getByRole("button", { name: new RegExp(`^${host}`) });
   const inspector = page.getByRole("complementary", { name: "Inspector" });
   const containers = inspector.getByRole("region", { name: "Containers" });
   const dbLink = containers.getByRole("button", { name: `postgresql: ${ownDb}`, exact: true });
-  // Processing and the topology refresh take a few seconds: reload until the database is linked.
-  await expect
-    .poll(
-      async () => {
-        if ((await machine.count()) > 0) {
-          await machine.click();
-          if ((await dbLink.count()) > 0) return true;
-        }
-        await page.reload();
-        await expect(page.getByText("Starting engine…")).toBeHidden();
-        await (await mapLayer(page, "Infrastructure")).check();
-        return false;
-      },
-      { timeout: 60_000, intervals: [3_000] },
-    )
-    .toBe(true);
+  await expect(machine).toBeVisible();
+  await machine.click();
+  await expect(dbLink).toBeVisible({ timeout: 30_000 });
 
   // The machine card shows the container's image and which database runs in it.
   await expect(containers).toContainText("postgres:16-alpine");

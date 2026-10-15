@@ -23,3 +23,20 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     mem_limit: 128m
     cpus: 0.2
+  postgres:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    profiles: ["postgres"]
+    restart: unless-stopped
+    command: ["--config=/etc/karbird/postgres-collector.yaml"]
+    environment:
+      KARBIRD_OTLP_ENDPOINT: ${KARBIRD_OTLP_ENDPOINT:?karbird ingest base URL}
+      KARBIRD_INGEST_TOKEN: ${KARBIRD_INGEST_TOKEN:?metrics ingest token}
+      KARBIRD_HOST_NAME: ${KARBIRD_HOST_NAME:?machine name}
+      KARBIRD_POSTGRES_ENDPOINT: ${KARBIRD_POSTGRES_ENDPOINT:?PostgreSQL host:port}
+      KARBIRD_POSTGRES_USER: ${KARBIRD_POSTGRES_USER:?read-only monitoring user}
+      KARBIRD_POSTGRES_PASSWORD: ${KARBIRD_POSTGRES_PASSWORD:?monitoring password}
+      KARBIRD_POSTGRES_DATABASE: ${KARBIRD_POSTGRES_DATABASE:?database to monitor}
+    volumes:
+      - ./postgres-collector.yaml:/etc/karbird/postgres-collector.yaml:ro
+    mem_limit: 128m
+    cpus: 0.2

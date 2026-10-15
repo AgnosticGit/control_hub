@@ -7,6 +7,7 @@ pub mod infra_timeline;
 pub mod infrastructure;
 pub mod invites;
 pub mod live;
+pub mod metric_overview;
 pub mod metrics;
 pub mod oauth;
 pub mod organisations;

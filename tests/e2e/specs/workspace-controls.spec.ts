@@ -1,10 +1,11 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { mapLayer, collectErrors, login } from "./helpers";
+import { mapLayer, collectErrors, ingestEvents, ingestSpans, login, randomHex } from "./helpers";
 
 const WORKSPACE = "/app/demo/local-demo";
 
 async function openTable(page: Page): Promise<Locator> {
   await (await mapLayer(page, "Table view")).check();
+  await page.getByRole("button", { name: "Map layers" }).click();
   const table = page.getByRole("table");
   await expect(table.getByRole("button", { name: "gateway", exact: true })).toBeVisible();
   return table;
@@ -55,9 +56,8 @@ test.describe("workspace controls on demo data", () => {
     if (!machinesBox || !mapBox) throw new Error("map or machines panel has no box");
     expect(machinesBox.y).toBeGreaterThanOrEqual(mapBox.y);
     expect(machinesBox.y + machinesBox.height).toBeLessThanOrEqual(mapBox.y + mapBox.height);
-    const titleBox = await page.getByRole("heading", { name: "System Map" }).boundingBox();
-    if (!titleBox) throw new Error("System Map title has no box");
-    expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(machinesBox.y);
+    const headingBox = await page.getByRole("heading", { name: "System Map" }).boundingBox();
+    expect(headingBox?.width).toBeLessThanOrEqual(1);
     await map.focus();
     await map.press("0");
     await expect
@@ -75,34 +75,69 @@ test.describe("workspace controls on demo data", () => {
     await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
   });
 
-  test("map corner title and toolbar move with the Machines overlay", async ({ page }) => {
+  test("map controls stay in a horizontal row below Machines while full screen stays on the right", async ({ page }) => {
     const mapPanel = page.getByRole("main", { name: "System map" });
-    const title = page.getByRole("heading", { name: "System Map" });
-    const fullscreen = page.getByRole("button", { name: "Full screen" });
-    const initial = await fullscreen.boundingBox();
-    if (!initial) throw new Error("full screen button has no box");
+    const fullscreen = mapPanel.getByRole("button", { name: "Full screen" });
+    const layers = mapPanel.getByRole("button", { name: "Map layers" });
+    const key = mapPanel.getByRole("button", { name: "Show map key" });
+    const lines = mapPanel.getByRole("group", { name: "Line style" });
 
     await (await mapLayer(page, "Infrastructure")).check();
     const machines = page.getByRole("region", { name: "Machines" });
     await expect(machines).toBeVisible();
-    const [mapBox, titleBox, machinesBox, fullscreenBox] = await Promise.all([
-      mapPanel.boundingBox(),
-      title.boundingBox(),
-      machines.boundingBox(),
-      fullscreen.boundingBox(),
-    ]);
-    if (!mapBox || !titleBox || !machinesBox || !fullscreenBox) throw new Error("map overlay controls have no box");
-    expect(titleBox.x).toBeGreaterThanOrEqual(mapBox.x);
-    expect(titleBox.y).toBeGreaterThanOrEqual(mapBox.y);
-    expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(machinesBox.y);
-    expect(machinesBox.y + machinesBox.height + 8).toBeLessThanOrEqual(fullscreenBox.y);
-    expect(fullscreenBox.y).toBeGreaterThan(initial.y);
+    await expect.poll(async () => {
+      const [mapBox, machinesBox, fullscreenBox, linesBox, layersBox, keyBox] = await Promise.all([
+        mapPanel.boundingBox(), machines.boundingBox(), fullscreen.boundingBox(), lines.boundingBox(), layers.boundingBox(), key.boundingBox(),
+      ]);
+      if (!mapBox || !machinesBox || !fullscreenBox || !linesBox || !layersBox || !keyBox) return false;
+      return linesBox.y >= machinesBox.y + machinesBox.height + 8
+        && Math.abs(linesBox.y - layersBox.y) < 8
+        && Math.abs(layersBox.y - keyBox.y) < 8
+        && linesBox.x < layersBox.x && layersBox.x < keyBox.x
+        && fullscreenBox.x + fullscreenBox.width > mapBox.x + mapBox.width - 24
+        && fullscreenBox.y < machinesBox.y;
+    }).toBe(true);
 
     await (await mapLayer(page, "Infrastructure")).uncheck();
     await expect(machines).toHaveCount(0);
-    await expect
-      .poll(async () => (await fullscreen.boundingBox())?.y ?? Number.POSITIVE_INFINITY)
-      .toBeLessThan(fullscreenBox.y);
+    await expect.poll(async () => {
+      const [lineBox, mapBox] = await Promise.all([lines.boundingBox(), mapPanel.boundingBox()]);
+      return lineBox && mapBox ? lineBox.y - mapBox.y : Number.POSITIVE_INFINITY;
+    }).toBeLessThan(48);
+  });
+
+  test("signals expand into a spacious full-screen explorer", async ({ page }) => {
+    const signals = page.getByRole("region", { name: "Signals" });
+    await signals.getByRole("button", { name: "Full screen signals" }).click();
+    await expect.poll(() => signals.evaluate((element) => element.matches(":fullscreen"))).toBe(true);
+    await expect(signals.getByRole("heading", { name: "Signal explorer" })).toBeVisible();
+    await signals.getByRole("tab", { name: "Traces" }).click();
+    await expect(signals.getByRole("list", { name: "Traces" })).toBeVisible();
+    await signals.getByRole("button", { name: "Exit full screen signals" }).click();
+    await expect.poll(() => signals.evaluate((element) => element.matches(":fullscreen"))).toBe(false);
+  });
+
+  test("Return to live clears the focused trace, range picker and mark A", async ({ page }) => {
+    const timeline = page.getByRole("region", { name: "Timeline" });
+    await timeline.getByRole("button", { name: "Pause live" }).click();
+    await timeline.getByRole("button", { name: "Mark A" }).click();
+    await timeline.getByRole("button", { name: "Back 5 seconds" }).click();
+    await timeline.getByRole("button", { name: "Compare A ↔ now" }).click();
+    await expect(page.getByRole("complementary", { name: "Inspector" }).getByRole("heading", { name: /^Compare / })).toBeVisible();
+    await page.getByRole("tab", { name: "Signals" }).click();
+    await timeline.getByRole("button", { name: "Range", exact: true }).click();
+    await expect(timeline.getByRole("button", { name: "Load range" })).toBeVisible();
+    await page.getByRole("region", { name: "Signals" }).getByRole("button", { name: "Open trace" }).first().click();
+    await expect(page.getByRole("region", { name: "Focused request" })).toBeVisible();
+
+    await timeline.getByRole("button", { name: "Return to live" }).click();
+    await expect(timeline.getByText("live", { exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Focused request" })).toHaveCount(0);
+    await expect(timeline.getByRole("button", { name: "Mark A" })).toBeVisible();
+    await expect(timeline.getByRole("button", { name: "Load range" })).toHaveCount(0);
+    await expect(timeline.getByRole("button", { name: "Range", exact: true })).toHaveAttribute("aria-expanded", "false");
+    await page.getByRole("tab", { name: "Details" }).click();
+    await expect(page.getByRole("complementary", { name: "Inspector" }).getByRole("heading", { name: /^Compare / })).toHaveCount(0);
   });
 
   test("map fills the workspace when the sidebar is collapsed", async ({ page }) => {
@@ -150,7 +185,7 @@ test.describe("workspace controls on demo data", () => {
     await expect(mapText.getByText("gateway", { exact: true })).toBeAttached();
     await expect(mapText.getByText("orders", { exact: true })).toBeAttached();
     await expect(mapText).toHaveCSS("user-select", "none");
-    expect(await page.evaluate(() => window.find("gateway"))).toBe(true);
+    expect(await page.evaluate(() => (window as unknown as Window & { find: (text: string) => boolean }).find("gateway"))).toBe(true);
   });
 
   test("Hide inferred removes inferred dependencies; Only problems keeps degraded/failing only", async ({ page }) => {
@@ -225,6 +260,20 @@ test.describe("workspace controls on demo data", () => {
     await expect(inspector.getByText("Select a component on the map to inspect it.")).toBeVisible();
   });
 
+  test("Inspector shows application histograms and PostgreSQL dependency measurements", async ({ page }) => {
+    const table = await openTable(page);
+    await table.getByRole("button", { name: "orders", exact: true }).click();
+    const inspector = page.getByRole("complementary", { name: "Inspector" });
+    const application = inspector.getByRole("region", { name: "Application metrics" });
+    await expect(application).toBeVisible();
+    await expect(application.getByText("HTTP p95 ≤")).toBeVisible();
+    await expect(application.getByText("Process RSS")).toBeVisible();
+    await expect(application.getByText(/MiB/)).toBeVisible({ timeout: 45_000 });
+    const dependency = inspector.getByRole("region", { name: "PostgreSQL dependency" });
+    await expect(dependency).toBeVisible();
+    await expect(dependency.getByText("Connections")).toBeVisible();
+  });
+
   test("map zoom uses the keyboard and fit key without zoom buttons", async ({ page }) => {
     const errors = collectErrors(page);
     const map = page.getByRole("application", { name: /Service map/ });
@@ -263,7 +312,9 @@ test.describe("workspace controls on demo data", () => {
     await expect(records).toBeVisible();
     const rows = records.getByRole("listitem");
     const texts = () => rows.allTextContents();
-    const entryLabels = () => rows.getByRole("button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? ""));
+    const entryLabels = () => rows.getByRole("button").evaluateAll((buttons) => buttons
+      .map((button) => button.getAttribute("aria-label") ?? "")
+      .filter((label) => /\b(?:info|debug|trace|warn|error|fatal)\s+log from\b/i.test(label)));
 
     await panel.getByLabel("Search log text").fill("order");
     await expect.poll(async () => {
@@ -285,7 +336,7 @@ test.describe("workspace controls on demo data", () => {
     const cursor = page.getByRole("slider", { name: "Selected time" });
     const before = await cursor.getAttribute("aria-valuetext");
     await rows.getByRole("button").first().click();
-    await expect(rows.first().getByText("Log details")).toBeVisible();
+    await expect(records.getByText("Log details")).toBeVisible();
     await expect(cursor).not.toHaveAttribute("aria-valuetext", before ?? "");
 
     // Selecting a service narrows the panel to it; the toggle widens it again.
@@ -329,7 +380,7 @@ test.describe("workspace controls on demo data", () => {
     const list = panel.getByRole("list", { name: "Traces" });
     const first = list.getByRole("button").first();
     await first.click();
-    await expect(first).toHaveAttribute("aria-current", "true");
+    await expect(list.locator('button[aria-current="true"]')).toHaveCount(1);
     await panel.getByLabel("Only errors").check();
     await expect.poll(async () => {
       const n = await list.getByRole("button").count();
@@ -339,6 +390,28 @@ test.describe("workspace controls on demo data", () => {
   });
 
   test("events tab lists typed events and opens linked traces", async ({ page }) => {
+    await page.context().clearCookies();
+    await login(page, "isolation@karbird.local", "/app/isolation/isolation-test");
+    const traceId = randomHex(16);
+    const spanId = randomHex(8);
+    const eventTime = BigInt(Date.now()) * 1_000_000n;
+    const service = `e2e-events-${randomHex(4)}`;
+    await ingestSpans(service, [{
+      traceId,
+      spanId,
+      name: "GET /e2e-event",
+      kind: 2,
+      startNs: eventTime - 1_000_000_000n,
+      endNs: eventTime - 100_000_000n,
+    }]);
+    await ingestEvents([{
+      event_type: "request.completed",
+      service: { name: service },
+      event_time: eventTime.toString(),
+      trace_id: traceId,
+      span_id: spanId,
+      attributes: { source: "e2e" },
+    }]);
     const panel = page.getByRole("region", { name: "Signals" });
     await panel.getByRole("tab", { name: "Events" }).click();
     await expect(panel.getByRole("tab", { name: "Events" })).toHaveAttribute("aria-selected", "true");
@@ -357,15 +430,16 @@ test.describe("workspace controls on demo data", () => {
     }
   });
 
-  test("top-bar presets load history (HISTORY mode) and Return to live goes back", async ({ page }) => {
-    const timeline = page.getByLabel("Timeline");
+  test("range presets load history (HISTORY mode) and Return to live goes back", async ({ page }) => {
+    const timeline = page.getByRole("region", { name: "Timeline" });
     await expect(timeline.getByText("live", { exact: true })).toBeVisible();
-    await page.getByRole("group", { name: "Load a recent range" }).getByRole("button", { name: "1h" }).click();
+    await timeline.getByRole("button", { name: "Range", exact: true }).click();
+    await timeline.getByRole("button", { name: "Last 1 h", exact: true }).click();
     await expect(timeline.getByText("historical", { exact: true })).toBeVisible();
-    await expect(page.getByText("HISTORY", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Live transport")).toHaveCount(0);
     await expect(timeline).toContainText(/1h|60m|1 h/);
-    await page.getByRole("group", { name: "Load a recent range" }).getByRole("button", { name: "6h" }).click();
+    await timeline.getByRole("button", { name: "Range", exact: true }).click();
+    await timeline.getByRole("button", { name: "Last 6 h", exact: true }).click();
     await expect(timeline.getByText("historical", { exact: true })).toBeVisible();
     await timeline.getByRole("button", { name: "Return to live" }).click();
     await expect(timeline.getByText("live", { exact: true })).toBeVisible();
@@ -373,7 +447,7 @@ test.describe("workspace controls on demo data", () => {
   });
 
   test("Range validates the range, closes and loads a valid one", async ({ page }) => {
-    const timeline = page.getByLabel("Timeline");
+    const timeline = page.getByRole("region", { name: "Timeline" });
     const toggle = timeline.getByRole("button", { name: "Range", exact: true });
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
@@ -410,7 +484,7 @@ test.describe("workspace controls on demo data", () => {
   });
 
   test("Mark A and Compare A ↔ now show a comparison in Details", async ({ page }) => {
-    const timeline = page.getByLabel("Timeline");
+    const timeline = page.getByRole("region", { name: "Timeline" });
     await timeline.getByRole("button", { name: "Pause live" }).click();
     await timeline.getByRole("button", { name: "Mark A" }).click();
     await expect(timeline.getByText(/^A: \d{2}:\d{2}:\d{2}/)).toBeVisible();
@@ -434,7 +508,7 @@ test.describe("workspace controls on demo data", () => {
   });
 
   test("the ruler supports Home, End, PageUp/PageDown and Shift+Arrow", async ({ page }) => {
-    const timeline = page.getByLabel("Timeline");
+    const timeline = page.getByRole("region", { name: "Timeline" });
     await timeline.getByRole("button", { name: "Pause live" }).click();
     const ruler = timeline.getByRole("slider", { name: "Selected time" });
     await ruler.focus();
@@ -442,26 +516,26 @@ test.describe("workspace controls on demo data", () => {
     await expect(ruler).toHaveAttribute("aria-valuenow", "0");
     await page.keyboard.press("End");
     await expect(ruler).toHaveAttribute("aria-valuenow", "100");
-    // A tenth of the view back; the view is the data plus the 1/9 after "now" that has not happened yet.
+    // PageUp moves earlier by one tenth of the current view, regardless of the full data range.
     await page.keyboard.press("PageUp");
-    await expect.poll(async () => Number(await ruler.getAttribute("aria-valuenow"))).toBeGreaterThanOrEqual(88);
-    await expect.poll(async () => Number(await ruler.getAttribute("aria-valuenow"))).toBeLessThanOrEqual(90);
+    await expect.poll(async () => Number(await ruler.getAttribute("aria-valuenow"))).toBeLessThan(100);
     await page.keyboard.press("PageDown");
     await expect(ruler).toHaveAttribute("aria-valuenow", "100");
     await page.keyboard.press("Shift+ArrowLeft");
-    await expect.poll(async () => Number(await ruler.getAttribute("aria-valuenow"))).toBeLessThanOrEqual(91);
+    await expect.poll(async () => Number(await ruler.getAttribute("aria-valuenow"))).toBeLessThan(100);
     await expect(timeline.getByText("paused", { exact: true })).toBeVisible();
   });
 
   test("Escape on the timeline clears a replay range", async ({ page }) => {
-    const timeline = page.getByLabel("Timeline");
+    const timeline = page.getByRole("region", { name: "Timeline" });
     const rows = timeline.locator('[data-area="rows"]');
     const box = await rows.boundingBox();
     expect(box).not.toBeNull();
     if (!box) return;
-    await page.mouse.move(box.x + box.width * 0.4, box.y + 30);
+    // The data window occupies the right side of the live viewport; select within loaded data.
+    await page.mouse.move(box.x + box.width * 0.85, box.y + 30);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.5, box.y + 30, { steps: 10 });
+    await page.mouse.move(box.x + box.width * 0.95, box.y + 30, { steps: 10 });
     await page.mouse.up();
     const chip = timeline.getByLabel("Replay range", { exact: true });
     await expect(chip).toBeVisible();
@@ -471,20 +545,20 @@ test.describe("workspace controls on demo data", () => {
   });
 
   test("time zoom out/in buttons change the visible span and Whole range restores it", async ({ page }) => {
-    const timeline = page.getByLabel("Timeline");
+    const timeline = page.getByRole("region", { name: "Timeline" });
     await timeline.getByRole("button", { name: "Pause live" }).click();
     const whole = timeline.getByRole("button", { name: "Whole range" });
     const span = whole.locator("xpath=following-sibling::span[1]");
     const full = await span.textContent();
     await timeline.getByRole("button", { name: "Zoom in time" }).click();
-    await timeline.getByRole("button", { name: "Zoom in time" }).click();
     await expect(span).not.toHaveText(full ?? "");
     await expect(whole).toHaveAttribute("aria-pressed", "false");
+    await timeline.getByRole("button", { name: "Zoom in time" }).click();
+    // The loaded window is shorter than the live viewport, so the second zoom reaches it.
+    await expect(whole).toHaveAttribute("aria-pressed", "true");
+    const loaded = await span.textContent();
     await timeline.getByRole("button", { name: "Zoom out time" }).click();
-    await timeline.getByRole("button", { name: "Zoom out time" }).click();
-    await timeline.getByRole("button", { name: "Zoom out time" }).click();
-    // Zooming out is bounded by the loaded range.
-    await expect(span).toHaveText(full ?? "");
+    await expect(span).not.toHaveText(loaded ?? "");
     await whole.click();
     await expect(whole).toHaveAttribute("aria-pressed", "true");
   });

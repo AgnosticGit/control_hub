@@ -190,7 +190,7 @@ pub fn sanitize_logs(req: &mut ExportLogsServiceRequest) -> SanitizeStats {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct MetricStats {
     pub accepted: u64,
-    /// Invalid points, unsupported metric types (histograms, summaries) and the per-request overflow.
+    /// Invalid points, unsupported metric types (exponential histograms, summaries) and the per-request overflow.
     pub rejected: u64,
     /// Points of new series refused by the per-environment series limit.
     pub over_limit: u64,
@@ -265,7 +265,20 @@ fn valid_point(p: &NumberDataPoint) -> bool {
         }
 }
 
-/// Keeps gauge and sum points only; everything else is removed and counted. `admit` decides
+fn valid_histogram_point(p: &opentelemetry_proto::tonic::metrics::v1::HistogramDataPoint) -> bool {
+    p.time_unix_nano > 0
+        && !p.bucket_counts.is_empty()
+        && p.bucket_counts.len() <= 65
+        && p.bucket_counts.len() == p.explicit_bounds.len() + 1
+        && p.explicit_bounds.iter().all(|b| b.is_finite())
+        && p.explicit_bounds.windows(2).all(|pair| pair[0] < pair[1])
+        && p.bucket_counts.iter().try_fold(0u64, |sum, count| sum.checked_add(*count)) == Some(p.count)
+        && p.sum.is_none_or(f64::is_finite)
+        && p.min.is_none_or(f64::is_finite)
+        && p.max.is_none_or(f64::is_finite)
+}
+
+/// Keeps gauges, sums and explicit-boundary histograms; everything else is removed and counted. `admit` decides
 /// whether a point's series fits the environment's series limit.
 pub fn sanitize_metrics(req: &mut ExportMetricsServiceRequest, admit: &mut dyn FnMut(u64) -> bool) -> MetricStats {
     let mut st = MetricStats::default();
@@ -284,13 +297,51 @@ pub fn sanitize_metrics(req: &mut ExportMetricsServiceRequest, admit: &mut dyn F
                 sanitize_attrs(&mut scope.attributes, &mut attr_stats, 0);
             }
             sm.metrics.retain_mut(|m| {
-                let points = match m.data.as_mut() {
-                    Some(Data::Gauge(g)) => &mut g.data_points,
-                    Some(Data::Sum(s)) => &mut s.data_points,
-                    Some(Data::Histogram(h)) => {
+                let point_count = match m.data.as_ref() {
+                    Some(Data::Gauge(g)) => g.data_points.len(),
+                    Some(Data::Sum(s)) => s.data_points.len(),
+                    Some(Data::Histogram(h)) => h.data_points.len(),
+                    Some(Data::ExponentialHistogram(h)) => h.data_points.len(),
+                    Some(Data::Summary(s)) => s.data_points.len(),
+                    None => return false,
+                };
+                if !valid_metric_name(&m.name) {
+                    st.rejected += point_count as u64;
+                    return false;
+                }
+                m.description.clear();
+                m.metadata.clear();
+                if m.unit.len() > MAX_UNIT_LEN || !m.unit.bytes().all(|b| b.is_ascii_graphic()) {
+                    m.unit.clear();
+                }
+                let name = m.name.clone();
+                if let Some(Data::Histogram(h)) = m.data.as_mut() {
+                    if !matches!(h.aggregation_temporality, 1 | 2) {
                         st.rejected += h.data_points.len() as u64;
                         return false;
                     }
+                    h.data_points.retain_mut(|p| {
+                        let cost = p.bucket_counts.len().saturating_add(2);
+                        if !valid_histogram_point(p) || budget < cost {
+                            st.rejected += 1;
+                            return false;
+                        }
+                        sanitize_attrs(&mut p.attributes, &mut attr_stats, 0);
+                        if !admit(series_key_with_sorted_resource(&name, &sorted_resource, &p.attributes)) {
+                            st.over_limit += 1;
+                            return false;
+                        }
+                        budget -= cost;
+                        p.exemplars.clear();
+                        st.accepted += 1;
+                        true
+                    });
+                    return !h.data_points.is_empty();
+                }
+                let points = match m.data.as_mut() {
+                    Some(Data::Gauge(g)) => &mut g.data_points,
+                    Some(Data::Sum(s)) => &mut s.data_points,
+                    Some(Data::Histogram(_)) => return false,
                     Some(Data::ExponentialHistogram(h)) => {
                         st.rejected += h.data_points.len() as u64;
                         return false;
@@ -301,16 +352,6 @@ pub fn sanitize_metrics(req: &mut ExportMetricsServiceRequest, admit: &mut dyn F
                     }
                     None => return false,
                 };
-                if !valid_metric_name(&m.name) {
-                    st.rejected += points.len() as u64;
-                    return false;
-                }
-                m.description.clear();
-                m.metadata.clear();
-                if m.unit.len() > MAX_UNIT_LEN || !m.unit.bytes().all(|b| b.is_ascii_graphic()) {
-                    m.unit.clear();
-                }
-                let name = m.name.clone();
                 points.retain_mut(|p| {
                     if budget == 0 || !valid_point(p) {
                         st.rejected += 1;
@@ -811,6 +852,41 @@ mod tests {
         assert_eq!(m.unit, "By");
         let Some(Data::Sum(s)) = &m.data else { panic!("sum expected") };
         assert!(s.data_points[0].exemplars.is_empty());
+    }
+
+    #[test]
+    fn histogram_points_are_kept_only_with_bounded_consistent_buckets() {
+        let valid = HistogramDataPoint {
+            time_unix_nano: 5,
+            count: 3,
+            sum: Some(0.7),
+            explicit_bounds: vec![0.1, 0.5],
+            bucket_counts: vec![1, 1, 1],
+            attributes: vec![kv("http.route", "/orders/{id}"), kv("api_key", "secret")],
+            exemplars: vec![Exemplar { trace_id: vec![1; 16], ..Default::default() }],
+            ..Default::default()
+        };
+        let invalid = HistogramDataPoint { count: 2, ..valid.clone() };
+        let mut req = metrics_req(
+            vec![],
+            vec![Metric {
+                name: "http.server.request.duration".into(),
+                unit: "s".into(),
+                data: Some(Data::Histogram(Histogram {
+                    data_points: vec![valid, invalid],
+                    aggregation_temporality: 2,
+                })),
+                ..Default::default()
+            }],
+        );
+        let stats = sanitize_metrics(&mut req, &mut admit_all());
+        assert_eq!((stats.accepted, stats.rejected, stats.redacted), (1, 1, 1));
+        let Some(Data::Histogram(hist)) = &req.resource_metrics[0].scope_metrics[0].metrics[0].data else {
+            panic!("histogram expected")
+        };
+        assert_eq!(hist.data_points.len(), 1);
+        assert!(hist.data_points[0].exemplars.is_empty());
+        assert!(!format!("{req:?}").contains("secret"));
     }
 
     #[test]

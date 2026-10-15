@@ -17,7 +17,7 @@ const NAMES = ['gateway', 'orders', 'catalog-1', 'catalog-2', 'catalog-3'];
  * Stands in for `supervise()`: "starting" an instance listens on its port with /health, and
  * the gateway also keeps a replica list. `broken` names never become healthy.
  */
-async function fakeDemo({ broken = new Set(), onRelease = async () => {} } = {}) {
+async function fakeDemo({ broken = new Set(), onRelease = async () => {}, setIncidentCycleEnabled = () => {} } = {}) {
   const ports = Object.fromEntries(await Promise.all(NAMES.map(async (n) => [n, await freePort()])));
   const url = (n) => `http://127.0.0.1:${ports[n]}`;
   const configured = ['catalog-1', 'catalog-2', 'catalog-3'].map(url);
@@ -84,6 +84,7 @@ async function fakeDemo({ broken = new Set(), onRelease = async () => {} } = {})
     scalable: { catalog: { replicas: ['catalog-1', 'catalog-2', 'catalog-3'], router: 'gateway' } },
     releases: { orders: { instance: 'orders', versions: ['0.1.0', '0.2.0'], version: '0.1.0' } },
     onRelease,
+    setIncidentCycleEnabled,
     healthTimeoutMs: 1500,
     pollMs: 20,
   });
@@ -301,6 +302,35 @@ test('HTTP front: routes, methods, validation and errors as JSON', async () => {
       assert.equal(res.status, status, res.url);
       assert.equal(typeof (await res.json()).error, 'string');
     }
+  } finally {
+    await new Promise((r) => server.close(() => r()));
+    await d.close();
+  }
+});
+
+test('HTTP front can pause and resume the periodic incident cycle', async () => {
+  const states = [];
+  const d = await fakeDemo({ setIncidentCycleEnabled: (enabled) => states.push(enabled) });
+  const port = await freePort();
+  const server = await listenControl(d.control, port);
+  const base = `http://127.0.0.1:${port}`;
+  try {
+    for (const enabled of [false, true]) {
+      const response = await fetch(`${base}/incident-cycle`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { enabled });
+    }
+    const invalid = await fetch(`${base}/incident-cycle`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: 'false' }),
+    });
+    assert.equal(invalid.status, 400);
+    assert.deepEqual(states, [false, true]);
   } finally {
     await new Promise((r) => server.close(() => r()));
     await d.close();

@@ -9,6 +9,7 @@
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { CONTROL_PORT, createDemoControl, listenControl } from "./demo-control.mjs";
+import { startDemoIncidentCycle } from "./demo-incidents.mjs";
 import { CATALOG_PORTS, PORTS, demoPlacement } from "./demo-placement.mjs";
 import { assertNotRunning, compose, loadEnvFile, root, supervise } from "./lib.mjs";
 
@@ -90,10 +91,18 @@ const supervisor = supervise([
       KARBIRD_OTLP_ENDPOINT: demo.KARBIRD_OTLP_ENDPOINT,
       KARBIRD_INGEST_TOKEN: demo.KARBIRD_INGEST_TOKEN,
       DEMO_INFRA_PLACEMENT: JSON.stringify(placement),
+      ...pg,
     },
   },
-  { name: "load", cmd: node, args: ["src/loadgen.mjs"], cwd, env: { DEMO_RPS: process.env.DEMO_RPS ?? "5" } },
+  { name: "load", cmd: node, args: ["src/loadgen.mjs"], cwd, env: { DEMO_RPS: process.env.DEMO_RPS ?? String(10 / 60) } },
 ], "demo");
+
+const incidentCycle = startDemoIncidentCycle({
+  loadControlUrl: "http://127.0.0.1:7091",
+  log: (msg) => console.error(`[demo-incidents] ${msg}`),
+});
+process.once("SIGINT", () => incidentCycle.stop());
+process.once("SIGTERM", () => incidentCycle.stop());
 
 const control = createDemoControl({
   supervisor,
@@ -101,6 +110,7 @@ const control = createDemoControl({
   scalable: { catalog: { replicas: catalogReplicas, router: "gateway" } },
   releases: { orders: { instance: "orders", versions: ["0.1.0", "0.2.0"], version: base.KARBIRD_SERVICE_VERSION } },
   log: (msg) => console.error(`[demo-control] ${msg}`),
+  setIncidentCycleEnabled: (enabled) => incidentCycle.setEnabled(enabled),
   onRelease: async (change) => {
     const endpoint = demo.KARBIRD_OTLP_ENDPOINT.replace(/\/$/, "");
     const response = await fetch(`${endpoint}/api/v1/events/batch`, {

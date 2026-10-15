@@ -9,6 +9,7 @@
 // DEMO ONLY.
 
 import { pathToFileURL } from 'node:url';
+import pg from 'pg';
 import { encodeMetrics } from './otlp-metrics.mjs';
 
 const MIB = 1024 * 1024;
@@ -136,6 +137,38 @@ export function buildResources(states, samples, startNs, timeNs) {
   return resources;
 }
 
+/** Selected read-only pg_stat_database counters from the real demo PostgreSQL instance. */
+export function postgresResource(row, container, startNs, timeNs) {
+  const point = (value) => ({ value: Number(value), timeNs, startNs });
+  const metric = (name, kind, value) => ({ name, unit: '{operation}', kind, monotonic: kind === 'sum', points: [point(value)] });
+  return {
+    attributes: {
+      'db.system.name': 'postgresql',
+      'service.name': 'postgresql',
+      'host.name': container.host,
+      'host.id': container.host,
+      'container.id': container.id,
+      'container.name': container.name,
+    },
+    metrics: [
+      metric('postgresql.backends', 'gauge', row.numbackends),
+      metric('postgresql.commits', 'sum', row.xact_commit),
+      metric('postgresql.rollbacks', 'sum', row.xact_rollback),
+      metric('postgresql.deadlocks', 'sum', row.deadlocks),
+    ],
+  };
+}
+
+export function postgresContainerForPlacement(placement) {
+  return placement.flatMap((host) => host.containers.map((container) => ({ ...container, host: host.host })))
+    .find((container) => container.name === 'postgres');
+}
+
+export function watchPostgresPool(pool, log = console.error) {
+  // PostgreSQL restarts can fail an idle client after a successful query.
+  pool.on('error', (error) => log(`infra-collector: PostgreSQL connection lost: ${error.message}`));
+}
+
 async function sample(url) {
   const res = await fetch(`${url}/__demo/resources`, { signal: AbortSignal.timeout(2000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -154,6 +187,12 @@ async function main() {
     process.exit(1);
   }
   const placement = parsePlacement(process.env.DEMO_INFRA_PLACEMENT ?? '[]');
+  const postgresContainer = postgresContainerForPlacement(placement);
+  const pgPool = postgresContainer && process.env.CH_DEMO_PG_PASSWORD
+    ? new pg.Pool({ host: '127.0.0.1', port: Number(process.env.CH_DEMO_PG_PORT ?? 15433),
+      user: 'demo', password: process.env.CH_DEMO_PG_PASSWORD, database: 'orders', max: 1, connectionTimeoutMillis: 2000 })
+    : null;
+  if (pgPool) watchPostgresPool(pgPool);
   const intervalMs = Number(process.env.DEMO_INFRA_INTERVAL_MS ?? 10_000);
   const states = placement.map(createHostState);
   const startNs = nowNs();
@@ -188,7 +227,16 @@ async function main() {
       }
       stepHost(state, dt, cpuSeconds);
     }
-    const body = encodeMetrics(buildResources(states, samples, startNs, nowNs()));
+    const resources = buildResources(states, samples, startNs, nowNs());
+    if (pgPool && postgresContainer) {
+      try {
+        const result = await pgPool.query('SELECT numbackends, xact_commit, xact_rollback, deadlocks FROM pg_stat_database WHERE datname = current_database()');
+        if (result.rows[0]) resources.push(postgresResource(result.rows[0], postgresContainer, startNs, nowNs()));
+      } catch (error) {
+        console.error(`infra-collector: PostgreSQL metrics unavailable: ${error.message}`);
+      }
+    }
+    const body = encodeMetrics(resources);
     try {
       const res = await fetch(`${endpoint}/v1/metrics`, {
         method: 'POST',

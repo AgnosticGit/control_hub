@@ -7,6 +7,7 @@ const WORKSPACE = "/app/demo/local-demo";
 async function openService(page: Page, name: string) {
   await expect(page.getByText("Starting engine…")).toBeHidden();
   await (await mapLayer(page, "Table view")).check();
+  await page.getByRole("button", { name: "Map layers" }).click();
   await page.getByRole("table").getByRole("button", { name, exact: true }).click();
   const inspector = page.getByRole("complementary", { name: "Inspector" });
   await expect(inspector.getByRole("heading", { name, exact: true })).toBeVisible();
@@ -42,6 +43,7 @@ test("an operator opens a container from its machine and can only request approv
   await login(page, "operator@karbird.local", WORKSPACE);
   await expect(page.getByText("Starting engine…")).toBeHidden();
   await (await mapLayer(page, "Infrastructure")).check();
+  await page.getByRole("button", { name: "Map layers" }).click();
   await page.getByRole("region", { name: "Machines" }).getByRole("button", { name: /^vps-worker/ }).click();
 
   const inspector = page.getByRole("complementary", { name: "Inspector" });

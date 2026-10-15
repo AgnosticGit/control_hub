@@ -177,6 +177,22 @@ pub const METRIC_KIND_GAUGE: u8 = 1;
 pub const METRIC_KIND_CUMULATIVE_SUM: u8 = 2;
 pub const METRIC_KIND_DELTA_SUM: u8 = 3;
 
+/// One bounded metric series in the inspector's five-minute window.
+#[derive(Debug, Clone, PartialEq, Row, Serialize, Deserialize)]
+pub struct MetricWindowRow {
+    pub metric_name: String,
+    pub kind: u8,
+    pub unit: String,
+    pub series_id: u64,
+    pub bucket_bound: String,
+    pub detail: String,
+    pub first_value: f64,
+    pub last_value: f64,
+    pub total_value: f64,
+    pub first_time_ns: i64,
+    pub last_time_ns: i64,
+}
+
 /// The machine and container metrics the infrastructure view reads (hostmetrics + docker_stats).
 pub const INFRA_METRIC_NAMES: &[&str] = &[
     "system.cpu.time",
@@ -733,7 +749,7 @@ fn edge_traffic_sql(edge: &EdgeSpans) -> String {
             "SELECT c.start_time AS t, greatest(c.ingested_at, p.ingested_at) AS ingested_at,
                     coalesce(c.c_req, p.p_req) AS req, coalesce(c.c_resp, p.p_resp) AS resp
              FROM
-             (SELECT trace_id, span_id, {REQUEST_SIZE} AS p_req, {RESPONSE_SIZE} AS p_resp FROM edge_span_facts FINAL
+             (SELECT trace_id, span_id, ingested_at, {REQUEST_SIZE} AS p_req, {RESPONSE_SIZE} AS p_resp FROM edge_span_facts FINAL
                 WHERE {SCOPE_WHERE} AND {window} AND service_id = ?) AS p
              INNER JOIN
                (SELECT trace_id, parent_span_id, start_time, ingested_at, {REQUEST_SIZE} AS c_req, {RESPONSE_SIZE} AS c_resp
@@ -954,6 +970,66 @@ impl ChStore {
         self.insert_rows("metrics", rows).await
     }
 
+    /// Remove telemetry from the dedicated scope used by local integration and browser tests.
+    /// The caller must only pass the reserved test scope; this is never used by a service path.
+    pub async fn clear_test_scope(&self, scope: &Scope) -> Result<()> {
+        for table in ["spans", "logs", "events", "metrics", "edge_span_facts"] {
+            let sql = format!("ALTER TABLE {table} DELETE WHERE {SCOPE_WHERE} SETTINGS mutations_sync = 1");
+            bind_scope(self.client.query(&sql), scope).execute().await?;
+        }
+        Ok(())
+    }
+
+    /// Remove only the legacy synthetic rows written by older browser tests into the demo
+    /// scope. The markers are fixed E2E fixture span names; this never clears customer data.
+    pub async fn clear_legacy_demo_e2e_rows(&self, scope: &Scope) -> Result<()> {
+        let marker_names = "('GET /e2e-stable-bucket', 'GET /e2e-event', 'GET /e2e-signals')";
+        for table in ["events", "edge_span_facts"] {
+            let sql = format!(
+                "ALTER TABLE {table} DELETE WHERE {SCOPE_WHERE} AND trace_id IN \
+                 (SELECT trace_id FROM spans WHERE {SCOPE_WHERE} AND name IN {marker_names}) \
+                 SETTINGS mutations_sync = 1"
+            );
+            let query = bind_scope(self.client.query(&sql), scope);
+            let query = bind_scope(query, scope);
+            query.execute().await?;
+        }
+        let sql = format!(
+            "ALTER TABLE spans DELETE WHERE {SCOPE_WHERE} AND name IN {marker_names} SETTINGS mutations_sync = 1"
+        );
+        bind_scope(self.client.query(&sql), scope).execute().await?;
+        Ok(())
+    }
+
+    /// Selected application and dependency metrics, always constrained by authenticated scope.
+    pub async fn metric_window(
+        &self,
+        s: &Scope,
+        service_name: &str,
+        from: i64,
+        to: i64,
+    ) -> Result<Vec<MetricWindowRow>> {
+        let q = self.client.query(&format!(
+            "SELECT metric_name, kind, any(unit) AS unit, series_id,
+                    any(attributes['le']) AS bucket_bound, any(attributes['type']) AS detail,
+                    argMin(value, time) AS first_value, argMax(value, time) AS last_value,
+                    sum(value) AS total_value,
+                    toUnixTimestamp64Nano(min(time)) AS first_time_ns,
+                    toUnixTimestamp64Nano(max(time)) AS last_time_ns
+             FROM metrics FINAL
+             WHERE {SCOPE_WHERE} AND service_name = ?
+               AND time >= fromUnixTimestamp64Nano(?) AND time <= fromUnixTimestamp64Nano(?)
+               AND (metric_name IN ('http.server.request.duration.bucket',
+                    'process.memory.usage', 'process.cpu.time', 'postgresql.backends',
+                    'postgresql.commits', 'postgresql.rollbacks', 'postgresql.deadlocks',
+                    'postgresql.connection.max', 'postgresql.database.count')
+                    OR startsWith(metric_name, 'postgresql.'))
+             GROUP BY metric_name, kind, series_id
+             ORDER BY metric_name, series_id LIMIT 4000"
+        ));
+        Ok(bind_scope(q, s).bind(service_name).bind(from).bind(to).fetch_all().await?)
+    }
+
     /// First and last point of every infrastructure series in `[from, to]`.
     pub async fn infra_series(&self, s: &Scope, from: i64, to: i64, limit: u32) -> Result<Vec<InfraSeriesRow>> {
         let q = self.client.query(&infra_series_sql());
@@ -1094,12 +1170,12 @@ impl ChStore {
                         toUnixTimestamp64Nano(greatest(c.ingested_at, p.ingested_at)) AS storage_cursor_ns,
                         coalesce(c.request_size, p.request_size) AS request_bytes,
                         coalesce(c.response_size, p.response_size) AS response_bytes
-                 FROM edge_span_facts FINAL AS c INNER JOIN edge_span_facts FINAL AS p
+                 FROM edge_span_facts AS c FINAL INNER JOIN edge_span_facts AS p FINAL
                    ON c.trace_id = p.trace_id AND c.parent_span_id = p.span_id
                  WHERE {scope_c}
                    AND p.tenant_id = ? AND p.project_id = ? AND p.environment_id = ?
                    AND c.service_id = ? AND p.service_id = ? AND c.kind IN (2, 5) AND c.parent_span_id != ''
-                   AND greatest(c.ingested_at, p.ingested_at) >= fromUnixTimestamp64Nano(?)
+                   AND greatest(c.ingested_at, p.ingested_at) > fromUnixTimestamp64Nano(?)
                  ORDER BY storage_cursor_ns, c.trace_id, c.span_id LIMIT ? OFFSET ?"
             ),
             "external_clients" => format!(
@@ -1107,7 +1183,7 @@ impl ChStore {
                         toUnixTimestamp64Nano(ingested_at) AS storage_cursor_ns, request_size AS request_bytes, response_size AS response_bytes
                  FROM edge_span_facts FINAL
                  WHERE {SCOPE_WHERE} AND service_id = ? AND kind = 2 AND parent_span_id = ''
-                   AND ingested_at >= fromUnixTimestamp64Nano(?)
+                   AND ingested_at > fromUnixTimestamp64Nano(?)
                  ORDER BY ingested_at, trace_id, span_id LIMIT ? OFFSET ?"
             ),
             "depends_on" => format!(
@@ -1115,7 +1191,7 @@ impl ChStore {
                         toUnixTimestamp64Nano(ingested_at) AS storage_cursor_ns, request_size AS request_bytes, response_size AS response_bytes
                  FROM edge_span_facts FINAL
                  WHERE {SCOPE_WHERE} AND service_id = ? AND target_entity_id = ? AND kind IN (3, 4)
-                   AND ingested_at >= fromUnixTimestamp64Nano(?)
+                   AND ingested_at > fromUnixTimestamp64Nano(?)
                  ORDER BY ingested_at, trace_id, span_id LIMIT ? OFFSET ?"
             ),
             _ => return Ok(Vec::new()),
@@ -1710,6 +1786,7 @@ mod tests {
         let call = edge_traffic_sql(&EdgeSpans::Call { source: s, target: t });
         assert!(call.contains("kind IN (2, 5)") && call.contains("p.span_id = c.parent_span_id"), "{call}");
         assert!(call.contains("greatest(c.ingested_at, p.ingested_at) AS ingested_at"), "{call}");
+        assert!(call.contains("SELECT trace_id, span_id, ingested_at, request_size AS p_req"), "{call}");
         let clients = edge_traffic_sql(&EdgeSpans::ExternalClients { target: "x".into() });
         assert!(clients.contains("kind = 2 AND parent_span_id = ''"), "{clients}");
     }

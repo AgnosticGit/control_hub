@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Runs a test command with the test accounts and scopes in place, then deletes the accounts
-// again (also when the tests fail), so the local database keeps only the owner account.
+// Runs a test command with test accounts and a clean reserved telemetry scope, then removes
+// those fixtures (also when the tests fail), so local runs stay repeatable.
 // Usage: node scripts/test-with-fixtures.mjs <command> [args...]
 import { exitCode, loadEnvFile, run, withFixtures } from "./lib.mjs";
 
@@ -20,8 +20,30 @@ const fixtures = (extra) =>
     env: { ...process.env, ...infra },
   });
 
+const setDemoIncidentsEnabled = async (enabled) => {
+  try {
+    const response = await fetch("http://127.0.0.1:7090/incident-cycle", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled }),
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!response.ok) throw new Error(`demo incident-cycle control returned ${response.status}`);
+  } catch (error) {
+    if (error instanceof TypeError && error.cause?.code === "ECONNREFUSED") return;
+    throw error;
+  }
+};
+
 process.exitCode = await withFixtures({
   setup: () => fixtures([]),
-  body: () => exitCode(cmd, args),
+  body: async () => {
+    await setDemoIncidentsEnabled(false);
+    try {
+      return await exitCode(cmd, args);
+    } finally {
+      await setDemoIncidentsEnabled(true);
+    }
+  },
   teardown: () => fixtures(["--remove"]),
 });

@@ -29,39 +29,44 @@ test("live summary loading does not flash a loader at the live edge", async ({ p
 test("month-scale timeline loads bounded summaries and pages through older history", async ({ page }) => {
   test.setTimeout(90_000);
   const errors = collectErrors(page);
-  await login(page, "isolation@karbird.local", WORKSPACE);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const timeline = page.getByLabel("Timeline");
-  await expect(timeline.getByRole("slider", { name: "Selected time" })).toBeVisible();
-  const pauseLive = timeline.getByRole("button", { name: "Pause live" });
-  if (await pauseLive.count()) await pauseLive.click();
 
   let releaseHeldResponse!: () => void;
   const heldResponse = new Promise<void>((resolve) => { releaseHeldResponse = resolve; });
   let held = false;
+  let heldRangeNs = 0n;
+  let finishHeldRequest!: () => void;
+  const heldRequestComplete = new Promise<void>((resolve) => { finishHeldRequest = resolve; });
   await page.route("**/timeline/summary**", async (route) => {
     const url = new URL(route.request().url());
     const from = BigInt(url.searchParams.get("from") ?? "0");
     const to = BigInt(url.searchParams.get("to") ?? "0");
-    if (held || to - from < 29n * DAY_NS) return route.continue();
-    held = true;
+    if (held) return route.continue();
     const response = await route.fetch();
-    await heldResponse;
-    await route.fulfill({ response });
+    const summary = await response.json() as { oldest_ns?: string | null };
+    // Keep older data available beyond the 30 day viewport so leftward paging is possible.
+    summary.oldest_ns = (to - 90n * DAY_NS).toString();
+    if (to - from >= 27n * DAY_NS) {
+      held = true;
+      heldRangeNs = to - from;
+      await heldResponse;
+    }
+    await route.fulfill({ response, body: JSON.stringify(summary) });
+    if (heldRangeNs > 0n) finishHeldRequest();
   });
-  const summaryForMonth = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    if (!url.pathname.endsWith("/timeline/summary") || response.status() !== 200) return false;
-    const from = BigInt(url.searchParams.get("from") ?? "0");
-    const to = BigInt(url.searchParams.get("to") ?? "0");
-    return to - from === 30n * DAY_NS;
-  });
+  await login(page, "isolation@karbird.local", WORKSPACE);
+  const timeline = page.getByLabel("Timeline");
+  await expect(timeline.getByRole("slider", { name: "Selected time" })).toBeVisible();
+  const pauseLive = timeline.getByRole("button", { name: "Pause live" });
+  if (await pauseLive.count()) await pauseLive.click();
   const zoomOut = timeline.getByRole("button", { name: "Zoom out time" });
   for (let i = 0; i < 12; i++) await zoomOut.click();
   await expect(timeline.getByRole("status")).toHaveText(/Loading (earlier|later) timeline data/);
   await expect(timeline.getByRole("slider", { name: "Selected time" })).toBeVisible();
+  await expect.poll(() => held).toBe(true);
+  expect(heldRangeNs).toBeGreaterThanOrEqual(27n * DAY_NS);
   releaseHeldResponse();
-  await summaryForMonth;
+  await heldRequestComplete;
   await expect(timeline.getByText("30 days", { exact: true })).toBeVisible();
 
   const olderSummary = page.waitForResponse((response) => {
@@ -69,9 +74,14 @@ test("month-scale timeline loads bounded summaries and pages through older histo
     return url.pathname.endsWith("/timeline/summary") && response.status() === 200;
   });
   const rows = timeline.locator('[data-area="rows"]');
-  await rows.hover();
+  const rowsBox = await rows.boundingBox();
+  expect(rowsBox).not.toBeNull();
+  if (!rowsBox) return;
+  await page.mouse.move(rowsBox.x + rowsBox.width * 0.5, rowsBox.y + rowsBox.height / 2);
   await page.keyboard.down("Shift");
-  await page.mouse.wheel(-420, 0);
+  await page.mouse.down();
+  await page.mouse.move(rowsBox.x + rowsBox.width * 0.6, rowsBox.y + rowsBox.height / 2, { steps: 6 });
+  await page.mouse.up();
   await page.keyboard.up("Shift");
   await olderSummary;
   expect(errors).toEqual([]);

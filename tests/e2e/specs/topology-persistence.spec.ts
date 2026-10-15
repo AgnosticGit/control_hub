@@ -17,7 +17,16 @@ test("open maps adopt backend revisions together while keeping camera and existi
   await send(first);
   await login(page,"isolation@karbird.local","/app/isolation/isolation-test");
   const map=page.getByRole("application",{name:/^Service map/});
-  await expect.poll(async()=>(await nodes(map)).some(n=>n.name===first),{timeout:60000}).toBe(true);
+  const nowNs=BigInt(Date.now())*1_000_000n;
+  const from=(nowNs-600_000_000_000n).toString();
+  const to=(nowNs+60_000_000_000n).toString();
+  await expect.poll(async()=>{
+    const response=await page.request.get(`/api/v1/projects/isolation/environments/isolation-test/topology?from=${from}&to=${to}&live=true`);
+    if(!response.ok()) return false;
+    const topology=await response.json() as {nodes:Array<{name:string}>};
+    return topology.nodes.some(n=>n.name===first);
+  },{timeout:60000}).toBe(true);
+  await expect.poll(async()=>(await nodes(map)).some(n=>n.name===first),{timeout:30000}).toBe(true);
   const initial=(await nodes(map)).find(n=>n.name===first);
   if(!initial) throw new Error("first node is missing");
   const other=await page.context().newPage();
@@ -57,12 +66,17 @@ test("an open historical map adopts telemetry processed after its snapshot was c
     const result=await response.json() as {services:Array<{name:string}>};
     return result.services.some(s=>s.name===name);
   }).toBe(true);
+  await expect.poll(async()=>{
+    const response=await page.request.get(`${prefix}/topology?from=${fromNs}&to=${toNs}`);
+    const result=await response.json() as {nodes:Array<{name:string}>};
+    return result.nodes.some(node=>node.name===name);
+  },{timeout:45000}).toBe(true);
   const dates=await page.evaluate(([from,to])=>{
     const input=(ms:number)=>{const d=new Date(ms);const pad=(n:number)=>String(n).padStart(2,"0");return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;};
     return {from:input(from ?? 0),to:input(to ?? 0)};
   },[fromMs,toMs]);
-  const timeline=page.getByLabel("Timeline");
-  await timeline.getByRole("button",{name:"Range"}).click();
+  const timeline=page.getByRole("region",{name:"Timeline"});
+  await timeline.getByRole("button",{name:"Range",exact:true}).click();
   await timeline.getByLabel("From",{exact:true}).fill(dates.from);
   await timeline.getByLabel("To",{exact:true}).fill(dates.to);
   await timeline.getByRole("button",{name:"Load range"}).click();

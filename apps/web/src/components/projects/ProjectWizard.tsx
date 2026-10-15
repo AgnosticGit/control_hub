@@ -23,7 +23,7 @@ export function ProjectWizard() {
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: ["session"] });
       const environment = created.environments[0];
-      router.replace(environment ? `/app/${created.id}/${environment.id}/integration` : "/app");
+      router.replace(environment ? `/app/onboarding?project=${encodeURIComponent(created.id)}` : "/app");
     },
   });
 

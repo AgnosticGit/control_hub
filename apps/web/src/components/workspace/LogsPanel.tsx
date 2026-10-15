@@ -33,12 +33,18 @@ function severityClass(n: number) {
   return "text-muted";
 }
 
-export function LogsPanel({ scope, actions, onTrace, onSelectRecord }: { scope: PanelScope; actions: WorkspaceActions; onTrace: (id: string) => void; onSelectRecord: (serviceName: string, time: bigint) => void }) {
+export function LogsPanel({ scope, actions, onTrace, onSelectRecord, expandedId, onExpandedIdChange }: {
+  scope: PanelScope;
+  actions: WorkspaceActions;
+  onTrace: (id: string) => void;
+  onSelectRecord: (serviceName: string, time: bigint) => void;
+  expandedId: string | null;
+  onExpandedIdChange: (id: string | null) => void;
+}) {
   const [minSeverity, setMinSeverity] = useState(0);
   const [text, setText] = useState("");
   const [source, setSource] = useState<LogSourceChoice>("auto");
   const [like, setLike] = useState<{ id: string; body: string } | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [liveLogs, setLiveLogs] = useState<Log[]>([]);
   const q = useDebounced(text.trim(), 300);
 
@@ -207,7 +213,7 @@ export function LogsPanel({ scope, actions, onTrace, onSelectRecord }: { scope: 
                         aria-expanded={expanded}
                         aria-label={`${l.severity_text || `Severity ${l.severity_number}`} log from ${l.service_name} at ${t === null ? "unknown time" : formatClock(t)}`}
                         onClick={() => {
-                          setExpandedId(expanded ? null : l.id);
+                          onExpandedIdChange(expanded ? null : l.id);
                           if (t !== null) onSelectRecord(l.service_name, t);
                         }}
                       >

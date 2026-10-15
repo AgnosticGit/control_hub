@@ -8,7 +8,8 @@ use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value::Value};
 use opentelemetry_proto::tonic::logs::v1::{LogRecord as OtlpLogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::metrics::v1::{
-    Gauge, Metric, NumberDataPoint, ResourceMetrics, ScopeMetrics, metric::Data, number_data_point,
+    Gauge, Histogram, HistogramDataPoint, Metric, NumberDataPoint, ResourceMetrics, ScopeMetrics, metric::Data,
+    number_data_point,
 };
 use opentelemetry_proto::tonic::resource::v1::Resource;
 use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span};
@@ -117,6 +118,37 @@ fn metrics_with_attributes() -> ExportMetricsServiceRequest {
     }
 }
 
+fn histograms_with_attributes() -> ExportMetricsServiceRequest {
+    ExportMetricsServiceRequest {
+        resource_metrics: vec![ResourceMetrics {
+            resource: Some(Resource { attributes: vec![kv("service.name", "orders")], ..Default::default() }),
+            scope_metrics: vec![ScopeMetrics {
+                metrics: vec![Metric {
+                    name: "http.server.request.duration".into(),
+                    unit: "s".into(),
+                    data: Some(Data::Histogram(Histogram {
+                        aggregation_temporality: 2,
+                        data_points: (0..256)
+                            .map(|i| HistogramDataPoint {
+                                time_unix_nano: 1_790_000_000_000_000_000 + i,
+                                count: 100,
+                                sum: Some(2.5),
+                                explicit_bounds: vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5],
+                                bucket_counts: vec![5, 20, 25, 20, 15, 10, 3, 2, 0],
+                                attributes: vec![kv("http.route", "/orders/{id}")],
+                                ..Default::default()
+                            })
+                            .collect(),
+                    })),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+    }
+}
+
 fn logs_with_attributes() -> ExportLogsServiceRequest {
     ExportLogsServiceRequest {
         resource_logs: vec![ResourceLogs {
@@ -165,6 +197,15 @@ fn ingest(c: &mut Criterion) {
     c.bench_function("ingest/sanitize_1000_metric_points_with_attributes", |b| {
         b.iter_batched(
             || metrics.clone(),
+            |mut payload| sanitize_metrics(black_box(&mut payload), &mut |_| true),
+            BatchSize::SmallInput,
+        )
+    });
+
+    let histograms = histograms_with_attributes();
+    c.bench_function("ingest/sanitize_256_histograms_9_buckets", |b| {
+        b.iter_batched(
+            || histograms.clone(),
             |mut payload| sanitize_metrics(black_box(&mut payload), &mut |_| true),
             BatchSize::SmallInput,
         )

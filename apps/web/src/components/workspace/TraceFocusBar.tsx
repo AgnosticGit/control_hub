@@ -13,6 +13,7 @@ interface Props {
   environmentId: string;
   traceId: string;
   traceOnly: boolean;
+  topInset: number;
   onTraceOnly: (on: boolean) => void;
   onClose: () => void;
   /** Reports the request's time span so the timeline can zoom to it. */
@@ -25,7 +26,7 @@ interface Props {
  * The selected request over the map: shows only it (optionally) and replays it slowly from
  * start to end on a loop, so every call and answer can be followed across services.
  */
-export function TraceFocusBar({ projectId, environmentId, traceId, traceOnly, onTraceOnly, onClose, onFocus, state, actions }: Props) {
+export function TraceFocusBar({ projectId, environmentId, traceId, traceOnly, topInset, onTraceOnly, onClose, onFocus, state, actions }: Props) {
   const detail = useQuery({
     queryKey: ["trace", projectId, environmentId, traceId],
     queryFn: async () =>
@@ -59,7 +60,8 @@ export function TraceFocusBar({ projectId, environmentId, traceId, traceOnly, on
     <div
       role="region"
       aria-label="Focused request"
-      className="absolute top-3 left-3 z-10 flex max-w-[calc(100%-22rem)] flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-accent/40 bg-surface/90 px-3 py-2 text-[11px] shadow-lg backdrop-blur"
+      className="absolute left-3 z-10 flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-accent/40 bg-surface/90 px-3 py-2 text-[11px] shadow-lg backdrop-blur"
+      style={{ top: Math.max(64, topInset + 64) }}
     >
       <span className="flex items-center gap-1.5 font-medium text-text">
         <Icon name="crosshair" className="h-3.5 w-3.5 text-accent" />

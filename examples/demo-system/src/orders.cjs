@@ -3,7 +3,7 @@
 
 const http = require('node:http');
 const { Pool } = require('pg');
-const { logger, sendJson, createFaults, callJson, listen } = require('./common.cjs');
+const { logger, sendJson, createFaults, callJson, listen, isLoopback } = require('./common.cjs');
 
 const port = Number(process.env.DEMO_ORDERS_PORT ?? 7002);
 const inventoryUrl = process.env.DEMO_INVENTORY_URL ?? 'http://127.0.0.1:7003';
@@ -50,6 +50,14 @@ const server = http.createServer(async (req, res) => {
     if (await faults.handle(req, res)) return;
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname === '/health') return sendJson(res, 200, { ok: true });
+    if (url.pathname === '/__demo/incident-probe') {
+      if (!faults.enabled || !isLoopback(req)) return sendJson(res, 404, { error: 'not found' });
+      if (Math.random() < 0.5) {
+        log.error('periodic demo incident probe failed', { 'demo.incident': 'orders-error-rate' });
+        return sendJson(res, 500, { error: 'periodic demo incident probe' });
+      }
+      return sendJson(res, 200, { ok: true });
+    }
 
     if (await faults.apply()) {
       log.error('injected failure while loading order', { 'demo.fault': 'error' });

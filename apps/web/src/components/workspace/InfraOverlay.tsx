@@ -34,7 +34,9 @@ export function InfraOverlay({ snapshot, error, selectedHost, visibleHostIds, on
     };
   }, [onBottom]);
   const visible = new Set(visibleHostIds);
-  const hosts = (snapshot?.hosts ?? []).filter((host) => visible.has(host.id));
+  // The machine list is also useful for hosts that have telemetry but no service placement yet.
+  // Keep renderer visibility filtering for noisy-neighbour hints, which need a visible frame.
+  const hosts = snapshot?.hosts ?? [];
   const hints = (snapshot?.hints ?? []).filter((hint) => visible.has(hint.host_id));
   return (
     <div className="pointer-events-none absolute inset-0 z-10">

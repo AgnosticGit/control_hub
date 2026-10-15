@@ -27,11 +27,18 @@ export interface Camera {
   scale: number;
 }
 
-/** Zoom around a screen point, snapping back to the fitted overview at the zoom-out limit. */
+export const ZOOM_OUT_FIT_RATIO = 0.8;
+
+/** Allow a small margin outside the fitted overview while keeping a hard lower bound. */
+export function zoomOutFloorScale(fitScale: number): number {
+  return Math.max(MIN_MAP_SCALE, fitScale * ZOOM_OUT_FIT_RATIO);
+}
+
+/** Zoom around a screen point while allowing a small margin outside the fitted overview. */
 export function zoomCamera(camera: Camera, factor: number, sx: number, sy: number, minimum: Camera, maxScale: number): Camera {
   const requested = camera.scale * factor;
-  if (!Number.isFinite(requested) || requested <= minimum.scale) return minimum;
-  const scale = Math.min(maxScale, requested);
+  if (!Number.isFinite(requested)) return minimum;
+  const scale = Math.max(zoomOutFloorScale(minimum.scale), Math.min(maxScale, requested));
   const worldX = (sx - camera.x) / camera.scale;
   const worldY = (sy - camera.y) / camera.scale;
   return { x: sx - worldX * scale, y: sy - worldY * scale, scale };

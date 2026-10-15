@@ -10,7 +10,11 @@ async function register(page: Page) {
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByLabel("Repeat password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page).toHaveURL(/\/app\/onboarding$/);
+  await expect(page).toHaveURL(/\/app$/);
+  await page.getByLabel("Organization name").fill(`E2E onboarding ${randomHex(3)}`);
+  await page.getByLabel("First project").fill(`Onboarding project ${randomHex(3)}`);
+  await page.getByRole("button", { name: "Create workspace" }).click();
+  await expect(page).toHaveURL(/\/app\/onboarding\?project=p-[0-9a-f]{32}$/);
   await expect(page.getByRole("heading", { level: 1, name: "Connect your system" })).toBeVisible();
 }
 
@@ -36,8 +40,10 @@ test("every onboarding step can be skipped, and the invite step creates a workin
 
 test("leaving onboarding never blocks the app; Finish setup brings it back until it is skipped", async ({ page }) => {
   await register(page);
-  // Leave without finishing: the workspace opens normally.
+  // Leaving setup opens the environment picker; it never blocks the workspace.
   await page.getByRole("link", { name: "karbird" }).click();
+  await expect(page).toHaveURL(/\/app$/);
+  await page.getByRole("link", { name: /Development/ }).click();
   await expect(page).toHaveURL(/\/app\/p-[0-9a-f]{32}\/e-[0-9a-f]{32}$/);
   const finish = page.getByRole("link", { name: "Finish setup" });
   await expect(finish).toBeVisible();

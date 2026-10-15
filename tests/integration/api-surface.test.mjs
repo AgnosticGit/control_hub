@@ -22,7 +22,7 @@ const FAKE_TRACE = 'ab'.repeat(16);
 
 /** Concrete URL for an OpenAPI path template in the given project/environment. */
 function concrete(path, project = 'demo', env = 'local-demo') {
-  return path
+  const concretePath = path
     .replace('{project_id}', project)
     .replace('{environment_id}', env)
     .replace('{plan_id}', FAKE_UUID)
@@ -32,6 +32,7 @@ function concrete(path, project = 'demo', env = 'local-demo') {
     .replace('{role_id}', FAKE_UUID)
     .replace('{user_id}', FAKE_UUID)
     .replace('{trace_id}', FAKE_TRACE);
+  return path.endsWith('/metrics/overview') ? `${concretePath}?name=orders` : concretePath;
 }
 
 const operations = Object.entries(spec.paths).flatMap(([path, item]) =>

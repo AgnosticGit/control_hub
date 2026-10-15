@@ -8,6 +8,7 @@ const root = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..");
 const read = (p) => readFileSync(join(root, p), "utf8");
 const config = read("deploy/collector/karbird-collector.yaml");
 const compose = read("deploy/collector/compose.yaml");
+const postgresConfig = read("deploy/collector/postgres-collector.yaml");
 
 /** Metric names the API reads for the infrastructure layer (`INFRA_METRIC_NAMES`). */
 function apiMetricNames() {
@@ -58,4 +59,14 @@ test("the collector image is pinned and host mounts are read-only", () => {
   assert.doesNotMatch(compose, /KARBIRD_INGEST_TOKEN: [^$]/, "no token in the file");
   assert.match(compose, /name: karbird-collector/);
   assert.match(compose, /services:\s+collector:/);
+});
+
+test("optional PostgreSQL collector uses read-only statistics and the scoped metrics token", () => {
+  assert.match(postgresConfig, /postgresql:\s*\n\s*endpoint: \$\{env:KARBIRD_POSTGRES_ENDPOINT\}/);
+  assert.match(postgresConfig, /username: \$\{env:KARBIRD_POSTGRES_USER\}/);
+  assert.match(postgresConfig, /password: \$\{env:KARBIRD_POSTGRES_PASSWORD\}/);
+  assert.match(postgresConfig, /receivers: \[postgresql\]/);
+  assert.match(postgresConfig, /Authorization: Bearer \$\{env:KARBIRD_INGEST_TOKEN\}/);
+  assert.doesNotMatch(postgresConfig, /db\.server\.query_sample|db\.server\.top_query/);
+  assert.match(compose, /profiles: \["postgres"\]/);
 });

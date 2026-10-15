@@ -10,11 +10,13 @@ import {
   expandRange,
   timelineBounds,
   mergeRanges,
+  cachedSummaryRanges,
   trimRangesBefore,
   timelineEvictionFloor,
   pointLoadingRange,
   detailChunkFor,
   defaultLiveView,
+  expandSummaryWindow,
   needsTimelineSummary,
   rangeCoveredBy,
   uncoveredRanges,
@@ -136,6 +138,22 @@ describe("expandRange", () => {
   });
 });
 
+describe("expandSummaryWindow", () => {
+  it("pages into older history without requesting beyond the 30 day cap", () => {
+    const current = { from: T0 - MAX_VIEW_NS, to: T0 };
+    const shift = 3n * 86_400n * SEC;
+    const older = { from: current.from - shift, to: current.to - shift };
+    expect(expandSummaryWindow(current, older)).toEqual(older);
+  });
+
+  it("keeps overlapping summary coverage when the union fits the cap", () => {
+    const current = { from: T0 - 10n * 86_400n * SEC, to: T0 };
+    const shift = 2n * 86_400n * SEC;
+    const next = { from: current.from - shift, to: current.to - shift };
+    expect(expandSummaryWindow(current, next)).toEqual({ from: next.from, to: current.to });
+  });
+});
+
 describe("timelineBounds", () => {
   it("allows older history until the server confirms the oldest available timestamp", () => {
     const latest = T0 + 60n * SEC;
@@ -244,6 +262,24 @@ describe("uncoveredRanges", () => {
 
   it("returns no intervals when the request is already loaded", () => {
     expect(uncoveredRanges([{ from: 0n, to: 100n }], { from: 20n, to: 80n })).toEqual([]);
+  });
+
+  it("keeps previously visited disjoint windows covered when the cursor returns to either one", () => {
+    const coverage = mergeRanges([{ from: 0n, to: 20n }], { from: 80n, to: 100n });
+    expect(uncoveredRanges(coverage, { from: 82n, to: 90n })).toEqual([]);
+    expect(uncoveredRanges(coverage, { from: 10n, to: 18n })).toEqual([]);
+    expect(uncoveredRanges(coverage, { from: 40n, to: 50n })).toEqual([{ from: 40n, to: 50n }]);
+  });
+});
+
+describe("cachedSummaryRanges", () => {
+  it("retains validated disjoint windows from the query cache", () => {
+    expect(cachedSummaryRanges([
+      { from_ns: "0", to_ns: "20" },
+      { from_ns: "80", to_ns: "100" },
+      { from_ns: "invalid", to_ns: "200" },
+      null,
+    ])).toEqual([{ from: 0n, to: 20n }, { from: 80n, to: 100n }]);
   });
 });
 

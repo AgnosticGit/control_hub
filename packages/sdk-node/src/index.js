@@ -13,12 +13,14 @@
 // - span start times are refined below 1 ms (see `precise-start.js`).
 
 import { hostname } from 'node:os';
-import { context, trace } from '@opentelemetry/api';
+import { context, metrics, trace } from '@opentelemetry/api';
 import { logs, SeverityNumber } from '@opentelemetry/api-logs';
 import { NodeSDK, tracing } from '@opentelemetry/sdk-node';
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-proto';
+import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
 import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
@@ -137,15 +139,28 @@ export function startKarbird(options = {}) {
         exporter: new OTLPLogExporter({ url: `${endpoint}/v1/logs`, headers }),
       }),
     ],
-    // Machine and container metrics come from the Karbird Collector, not from the SDK;
-    // without an explicit empty list NodeSDK would start a default OTLP metrics exporter from env.
-    metricReaders: [],
+    // Process and HTTP metrics belong to the service. Machine/container metrics remain collector-owned.
+    metricReaders: [new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({ url: `${endpoint}/v1/metrics`, headers }),
+      exportIntervalMillis: 10_000,
+    })],
     instrumentations: [
       httpInstrumentation,
       new PgInstrumentation({ enhancedDatabaseReporting: false }),
     ],
   });
   sdk.start();
+  const meter = metrics.getMeter('karbird.sdk-node');
+  meter.createObservableGauge('process.memory.usage', { unit: 'By' }).addCallback((observation) => {
+    const memory = process.memoryUsage();
+    observation.observe(memory.rss, { type: 'rss' });
+    observation.observe(memory.heapUsed, { type: 'heap_used' });
+  });
+  meter.createObservableCounter('process.cpu.time', { unit: 's' }).addCallback((observation) => {
+    const cpu = process.cpuUsage();
+    observation.observe(cpu.user / 1e6, { state: 'user' });
+    observation.observe(cpu.system / 1e6, { state: 'system' });
+  });
   events?.start();
 
   const otelLogger = logs.getLogger(serviceName);

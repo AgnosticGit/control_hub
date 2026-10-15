@@ -869,6 +869,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/metrics/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["metric_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/environments/{environment_id}/services": {
         parameters: {
             query?: never;
@@ -1984,6 +2000,27 @@ export interface components {
             based_on?: string | null;
             permissions?: string[] | null;
             role_id?: string | null;
+        };
+        MetricOverviewResponse: {
+            at_ns: string;
+            /** Format: double */
+            http_p95_ms?: number | null;
+            /** Format: int64 */
+            http_samples: number;
+            /** Format: double */
+            postgres_backends?: number | null;
+            /** Format: double */
+            postgres_commits_per_second?: number | null;
+            /** Format: double */
+            postgres_deadlocks_per_second?: number | null;
+            /** Format: double */
+            postgres_rollbacks_per_second?: number | null;
+            /** Format: double */
+            process_cpu_pct_of_core?: number | null;
+            /** Format: double */
+            process_rss_bytes?: number | null;
+            /** Format: int32 */
+            window_seconds: number;
         };
         /**
          * @description Deterministic rule (no LLM): an instance got slower while a neighbour on the same machine
@@ -5312,6 +5349,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LogListResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    metric_overview: {
+        parameters: {
+            query: {
+                name: string;
+                at?: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricOverviewResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             404: {

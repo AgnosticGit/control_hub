@@ -36,11 +36,11 @@ import { serviceInstanceCounts } from "./replica-counts";
 import { dashedRect, nodeSubLabel } from "./external";
 import { ACCENT, CARD_BG, EDGE_ERROR, EDGE_INFERRED, EDGE_OK, EDGE_WARN, EXTERNAL_COLOR, STATUS_COLORS } from "./map-colors";
 import { cullRect } from "./cull";
-import { fitCamera, MIN_MAP_SCALE, overlayInset, zoomCamera } from "./fit";
+import { fitCamera, MIN_MAP_SCALE, overlayInset, zoomCamera, zoomOutFloorScale } from "./fit";
 import { gridLines } from "./grid";
 import { animTimeMs, hopPhase, type AnimClock } from "./hops";
 import { serviceColors } from "./service-colors";
-import { cardGeometry, COMPACT_CARD_SIZE, EXPANDED_CARD_SIZE, routeBoxForCard } from "./map-card-geometry";
+import { cardGeometry, COMPACT_CARD_SIZE, EXPANDED_CARD_SIZE, routeBoxForCard, serviceMetricCardSize } from "./map-card-geometry";
 import { displayMapPoint, displayTopologyForMetrics, mapDisplayScale, sourceMapPoint } from "./map-display-layout";
 import { deriveServiceCardMetrics, formatBytes, formatBytesPerSecond, type ServiceCardMetrics } from "@/components/workspace/service-card-metrics";
 import { serviceMetricPresentation } from "@/components/workspace/service-card-presentation";
@@ -400,7 +400,7 @@ export class PixiMap {
       const saved = this.pendingCamera;
       this.pendingCamera = null;
       this.fit();
-      if (saved.scale >= this.minimumCamera.scale) this.setCamera(saved);
+      this.setCamera(saved);
     }
     this.draw(frame);
     if (this.reducedMotion) this.drawHops();
@@ -511,7 +511,12 @@ export class PixiMap {
   }
 
   private cardSizeForNode(node: number) {
-    return cardGeometry(this.serviceMetricsEnabled && this.kinds[node] === "service");
+    if (!this.serviceMetricsEnabled || this.kinds[node] !== "service") return cardGeometry(false);
+    const metrics = this.frame ? this.metricsForService(this.ids[node] ?? "", this.frame) : null;
+    const presentation = serviceMetricPresentation(metrics, this.serviceMetricsLoading);
+    return serviceMetricCardSize([...presentation.rows, ...presentation.loadingRows].map((row) =>
+      row === "receive" || row === "transmit" ? "network" : row === "incoming" || row === "outgoing" ? "requests" : row,
+    ));
   }
 
   private routeBoxForNode(node: number) {
@@ -555,7 +560,18 @@ export class PixiMap {
       this.world.position.set(camera.x, camera.y);
       return;
     }
-    const next = camera.scale < this.minimumCamera.scale ? this.minimumCamera : { ...camera, scale: Math.min(MAX_SCALE, camera.scale) };
+    const floor = zoomOutFloorScale(this.minimumCamera.scale);
+    const scale = Math.max(floor, Math.min(MAX_SCALE, camera.scale));
+    const app = this.app;
+    const centerX = app?.screen.width ? app.screen.width / 2 : 0;
+    const centerY = app?.screen.height ? app.screen.height / 2 : 0;
+    const next = camera.scale < floor && app
+      ? {
+          scale,
+          x: centerX - ((centerX - camera.x) / camera.scale) * scale,
+          y: centerY - ((centerY - camera.y) / camera.scale) * scale,
+        }
+      : { ...camera, scale };
     this.world.scale.set(next.scale);
     this.world.position.set(next.x, next.y);
     this.reportViewport();
@@ -568,8 +584,17 @@ export class PixiMap {
 
   private refreshZoomFloor() {
     const current = this.getCamera();
+    const app = this.app;
     this.fit();
-    if (current.scale >= this.minimumCamera.scale) this.setCamera(current);
+    if (!app) return;
+    const scale = Math.max(zoomOutFloorScale(this.minimumCamera.scale), Math.min(MAX_SCALE, current.scale));
+    const centerX = app.screen.width / 2;
+    const centerY = app.screen.height / 2;
+    const worldX = (centerX - current.x) / current.scale;
+    const worldY = (centerY - current.y) / current.scale;
+    this.world.scale.set(scale);
+    this.world.position.set(centerX - worldX * scale, centerY - worldY * scale);
+    this.reportViewport();
   }
 
   destroy() {
@@ -900,7 +925,7 @@ export class PixiMap {
       const metrics = this.kinds[c.node] === "service" ? this.metricsForService(c.service_id, f) : null;
       if (metrics) {
         pooled.sub.visible = false;
-        this.drawServiceMetricCard(g, key, c.service_id, metrics, left, top, fade);
+        this.drawServiceMetricCard(g, key, c.service_id, metrics, left, top, fade, this.serviceMetricsLoading);
       } else {
         pooled.sub.visible = !this.serviceMetricsEnabled;
         if (this.serviceMetricsEnabled && serviceMetricPresentation(null, this.serviceMetricsLoading).loading) {
@@ -1060,9 +1085,10 @@ export class PixiMap {
     left: number,
     top: number,
     fade: number,
+    loading: boolean,
   ) {
     const text = this.metricText(key);
-    const presentation = serviceMetricPresentation(metrics, false);
+    const presentation = serviceMetricPresentation(metrics, loading);
     const visible = new Set(presentation.rows);
     text.cpuLabel.visible = visible.has("cpu");
     text.cpuValue.visible = visible.has("cpu");
@@ -1104,18 +1130,23 @@ export class PixiMap {
     };
     if (visible.has("cpu") && metrics.cpu.ratio !== null) drawBar(top + layout.cpu.barY, metrics.cpu.ratio);
     if (visible.has("memory") && metrics.memory.ratio !== null) drawBar(top + layout.memory.barY, metrics.memory.ratio);
+    if (presentation.loadingRows.length) this.drawServiceMetricSkeleton(graphics, left, top, fade, presentation.loadingRows);
   }
 
-  private drawServiceMetricSkeleton(graphics: Graphics, left: number, top: number, fade: number) {
+  private drawServiceMetricSkeleton(graphics: Graphics, left: number, top: number, fade: number, rows = ["cpu", "memory", "receive", "transmit", "incoming", "outgoing"]) {
     const pulse = 0.35 + (Math.sin(performance.now() / 420) + 1) * 0.12;
     const line = (x: number, y: number, width: number, height = 5) => {
       graphics.roundRect(left + x, top + y, width, height, height / 2).fill({ color: 0x8492a6, alpha: pulse * fade });
     };
     const layout = SERVICE_CARD_LAYOUT;
-    line(layout.cpu.label.x, layout.cpu.label.y, 23); line(43, layout.cpu.barY, 84); line(layout.cpu.value.x, layout.cpu.value.y, 40);
-    line(layout.memory.label.x, layout.memory.label.y, 23); line(43, layout.memory.barY, 84); line(layout.memory.value.x, layout.memory.value.y, 40);
-    line(layout.network.receive.x, layout.network.receive.y, 70); line(layout.network.transmit.x, layout.network.transmit.y, 78);
-    line(layout.requests.incoming.x, layout.requests.incoming.y, 70); line(layout.requests.outgoing.x, layout.requests.outgoing.y, 78);
+    if (rows.includes("cpu")) { line(layout.cpu.label.x, layout.cpu.label.y, 23); line(43, layout.cpu.barY, 84); line(layout.cpu.value.x, layout.cpu.value.y, 40); }
+    if (rows.includes("memory")) { line(layout.memory.label.x, layout.memory.label.y, 23); line(43, layout.memory.barY, 84); line(layout.memory.value.x, layout.memory.value.y, 40); }
+    if (rows.includes("receive") || rows.includes("transmit")) {
+      if (rows.includes("receive")) line(layout.network.receive.x, layout.network.receive.y, 70);
+      if (rows.includes("transmit")) line(layout.network.transmit.x, layout.network.transmit.y, 78);
+    }
+    if (rows.includes("incoming")) line(layout.requests.incoming.x, layout.requests.incoming.y, 70);
+    if (rows.includes("outgoing")) line(layout.requests.outgoing.x, layout.requests.outgoing.y, 78);
   }
 
   /** Logical service cards belong to exactly one machine frame in infrastructure mode. */
@@ -1341,7 +1372,7 @@ export class PixiMap {
       t.name.position.set(left + SERVICE_CARD_LAYOUT.title.x, top + SERVICE_CARD_LAYOUT.title.y);
       t.sub.position.set(left + 52, y + 2);
       if (metrics && this.serviceMetricsEnabled) {
-        this.drawServiceMetricCard(n, `service:${idx}`, this.ids[idx] ?? "", metrics, left, top, (dimmed ? DIM_ALPHA + 0.1 : 1) * fade);
+        this.drawServiceMetricCard(n, `service:${idx}`, this.ids[idx] ?? "", metrics, left, top, (dimmed ? DIM_ALPHA + 0.1 : 1) * fade, this.serviceMetricsLoading);
         const description = this.metricDescription(metrics);
         metricDescriptions[this.ids[idx] ?? String(idx)] = description;
         const searchLabel = this.searchLabels.get(idx);

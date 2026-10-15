@@ -4052,6 +4052,100 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/metrics/overview": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "operationId": "metric_overview",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "at",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricOverviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/environments/{environment_id}/services": {
       "get": {
         "tags": [
@@ -8213,6 +8307,78 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "MetricOverviewResponse": {
+        "type": "object",
+        "required": [
+          "at_ns",
+          "window_seconds",
+          "http_samples"
+        ],
+        "properties": {
+          "at_ns": {
+            "type": "string"
+          },
+          "http_p95_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "http_samples": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "postgres_backends": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "postgres_commits_per_second": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "postgres_deadlocks_per_second": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "postgres_rollbacks_per_second": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "process_cpu_pct_of_core": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "process_rss_bytes": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "window_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },

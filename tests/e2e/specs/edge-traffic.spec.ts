@@ -9,22 +9,26 @@ const MB = 1024 * 1024;
 test("a link between two components shows its calls and data flow, from the inspector and from the map", async ({ page }) => {
   // Includes a backend refresh plus multiple inspector/renderer transitions.
   test.setTimeout(120_000);
+  const errors = collectErrors(page);
+  await login(page, "isolation@karbird.local", WORKSPACE);
+  await expect(page.getByText("Starting engine…")).toBeHidden();
   const run = randomHex(4);
   const gw = `et-gw-${run}`;
   const orders = `et-orders-${run}`;
   const db = `et_${run}`;
   const dbNode = `postgresql: ${db}`;
   const now = BigInt(Date.now()) * 1_000_000n;
+  const activeUntil = now + 10n * 60n * SEC;
 
   // Four requests gw → orders, each answered with 3 MB; gw also queries PostgreSQL (no sizes).
   const gwSpans: SpanInput[] = [];
   const orderSpans: SpanInput[] = [];
   for (let i = 0n; i < 4n; i++) {
     const [traceId, root, client] = [randomHex(16), randomHex(8), randomHex(8)];
-    const t = now - 50n * SEC + i * 10n * SEC;
+    const t = now - 40n * SEC + i * 10n * SEC;
     gwSpans.push(
-      { traceId, spanId: root, name: "GET /checkout", kind: 2, startNs: t, endNs: t + 60n * MS },
-      { traceId, spanId: client, parentSpanId: root, name: "POST", kind: 3, startNs: t + MS, endNs: t + 50n * MS },
+      { traceId, spanId: root, name: "GET /checkout", kind: 2, startNs: t, endNs: activeUntil },
+      { traceId, spanId: client, parentSpanId: root, name: "POST", kind: 3, startNs: t + MS, endNs: activeUntil },
       {
         traceId,
         spanId: randomHex(8),
@@ -32,7 +36,7 @@ test("a link between two components shows its calls and data flow, from the insp
         name: "SELECT",
         kind: 3,
         startNs: t + 51n * MS,
-        endNs: t + 55n * MS,
+        endNs: activeUntil,
         attributes: { "db.system": "postgresql", "db.name": db, "server.address": "localhost", "server.port": "5432" },
       },
     );
@@ -43,20 +47,25 @@ test("a link between two components shows its calls and data flow, from the insp
       name: "POST /orders",
       kind: 2,
       startNs: t + 2n * MS,
-      endNs: t + 48n * MS,
+      endNs: activeUntil,
       attributes: { "http.request.body.size": "2048", "http.response.body.size": String(3 * MB) },
     });
   }
   await ingestSpans(gw, gwSpans);
   await ingestSpans(orders, orderSpans);
 
-  const errors = collectErrors(page);
-  await login(page, "isolation@karbird.local", WORKSPACE);
+  await page.getByRole("button", { name: "Pause live" }).click();
+  const zoomToDetail = async () => {
+    const timeline = page.getByLabel("Timeline");
+    for (let i = 0; i < 2; i++) await timeline.getByRole("button", { name: "Zoom in time" }).click();
+  };
+  await zoomToDetail();
   const tableView = await mapLayer(page, "Table view");
   await tableView.check();
+  await page.getByRole("button", { name: "Map layers" }).click();
   const gwRow = page.getByRole("table").getByRole("button", { name: gw, exact: true });
-  // Backend revisions arrive on the open map. Reloading also closes the layers menu,
-  // so a checkbox retained across reloads cannot be used as the processing wait.
+  // The processor may still be committing the spans; keep the live page mounted so
+  // its WebSocket frame can pick them up without resetting the selected time.
   await expect(gwRow).toBeVisible({ timeout: 60_000 });
 
   const inspector = page.getByRole("complementary", { name: "Inspector" });

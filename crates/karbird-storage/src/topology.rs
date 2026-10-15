@@ -14,6 +14,17 @@ pub struct SavedTopologyRow {
 }
 
 impl PgStore {
+    /// Clear topology cache rows for the reserved local test scope before an isolated test.
+    pub async fn clear_test_topology_scope(&self, scope: &Scope) -> Result<()> {
+        sqlx::query("DELETE FROM topology_snapshots WHERE tenant_id=$1 AND project_id=$2 AND environment_id=$3")
+            .bind(scope.tenant_id.as_str())
+            .bind(scope.project_id.as_str())
+            .bind(scope.environment_id.as_str())
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
     pub async fn saved_topology(&self, scope: &Scope, key: &str) -> Result<Option<SavedTopologyRow>> {
         Ok(sqlx::query_as("UPDATE topology_snapshots SET accessed_at=now() WHERE tenant_id=$1 AND project_id=$2 AND environment_id=$3 AND cache_key=$4 RETURNING document, refreshed_at, accessed_at")
             .bind(scope.tenant_id.as_str()).bind(scope.project_id.as_str()).bind(scope.environment_id.as_str()).bind(key)

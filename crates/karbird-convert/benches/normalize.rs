@@ -9,7 +9,8 @@ use karbird_protocol::otlp::collector::trace::v1::ExportTraceServiceRequest;
 use karbird_protocol::otlp::common::v1::{AnyValue, KeyValue, any_value::Value};
 use karbird_protocol::otlp::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 use karbird_protocol::otlp::metrics::v1::{
-    Gauge, Metric, NumberDataPoint, ResourceMetrics, ScopeMetrics, metric::Data, number_data_point,
+    Gauge, Histogram, HistogramDataPoint, Metric, NumberDataPoint, ResourceMetrics, ScopeMetrics, metric::Data,
+    number_data_point,
 };
 use karbird_protocol::otlp::resource::v1::Resource;
 use karbird_protocol::otlp::trace::v1::{ResourceSpans, ScopeSpans, Span};
@@ -105,6 +106,40 @@ fn metric_conversion_fixture() -> IngestEnvelope {
     }
 }
 
+fn histogram_conversion_fixture() -> IngestEnvelope {
+    let request = ExportMetricsServiceRequest {
+        resource_metrics: vec![ResourceMetrics {
+            resource: Some(Resource { attributes: vec![kv("service.name", "orders")], ..Default::default() }),
+            scope_metrics: vec![ScopeMetrics {
+                metrics: vec![Metric {
+                    name: "http.server.request.duration".into(),
+                    unit: "s".into(),
+                    data: Some(Data::Histogram(Histogram {
+                        aggregation_temporality: 2,
+                        data_points: (0..256)
+                            .map(|i| HistogramDataPoint {
+                                time_unix_nano: 1_790_000_000_000_000_000 + i,
+                                count: 100,
+                                sum: Some(2.5),
+                                explicit_bounds: vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5],
+                                bucket_counts: vec![5, 20, 25, 20, 15, 10, 3, 2, 0],
+                                attributes: vec![kv("http.route", "/orders/{id}")],
+                                ..Default::default()
+                            })
+                            .collect(),
+                    })),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+    };
+    let mut env = metric_conversion_fixture();
+    env.payload = Some(Payload::OtlpMetrics(request.encode_to_vec()));
+    env
+}
+
 fn trace_conversion_fixture() -> IngestEnvelope {
     let request = ExportTraceServiceRequest {
         resource_spans: vec![ResourceSpans {
@@ -193,6 +228,11 @@ fn normalization(c: &mut Criterion) {
     let metrics = metric_conversion_fixture();
     c.bench_function("convert/normalize_256_metric_points", |b| {
         b.iter(|| convert(black_box(&metrics), black_box(1_790_000_000_000_000_001)).expect("fixture converts"))
+    });
+
+    let histograms = histogram_conversion_fixture();
+    c.bench_function("convert/normalize_256_histograms_9_buckets", |b| {
+        b.iter(|| convert(black_box(&histograms), black_box(1_790_000_000_000_000_001)).expect("fixture converts"))
     });
 
     let traces = trace_conversion_fixture();

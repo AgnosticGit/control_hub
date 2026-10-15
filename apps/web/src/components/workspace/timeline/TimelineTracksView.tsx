@@ -17,6 +17,7 @@ import { placeAbove, rangeBetween, viewAround } from "./range";
 import { stableTrackWindow, timelineTrackQueryKey } from "./track-window";
 import {
   clampView,
+  cachedSummaryRanges,
   defaultLiveView,
   detailChunkFor,
   follow,
@@ -24,9 +25,10 @@ import {
   formatSpan,
   isNearPlayhead,
   liveSummaryWindow,
+  mergeRanges,
   MAX_VIEW_NS,
   needsTimelineSummary,
-  expandRange,
+  expandSummaryWindow,
   panBy,
   pointLoadingRange,
   timeAt,
@@ -116,9 +118,9 @@ type Drag =
   | { mode: "scrub" }
   | { mode: "pan"; x: number; view: View }
   /** On the tracks: a click places the cursor, a drag selects a replay range. */
-  | { mode: "select"; x: number; t: bigint; moved: boolean }
+  | { mode: "select"; x: number; t: bigint; moved: boolean; range?: View | null }
   /** Moves one edge of the replay range; `fixed` is the other edge. */
-  | { mode: "edge"; fixed: bigint };
+  | { mode: "edge"; fixed: bigint; range?: View | null };
 
 interface Hover {
   x: number;
@@ -186,6 +188,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const queryClient = useQueryClient();
   const actionPlansKey = useMemo(() => ["actions", projectId, environmentId] as const, [projectId, environmentId]);
   const dataKey = `${state.load?.at ?? 0}|${filterKey}`;
+  const summaryCoverageKey = `${projectId}|${environmentId}|${filterKey}`;
   const [chunkLoading, setChunkLoading] = useState(false);
   const [loaderRanges, setLoaderRanges] = useState<View[]>([]);
   const loadDirection = view.from + (view.to - view.from) / 2n < data.from ? "left" : "right";
@@ -207,15 +210,19 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     ready && !summaryView,
   );
   const [summaryWindow, setSummaryWindow] = useState<View | null>(null);
-  const summaryDataRangeRef = useRef<View | null>(null);
+  const summaryDataRangesRef = useRef<{ key: string; ranges: View[] }>({ key: summaryCoverageKey, ranges: [] });
+  useEffect(() => {
+    const cached = queryClient.getQueriesData<unknown>({ queryKey: ["timeline-summary", projectId, environmentId] });
+    summaryDataRangesRef.current = { key: summaryCoverageKey, ranges: cachedSummaryRanges(cached.map(([, value]) => value)) };
+  }, [environmentId, projectId, queryClient, summaryCoverageKey]);
   useEffect(() => {
     if (!summaryView) return;
     const requested = { from: summaryRequestFrom, to: summaryRequestTo };
-    const request = expandRange(summaryWindow, requested);
-    setLoaderRanges(uncoveredRanges(summaryDataRangeRef.current ? [summaryDataRangeRef.current] : [], request));
+    const request = expandSummaryWindow(summaryWindow, requested);
+    setLoaderRanges(uncoveredRanges(summaryDataRangesRef.current.ranges, request));
     const timer = setTimeout(() => {
       setSummaryWindow((current) => {
-        const expanded = expandRange(current, requested);
+        const expanded = expandSummaryWindow(current, requested);
         return current && current.from === expanded.from && current.to === expanded.to ? current : expanded;
       });
     }, 250);
@@ -242,14 +249,14 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     if (summary.data?.oldest_ns !== undefined) actions.setTimelineStartBoundary(summary.data.oldest_ns);
   }, [actions, summary.data]);
   useEffect(() => {
-    if (!summary.data) return;
+    if (!summary.data || summary.isPlaceholderData) return;
     const received = { from: BigInt(summary.data.from_ns), to: BigInt(summary.data.to_ns) };
-    const previous = summaryDataRangeRef.current;
-    summaryDataRangeRef.current = received;
+    const previous = summaryDataRangesRef.current.ranges;
+    summaryDataRangesRef.current.ranges = mergeRanges(previous, received);
     const loaderFrame = requestAnimationFrame(() => {
       setLoaderRanges(uncoveredRanges([received], summaryWindow ?? received));
     });
-    const fresh = uncoveredRanges(previous ? [previous] : [], received);
+    const fresh = uncoveredRanges(previous, received);
     if (fresh.length !== 1) return () => cancelAnimationFrame(loaderFrame);
     const interval = fresh[0];
     if (!interval) return () => cancelAnimationFrame(loaderFrame);
@@ -259,7 +266,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
       cancelAnimationFrame(loaderFrame);
       cancelAnimationFrame(frame);
     };
-  }, [summary.data, summaryWindow]);
+  }, [summary.data, summary.isPlaceholderData, summaryWindow]);
   const activeReveal = summaryView ? summaryReveal : state.timelineReveal;
   const revealProgress = timelineRevealProgressFor(activeReveal?.startedAt ?? null, revealFrame);
   const timelineDataLoading = chunkLoading || (summaryView && summary.isFetching);
@@ -453,7 +460,7 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
   const baseRowsHeight = rowTop(rows, groupAt === -1 ? rows.length : groupAt);
 
   // Zoomed into a stretch with nothing in it: offer the nearest item on either side.
-  const neighbours = !summaryView && !fitted && tracksMatch(displayedTracks, view) && viewIsEmpty(displayedTracks, view, actionBars) ? nearestItems(displayedTracks, view, actionBars) : null;
+  const neighbours = !summaryView && !fitted && tracksMatch(displayedTracks, view, TIMELINE_TRACK_BUCKETS) && viewIsEmpty(displayedTracks, view, actionBars) ? nearestItems(displayedTracks, view, actionBars) : null;
   const seekToTime = (time: bigint) => {
     actions.seek(time);
     if (!actions.hasTimelineRange(time, time + 1n)) {
@@ -616,8 +623,12 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     else if (d.mode === "select") {
       if (!d.moved && Math.abs(e.clientX - d.x) < DRAG_PX) return;
       d.moved = true;
-      setDraft(rangeBetween(d.t, timeAt(localX(e.clientX), view, width), data));
-    } else if (d.mode === "edge") setDraft(rangeBetween(d.fixed, timeAt(localX(e.clientX), view, width), data));
+      d.range = rangeBetween(d.t, timeAt(localX(e.clientX), view, width), data);
+      setDraft(d.range);
+    } else if (d.mode === "edge") {
+      d.range = rangeBetween(d.fixed, timeAt(localX(e.clientX), view, width), data);
+      setDraft(d.range);
+    }
     else if (width > 0) setView(panBy(d.view, BigInt(Math.round((-(e.clientX - d.x) / width) * Number(d.view.to - d.view.from))), bounds));
   };
   const onPointerUp = (e: React.PointerEvent<HTMLElement>) => {
@@ -628,9 +639,10 @@ export function TimelineTracksView({ projectId, environmentId, state, actions, m
     if (d?.mode === "select" && !d.moved) {
       void seekToTime(timeAt(localX(e.clientX), view, width));
     } else if (d?.mode === "select" || d?.mode === "edge") {
-      if (draft) {
-        actions.setLoop(draft);
-        if (d.mode === "select") setView(viewAround(draft, bounds));
+      const selected = d.range !== undefined ? d.range : draft;
+      if (selected) {
+        actions.setLoop(selected);
+        if (d.mode === "select") setView(viewAround(selected, bounds));
       }
       setDraft(null);
     }

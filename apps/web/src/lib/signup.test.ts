@@ -50,9 +50,9 @@ describe("safeNext", () => {
 });
 
 describe("afterSignupPath", () => {
-  it("starts onboarding by default", () => {
-    expect(afterSignupPath(null)).toBe("/app/onboarding");
-    expect(afterSignupPath("https://evil.example")).toBe("/app/onboarding");
+  it("opens first-workspace setup by default", () => {
+    expect(afterSignupPath(null)).toBe("/app");
+    expect(afterSignupPath("https://evil.example")).toBe("/app");
   });
 
   it("returns to a safe next path, e.g. an invite", () => {

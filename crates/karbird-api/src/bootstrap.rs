@@ -6,9 +6,10 @@
 use std::path::Path;
 
 use anyhow::Context;
-use karbird_domain::{EnvironmentId, ProjectId, Scope, TenantId};
+use karbird_domain::{EnvironmentId, ProjectId, Scope, ServiceId, TenantId};
 use karbird_runtime::env_required;
 use karbird_storage::ch::{ChConfig, ChStore};
+use karbird_storage::incidents::NewRule;
 use karbird_storage::pg::{NewAccount, PgStore};
 use karbird_storage::retention::{self, Decision, Table};
 use karbird_storage::secrets::{generate_token, hash_password, hash_token, token_prefix};
@@ -63,6 +64,10 @@ const DEMO_SCOPE: SeedScope = SeedScope {
     env_name: "local-demo",
     is_demo: true,
 };
+
+pub(crate) fn demo_scope() -> anyhow::Result<Scope> {
+    DEMO_SCOPE.scope()
+}
 
 /// Revokes the active ingestion tokens with this name in `scope` and issues a new one.
 pub(crate) async fn rotate_ingest_token(pg: &PgStore, scope: &Scope, name: &str) -> anyhow::Result<String> {
@@ -119,7 +124,7 @@ pub(crate) async fn admin_pg() -> anyhow::Result<PgStore> {
     PgStore::connect(&pg_admin_url, 2).await.context("connect postgres as admin")
 }
 
-fn admin_ch(database: &str) -> anyhow::Result<ChStore> {
+pub(crate) fn admin_ch(database: &str) -> anyhow::Result<ChStore> {
     let host = std::env::var("CH_CLICKHOUSE_HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let port = std::env::var("CH_CLICKHOUSE_HTTP_PORT").unwrap_or_else(|_| "18123".into());
     Ok(ChStore::new(&ChConfig {
@@ -319,6 +324,7 @@ pub async fn run(out_dir: &Path, retention: &[(Table, u32)], allow_shrink: bool)
     let id = pg.upsert_user(&owner.email, &name, &hash).await?;
     pg.upsert_membership(id, "demo", Builtin::Owner.key()).await?;
     pg.upsert_system_builtin(id, SystemBuiltin::SuperAdmin.key()).await?;
+    ensure_demo_incident_rule(&pg, &demo, id).await?;
     tracing::info!(email = %owner.email, "owner account ensured (owner of the demo project, karbird Super Admin)");
 
     let mut tokens = serde_json::Map::new();
@@ -349,6 +355,36 @@ pub async fn run(out_dir: &Path, retention: &[(Table, u32)], allow_shrink: bool)
         ),
     )?;
     tracing::info!(path = %out_dir.join("local-credentials.json").display(), "local credentials written");
+    Ok(())
+}
+
+async fn ensure_demo_incident_rule(pg: &PgStore, scope: &Scope, owner_id: uuid::Uuid) -> anyhow::Result<()> {
+    let service_id = ServiceId::derive(scope, "demo", "orders");
+    if pg
+        .incident_rules(scope)
+        .await?
+        .iter()
+        .any(|rule| rule.service_id == service_id.as_str() && rule.kind == "error_rate")
+    {
+        return Ok(());
+    }
+    const MINUTE_NS: i64 = 60_000_000_000;
+    let now_ns = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+        .min(i64::MAX as u128) as i64;
+    let previous_window_end_ns = now_ns.div_euclid(MINUTE_NS).saturating_sub(2).saturating_mul(MINUTE_NS);
+    pg.create_incident_rule(NewRule {
+        scope,
+        service_id: service_id.as_str(),
+        kind: "error_rate",
+        threshold: 10.0,
+        min_requests: 10,
+        actor: owner_id,
+        previous_window_end_ns,
+    })
+    .await?;
     Ok(())
 }
 

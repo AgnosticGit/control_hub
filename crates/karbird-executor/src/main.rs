@@ -142,6 +142,12 @@ impl Executor {
             Err(e) => return Outcome::Failed(json!({ "error": format!("{e:#}") })),
         };
         let done = now_ns();
+        if let Err(e) = self.demo.probe_verification(&action).await {
+            return Outcome::VerificationFailed(
+                result,
+                json!({ "passed": false, "detail": format!("verification probe failed: {e:#}") }),
+            );
+        }
         match self.verify(&scope, &action, &result, done).await {
             Ok((true, v)) => Outcome::Succeeded(result, v),
             Ok((false, v)) => Outcome::VerificationFailed(result, v),

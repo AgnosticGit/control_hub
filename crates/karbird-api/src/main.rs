@@ -137,6 +137,8 @@ enum Command {
         out_dir: PathBuf,
         #[arg(long)]
         remove: bool,
+        #[arg(long, conflicts_with = "remove")]
+        clear_telemetry: bool,
     },
     /// Print the OpenAPI document.
     Openapi,
@@ -366,6 +368,7 @@ fn router(state: state::AppState) -> Router {
         .route(&format!("{scoped}/edges/traffic"), get(routes::edge_traffic::edge_traffic))
         .route(&format!("{scoped}/infrastructure"), get(routes::infrastructure::infrastructure))
         .route(&format!("{scoped}/infrastructure/timeline"), get(routes::infra_timeline::infra_timeline))
+        .route(&format!("{scoped}/metrics/overview"), get(routes::metric_overview::metric_overview))
         .route(&format!("{scoped}/live"), get(routes::live::live))
         .route(&format!("{scoped}/audit"), get(routes::audit))
         .route(&format!("{scoped}/tokens"), get(routes::tokens::list).post(routes::tokens::create))
@@ -529,9 +532,15 @@ async fn main() -> anyhow::Result<()> {
             init_tracing("karbird-api");
             bootstrap::migrate(&retention.tables(), shrink_retention).await
         }
-        Some(Command::TestFixtures { out_dir, remove }) => {
+        Some(Command::TestFixtures { out_dir, remove, clear_telemetry }) => {
             init_tracing("karbird-api");
-            if remove { test_fixtures::remove(&out_dir).await } else { test_fixtures::create(&out_dir).await }
+            if clear_telemetry {
+                test_fixtures::clear_telemetry().await
+            } else if remove {
+                test_fixtures::remove(&out_dir).await
+            } else {
+                test_fixtures::create(&out_dir).await
+            }
         }
         Some(Command::Serve(args)) => {
             init_tracing("karbird-api");
@@ -594,6 +603,7 @@ mod tests {
             "/edges/traffic",
             "/infrastructure",
             "/infrastructure/timeline",
+            "/metrics/overview",
             "/live",
             "/audit",
             "/tokens",
@@ -1069,6 +1079,7 @@ mod tests {
             ("/edges/traffic", "get"),
             ("/infrastructure", "get"),
             ("/infrastructure/timeline", "get"),
+            ("/metrics/overview", "get"),
             ("/live", "get"),
             ("/audit", "get"),
             ("/tokens", "get"),
@@ -1094,6 +1105,14 @@ mod tests {
         let paths = spec["paths"].as_object().unwrap();
         for (p, m) in &expected {
             assert!(paths.get(p).and_then(|x| x.get(*m)).is_some(), "{m} {p} missing from OpenAPI");
+        }
+        for (p, operations) in paths {
+            for m in operations.as_object().into_iter().flat_map(|operations| operations.keys()) {
+                assert!(
+                    expected.iter().any(|(expected_path, expected_method)| expected_path == p && expected_method == m),
+                    "{m} {p} is documented but not listed as routed"
+                );
+            }
         }
         let documented: usize = paths.values().map(|v| v.as_object().map_or(0, |o| o.len())).sum();
         assert_eq!(documented, expected.len(), "every documented operation is routed");
@@ -1231,6 +1250,11 @@ mod tests {
         ));
         assert!(super::Cli::try_parse_from(["karbird-api"]).unwrap().command.is_none());
         assert!(super::Cli::try_parse_from(["karbird-api", "drop-database"]).is_err());
+        assert!(matches!(
+            super::Cli::try_parse_from(["karbird-api", "test-fixtures", "--clear-telemetry"]).unwrap().command,
+            Some(super::Command::TestFixtures { clear_telemetry: true, remove: false, .. })
+        ));
+        assert!(super::Cli::try_parse_from(["karbird-api", "test-fixtures", "--clear-telemetry", "--remove"]).is_err());
         match super::Cli::try_parse_from(["karbird-api", "migrate", "--logs-retention-days", "7"]).unwrap().command {
             Some(super::Command::Migrate { retention, shrink_retention }) => {
                 assert!(!shrink_retention, "deleting data is never the default");

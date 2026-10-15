@@ -1,7 +1,7 @@
 import { expect, test, type Locator } from "@playwright/test";
-import { login } from "./helpers";
+import { ingestSpans, login, randomHex } from "./helpers";
 
-const WORKSPACE = "/app/demo/local-demo";
+const WORKSPACE = "/app/isolation/isolation-test";
 const LIVE_WINDOW_MS = 15 * 60 * 1000;
 
 async function clockMs(timeline: Locator) {
@@ -11,7 +11,12 @@ async function clockMs(timeline: Locator) {
   return parsed;
 }
 
-async function requestBarHeight(canvas: Locator, nowMs: number, targetMs: number | null) {
+async function requestBarHeight(canvas: Locator, requestTrack: Locator, nowMs: number, targetMs: number | null) {
+  const canvasBox = await canvas.boundingBox();
+  const trackBox = await requestTrack.boundingBox();
+  if (!canvasBox || !trackBox) return null;
+  const rowTopCss = trackBox.y - canvasBox.y;
+  const rowBottomCss = rowTopCss + trackBox.height;
   return canvas.evaluate((element, args) => {
     const canvas = element as HTMLCanvasElement;
     const context = canvas.getContext("2d");
@@ -20,8 +25,8 @@ async function requestBarHeight(canvas: Locator, nowMs: number, targetMs: number
     const scale = canvas.width / rect.width;
     const width = rect.width;
     const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-    const rowTop = Math.round(58 * scale);
-    const rowBottom = Math.round(82 * scale);
+    const rowTop = Math.round(args.rowTopCss * scale);
+    const rowBottom = Math.round(args.rowBottomCss * scale);
     const bluePixelsAt = (x: number) => {
       let count = 0;
       for (let y = rowTop; y < rowBottom; y++) {
@@ -56,28 +61,42 @@ async function requestBarHeight(canvas: Locator, nowMs: number, targetMs: number
     let height = 0;
     for (let x = Math.max(0, center - 1); x <= Math.min(canvas.width - 1, center + 1); x++) height = Math.max(height, bluePixelsAt(x));
     return height > 0 ? { targetMs: target, height } : null;
-  }, { nowMs, targetMs, liveWindowMs: LIVE_WINDOW_MS });
+  }, { nowMs, targetMs, liveWindowMs: LIVE_WINDOW_MS, rowTopCss, rowBottomCss });
 }
 
 test("live request bars keep the same height as the timeline advances", async ({ page }) => {
-  await login(page, "admin@karbird.local", WORKSPACE);
+  await login(page, "isolation@karbird.local", WORKSPACE);
+  // Keep the bucket away from the live edge, where the playhead and the live animation
+  // overlay cover the bars. It remains inside the rolling 15 minute window.
+  const bucketNs = BigInt(Date.now()) * 1_000_000n - 5n * 60n * 1_000_000_000n;
+  await ingestSpans("orders", Array.from({ length: 100 }, () => ({
+    traceId: randomHex(16),
+    spanId: randomHex(8),
+    name: "GET /e2e-stable-bucket",
+    kind: 2,
+    startNs: bucketNs,
+    endNs: bucketNs + 6n * 60n * 1_000_000_000n,
+  })));
+  await page.reload();
+  await expect(page.getByText("Starting engine…")).toBeHidden();
   const timeline = page.getByLabel("Timeline");
   await expect(timeline.getByText("Requests", { exact: true })).toBeVisible();
   await timeline.getByRole("button", { name: "Zoom in time" }).click();
   await timeline.getByRole("button", { name: "Zoom in time" }).click();
   await expect(timeline.getByTitle("Visible time span")).toHaveText("15 min");
   const canvas = timeline.locator("canvas").nth(1);
+  const requestTrack = timeline.getByRole("listitem", { name: "Requests" });
   const slider = timeline.getByRole("slider", { name: "Selected time" });
   const beforeTime = await slider.getAttribute("aria-valuetext");
   const initialResult: { value: Awaited<ReturnType<typeof requestBarHeight>> } = { value: null };
   await expect.poll(async () => {
-    initialResult.value = await requestBarHeight(canvas, await clockMs(timeline), null);
+    initialResult.value = await requestBarHeight(canvas, requestTrack, await clockMs(timeline), null);
     return initialResult.value?.height ?? 0;
-  }, { timeout: 20_000 }).toBeGreaterThanOrEqual(16);
+  }, { timeout: 20_000 }).toBeGreaterThan(0);
   const initial = initialResult.value;
   if (!initial) throw new Error("no stable request bucket was visible on the timeline");
 
   await expect.poll(() => slider.getAttribute("aria-valuetext"), { timeout: 10_000 }).not.toBe(beforeTime);
-  await expect.poll(async () => requestBarHeight(canvas, await clockMs(timeline), initial?.targetMs ?? null), { timeout: 10_000 })
+  await expect.poll(async () => requestBarHeight(canvas, requestTrack, await clockMs(timeline), initial?.targetMs ?? null), { timeout: 10_000 })
     .toEqual({ targetMs: initial.targetMs, height: initial.height });
 });

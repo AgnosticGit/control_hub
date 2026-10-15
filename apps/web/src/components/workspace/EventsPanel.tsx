@@ -12,10 +12,16 @@ import { eventAttributeText, filterEvents } from "./events-query";
 
 type Event = Schemas["EventDto"];
 
-export function EventsPanel({ scope, actions, onTrace, onSelectRecord }: { scope: PanelScope; actions: WorkspaceActions; onTrace: (id: string) => void; onSelectRecord: (serviceName: string, time: bigint) => void }) {
+export function EventsPanel({ scope, actions, onTrace, onSelectRecord, expandedId, onExpandedIdChange }: {
+  scope: PanelScope;
+  actions: WorkspaceActions;
+  onTrace: (id: string) => void;
+  onSelectRecord: (serviceName: string, time: bigint) => void;
+  expandedId: string | null;
+  onExpandedIdChange: (id: string | null) => void;
+}) {
   const [search, setSearch] = useState("");
   const [eventType, setEventType] = useState("all");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [liveEvents, setLiveEvents] = useState<Event[]>([]);
   const query = useQuery({
     queryKey: ["events", scope.projectId, scope.environmentId, scope.from.toString(), scope.to.toString()],
@@ -41,16 +47,17 @@ export function EventsPanel({ scope, actions, onTrace, onSelectRecord }: { scope
   const events = useMemo(() => {
     const base = (query.data?.events ?? []).filter((event) => {
       const time = BigInt(event.time_ns);
-      return time >= scope.displayFrom && time < scope.displayTo;
+      // Selecting an event moves the cursor to its exact timestamp. Keep that event
+      // visible at the inclusive cursor boundary so its details do not disappear.
+      return time >= scope.displayFrom && time <= scope.displayTo;
     });
-    if (!scope.live) return base;
     const merged = new Map(base.map((event) => [event.id, event]));
     for (const event of liveEvents) {
       const time = BigInt(event.time_ns);
       if (time >= scope.displayFrom && time < scope.displayTo && (!scope.serviceId || event.service_id === scope.serviceId)) merged.set(event.id, event);
     }
     return [...merged.values()].sort((a, b) => (BigInt(a.time_ns) > BigInt(b.time_ns) ? -1 : 1));
-  }, [query.data?.events, liveEvents, scope.live, scope.displayFrom, scope.displayTo, scope.serviceId]);
+  }, [query.data?.events, liveEvents, scope.displayFrom, scope.displayTo, scope.serviceId]);
   const types = useMemo(() => [...new Set(events.map((event) => event.event_type))].sort(), [events]);
   const filtered = useMemo(() => filterEvents(events, { query: search, eventType, serviceName: scope.serviceName }), [events, search, eventType, scope.serviceName]);
 
@@ -96,8 +103,14 @@ export function EventsPanel({ scope, actions, onTrace, onSelectRecord }: { scope
                     aria-expanded={expanded}
                     aria-label={`${event.event_type} event from ${event.service_name} at ${time === null ? "unknown time" : formatClock(time)}`}
                     onClick={() => {
-                      setExpandedId(expanded ? null : event.id);
-                      if (time !== null) onSelectRecord(event.service_name, time);
+                      onExpandedIdChange(expanded ? null : event.id);
+                      // Keep the selected row while seeking. The history query ends at the
+                      // selected timestamp and may exclude this event by its upper bound.
+                      setLiveEvents((current) =>
+                        current.some((item) => item.id === event.id) ? current : [...current, event].slice(-2000),
+                      );
+                      // Commit the expanded row before seeking changes the live/history mode.
+                      if (time !== null) window.requestAnimationFrame(() => onSelectRecord(event.service_name, time));
                     }}
                   >
                     <span className="flex min-w-0 items-center gap-2">

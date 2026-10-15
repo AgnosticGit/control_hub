@@ -4,6 +4,7 @@
 import type { TimelineTracks } from "@karbird/web-engine";
 import type { ActionBar } from "./draw";
 import { clampView, type View } from "./scale";
+import { stableTrackWindow } from "./track-window";
 
 export interface Neighbours {
   prev: bigint | null;
@@ -21,9 +22,11 @@ function parse(ns: string | null | undefined): bigint | null {
   }
 }
 
-/** True when `tracks` were computed for exactly this view. */
-export function tracksMatch(tracks: TimelineTracks | null, view: View): tracks is TimelineTracks {
-  return tracks !== null && tracks.from_ns === view.from.toString() && tracks.to_ns === view.to.toString();
+/** True when `tracks` were computed for the stable bucket-aligned window of this view. */
+export function tracksMatch(tracks: TimelineTracks | null, view: View, targetBuckets = 180): tracks is TimelineTracks {
+  if (!tracks) return false;
+  const window = stableTrackWindow(view, targetBuckets);
+  return tracks.from_ns === window.from.toString() && tracks.to_ns === window.to.toString();
 }
 
 /** Nothing is drawn in the view: no request, error, event or span, and no action overlapping it. */

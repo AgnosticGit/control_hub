@@ -212,7 +212,8 @@ function doubleField(field, x) {
 /**
  * resources: [{ attributes, metrics: [{ name, unit?, kind: 'gauge' | 'sum' | 'histogram', monotonic?,
  * points: [{ attributes?, value, timeNs, startNs? }] }] }]. Histogram points carry only count and sum
- * (ingest rejects histograms; they exist to test that). Returns an ExportMetricsServiceRequest.
+ * Explicit-boundary histogram points may include `bucketCounts`, `bounds` and `count`.
+ * Points without buckets remain invalid and are used by rejection tests.
  */
 export function encodeMetrics(resources) {
   const point = (p, kind) =>
@@ -222,8 +223,10 @@ export function encodeMetrics(resources) {
             ...keyValues(9, p.attributes),
             ...(p.startNs ? [fixed64Field(2, p.startNs)] : []),
             fixed64Field(3, p.timeNs),
-            fixed64Field(4, 1),
+            fixed64Field(4, p.count ?? 1),
             doubleField(5, p.value),
+            ...(p.bucketCounts ?? []).map((count) => fixed64Field(6, count)),
+            ...(p.bounds ?? []).map((bound) => doubleField(7, bound)),
           ]
         : [...keyValues(7, p.attributes), ...(p.startNs ? [fixed64Field(2, p.startNs)] : []), fixed64Field(3, p.timeNs), doubleField(4, p.value)],
     );
@@ -233,7 +236,7 @@ export function encodeMetrics(resources) {
       m.kind === 'sum'
         ? lenField(7, Buffer.concat([...points, varintField(2, 2), varintField(3, m.monotonic ? 1 : 0)]))
         : m.kind === 'histogram'
-          ? lenField(9, Buffer.concat([...points, varintField(2, 2)]))
+          ? lenField(9, Buffer.concat([...points, varintField(2, m.temporality ?? 2)]))
           : lenField(5, Buffer.concat(points));
     return lenField(2, Buffer.concat([strField(1, m.name), ...(m.unit ? [strField(3, m.unit)] : []), data]));
   };

@@ -8,7 +8,7 @@ use std::path::Path;
 use karbird_storage::secrets::{generate_password, hash_password};
 use serde_json::json;
 
-use crate::bootstrap::{SeedScope, TEST_EMAIL_DOMAINS, admin_pg, rotate_ingest_token};
+use crate::bootstrap::{SeedScope, TEST_EMAIL_DOMAINS, admin_ch, admin_pg, rotate_ingest_token};
 use crate::permissions::Builtin;
 use crate::system_permissions::SystemBuiltin;
 
@@ -63,6 +63,10 @@ const SYSTEM_USERS: [(&str, &str, Option<SystemBuiltin>); 4] = [
 
 pub async fn create(out_dir: &Path) -> anyhow::Result<()> {
     let pg = admin_pg().await?;
+    clear_telemetry().await?;
+    let demo_scope = crate::bootstrap::demo_scope()?;
+    pg.clear_test_topology_scope(&demo_scope).await?;
+    admin_ch("karbird")?.clear_legacy_demo_e2e_rows(&demo_scope).await?;
     for s in &SCOPES {
         pg.upsert_scope(&s.scope()?, s.tenant_name, s.project_name, s.env_name, s.is_demo).await?;
     }
@@ -100,10 +104,22 @@ pub async fn create(out_dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Clear only the reserved browser/integration telemetry scope between tests.
+pub async fn clear_telemetry() -> anyhow::Result<()> {
+    let scope = SCOPES[0].scope()?;
+    admin_pg().await?.clear_test_topology_scope(&scope).await?;
+    admin_ch("karbird")?.clear_test_scope(&scope).await?;
+    Ok(())
+}
+
 /// Deletes every account in a test domain (the fixtures above and accounts tests signed up)
 /// and revokes the isolation ingestion token.
 pub async fn remove(out_dir: &Path) -> anyhow::Result<()> {
     let pg = admin_pg().await?;
+    clear_telemetry().await?;
+    let demo_scope = crate::bootstrap::demo_scope()?;
+    pg.clear_test_topology_scope(&demo_scope).await?;
+    admin_ch("karbird")?.clear_legacy_demo_e2e_rows(&demo_scope).await?;
     let removed = pg.delete_users_in_domains(TEST_EMAIL_DOMAINS).await?;
     let roles = pg.delete_custom_roles_with_prefix(TEST_ROLE_PREFIX).await?
         + pg.delete_system_roles_with_prefix(TEST_ROLE_PREFIX).await?;

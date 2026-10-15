@@ -64,10 +64,13 @@ describe("fitCamera", () => {
 });
 
 describe("zoomCamera", () => {
-  it("stops zooming out at the fitted overview and restores its position", () => {
+  it("allows a small zoom out past the fitted overview", () => {
     const fit = { x: 120, y: 80, scale: 0.2 };
-    const current = { x: -800, y: -600, scale: 0.21 };
-    expect(zoomCamera(current, 0.5, 500, 300, fit, 4)).toEqual(fit);
+    const firstStep = zoomCamera(fit, 0.8, 500, 300, fit, 4);
+    expect(firstStep.scale).toBeCloseTo(0.16);
+    const floor = zoomCamera(firstStep, 0.5, 500, 300, fit, 4);
+    expect(floor.scale).toBeCloseTo(0.16);
+    expect(floor).not.toEqual(fit);
   });
 
   it("zooms around the pointer while remaining above the fitted minimum", () => {

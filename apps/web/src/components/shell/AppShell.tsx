@@ -67,7 +67,12 @@ export function AppShell({ projectId, environmentId, active, status, children }:
                 else router.push("/app");
           }} />
           <ScopeSelect label="Project" value={project?.name ?? "Select project"} id="project" open={scopeMenu === "project"} onOpenChange={(open) => setScopeMenu(open ? "project" : null)} options={organizationProjects.map((item) => ({ id: item.id, label: item.name }))} selectedId={projectId} onSelect={(id) => navigate(id)} />
-          <ScopeSelect label="Environment" value={project?.environments.find((item) => item.id === environmentId)?.name ?? "Select environment"} id="environment" open={scopeMenu === "environment"} onOpenChange={(open) => setScopeMenu(open ? "environment" : null)} options={(project?.environments ?? []).map((item) => ({ id: item.id, label: `${item.name}${item.is_demo ? " · demo" : ""}` }))} selectedId={environmentId} onSelect={(id) => navigate(projectId, id)} />
+          <ScopeSelect label="Environment" value={
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate">{project?.environments.find((item) => item.id === environmentId)?.name ?? "Select environment"}</span>
+              {project?.environments.find((item) => item.id === environmentId)?.is_demo ? <span className="badge shrink-0">DEMO</span> : null}
+            </span>
+          } id="environment" open={scopeMenu === "environment"} onOpenChange={(open) => setScopeMenu(open ? "environment" : null)} options={(project?.environments ?? []).map((item) => ({ id: item.id, label: `${item.name}${item.is_demo ? " · demo" : ""}` }))} selectedId={environmentId} onSelect={(id) => navigate(projectId, id)} />
         </div>
 
         <nav aria-label="Workspace" className="mt-4 space-y-0.5 px-3">
@@ -148,7 +153,7 @@ export function AppShell({ projectId, environmentId, active, status, children }:
 interface ScopeOption { id: string; label: string }
 
 function ScopeSelect({ label, value, id, open, onOpenChange, options, selectedId, onSelect }: {
-  label: string; value: string; id: string; open: boolean; onOpenChange: (open: boolean) => void;
+  label: string; value: ReactNode; id: string; open: boolean; onOpenChange: (open: boolean) => void;
   options: ScopeOption[]; selectedId: string; onSelect: (id: string) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);

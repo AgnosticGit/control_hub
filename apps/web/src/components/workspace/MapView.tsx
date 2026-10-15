@@ -292,11 +292,10 @@ export function MapView({
     }
   }
 
-  if (showTable) {
-    return (
-      <div className="relative h-full w-full">
-        <h1 className="absolute top-3 left-3 z-10 rounded-lg bg-surface/90 px-2.5 py-1.5 text-sm font-semibold text-text shadow-lg backdrop-blur">System Map</h1>
-        <div className="absolute inset-x-0 bottom-0 top-10 overflow-auto">
+  return (
+    <div className="relative h-full w-full">
+      {showTable ? (
+        <div className="absolute inset-x-0 bottom-0 top-12 overflow-auto">
           {webglError ? (
             <p role="status" className="border-b border-border bg-surface px-4 py-2 text-xs text-warn">
               WebGL is unavailable ({webglError}). Showing the table view.
@@ -304,55 +303,27 @@ export function MapView({
           ) : null}
           <NodeTable frame={lastFrame} topology={topology} selectedId={selectedId} onSelect={onSelect} />
         </div>
-        <AnimationNote
-          mode={mode}
-          summary={summary}
-          infrastructure={infrastructure}
-          onInfrastructureChange={onInfrastructureChange}
-          serviceMetrics={serviceMetrics}
-          onServiceMetricsChange={onServiceMetricsChange}
-          onlyProblems={onlyProblems}
-          onOnlyProblemsChange={onOnlyProblemsChange}
-          hideInferred={hideInferred}
-          onHideInferredChange={onHideInferredChange}
-          tableView={tableView}
-          onTableViewChange={onTableViewChange}
-          availability={availability}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative h-full w-full">
-      <h1 className="pointer-events-none absolute top-3 left-3 z-10 rounded-lg border border-border bg-surface/90 px-2.5 py-1.5 text-sm font-semibold text-text shadow-lg backdrop-blur">
-        System Map
-      </h1>
-      <div className="absolute inset-0">
+      ) : (
+        <>
+          <div
+            ref={hostRef}
+            tabIndex={0}
+            role="application"
+            aria-label="Service map. Use arrow keys to pan, plus and minus keys or the mouse wheel to zoom, 0 to fit. Switch to table view for a list."
+            onKeyDown={onKeyDown}
+            className="absolute inset-0 overflow-hidden outline-none"
+          />
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 flex justify-end">
+            <Legend />
+          </div>
+        </>
+      )}
       <div
-        ref={hostRef}
-        tabIndex={0}
-        role="application"
-        aria-label="Service map. Use arrow keys to pan, plus and minus keys or the mouse wheel to zoom, 0 to fit. Switch to table view for a list."
-        onKeyDown={onKeyDown}
-        className="absolute inset-0 overflow-hidden outline-none"
-      />
-      <div
-        className="pointer-events-none absolute inset-x-3 flex items-start justify-between gap-2 transition-[top] duration-200 ease-out"
-        style={{ top: Math.max(42, topInset + 16) }}
+        className="pointer-events-none absolute right-12 left-3 z-20 flex flex-wrap items-center gap-2 transition-[top] duration-200 ease-out"
+        style={{ top: Math.max(12, topInset + 16) }}
       >
-        <div className="pointer-events-auto flex flex-col gap-1.5">
-          <button
-            type="button"
-            aria-label={fullscreen ? "Exit full screen" : "Full screen"}
-            title={fullscreen ? "Exit full screen (Esc)" : "Full screen"}
-            aria-pressed={fullscreen}
-            onClick={onToggleFullscreen}
-            className="btn btn-icon h-8 w-8 bg-surface/95 shadow-lg backdrop-blur"
-          >
-            <Icon name={fullscreen ? "minimize" : "maximize"} className="h-4 w-4" />
-          </button>
-          <div role="group" aria-label="Line style" className="flex w-8 flex-col gap-0.5 rounded-lg border border-border bg-surface/90 p-0.5 backdrop-blur">
+        {!showTable ? (
+          <div role="group" aria-label="Line style" className="pointer-events-auto flex h-8 flex-row gap-0.5 rounded-lg border border-border bg-surface/90 p-0.5 backdrop-blur">
             {LINE_STYLES.map((s) => {
               const active = s.style === edgeStyle;
               return (
@@ -363,7 +334,7 @@ export function MapView({
                   aria-pressed={active}
                   title={s.label}
                   onClick={() => setEdgeStyle(s.style)}
-                  className={`flex h-7 w-full items-center justify-center rounded-md transition-colors ${
+                  className={`flex h-7 w-8 items-center justify-center rounded-md transition-colors ${
                     active ? "bg-accent/15 text-accent" : "text-muted hover:bg-surface-2 hover:text-text"
                   }`}
                 >
@@ -374,28 +345,32 @@ export function MapView({
               );
             })}
           </div>
-        </div>
+        ) : null}
+        <AnimationNote
+          mode={mode} summary={summary} infrastructure={infrastructure} onInfrastructureChange={onInfrastructureChange}
+          serviceMetrics={serviceMetrics} onServiceMetricsChange={onServiceMetricsChange}
+          onlyProblems={onlyProblems} onOnlyProblemsChange={onOnlyProblemsChange}
+          hideInferred={hideInferred} onHideInferredChange={onHideInferredChange}
+          tableView={tableView} onTableViewChange={onTableViewChange} availability={availability}
+        />
       </div>
-      </div>
-      <div className="pointer-events-none absolute inset-x-3 bottom-3 flex justify-end">
-        <Legend />
-      </div>
-      <AnimationNote
-        mode={mode}
-        summary={summary}
-        infrastructure={infrastructure}
-        onInfrastructureChange={onInfrastructureChange}
-        serviceMetrics={serviceMetrics}
-        onServiceMetricsChange={onServiceMetricsChange}
-        onlyProblems={onlyProblems}
-        onOnlyProblemsChange={onOnlyProblemsChange}
-        hideInferred={hideInferred}
-        onHideInferredChange={onHideInferredChange}
-        tableView={tableView}
-        onTableViewChange={onTableViewChange}
-        availability={availability}
-      />
+      <MapFullscreenControl fullscreen={fullscreen} onToggle={onToggleFullscreen} />
     </div>
+  );
+}
+
+function MapFullscreenControl({ fullscreen, onToggle }: { fullscreen: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={fullscreen ? "Exit full screen" : "Full screen"}
+      title={fullscreen ? "Exit full screen (Esc)" : "Full screen"}
+      aria-pressed={fullscreen}
+      onClick={onToggle}
+      className="btn btn-icon absolute top-3 right-3 z-20 h-8 w-8 bg-surface/95 shadow-lg backdrop-blur"
+    >
+      <Icon name={fullscreen ? "minimize" : "maximize"} className="h-4 w-4" />
+    </button>
   );
 }
 
@@ -469,7 +444,7 @@ function AnimationNote({
         : "frozen at the selected time";
   const capped = summary && summary.hops_shown < summary.hops_in_window ? `Showing ${summary.hops_shown} of ${summary.hops_in_window} requests` : null;
   return (
-    <div className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-2">
+    <div className="pointer-events-none flex min-w-0 flex-wrap items-center gap-2">
       {capped ? (
         <span className="rounded-lg border border-warn/40 bg-surface/90 px-2 py-1 text-[11px] text-warn backdrop-blur">{capped}</span>
       ) : null}
@@ -553,7 +528,7 @@ function MapLayers({
           id="map-layers-panel"
           role="group"
           aria-label="Map layers"
-          className="absolute top-10 right-0 z-30 w-64 rounded-xl border border-border bg-surface-2 p-3 shadow-xl"
+          className="absolute top-10 left-0 z-30 w-64 rounded-xl border border-border bg-surface-2 p-3 shadow-xl"
         >
           <p className="mb-2 px-2 text-xs font-semibold tracking-wide text-muted uppercase">Map layers</p>
           <div className="space-y-1">

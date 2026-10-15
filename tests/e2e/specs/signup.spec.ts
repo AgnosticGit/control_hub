@@ -23,12 +23,16 @@ test("a visitor signs up, connects a service during onboarding and lands in thei
   await expect(page).toHaveURL(/\/app\/register$/);
   await expect(page.getByRole("heading", { level: 1, name: "Create your karbird account" })).toBeVisible();
   await fillSignup(page, email);
-  await page.getByLabel("Project name (optional)").fill(project);
   await page.getByRole("button", { name: "Create account" }).click();
 
-  await expect(page).toHaveURL(/\/app\/onboarding$/);
+  await expect(page).toHaveURL(/\/app$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Your first project" })).toBeVisible();
+  await page.getByLabel("Organization name").fill(`E2E org ${randomHex(3)}`);
+  await page.getByLabel("First project").fill(project);
+  await page.getByRole("button", { name: "Create workspace" }).click();
+  await expect(page).toHaveURL(/\/app\/onboarding\?project=p-[0-9a-f]{32}$/);
   await expect(page.getByRole("heading", { level: 1, name: "Connect your system" })).toBeVisible();
-  await expect(page.getByText(`Project: ${project} / production`)).toBeVisible();
+  await expect(page.getByText(new RegExp(`Project: ${project} / `))).toBeVisible();
   const steps = page.getByRole("list", { name: "Setup steps" });
   await expect(steps.getByRole("listitem").nth(0)).toHaveAttribute("aria-current", "step");
   await expect(page.getByRole("button", { name: "Continue" })).toHaveCount(0);
@@ -78,7 +82,7 @@ test("a visitor signs up, connects a service during onboarding and lands in thei
   await expect(page).toHaveURL(/\/app\/p-[0-9a-f]{32}\/e-[0-9a-f]{32}$/);
   const sidebar = page.getByRole("complementary", { name: "Sidebar" });
   await expect(sidebar.getByText(project)).toBeVisible();
-  await expect(sidebar.getByText("production")).toBeVisible();
+  await expect(sidebar.getByText("Development")).toBeVisible();
   await expect(sidebar.getByText("DEMO", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Finish setup" })).toHaveCount(0);
 
@@ -94,6 +98,10 @@ test("a new account can sign out and sign back in with its password", async ({ p
   await page.goto("/app/register");
   await fillSignup(page, email);
   await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/app$/);
+  await page.getByLabel("Organization name").fill(`E2E org ${randomHex(3)}`);
+  await page.getByLabel("First project").fill(`E2E project ${randomHex(3)}`);
+  await page.getByRole("button", { name: "Create workspace" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Connect your system" })).toBeVisible();
   await page.getByRole("button", { name: "Skip setup" }).click();
   await expect(page).toHaveURL(/\/app\/p-[0-9a-f]{32}\/e-[0-9a-f]{32}$/);
@@ -103,7 +111,9 @@ test("a new account can sign out and sign back in with its password", async ({ p
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  // A single environment opens straight away; the demo is not part of a new account.
+  // This starter project has several environments, so the environment picker opens after sign-in.
+  await expect(page).toHaveURL(/\/app$/);
+  await page.getByRole("link", { name: /Development/ }).click();
   await expect(page).toHaveURL(/\/app\/p-[0-9a-f]{32}\/e-[0-9a-f]{32}$/);
   await page.goto("/app/demo/local-demo");
   await expect(page.getByText("This environment does not exist or you do not have access to it.")).toBeVisible();

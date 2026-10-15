@@ -150,6 +150,45 @@ export async function ingestLog(opts: {
     body,
   });
   if (res.status !== 200) throw new Error(`log ingest failed: ${res.status}`);
+  const response = Buffer.from(await res.arrayBuffer());
+  if (response.length > 0) {
+    let offset = 0;
+    const readVarint = () => {
+      let value = 0n;
+      let shift = 0n;
+      while (offset < response.length) {
+        const byte = response[offset++]!;
+        value |= BigInt(byte & 0x7f) << shift;
+        if ((byte & 0x80) === 0) return value;
+        shift += 7n;
+      }
+      throw new Error("malformed OTLP logs response");
+    };
+    while (offset < response.length) {
+      const key = Number(readVarint());
+      const field = key >>> 3;
+      const wire = key & 7;
+      if (wire === 2) {
+        const length = Number(readVarint());
+        if (offset + length > response.length) throw new Error("malformed OTLP logs response");
+        if (field === 1) {
+          const end = offset + length;
+          while (offset < end) {
+            const nestedKey = Number(readVarint());
+            if ((nestedKey >>> 3) === 1 && (nestedKey & 7) === 0 && readVarint() > 0n) {
+              throw new Error("log ingest refused records (partial_success)");
+            }
+            if ((nestedKey & 7) === 2) offset += Number(readVarint());
+            else if ((nestedKey & 7) === 1) offset += 8;
+            else if ((nestedKey & 7) === 5) offset += 4;
+          }
+        } else offset += length;
+      } else if (wire === 0) readVarint();
+      else if (wire === 1) offset += 8;
+      else if (wire === 5) offset += 4;
+      else throw new Error("malformed OTLP logs response");
+    }
+  }
 }
 
 export interface SpanInput {
@@ -162,6 +201,30 @@ export interface SpanInput {
   startNs: bigint;
   endNs: bigint;
   attributes?: Record<string, string>;
+}
+
+export interface EventInput {
+  event_id?: string;
+  event_type: string;
+  service: { name: string };
+  event_time: string;
+  trace_id?: string;
+  span_id?: string;
+  attributes?: Record<string, string>;
+}
+
+/** Sends application events through the durable events endpoint for deterministic UI coverage. */
+export async function ingestEvents(events: EventInput[], env = "isolation-test") {
+  const res = await fetch(`${creds.otlp_http_endpoint}/api/v1/events/batch`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${creds.ingest_tokens[env]}`, "content-type": "application/json" },
+    body: JSON.stringify({ events: events.map((event) => ({ event_id: randomUUID(), ...event })) }),
+  });
+  if (res.status !== 200) throw new Error(`event ingest failed: ${res.status}`);
+  const result = await res.json() as { accepted?: number; rejected?: Array<unknown> };
+  if (result.accepted !== events.length || (result.rejected?.length ?? 0) > 0) {
+    throw new Error(`event ingest accepted ${result.accepted ?? 0} of ${events.length}`);
+  }
 }
 
 const keyValue = (field: number, k: string, v: string) => len(field, Buffer.concat([str(1, k), len(2, str(1, v))]));
@@ -254,4 +317,5 @@ export async function ingestSpans(service: string, spans: SpanInput[], env = "is
     body,
   });
   if (res.status !== 200) throw new Error(`trace ingest failed: ${res.status}`);
+  if ((await res.arrayBuffer()).byteLength !== 0) throw new Error("trace ingest refused some spans (partial_success)");
 }

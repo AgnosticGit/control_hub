@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Request } from "@playwright/test";
-import { collectErrors, ingestMetrics, login, randomHex, type MetricInput } from "./helpers";
+import { collectErrors, ingestMetrics, ingestSpans, login, randomHex, type MetricInput } from "./helpers";
 
 const WORKSPACE = "/app/isolation/isolation-test";
 const MIB = 1024 * 1024;
@@ -54,26 +54,42 @@ test("machine track on the timeline: CPU and memory per machine and a container 
       ],
     },
   ]);
+  await ingestSpans(`machine-timeline-${run}`, [{
+    traceId: randomHex(16),
+    spanId: randomHex(8),
+    name: "machine timeline anchor",
+    kind: 2,
+    startNs: now - 30n * SEC,
+    endNs: now - 20n * SEC,
+    attributes: { "host.name": host },
+  }]);
 
   const errors = collectErrors(page);
   await login(page, "isolation@karbird.local", WORKSPACE);
   await expect(page.getByText("Starting engine…")).toBeHidden();
   const timeline = page.getByLabel("Timeline");
   const tracks = timeline.getByRole("list", { name: "Tracks" });
+  const zoomToMachineDetail = async () => {
+    for (let i = 0; i < 2; i++) await page.getByLabel("Timeline").getByRole("button", { name: "Zoom in time" }).click();
+  };
+  await zoomToMachineDetail();
   const restart = timeline.getByRole("button", { name: `Container restarted: ${web} on ${host} at ${clock(restartAt)}` });
 
-  // Metrics reach the workspace through the pipeline; reload until the machine and its event are there.
-  await expect
-    .poll(
-      async () => {
-        if ((await restart.count()) > 0) return true;
-        await page.reload();
-        await expect(page.getByText("Starting engine…")).toBeHidden();
-        return false;
-      },
-      { timeout: 60_000, intervals: [3_000] },
-    )
-    .toBe(true);
+  // The ingest response is a Kafka ACK; wait for the processor's ClickHouse result
+  // before loading the timeline once, instead of repeatedly interrupting page loads.
+  const scope = "/api/v1/projects/isolation/environments/isolation-test";
+  await expect.poll(async () => {
+    const response = await page.request.get(
+      `${scope}/infrastructure/timeline?from=${from}&to=${now + 60n * SEC}&buckets=200`,
+    );
+    if (!response.ok()) return false;
+    const result = await response.json() as { events: Array<{ kind: string; host_name: string; container_name: string }> };
+    return result.events.some((event) => event.kind === "restarted" && event.host_name === host && event.container_name === web);
+  }, { timeout: 60_000 }).toBe(true);
+  await page.reload();
+  await expect(page.getByRole("application", { name: /Service map/ })).toBeVisible();
+  await zoomToMachineDetail();
+  await expect(restart).toBeVisible();
 
   await expect(tracks.getByText("Machines", { exact: true })).toBeVisible();
   const row = tracks.getByRole("listitem").filter({ hasText: host });

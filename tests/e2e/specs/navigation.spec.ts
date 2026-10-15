@@ -95,9 +95,8 @@ test.describe("app navigation", () => {
     await expect(sidebar).toContainText("isolation-prod");
     await expect(sidebar.getByText("DEMO", { exact: true })).toHaveCount(0);
 
-    await sidebar.getByRole("link", { name: "Switch environment" }).click();
-    await expect(page).toHaveURL(/\/app$/);
-    await page.getByRole("link", { name: /isolation-test/ }).click();
+    await sidebar.getByRole("combobox", { name: "Environment" }).click();
+    await sidebar.getByRole("option", { name: /isolation-test · demo/ }).click();
     await expect(page).toHaveURL(/\/app\/isolation\/isolation-test$/);
     await expect(page.getByRole("complementary", { name: "Sidebar" }).getByText("DEMO", { exact: true })).toBeVisible();
   });
@@ -105,7 +104,8 @@ test.describe("app navigation", () => {
   test("a single-environment user is forwarded from /app into the workspace", async ({ page }) => {
     await login(page, "viewer@karbird.local", "/app");
     await expect(page).toHaveURL(/\/app\/demo\/local-demo$/);
-    await page.getByRole("complementary", { name: "Sidebar" }).getByRole("link", { name: "Switch environment" }).click();
+    await page.getByRole("complementary", { name: "Sidebar" }).getByRole("combobox", { name: "Environment" }).click();
+    await page.getByRole("complementary", { name: "Sidebar" }).getByRole("option", { name: /local-demo · demo/ }).click();
     await expect(page).toHaveURL(/\/app\/demo\/local-demo$/);
   });
 

@@ -142,7 +142,7 @@ test('infrastructure and edge traffic stay read-only and environment-bound', asy
   const topology = await mcp.call('get_topology', { minutes: 15 });
   assert.equal(topology.isError, false, JSON.stringify(topology));
   const saved = topology.structuredContent.data;
-  assert.equal(saved.geometry.version, 2);
+  assert.equal(saved.geometry.version, 3);
   assert.ok(saved.geometry.revision > 0);
   const reopened = await mcp.call('get_topology', { from_ns: saved.from_ns, to_ns: saved.to_ns });
   assert.equal(reopened.isError, false, JSON.stringify(reopened));
@@ -166,17 +166,21 @@ test('infrastructure and edge traffic stay read-only and environment-bound', asy
   const isoTok = await iso.mutate(`${ISO}/tokens`, { kind: 'api', name: `mcp-infra-${randomUUID().slice(0, 8)}`, expires_in_days: 1 });
   assert.equal(isoTok.status, 200);
   const other = new McpClient(isoTok.body.secret);
-  await other.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
-  const isolatedTraffic = await other.call('get_edge_traffic', {
-    source: edge.source,
-    target: edge.target,
-    relation: edge.relation,
-    from_ns: String(BigInt(at) - 60_000_000_000n),
-    to_ns: at,
-  });
+  let isolatedTraffic;
+  try {
+    await other.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
+    isolatedTraffic = await other.call('get_edge_traffic', {
+      source: edge.source,
+      target: edge.target,
+      relation: edge.relation,
+      from_ns: String(BigInt(at) - 60_000_000_000n),
+      to_ns: at,
+    });
+  } finally {
+    await other.close();
+  }
   assert.equal(isolatedTraffic.isError, false, JSON.stringify(isolatedTraffic));
   assert.equal(isolatedTraffic.structuredContent.data.total_calls, 0, 'demo edge IDs have no calls in another environment');
-  await other.close();
 });
 
 test('timeline, coverage and incident snapshots preserve exact time ranges', async () => {
@@ -228,12 +232,16 @@ test('another tenant cannot be reached and revocation takes effect', async () =>
   const isoTok = await iso.mutate(`${ISO}/tokens`, { kind: 'api', name: `mcp-iso-${randomUUID().slice(0, 8)}`, expires_in_days: 1 });
   assert.equal(isoTok.status, 200);
   const other = new McpClient(isoTok.body.secret);
-  await other.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
-  const s = await other.call('list_services');
+  let s;
+  try {
+    await other.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
+    s = await other.call('list_services');
+  } finally {
+    await other.close();
+  }
   assert.equal(s.isError, false);
   assert.deepEqual(s.structuredContent.scope, { project_id: 'isolation', environment_id: 'isolation-test' });
   assert.ok(!s.structuredContent.data.services.some((x) => x.name === 'orders'), 'no demo data in another tenant');
-  await other.close();
 
   assert.equal((await admin.mutate(`${DEMO}/tokens/${tokenId}/revoke`, {})).status, 200);
   const r = await mcp.call('list_services');

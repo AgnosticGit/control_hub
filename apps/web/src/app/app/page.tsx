@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { SetupCard } from "@/components/account/AccountHome";
 import { projectColor } from "@/components/account/project-color";
 import { ProjectWizard } from "@/components/projects/ProjectWizard";
@@ -9,7 +11,18 @@ import { useSession } from "@/lib/session";
 
 export default function AppIndex() {
   const session = useSession();
+  const router = useRouter();
   const projects = session.data?.projects ?? [];
+
+  useEffect(() => {
+    const environments = (session.data?.projects ?? []).flatMap((project) =>
+      project.environments.map((environment) => ({ projectId: project.id, environmentId: environment.id })),
+    );
+    if (!session.isPending && !session.error && session.data?.user.onboarding_done && environments.length === 1) {
+      const [environment] = environments;
+      if (environment) router.replace(`/app/${environment.projectId}/${environment.environmentId}`);
+    }
+  }, [router, session.data?.projects, session.data?.user.onboarding_done, session.error, session.isPending]);
 
   if (session.isPending) {
     return <p className="p-8 text-sm text-muted">Loading…</p>;
@@ -17,7 +30,7 @@ export default function AppIndex() {
   if (session.error) {
     return <p className="p-8 text-sm text-error">Cannot load session.</p>;
   }
-  if ((session.data?.organizations.length ?? 0) === 0) {
+  if (!session.data?.user.onboarding_done && (session.data?.organizations.length ?? 0) === 0) {
     return <main className="min-h-screen px-6 py-16"><ProjectWizard /></main>;
   }
   return (
@@ -48,7 +61,7 @@ export default function AppIndex() {
       </header>
 
       <main className="mx-auto max-w-4xl px-6 py-12">
-        <h1 className="text-[2rem] leading-tight font-bold tracking-[-0.02em]">Projects</h1>
+        <h1 className="text-[2rem] leading-tight font-bold tracking-[-0.02em]">Choose an environment</h1>
         <p className="mt-2 text-muted">
           {projects.length === 0
             ? "You are not a member of any project yet."

@@ -405,6 +405,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
   // A failed socket marks the view stale and reconnects with backoff; it never polls HTTP.
   useEffect(() => {
     if (state.phase !== "ready") return;
+    if (state.mode === "historical") return;
     const c = clientRef.current;
     if (!c) return;
     let cancelled = false;
@@ -521,7 +522,7 @@ export function useWorkspaceEngine(projectId: string, environmentId: string, use
       void c.call({ kind: "liveStop" });
       patch({ liveTransport: "off" });
     };
-  }, [state.phase, patch, projectId, environmentId, cacheScopeKey]);
+  }, [state.phase, state.mode, patch, projectId, environmentId, cacheScopeKey]);
 
   useEffect(() => {
     if (state.phase !== "ready") return;

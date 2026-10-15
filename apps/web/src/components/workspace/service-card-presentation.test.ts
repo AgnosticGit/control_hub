@@ -11,11 +11,11 @@ const emptyMetrics: ServiceCardMetrics = {
 
 describe("serviceMetricPresentation", () => {
   it("shows in-card placeholders while metrics are loading", () => {
-    expect(serviceMetricPresentation(null, true)).toEqual({ loading: true, rows: [] });
+    expect(serviceMetricPresentation(null, true)).toEqual({ loading: true, rows: [], loadingRows: ["cpu", "memory", "receive", "transmit", "incoming", "outgoing"] });
   });
 
   it("hides uncollected metric rows after loading instead of presenting em-dashes", () => {
-    expect(serviceMetricPresentation(emptyMetrics, false)).toEqual({ loading: false, rows: [] });
+    expect(serviceMetricPresentation(emptyMetrics, false)).toEqual({ loading: false, rows: [], loadingRows: [] });
   });
 
   it("keeps only measurements that were actually collected", () => {
@@ -26,5 +26,6 @@ describe("serviceMetricPresentation", () => {
       requests: { incomingPerMinute: 12, outgoingPerMinute: null },
     };
     expect(serviceMetricPresentation(metrics, false).rows).toEqual(["cpu", "receive", "incoming"]);
+    expect(serviceMetricPresentation(metrics, true).loadingRows).toEqual(["memory", "transmit", "outgoing"]);
   });
 });

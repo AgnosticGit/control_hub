@@ -11,7 +11,11 @@ async function register(page: Page) {
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByLabel("Repeat password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page).toHaveURL(/\/app\/onboarding$/);
+  await expect(page).toHaveURL(/\/app$/);
+  await page.getByLabel("Organization name").fill(`E2E org ${randomHex(3)}`);
+  await page.getByLabel("First project").fill(`E2E project ${randomHex(3)}`);
+  await page.getByRole("button", { name: "Create workspace" }).click();
+  await expect(page).toHaveURL(/\/app\/onboarding\?project=p-[0-9a-f]{32}$/);
   return email;
 }
 
@@ -113,6 +117,7 @@ test("projects: create one, rename it, and the last owner cannot leave", async (
   await page.goto("/app/account/projects");
   const name = `Side project ${randomHex(3)}`;
   const form = page.getByRole("form", { name: "New project" });
+  await form.getByLabel("Organization").selectOption({ index: 1 });
   await form.getByLabel("Project name").fill(name);
   await form.getByRole("button", { name: "Create project" }).click();
   await expect(page).toHaveURL(/\/app\/p-[0-9a-f]{32}\/e-[0-9a-f]{32}\/integration$/);

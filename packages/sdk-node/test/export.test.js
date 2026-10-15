@@ -97,6 +97,16 @@ test('exports traces and logs over OTLP/HTTP protobuf with the ingest token', ()
   assert.ok(traces.includes('http.request.body.size'), 'request body size from Content-Length missing');
 });
 
+test('exports HTTP duration histograms and bounded process runtime metrics', () => {
+  const reqs = byPath('/v1/metrics');
+  assert.ok(reqs.length > 0, 'no metrics export');
+  const payload = Buffer.concat(reqs.map((r) => r.body)).toString('latin1');
+  assert.ok(payload.includes('http.server.request.duration'), 'HTTP histogram missing');
+  assert.ok(payload.includes('process.memory.usage'), 'process memory missing');
+  assert.ok(payload.includes('process.cpu.time'), 'process CPU missing');
+  for (const r of reqs) assert.equal(r.headers.authorization, 'Bearer ingest-token-XYZ');
+});
+
 test('never exports credentials, cookies, bodies or command-line arguments', () => {
   for (const r of cap.received) {
     const payload = r.body.toString('latin1');

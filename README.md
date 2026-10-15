@@ -6,9 +6,10 @@ in ClickHouse, and shows the system as a live map with a time machine. The map r
 engine compiled to WebAssembly and is rendered with WebGL.
 
 > **Status:** not production-ready. The local demo runs end to end and supports OTLP traces, logs and events, machine and
-> container gauges and sums from the Karbird Collector, WebSocket live updates, a log archive,
+> container gauges and sums from the Karbird Collector, Node HTTP histograms and process metrics,
+> optional read-only PostgreSQL metrics, WebSocket live updates, a log archive,
 > deployment tooling, token management, the `karbird` CLI, demo-only controlled actions and a
-> read-only MCP server. Application histograms and summaries, archiving spans and events, and
+> read-only MCP server. Exponential histograms and legacy summaries, archiving spans and events, and
 > non-demo action adapters are not available. Production deployment configuration is included;
 > production hardening remains, and this repository does not confirm a live production instance.
 

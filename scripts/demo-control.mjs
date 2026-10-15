@@ -30,9 +30,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *   pollMs?: number,
  *   log?: (msg: string) => void,
  *   onRelease?: (change: { service: string, from_version: string, to_version: string, kind: 'deploy' | 'rollback' }) => Promise<void>,
+ *   setIncidentCycleEnabled?: (enabled: boolean) => void,
  * }} opts
  */
-export function createDemoControl({ supervisor, instances, scalable = {}, releases = {}, healthTimeoutMs = 30_000, pollMs = 200, log = () => {}, onRelease = async () => {} }) {
+export function createDemoControl({ supervisor, instances, scalable = {}, releases = {}, healthTimeoutMs = 30_000, pollMs = 200, log = () => {}, onRelease = async () => {}, setIncidentCycleEnabled = () => {} }) {
   const overrides = new Map();
   const releaseState = Object.fromEntries(
     Object.entries(releases).map(([service, r]) => [service, { ...r, history: [] }]),
@@ -232,6 +233,11 @@ export function createDemoControl({ supervisor, instances, scalable = {}, releas
     release: (service) => releaseView(service),
     deploy: (service, version) => serial(() => deployUnlocked(service, version)),
     rollback: (service) => serial(() => rollbackUnlocked(service)),
+    setIncidentsEnabled: (enabled) => {
+      if (typeof enabled !== 'boolean') throw new HttpError(400, 'enabled must be a boolean');
+      setIncidentCycleEnabled(enabled);
+      return { enabled };
+    },
   };
 }
 
@@ -269,6 +275,7 @@ export function controlHandler(control) {
     ["GET", /^\/releases\/([a-z0-9-]{1,32})$/, (m) => control.release(m[1])],
     ["POST", /^\/releases\/([a-z0-9-]{1,32})$/, (m, body) => control.deploy(m[1], body.version)],
     ["POST", /^\/releases\/([a-z0-9-]{1,32})\/rollback$/, (m) => control.rollback(m[1])],
+    ["POST", /^\/incident-cycle$/, (_m, body) => control.setIncidentsEnabled(body.enabled)],
   ];
   return async (req, res) => {
     const send = (status, body) => {

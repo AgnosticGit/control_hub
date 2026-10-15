@@ -42,6 +42,11 @@ describe("playStart", () => {
   it("restarts from the beginning at the end of the range without a loop", () => {
     expect(playStart(bounds.to, bounds.from, bounds.to, null)).toBe(bounds.from);
   });
+
+  it("treats a cursor within one UI tick of the growing live end as being at the end", () => {
+    expect(playStart(bounds.to - 2_000_000_000n, bounds.from, bounds.to, null)).toBe(bounds.from);
+    expect(playStart(bounds.to - 6_000_000_000n, bounds.from, bounds.to, null)).toBe(bounds.to - 6_000_000_000n);
+  });
 });
 
 describe("firstItemStart", () => {

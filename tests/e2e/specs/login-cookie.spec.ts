@@ -23,6 +23,7 @@ test("explains when login succeeds but the browser does not retain its session c
 
 test("reloads into the private app after the session cookie is verified", async ({ page }) => {
   const session = {
+    organizations: [],
     projects: [],
     user: {
       created_at: "2026-01-01T00:00:00Z",
@@ -48,4 +49,5 @@ test("reloads into the private app after the session cookie is verified", async 
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/app$/);
   await expect(page.getByRole("heading", { name: "Choose an environment" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Create one" })).toHaveAttribute("href", "/app/account/projects");
 });

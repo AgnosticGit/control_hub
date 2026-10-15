@@ -1,0 +1,51 @@
+# Optional, separate PostgreSQL metrics collector. Give KARBIRD_POSTGRES_USER read-only
+# access to pg_stat_database; query samples and statement text are not enabled.
+receivers:
+  postgresql:
+    endpoint: ${env:KARBIRD_POSTGRES_ENDPOINT}
+    username: ${env:KARBIRD_POSTGRES_USER}
+    password: ${env:KARBIRD_POSTGRES_PASSWORD}
+    databases: [${env:KARBIRD_POSTGRES_DATABASE}]
+    collection_interval: 15s
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 96
+  resource/karbird:
+    attributes:
+      - key: service.name
+        value: postgresql
+        action: upsert
+      - key: db.system.name
+        value: postgresql
+        action: upsert
+      - key: host.name
+        value: ${env:KARBIRD_HOST_NAME}
+        action: upsert
+  batch:
+    timeout: 10s
+
+exporters:
+  otlphttp/karbird:
+    endpoint: ${env:KARBIRD_OTLP_ENDPOINT}
+    headers:
+      Authorization: Bearer ${env:KARBIRD_INGEST_TOKEN}
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+    sending_queue:
+      enabled: true
+      queue_size: 200
+
+service:
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      level: none
+  pipelines:
+    metrics:
+      receivers: [postgresql]
+      processors: [memory_limiter, resource/karbird, batch]
+      exporters: [otlphttp/karbird]

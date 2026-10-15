@@ -9,6 +9,7 @@ import { externalExplanation, externalLabel } from "@/renderer/external";
 import { ActionControls } from "@/components/actions/ActionControls";
 import { ContainerCard, HostCard, ResourceRunsOn, RunsOn, SignalLinks, type OpenSignals } from "./InfraInspector";
 import { EdgeInspector } from "./EdgeInspector";
+import { MetricOverviewCard } from "./MetricOverviewCard";
 import { findContainer, type ContainerRef } from "./infrastructure";
 import type { SelectedEdge } from "./edge-traffic";
 
@@ -140,6 +141,8 @@ export function Inspector({
   }
 
   const edges = relations(topology, node.index);
+  const postgresDependency = edges.map((edge) => topology?.nodes.find((candidate) => candidate.id === edge.other.id))
+    .find((candidate) => candidate?.kind === "database" && /postgres/i.test(candidate.name));
   const tone = metrics ? (STATUS_TONE[metrics.status] ?? STATUS_TONE.unknown) : STATUS_TONE.unknown;
   const external = externalLabel(node.kind);
   const explanation = externalExplanation(node.kind);
@@ -185,6 +188,19 @@ export function Inspector({
             </dl>
             <p className="text-[11px] text-muted">At {formatClock(state.cursor)}; 30 s window.</p>
           </section>
+        ) : null}
+
+        {node.kind === "service" ? (
+          <MetricOverviewCard projectId={projectId} environmentId={environmentId} name={node.name}
+            title="Application metrics" dependency={false} cursor={state.cursor} live={state.mode === "live"} />
+        ) : null}
+        {node.kind === "database" && /postgres/i.test(node.name) ? (
+          <MetricOverviewCard projectId={projectId} environmentId={environmentId} name="postgresql"
+            title="PostgreSQL metrics" dependency cursor={state.cursor} live={state.mode === "live"} />
+        ) : null}
+        {node.kind === "service" && postgresDependency ? (
+          <MetricOverviewCard projectId={projectId} environmentId={environmentId} name="postgresql"
+            title="PostgreSQL dependency" dependency cursor={state.cursor} live={state.mode === "live"} />
         ) : null}
 
         <SignalLinks serviceId={node.kind === "service" ? node.id : null} onSignals={onSignals} label={node.name} />

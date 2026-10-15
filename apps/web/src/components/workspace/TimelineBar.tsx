@@ -38,12 +38,13 @@ interface Props {
   actions: WorkspaceActions;
   markA: bigint | null;
   onMarkA: (t: bigint | null) => void;
+  onReturnToLive: () => void;
   onCompare: (a: bigint, b: bigint) => void;
   memory?: WorkspaceMemory;
   onContentHeight: (height: number) => void;
 }
 
-export function TimelineBar({ projectId, environmentId, filterKey, muted, onMuted, focus = null, height, state, actions, markA, onMarkA, onCompare, memory, onContentHeight }: Props) {
+export function TimelineBar({ projectId, environmentId, filterKey, muted, onMuted, focus = null, height, state, actions, markA, onMarkA, onReturnToLive, onCompare, memory, onContentHeight }: Props) {
   const [showRange, setShowRange] = useState(false);
   const [trackContentHeight, setTrackContentHeight] = useState(0);
   const [controlsHeight, setControlsHeight] = useState(32);
@@ -100,7 +101,12 @@ export function TimelineBar({ projectId, environmentId, filterKey, muted, onMute
             Pause live
           </button>
         ) : (
-          <button type="button" className="btn btn-sm btn-ok" onClick={() => void actions.returnToLive()}>
+          <button type="button" className="btn btn-sm btn-ok" onClick={() => {
+            setShowRange(false);
+            onMarkA(null);
+            onReturnToLive();
+            void actions.returnToLive();
+          }}>
             <Icon name="radio" className="h-3.5 w-3.5" />
             Return to live
           </button>

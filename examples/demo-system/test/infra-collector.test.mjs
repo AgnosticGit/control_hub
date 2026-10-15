@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildResources, createHostState, parsePlacement, stepHost, syntheticSample } from '../src/infra-collector.mjs';
+import { EventEmitter } from 'node:events';
+import { buildResources, createHostState, parsePlacement, postgresContainerForPlacement, postgresResource, stepHost, syntheticSample, watchPostgresPool } from '../src/infra-collector.mjs';
 import { encodeMetrics } from '../src/otlp-metrics.mjs';
 import { captureServer, cleanEnv, runNode, src, startNode } from './helpers.mjs';
 
@@ -19,6 +20,19 @@ const placement = (url = 'http://127.0.0.1:1') => [
     ],
   },
 ];
+
+test('finds the PostgreSQL container in the actual demo placement', async () => {
+  const { demoPlacement } = await import('../../../scripts/demo-placement.mjs');
+  assert.equal(postgresContainerForPlacement(demoPlacement())?.name, 'postgres');
+});
+
+test('an idle PostgreSQL connection failure is reported without crashing the collector', () => {
+  const pool = new EventEmitter();
+  const messages = [];
+  watchPostgresPool(pool, (message) => messages.push(message));
+  pool.emit('error', new Error('database restarting'));
+  assert.match(messages[0], /database restarting/);
+});
 
 /** Top-level protobuf fields: { field: [Buffer | bigint] } (varint, fixed64 and bytes). */
 function fields(buf) {
@@ -136,6 +150,21 @@ test('resources carry host and container metrics under the collector metric name
     'container.network.io.usage.tx_bytes',
   ]);
   assert.ok(inventory.metrics.at(-2).points[0].value > inventory.metrics.at(-1).points[0].value);
+});
+
+test('PostgreSQL statistics become scoped dependency metrics without application instrumentation', () => {
+  const resource = postgresResource(
+    { numbackends: 3, xact_commit: 20, xact_rollback: 2, deadlocks: 1 },
+    { host: 'vps-app', id: 'a'.repeat(64), name: 'demo-postgres' },
+    1n, 2n,
+  );
+  assert.equal(resource.attributes['db.system.name'], 'postgresql');
+  assert.equal(resource.attributes['host.name'], 'vps-app');
+  assert.equal(resource.attributes['container.id'], 'a'.repeat(64));
+  assert.deepEqual(resource.metrics.map((metric) => metric.name), [
+    'postgresql.backends', 'postgresql.commits', 'postgresql.rollbacks', 'postgresql.deadlocks',
+  ]);
+  assert.deepEqual(resource.metrics.map((metric) => metric.points[0].value), [3, 20, 2, 1]);
 });
 
 test('the encoder writes a decodable ExportMetricsServiceRequest', () => {

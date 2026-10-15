@@ -107,7 +107,27 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   // run ages the first sample out of the two-minute metrics window while asserting it.
   await page.getByRole("button", { name: "Pause live" }).click();
   const map = page.getByRole("application", { name: /Service map/ });
-  await expect(map.getByRole("img", { name: new RegExp(`Service ${orders}.*2 containers`) })).toBeVisible({ timeout: 60_000 });
+  const ordersNode = map.getByRole("img", { name: new RegExp(`Service ${orders}.*2 containers`) });
+  const scope = "/api/v1/projects/isolation/environments/isolation-test";
+  const from = (now - 30n * 60n * SEC).toString();
+  const to = (now + 60n * SEC).toString();
+  await expect.poll(async () => {
+    const response = await page.request.get(`${scope}/services?from=${from}&to=${to}`);
+    if (!response.ok()) return false;
+    const result = await response.json() as { services: Array<{ name: string }> };
+    return result.services.some((service) => service.name === orders)
+      && result.services.some((service) => service.name === inventory);
+  }, { timeout: 60_000 }).toBe(true);
+  await expect.poll(async () => {
+    const response = await page.request.get(`${scope}/infrastructure?at=${now}&live=true`);
+    if (!response.ok()) return false;
+    const result = await response.json() as { hosts: Array<{ name: string }> };
+    return result.hosts.some((machine) => machine.name === host);
+  }, { timeout: 60_000 }).toBe(true);
+  // Let the map load after both sources are queryable instead of reloading it on a timer.
+  await page.reload();
+  await expect(map).toBeVisible();
+  await expect(ordersNode).toBeVisible({ timeout: 30_000 });
   await (await mapLayer(page, "Service metrics")).check();
   await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
   await expect
@@ -120,6 +140,7 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   await expect(map.getByRole("img", { name: new RegExp(`Service ${orders}.*RX .*; TX `) })).toBeVisible();
   await expect(map).toHaveAttribute("data-drawn-nodes", /[0-9]/);
   await (await mapLayer(page, "Infrastructure")).check();
+  await page.getByRole("button", { name: "Map layers" }).click();
 
   const machines = page.getByRole("region", { name: "Machines" });
   await expect(machines.getByRole("heading", { name: "Machines" })).toBeVisible();
@@ -171,7 +192,10 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
     return replica?.slice(replica.indexOf(":") + 1).split(",").map(Number) ?? null;
   };
   await expect.poll(replicaAnchor).not.toBeNull();
-  const [replicaX, replicaY] = (await replicaAnchor()) ?? [0, 0];
+  const replicaPosition = await replicaAnchor();
+  if (!replicaPosition) throw new Error("replica anchor is missing");
+  const [replicaX, replicaY] = replicaPosition;
+  if (replicaX === undefined || replicaY === undefined) throw new Error("replica anchor coordinates are incomplete");
   // Renderer anchors are measured from the canvas.
   const canvasBox = await map.locator("canvas").boundingBox();
   if (!canvasBox) throw new Error("map canvas has no box");
@@ -238,7 +262,10 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
     return entry?.slice(entry.indexOf(":") + 1).split(",").map(Number) ?? null;
   };
   await expect.poll(frameAnchor).not.toBeNull();
-  const [frameX, frameY] = (await frameAnchor()) ?? [0, 0];
+  const framePosition = await frameAnchor();
+  if (!framePosition) throw new Error("machine frame anchor is missing");
+  const [frameX, frameY] = framePosition;
+  if (frameX === undefined || frameY === undefined) throw new Error("machine frame coordinates are incomplete");
   await page.mouse.click(canvasBox.x + frameX, canvasBox.y + frameY);
   await expect(map).toHaveAttribute("data-infra-selected", "");
   await expect(map).toHaveAttribute("data-selection-dimmed", "false");
@@ -259,10 +286,9 @@ test("infrastructure layer: machines, noisy neighbour, service → instance → 
   await expect(page.getByText("Starting engine…")).toBeHidden();
   await expect(await mapLayer(page, "Service metrics")).toBeChecked();
   await expect.poll(async () => (await map.getAttribute("data-drawn-nodes"))?.length ?? 0).toBeGreaterThan(0);
-  // Metrics in this fixture are deliberately more than two minutes old by this
-  // point. The topology must render immediately after reload, while expired
-  // metrics stay absent instead of showing stale or fabricated values.
-  await expect(map).toHaveAttribute("data-service-metrics", /No service metrics collected/);
+  // The last fixture point is still within the two-minute collection window.
+  // Reloading must preserve the topology and its fresh metrics together.
+  await expect(map).toHaveAttribute("data-service-metrics", /CPU 0\.95\/1\.00.*RAM/);
   await expect(page.getByRole("region", { name: "Machines" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -284,6 +310,7 @@ test("with many machines the list scrolls and fit to screen keeps every card bel
   await login(page, "isolation@karbird.local", WORKSPACE);
   await expect(page.getByText("Starting engine…")).toBeHidden();
   await (await mapLayer(page, "Infrastructure")).check();
+  await page.getByRole("button", { name: "Map layers" }).click();
   const machines = page.getByRole("region", { name: "Machines" });
   const last = machines.getByRole("button", { name: new RegExp(`^${hosts[29]}`) });
   await expect
@@ -293,6 +320,7 @@ test("with many machines the list scrolls and fit to screen keeps every card bel
         await page.reload();
         await expect(page.getByText("Starting engine…")).toBeHidden();
         await (await mapLayer(page, "Infrastructure")).check();
+        await page.getByRole("button", { name: "Map layers" }).click();
         return false;
       },
       { timeout: 60_000, intervals: [3_000] },

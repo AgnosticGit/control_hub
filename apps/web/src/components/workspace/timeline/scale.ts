@@ -29,6 +29,12 @@ export function expandRange(previous: View | null, requested: View): View {
   };
 }
 
+/** Expand cached summary coverage without asking the API for a window beyond the viewport cap. */
+export function expandSummaryWindow(previous: View | null, requested: View): View {
+  const expanded = expandRange(previous, requested);
+  return span(expanded) > MAX_VIEW_NS ? { ...requested } : expanded;
+}
+
 /** Maps the part of a loading range visible in the current timeline view to pixels. */
 export function visibleRangeSegment(range: View, view: View, width: number): VisibleRangeSegment | null {
   if (width <= 0 || range.to <= view.from || range.from >= view.to) return null;
@@ -48,6 +54,20 @@ export function mergeRanges(ranges: readonly View[], addition: View): View[] {
     else if (range.to > previous.to) merged[merged.length - 1] = { from: previous.from, to: range.to };
   }
   return merged;
+}
+
+/** Reads completed summary windows from React Query's cache when the timeline remounts. */
+export function cachedSummaryRanges(values: readonly unknown[]): View[] {
+  let ranges: View[] = [];
+  for (const value of values) {
+    if (!value || typeof value !== "object") continue;
+    const record = value as Record<string, unknown>;
+    if (typeof record.from_ns !== "string" || typeof record.to_ns !== "string" || !/^\d+$/.test(record.from_ns) || !/^\d+$/.test(record.to_ns)) continue;
+    const from = BigInt(record.from_ns);
+    const to = BigInt(record.to_ns);
+    if (to > from) ranges = mergeRanges(ranges, { from, to });
+  }
+  return ranges;
 }
 
 /** Drop evicted coverage and clip a surviving interval at the engine's retention edge. */

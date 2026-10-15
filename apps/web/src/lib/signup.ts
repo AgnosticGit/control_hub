@@ -24,7 +24,7 @@ export function safeNext(next: string | null | undefined): string | null {
   return next === "/app" || next.startsWith("/app/") || next.startsWith("/app?") ? next : null;
 }
 
-/** Where a new account lands: back to where it came from (e.g. an invite), otherwise onboarding. */
+/** Where a new account lands: back to where it came from (e.g. an invite), otherwise workspace setup. */
 export function afterSignupPath(next: string | null | undefined): string {
-  return safeNext(next) ?? "/app/onboarding";
+  return safeNext(next) ?? "/app";
 }

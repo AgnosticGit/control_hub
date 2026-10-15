@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardGeometry, COMPACT_CARD_SIZE, EXPANDED_CARD_SIZE, routeBoxForCard } from "./map-card-geometry";
+import { cardGeometry, COMPACT_CARD_SIZE, EXPANDED_CARD_SIZE, routeBoxForCard, serviceMetricCardSize } from "./map-card-geometry";
 
 describe("service card geometry", () => {
   it("preserves compact dimensions and provides expanded dimensions for metrics", () => {
@@ -12,5 +12,12 @@ describe("service card geometry", () => {
   it("keeps route bounds and port spans aligned with the active card size", () => {
     expect(routeBoxForCard(COMPACT_CARD_SIZE)).toEqual({ hw: 90, hh: 32, portSpan: 44 });
     expect(routeBoxForCard(EXPANDED_CARD_SIZE)).toEqual({ hw: 114, hh: 56, portSpan: 92 });
+  });
+
+  it("shrinks metric cards to the last available row", () => {
+    expect(serviceMetricCardSize([])).toEqual({ width: 220, height: 56 });
+    expect(serviceMetricCardSize(["cpu"])).toEqual({ width: 220, height: 56 });
+    expect(serviceMetricCardSize(["cpu", "memory"])).toEqual({ width: 220, height: 72 });
+    expect(serviceMetricCardSize(["cpu", "network", "requests"])).toEqual(EXPANDED_CARD_SIZE);
   });
 });

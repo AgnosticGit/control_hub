@@ -47,15 +47,32 @@ test('topology has observed gateway->orders call and inferred orders->postgres d
 });
 
 test('trace detail links spans across services with correlated logs', async () => {
-  const list = await admin.json(`${DEMO}/traces?limit=50`);
-  assert.equal(list.status, 200);
-  // The demo also has gateway -> auth / catalog traces; pick one that reaches orders.
-  const multi = list.body.traces.find((t) => t.services.includes('gateway') && t.services.includes('orders'));
-  assert.ok(multi, 'expected a trace spanning gateway and orders');
-  const detail = await admin.json(`${DEMO}/traces/${multi.trace_id}`);
+  // Seed this contract independently of the deliberately low-rate demo generator.
+  const session = new Session();
+  await session.login('isolation@karbird.local');
+  const traceId = hex(16), gatewayId = hex(8), ordersId = hex(8);
+  const at = nowNs() - 60_000_000_000n;
+  assert.equal((await otlpHttp('traces', encodeTraces('e2e-gateway', [{
+    traceId, spanId: gatewayId, name: 'GET /orders', kind: 2, startNs: at, endNs: at + 20_000_000n,
+  }]))).status, 200);
+  assert.equal((await otlpHttp('traces', encodeTraces('e2e-orders', [{
+    traceId, spanId: ordersId, parentSpanId: gatewayId, name: 'SELECT orders', kind: 2, startNs: at + 2_000_000n, endNs: at + 15_000_000n,
+    attributes: { 'db.system': 'postgresql' },
+  }]))).status, 200);
+  assert.equal((await otlpHttp('logs', encodeLogs('e2e-orders', [{
+    timeNs: at + 10_000_000n, body: 'correlated order lookup', traceId, spanId: ordersId,
+  }]))).status, 200);
+  const multi = await eventually(async () => {
+    const list = await session.json(`${ISO}/traces?limit=50`);
+    assert.equal(list.status, 200);
+    const found = list.body.traces.find((t) => t.trace_id === traceId && t.services.includes('e2e-gateway') && t.services.includes('e2e-orders'));
+    assert.ok(found, 'expected the seeded trace to span e2e-gateway and e2e-orders');
+    return found;
+  });
+  const detail = await session.json(`${ISO}/traces/${multi.trace_id}`);
   assert.equal(detail.status, 200);
   const services = new Set(detail.body.spans.map((s) => s.service_name));
-  assert.ok(services.has('gateway') && services.has('orders'));
+  assert.ok(services.has('e2e-gateway') && services.has('e2e-orders'));
   for (const s of detail.body.spans) {
     for (const k of Object.keys(s.attributes)) {
       assert.ok(!/authorization|cookie|db\.statement|db\.query\.text/i.test(k), `sensitive attribute leaked: ${k}`);
