@@ -1652,6 +1652,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -1739,6 +1740,20 @@ dependencies = [
  "tempfile",
  "time",
  "ureq",
+ "uuid",
+]
+
+[[package]]
+name = "karbird-control"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
  "uuid",
 ]
 

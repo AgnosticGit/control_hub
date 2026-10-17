@@ -15,7 +15,7 @@ mod adapter;
 use std::time::Duration;
 
 use clap::Parser;
-use karbird_actions::{self as actions, Action, Observed, PolicyInput};
+use karbird_actions::{self as actions, Action, ContainerVerb, Observed, PolicyInput};
 use karbird_domain::{EnvironmentId, ProjectId, Scope, TenantId};
 use karbird_executor::verification::verification_record;
 use karbird_runtime::{init_tracing, load_local_env, shutdown_signal};
@@ -66,6 +66,25 @@ struct Executor {
     demo: adapter::Demo,
 }
 
+fn control_result_ok(verb: ContainerVerb, value: &Value) -> bool {
+    if value.get("succeeded").and_then(Value::as_bool) != Some(true) {
+        return false;
+    }
+    let state = value.get("observed_state").and_then(Value::as_str);
+    match verb {
+        ContainerVerb::Stop => state == Some("stopped"),
+        ContainerVerb::Start => state == Some("running"),
+        ContainerVerb::Restart => {
+            state == Some("running")
+                && value
+                    .get("started_at")
+                    .and_then(Value::as_str)
+                    .zip(value.get("previous_started_at").and_then(Value::as_str))
+                    .is_some_and(|(after, before)| !after.is_empty() && after != before)
+        }
+    }
+}
+
 #[derive(Debug)]
 enum Outcome {
     Succeeded(Value, Value),
@@ -85,6 +104,62 @@ impl Outcome {
 }
 
 impl Executor {
+    async fn execute_control(
+        &self,
+        row: &ActionPlanRow,
+        scope: &Scope,
+        installation: &str,
+        verb: ContainerVerb,
+    ) -> Outcome {
+        let id = match uuid::Uuid::parse_str(installation) {
+            Ok(id) => id,
+            Err(_) => return Outcome::Failed(json!({ "error": "invalid Control installation" })),
+        };
+        let target = match self.pg.control_installation(scope, id).await {
+            Ok(Some(target)) if target.revoked_at.is_none() && target.confirmed_at.is_some() => target,
+            Ok(_) => return Outcome::Failed(json!({ "error": "Control installation is unavailable or unconfirmed" })),
+            Err(error) => return Outcome::Failed(json!({ "error": format!("Control lookup failed: {error}") })),
+        };
+        let Some(container_id) = target.container_id else {
+            return Outcome::Failed(json!({ "error": "Control container is unconfirmed" }));
+        };
+        match self.pg.create_control_command(row.id, id, &container_id, verb.as_str()).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return Outcome::Failed(json!({ "error": "command not dispatched", "outcome_unknown": true })),
+            Err(error) => {
+                return Outcome::Failed(
+                    json!({ "error": format!("command dispatch failed: {error}"), "outcome_unknown": true }),
+                );
+            }
+        }
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(125);
+        loop {
+            match self.pg.control_command_for_plan(row.id).await {
+                Ok(Some(command)) if command.state == "completed" => {
+                    let result = command.result.unwrap_or(Value::Null);
+                    let passed = control_result_ok(verb, &result);
+                    let verification =
+                        json!({ "passed": passed, "source": "docker_readback", "command_id": command.id });
+                    return if passed {
+                        Outcome::Succeeded(result, verification)
+                    } else {
+                        Outcome::VerificationFailed(result, verification)
+                    };
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    return Outcome::Failed(
+                        json!({ "error": format!("command result unavailable: {error}"), "outcome_unknown": true }),
+                    );
+                }
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return Outcome::Failed(json!({ "error": "Control did not return a result", "outcome_unknown": true }));
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    }
+
     async fn policy_allows(&self, scope: &Scope, action: &Action) -> anyhow::Result<Result<(), Value>> {
         let env = self.pg.environment(scope.project_id.as_str(), scope.environment_id.as_str()).await?;
         let is_demo = env.as_ref().is_some_and(|e| e.is_demo && e.tenant_id == scope.tenant_id.as_str());
@@ -137,6 +212,9 @@ impl Executor {
             Err(e) => return Outcome::Failed(json!({ "error": format!("policy check failed: {e}") })),
         }
         tracing::info!(plan = %row.id, action = action.action_type(), target = action.target(), "executing");
+        if let Action::ContainerControl { installation, verb } = &action {
+            return self.execute_control(row, &scope, installation, *verb).await;
+        }
         let result = match self.demo.run(&action).await {
             Ok(r) => r,
             Err(e) => return Outcome::Failed(json!({ "error": format!("{e:#}") })),
@@ -244,6 +322,25 @@ async fn main() -> anyhow::Result<()> {
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+
+    #[test]
+    fn control_verification_uses_docker_readback_not_telemetry() {
+        assert!(control_result_ok(ContainerVerb::Stop, &json!({ "succeeded": true, "observed_state": "stopped" })));
+        assert!(!control_result_ok(ContainerVerb::Stop, &json!({ "succeeded": true, "observed_state": "running" })));
+        assert!(control_result_ok(ContainerVerb::Start, &json!({ "succeeded": true, "observed_state": "running" })));
+        assert!(control_result_ok(
+            ContainerVerb::Restart,
+            &json!({ "succeeded": true, "observed_state": "running", "previous_started_at": "a", "started_at": "b" })
+        ));
+        assert!(!control_result_ok(
+            ContainerVerb::Restart,
+            &json!({ "succeeded": true, "observed_state": "running", "previous_started_at": "a", "started_at": "a" })
+        ));
+        assert!(!control_result_ok(
+            ContainerVerb::Restart,
+            &json!({ "succeeded": false, "observed_state": "running", "previous_started_at": "a", "started_at": "b" })
+        ));
+    }
 
     fn row(action_type: &str, target: &str, params: Value) -> ActionPlanRow {
         let t = time::OffsetDateTime::UNIX_EPOCH;

@@ -185,6 +185,13 @@ async fn policy(
     approved_by_proposer: bool,
     exclude_self: bool,
 ) -> ApiResult<PolicyDecision> {
+    if let Action::ContainerControl { installation, .. } = action {
+        let id = uuid::Uuid::parse_str(installation).map_err(|_| ApiError::NotFound)?;
+        let row = state.pg.control_installation(scope, id).await?.ok_or(ApiError::NotFound)?;
+        if row.revoked_at.is_some() || row.confirmed_at.is_none() || row.container_id.is_none() {
+            return Err(ApiError::NotFound);
+        }
+    }
     let open = state.pg.open_action_plans(scope, action.target()).await?;
     let input = PolicyInput { environment_is_demo: is_demo, open_plans_for_target: open, approved_by_proposer };
     Ok(actions::evaluate(action, &input, exclude_self))
@@ -267,12 +274,30 @@ pub async fn catalog(
     user: CurrentUser,
     Path((project_id, environment_id)): Path<(String, String)>,
 ) -> ApiResult<Json<ActionCatalogResponse>> {
-    let Authorized { is_demo, actor, .. } =
+    let Authorized { scope, is_demo, actor } =
         authorize_as(&state, &user, &project_id, &environment_id, Permission::ActionsView).await?;
+    let mut entries: Vec<_> = actions::CATALOG.iter().map(|s| spec_dto(s, is_demo)).collect();
+    for installation in state.pg.list_control_installations(&scope).await? {
+        if installation.revoked_at.is_some() || installation.confirmed_at.is_none() {
+            continue;
+        }
+        let Some(container_id) = installation.container_id.as_ref() else {
+            continue;
+        };
+        let container_name = installation.container_name.as_deref().unwrap_or(container_id);
+        for entry in entries.iter_mut().filter(|e| e.action_type.starts_with("container.")) {
+            entry.targets.push(installation.id.to_string());
+            entry.subjects.push(ActionSubjectDto {
+                target: installation.id.to_string(),
+                service: container_name.to_owned(),
+                container: Some(container_name.to_owned()),
+            });
+        }
+    }
     Ok(Json(ActionCatalogResponse {
         environment_is_demo: is_demo,
         can_run: actor.has(Permission::ActionsApprove),
-        actions: actions::CATALOG.iter().map(|s| spec_dto(s, is_demo)).collect(),
+        actions: entries,
     }))
 }
 
@@ -695,7 +720,7 @@ mod tests {
                 s.action_type
             );
             assert!(d.allowed_here);
-            assert!(!spec_dto(s, false).allowed_here, "demo-only");
+            assert_eq!(spec_dto(s, false).allowed_here, s.action_type.starts_with("container."));
         }
         let restart = spec_dto(actions::spec("demo.container.restart").unwrap(), true);
         let c2 = restart.subjects.iter().find(|x| x.target == "catalog-2").unwrap();

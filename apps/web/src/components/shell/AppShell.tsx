@@ -9,7 +9,7 @@ import { usePersisted, writePersisted } from "@/lib/persisted";
 import { useLogout, useSession } from "@/lib/session";
 import { workspaceTarget } from "./scope-switcher";
 
-export type NavId = "overview" | "incidents" | "changes" | "integration" | "actions" | "tokens" | "settings";
+export type NavId = "overview" | "incidents" | "changes" | "integration" | "actions" | "control" | "tokens" | "settings";
 
 interface Props {
   projectId: string;
@@ -46,6 +46,7 @@ export function AppShell({ projectId, environmentId, active, status, children }:
     { id: "changes", href: `${base}/changes`, label: "Change Replay", icon: "repeat", show: true },
     { id: "integration", href: `${base}/integration`, label: "Integration", icon: "file", show: true },
     { id: "actions", href: `${base}/actions`, label: "Actions", icon: "bolt", show: can(project, "actions.view") },
+    { id: "control", href: `${base}/control`, label: "Karbird Control", icon: "bolt", show: can(project, "project.manage") },
     { id: "tokens", href: `${base}/tokens`, label: "Tokens", icon: "key", show: can(project, "tokens.view") },
     { id: "settings", href: `${base}/settings`, label: "Members & roles", icon: "users", show: can(project, "members.view") },
   ];

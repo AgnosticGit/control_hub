@@ -380,6 +380,13 @@ fn router(state: state::AppState) -> Router {
         .route(&format!("{scoped}/actions/{{plan_id}}/approve"), post(routes::actions::approve))
         .route(&format!("{scoped}/actions/{{plan_id}}/reject"), post(routes::actions::reject))
         .route(&format!("{scoped}/actions/{{plan_id}}/cancel"), post(routes::actions::cancel))
+        .route(&format!("{scoped}/control/installations"), get(routes::control::list).post(routes::control::create))
+        .route(&format!("{scoped}/control/installations/{{id}}/confirm"), post(routes::control::confirm))
+        .route(&format!("{scoped}/control/installations/{{id}}/revoke"), post(routes::control::revoke))
+        .route("/api/v1/control/enroll", post(routes::control::enroll))
+        .route("/api/v1/control/report", post(routes::control::report))
+        .route("/api/v1/control/commands", get(routes::control::poll))
+        .route("/api/v1/control/commands/{command_id}/complete", post(routes::control::complete))
         .route(
             &format!("{scoped}/incident-rules"),
             get(routes::incidents::list_rules).post(routes::incidents::create_rule),
@@ -1003,6 +1010,10 @@ mod tests {
         let spec: Value = serde_json::from_str(&crate::openapi::spec_json().unwrap()).unwrap();
         let tpl = "/api/v1/projects/{project_id}/environments/{environment_id}";
         let mut expected: Vec<(String, &str)> = vec![
+            ("/api/v1/control/enroll".into(), "post"),
+            ("/api/v1/control/report".into(), "post"),
+            ("/api/v1/control/commands".into(), "get"),
+            ("/api/v1/control/commands/{command_id}/complete".into(), "post"),
             ("/api/v1/health".into(), "get"),
             ("/api/v1/ready".into(), "get"),
             ("/api/v1/session/login".into(), "post"),
@@ -1093,6 +1104,10 @@ mod tests {
             ("/actions/{plan_id}/approve", "post"),
             ("/actions/{plan_id}/reject", "post"),
             ("/actions/{plan_id}/cancel", "post"),
+            ("/control/installations", "get"),
+            ("/control/installations", "post"),
+            ("/control/installations/{id}/confirm", "post"),
+            ("/control/installations/{id}/revoke", "post"),
             ("/incident-rules", "get"),
             ("/incident-rules", "post"),
             ("/incident-rules/{rule_id}", "patch"),

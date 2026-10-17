@@ -25,3 +25,4 @@
 | [0021](0021-organisations-and-external-auth.md) | Organisations, explicit project assignments, Resend invitations and Google OIDC | Accepted |
 | [0022](0022-persisted-server-topology.md) | Persisted backend graphs, shared geometry, fenced refresh and atomic client updates | Accepted |
 | [0023](0023-rdkafka-and-live-fanout.md) | `rdkafka` consumer groups and Kafka-backed live WebSocket fan-out | Accepted |
+| [0026](0026-karbird-control.md) | Outbound one-container Docker Control with typed audited actions | Accepted |

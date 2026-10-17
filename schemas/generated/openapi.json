@@ -1758,6 +1758,173 @@
         }
       }
     },
+    "/api/v1/control/commands": {
+      "get": {
+        "tags": [
+          "control"
+        ],
+        "operationId": "control_poll",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CommandDto"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/control/commands/{command_id}/complete": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "operationId": "control_complete",
+        "parameters": [
+          {
+            "name": "command_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/control/enroll": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "operationId": "control_enroll",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrollRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/control/report": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "operationId": "control_report",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
@@ -3045,6 +3212,235 @@
             }
           },
           "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/control/installations": {
+      "get": {
+        "tags": [
+          "control"
+        ],
+        "operationId": "control_list",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InstallationDto"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "operationId": "control_create",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInstallationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedInstallation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/control/installations/{id}/confirm": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "operationId": "control_confirm",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmContainerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/environments/{environment_id}/control/installations/{id}/revoke": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "operationId": "control_revoke",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallationDto"
+                }
+              }
+            }
+          },
+          "403": {
             "description": "",
             "content": {
               "application/json": {
@@ -6472,6 +6868,62 @@
           }
         }
       },
+      "CommandDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "verb",
+          "container_id",
+          "expires_at"
+        ],
+        "properties": {
+          "container_id": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "verb": {
+            "type": "string"
+          }
+        }
+      },
+      "CompleteRequest": {
+        "type": "object",
+        "required": [
+          "succeeded",
+          "observed_state"
+        ],
+        "properties": {
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observed_state": {
+            "type": "string"
+          },
+          "previous_started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "succeeded": {
+            "type": "boolean"
+          }
+        }
+      },
       "Completeness": {
         "type": "object",
         "required": [
@@ -6510,6 +6962,17 @@
               "null"
             ],
             "description": "Data ingested before this time (nanoseconds) has been processed into storage.\n`null` when the processor has not reported progress yet."
+          }
+        }
+      },
+      "ConfirmContainerRequest": {
+        "type": "object",
+        "required": [
+          "container_id"
+        ],
+        "properties": {
+          "container_id": {
+            "type": "string"
           }
         }
       },
@@ -6708,6 +7171,17 @@
           }
         }
       },
+      "CreateInstallationRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "CreateInviteRequest": {
         "type": "object",
         "required": [
@@ -6808,6 +7282,22 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "CreatedInstallation": {
+        "type": "object",
+        "required": [
+          "installation",
+          "enrollment_code"
+        ],
+        "properties": {
+          "enrollment_code": {
+            "type": "string",
+            "description": "One-time code. Store in a local secret file; it expires in 15 minutes."
+          },
+          "installation": {
+            "$ref": "#/components/schemas/InstallationDto"
           }
         }
       },
@@ -7072,6 +7562,33 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "EnrollRequest": {
+        "type": "object",
+        "required": [
+          "enrollment_code"
+        ],
+        "properties": {
+          "enrollment_code": {
+            "type": "string"
+          }
+        }
+      },
+      "EnrollResponse": {
+        "type": "object",
+        "required": [
+          "installation_id",
+          "credential"
+        ],
+        "properties": {
+          "credential": {
+            "type": "string",
+            "description": "Shown only on enrollment and kept in a local secret file."
+          },
+          "installation_id": {
+            "type": "string"
           }
         }
       },
@@ -7893,6 +8410,69 @@
             "type": "string",
             "description": "Machine metrics are read from `[at - window, at]`.",
             "default": 0
+          }
+        }
+      },
+      "InstallationDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "confirmed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "container_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "container_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "last_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "reported_container_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reported_container_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reported_state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -8803,6 +9383,25 @@
           "publishes_to",
           "consumes_from"
         ]
+      },
+      "ReportRequest": {
+        "type": "object",
+        "required": [
+          "container_id",
+          "container_name",
+          "state"
+        ],
+        "properties": {
+          "container_id": {
+            "type": "string"
+          },
+          "container_name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        }
       },
       "ResourceLocation": {
         "type": "string",
@@ -10221,6 +10820,9 @@
     },
     {
       "name": "actions"
+    },
+    {
+      "name": "control"
     },
     {
       "name": "incidents"

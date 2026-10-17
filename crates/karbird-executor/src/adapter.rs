@@ -129,6 +129,7 @@ impl Demo {
             Action::DemoReplicasScale { service, replicas } => self.scale(service, replicas).await,
             Action::DemoFeatureFlagSet { flag, enabled } => self.set_flag(flag, enabled).await,
             Action::DemoReleaseRollback { service } => self.rollback(service).await,
+            Action::ContainerControl { .. } => anyhow::bail!("remote Control actions cannot use the demo adapter"),
         }
     }
 

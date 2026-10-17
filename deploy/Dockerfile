@@ -17,9 +17,9 @@ RUN apt-get update \
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target,id=karbird-release-target \
     cargo build --release --locked \
-      -p karbird-ingest -p karbird-processor -p karbird-api -p karbird-executor -p karbird-archiver \
+      -p karbird-ingest -p karbird-processor -p karbird-api -p karbird-executor -p karbird-archiver -p karbird-control \
  && mkdir -p /out \
- && for b in ingest processor api executor archiver; do cp "target/release/karbird-$b" /out/; done
+ && for b in ingest processor api executor archiver control; do cp "target/release/karbird-$b" /out/; done
 
 # ---------------------------------------------------------------- WASM engine
 FROM ${NODE_IMAGE} AS node
@@ -89,3 +89,8 @@ FROM runtime AS archiver
 COPY --from=rust-build /out/karbird-archiver /usr/local/bin/
 ENTRYPOINT ["karbird-archiver"]
 CMD ["run"]
+
+FROM runtime AS control
+COPY --from=rust-build /out/karbird-control /usr/local/bin/
+USER root
+ENTRYPOINT ["karbird-control"]

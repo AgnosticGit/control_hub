@@ -1,6 +1,7 @@
 pub mod account;
 pub mod actions;
 pub mod admin;
+pub mod control;
 pub mod edge_traffic;
 pub mod incidents;
 pub mod infra_timeline;

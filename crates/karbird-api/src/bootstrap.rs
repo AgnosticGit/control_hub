@@ -207,6 +207,7 @@ async fn prepare_storage(retention: &[(Table, u32)], allow_shrink: bool) -> anyh
             "SELECT, INSERT ON audit_log",
             "SELECT, INSERT, UPDATE ON ingest_tokens, api_tokens",
             "SELECT, INSERT, UPDATE ON action_plans",
+            "SELECT, INSERT, UPDATE ON control_installations, control_commands",
             "SELECT, INSERT, UPDATE ON incident_rules, incidents",
             // Reads archived logs (ADR-0015); only the archiver writes the catalog.
             "SELECT ON archive_segments, archive_dictionaries",
@@ -227,7 +228,11 @@ async fn prepare_storage(retention: &[(Table, u32)], allow_shrink: bool) -> anyh
     pg.ensure_service_role(
         "karbird_executor",
         &env_required("CH_PG_EXECUTOR_PASSWORD")?,
-        &["SELECT, UPDATE ON action_plans", "SELECT ON environments, users", "INSERT ON audit_log"],
+        &[
+            "SELECT, UPDATE ON action_plans",
+            "SELECT ON environments, users, control_installations, control_commands",
+            "INSERT ON control_commands, audit_log",
+        ],
     )
     .await?;
     pg.ensure_service_role("karbird_ingest", &env_required("CH_PG_INGEST_PASSWORD")?, &["SELECT ON ingest_tokens"])

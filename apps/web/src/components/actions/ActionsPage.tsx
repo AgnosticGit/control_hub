@@ -39,7 +39,7 @@ function ProposeForm({
   onPropose: (b: Schemas["ProposeActionRequest"]) => void;
   pending: boolean;
 }) {
-  const allowed = specs.filter((s) => s.allowed_here);
+  const allowed = specs.filter((s) => s.allowed_here && s.targets.length > 0);
   const [type, setType] = useState(allowed[0]?.action_type ?? "");
   const spec = allowed.find((s) => s.action_type === type);
   const [target, setTarget] = useState(spec?.targets[0] ?? "");
@@ -243,6 +243,7 @@ export function ActionsPage({ projectId, environmentId }: { projectId: string; e
         <div className="mx-auto max-w-7xl space-y-5 p-6">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Actions</h1>
+            <Link href={`/app/${encodeURIComponent(projectId)}/${encodeURIComponent(environmentId)}/control`} className="text-sm text-accent hover:underline">Karbird Control setup →</Link>
             <p className="mt-1 max-w-3xl text-sm text-muted">
               Controlled changes to the observed system. Only allowlisted actions exist; each plan is checked by policy, runs
               in the separate executor once someone allowed to run actions starts or approves it, is verified from telemetry

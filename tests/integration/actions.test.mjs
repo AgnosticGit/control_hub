@@ -69,11 +69,14 @@ async function waitFinal(id) {
   }, { timeoutMs: 120_000, intervalMs: 2000 });
 }
 
-test('catalog is visible to viewers and reflects the demo-only policy', async () => {
+test('catalog is visible to viewers and separates demo actions from Control actions', async () => {
   const demo = await viewer.json(`${DEMO}/actions/catalog`);
   assert.equal(demo.status, 200);
   assert.equal(demo.body.environment_is_demo, true);
   assert.deepEqual(demo.body.actions.map((a) => a.action_type).sort(), [
+    'container.restart',
+    'container.start',
+    'container.stop',
     'demo.container.restart',
     'demo.faults.clear',
     'demo.faults.inject',
@@ -105,7 +108,7 @@ test('catalog is visible to viewers and reflects the demo-only policy', async ()
   const prod = await iso.json(`${ISO_PROD}/actions/catalog`);
   assert.equal(prod.status, 200);
   assert.equal(prod.body.environment_is_demo, false);
-  assert.ok(prod.body.actions.every((a) => !a.allowed_here));
+  assert.ok(prod.body.actions.every((a) => a.allowed_here === a.action_type.startsWith('container.')));
   assert.equal((await iso.json(`${DEMO}/actions/catalog`)).status, 404, 'other tenant');
 });
 

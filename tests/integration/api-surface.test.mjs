@@ -15,6 +15,8 @@ const PUBLIC = new Set(['/api/v1/health', '/api/v1/ready', '/api/v1/session/logi
 // OAuth starts without an existing account session and validates its own one-time state.
 PUBLIC.add('/api/v1/auth/google/start');
 PUBLIC.add('/api/v1/auth/google/callback');
+// Enrollment authenticates with its one-time code in the request body.
+PUBLIC.add('/api/v1/control/enroll');
 // The live route is a WebSocket upgrade; its rules are covered in e2e-flow.test.mjs.
 const WEBSOCKET = /\/live$/;
 const FAKE_UUID = '00000000-0000-4000-8000-000000000000';
@@ -26,6 +28,8 @@ function concrete(path, project = 'demo', env = 'local-demo') {
     .replace('{project_id}', project)
     .replace('{environment_id}', env)
     .replace('{plan_id}', FAKE_UUID)
+    .replace('{command_id}', FAKE_UUID)
+    .replace('{id}', FAKE_UUID)
     .replace('{token_id}', FAKE_UUID)
     .replace('{invite_id}', FAKE_UUID)
     .replace('{session_id}', FAKE_UUID)
@@ -41,7 +45,7 @@ const operations = Object.entries(spec.paths).flatMap(([path, item]) =>
     .map((method) => ({ path, method: method.toUpperCase() })),
 );
 const scopedGets = operations.filter((o) => o.method === 'GET' && o.path.includes('{project_id}') && !WEBSOCKET.test(o.path));
-const mutations = operations.filter((o) => o.method !== 'GET' && !PUBLIC.has(o.path));
+const mutations = operations.filter((o) => o.method !== 'GET' && !PUBLIC.has(o.path) && !o.path.startsWith('/api/v1/control/'));
 
 let admin;
 let iso;
@@ -99,7 +103,10 @@ test('every non-public route requires authentication (401 with a typed error bod
     const res = await fetch(`${API}${concrete(path)}`, {
       method,
       headers: method === 'GET' ? {} : { 'content-type': 'application/json', origin: ORIGIN },
-      body: method === 'GET' ? undefined : '{}',
+      body: method === 'GET' ? undefined : path.endsWith('/control/commands/{command_id}/complete')
+        ? JSON.stringify({ succeeded: true, observed_state: 'running' })
+        : path === '/api/v1/control/report'
+          ? JSON.stringify({ container_id: 'a'.repeat(64), container_name: 'probe', state: 'running' }) : '{}',
     });
     assert.equal(res.status, 401, `${method} ${path}`);
     const body = await res.json();

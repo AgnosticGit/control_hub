@@ -72,6 +72,14 @@ use crate::routes;
         routes::actions::approve,
         routes::actions::reject,
         routes::actions::cancel,
+        routes::control::list,
+        routes::control::create,
+        routes::control::confirm,
+        routes::control::revoke,
+        routes::control::enroll,
+        routes::control::report,
+        routes::control::poll,
+        routes::control::complete,
         routes::incidents::list_rules,
         routes::incidents::create_rule,
         routes::incidents::update_rule,
@@ -104,7 +112,7 @@ use crate::routes;
     ),
     tags(
         (name = "session"), (name = "account"), (name = "projects"), (name = "telemetry"),
-        (name = "timeline"), (name = "audit"), (name = "tokens"), (name = "actions"), (name = "incidents"), (name = "members"), (name = "organizations"), (name = "health"),
+        (name = "timeline"), (name = "audit"), (name = "tokens"), (name = "actions"), (name = "control"), (name = "incidents"), (name = "members"), (name = "organizations"), (name = "health"),
         (name = "admin", description = "karbird administration: every project, account and administrator (browser sessions only)")
     ),
     modifiers(&BearerAuth)

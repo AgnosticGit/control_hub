@@ -198,6 +198,26 @@ pub enum Action {
     DemoFeatureFlagSet { flag: DemoFlag, enabled: bool },
     /// Return a demo service to the release it ran before the current one.
     DemoReleaseRollback { service: DemoReleaseService },
+    /// One fixed verb on a confirmed, scoped Karbird Control installation.
+    ContainerControl { installation: String, verb: ContainerVerb },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContainerVerb {
+    Start,
+    Stop,
+    Restart,
+}
+
+impl ContainerVerb {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Stop => "stop",
+            Self::Restart => "restart",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -225,6 +245,36 @@ pub struct ActionSpec {
 }
 
 pub const CATALOG: &[ActionSpec] = &[
+    ActionSpec {
+        action_type: "container.start",
+        title: "Start container",
+        description: "Starts the confirmed Docker container on its connected host.",
+        risk: Risk::Medium,
+        demo_only: false,
+        targets: &[],
+        params: &[],
+        verification: "Docker reports the exact container running and healthy if a healthcheck exists.",
+    },
+    ActionSpec {
+        action_type: "container.stop",
+        title: "Stop container",
+        description: "Stops the confirmed Docker container. Its service will be unavailable.",
+        risk: Risk::Medium,
+        demo_only: false,
+        targets: &[],
+        params: &[],
+        verification: "Docker reports the exact container stopped; telemetry is not required.",
+    },
+    ActionSpec {
+        action_type: "container.restart",
+        title: "Restart container",
+        description: "Restarts the confirmed Docker container on its connected host.",
+        risk: Risk::Medium,
+        demo_only: false,
+        targets: &[],
+        params: &[],
+        verification: "Docker reports a new start time, running and healthy if a healthcheck exists.",
+    },
     ActionSpec {
         action_type: "demo.faults.clear",
         title: "Clear injected faults",
@@ -372,10 +422,13 @@ impl Action {
             Action::DemoReplicasScale { .. } => "demo.replicas.scale",
             Action::DemoFeatureFlagSet { .. } => "demo.feature_flag.set",
             Action::DemoReleaseRollback { .. } => "demo.release.rollback",
+            Action::ContainerControl { verb: ContainerVerb::Start, .. } => "container.start",
+            Action::ContainerControl { verb: ContainerVerb::Stop, .. } => "container.stop",
+            Action::ContainerControl { verb: ContainerVerb::Restart, .. } => "container.restart",
         }
     }
 
-    pub fn target(&self) -> &'static str {
+    pub fn target(&self) -> &str {
         match self {
             Action::DemoFaultsClear { service } | Action::DemoFaultsInject { service, .. } => service.as_str(),
             Action::DemoRestartDatabase => "demo-postgres",
@@ -383,6 +436,7 @@ impl Action {
             Action::DemoReplicasScale { service, .. } => service.as_str(),
             Action::DemoFeatureFlagSet { flag, .. } => flag.as_str(),
             Action::DemoReleaseRollback { service } => service.as_str(),
+            Action::ContainerControl { installation, .. } => installation,
         }
     }
 
@@ -402,6 +456,7 @@ impl Action {
             Action::DemoFaultsClear { .. }
             | Action::DemoRestartDatabase
             | Action::DemoContainerRestart { .. }
+            | Action::ContainerControl { .. }
             | Action::DemoReleaseRollback { .. } => serde_json::json!({}),
         }
     }
@@ -429,6 +484,7 @@ impl Action {
             }
             Action::DemoFeatureFlagSet { flag, .. } => base(flag.service().as_str(), Some(0.05)),
             Action::DemoReleaseRollback { service } => base(service.as_str(), Some(0.05)),
+            Action::ContainerControl { .. } => Verification { observe_secs: 0, min_requests: 0, ..base("", None) },
         }
     }
 
@@ -546,7 +602,10 @@ pub fn validate(action_type: &str, target: &str, params: &Value) -> Result<Actio
         return Err(vec![format!("unknown action type {action_type:?}")]);
     };
     let mut errors = Vec::new();
-    if !spec.targets.contains(&target) {
+    let dynamic_control = action_type.starts_with("container.");
+    if dynamic_control && uuid::Uuid::parse_str(target).is_err() {
+        errors.push("target must be a Control installation UUID".into());
+    } else if !dynamic_control && !spec.targets.contains(&target) {
         errors.push(format!("target must be one of {}", spec.targets.join(", ")));
     }
     let obj = match params {
@@ -607,6 +666,14 @@ pub fn validate(action_type: &str, target: &str, params: &Value) -> Result<Actio
         }
         "demo.release.rollback" => {
             DemoReleaseService::parse(target).map(|service| Action::DemoReleaseRollback { service })
+        }
+        "container.start" | "container.stop" | "container.restart" => {
+            let verb = match action_type {
+                "container.start" => ContainerVerb::Start,
+                "container.stop" => ContainerVerb::Stop,
+                _ => ContainerVerb::Restart,
+            };
+            uuid::Uuid::parse_str(target).ok().map(|id| Action::ContainerControl { installation: id.to_string(), verb })
         }
         _ => None,
     };
@@ -793,7 +860,8 @@ mod tests {
         }
         let mut targets: Vec<_> =
             CATALOG.iter().flat_map(|s| s.targets.iter().map(move |t| (s.action_type, *t))).collect();
-        let covered: Vec<_> = all_actions().iter().map(|a| (a.action_type(), a.target())).collect();
+        let actions = all_actions();
+        let covered: Vec<_> = actions.iter().map(|a| (a.action_type(), a.target())).collect();
         targets.retain(|t| !covered.contains(t));
         assert!(targets.is_empty(), "catalog targets without a typed action: {targets:?}");
     }
@@ -1035,8 +1103,12 @@ mod tests {
         types.dedup();
         assert_eq!(types.len(), CATALOG.len(), "action types are unique");
         for s in CATALOG {
-            assert!(s.demo_only, "{} only demo actions exist", s.action_type);
-            assert!(!s.targets.is_empty() && !s.verification.is_empty());
+            if s.action_type.starts_with("container.") {
+                assert!(!s.demo_only && s.targets.is_empty(), "Control targets come from confirmed installations");
+            } else {
+                assert!(s.demo_only && !s.targets.is_empty(), "{} has fixed demo targets", s.action_type);
+            }
+            assert!(!s.verification.is_empty());
             assert_eq!(spec(s.action_type).map(|x| x.action_type), Some(s.action_type));
             for p in s.params {
                 assert!(p.min.is_finite() && p.max.is_finite() && p.min <= p.max, "{}", p.name);
@@ -1045,6 +1117,23 @@ mod tests {
         assert!(spec("shell.exec").is_none());
         assert!(spec("DEMO.FAULTS.CLEAR").is_none());
         assert!(spec("").is_none());
+    }
+
+    #[test]
+    fn container_actions_require_a_uuid_and_no_extra_parameters() {
+        let id = "00000000-0000-0000-0000-000000000001";
+        for (kind, verb) in [
+            ("container.start", ContainerVerb::Start),
+            ("container.stop", ContainerVerb::Stop),
+            ("container.restart", ContainerVerb::Restart),
+        ] {
+            assert_eq!(
+                validate(kind, id, &json!({})).unwrap(),
+                Action::ContainerControl { installation: id.into(), verb }
+            );
+            assert!(validate(kind, "orders", &json!({})).is_err());
+            assert!(validate(kind, id, &json!({ "command": "rm -rf /" })).is_err());
+        }
     }
 
     #[test]

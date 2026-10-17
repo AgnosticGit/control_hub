@@ -1,0 +1,24 @@
+name: karbird-control
+
+services:
+  control:
+    image: ${KARBIRD_CONTROL_IMAGE:?Set a version-pinned Karbird Control image}
+    restart: unless-stopped
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      KARBIRD_CONTROL_ORIGIN: ${KARBIRD_CONTROL_ORIGIN:?HTTPS origin of your Karbird instance}
+      KARBIRD_CONTROL_CONTAINER_ID: ${KARBIRD_CONTROL_CONTAINER_ID:?Full 64-character Docker ID}
+      KARBIRD_CONTROL_STATE_DIR: /var/lib/karbird-control
+      KARBIRD_CONTROL_ENROLLMENT_FILE: /run/secrets/enrollment
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - control-state:/var/lib/karbird-control
+      - ./secrets/enrollment:/run/secrets/enrollment:ro
+    mem_limit: 128m
+    cpus: 0.2
+
+volumes:
+  control-state:

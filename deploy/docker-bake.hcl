@@ -14,7 +14,7 @@ variable "SITE_URL" {
 }
 
 group "default" {
-  targets = ["ingest", "processor", "api", "executor", "archiver", "web"]
+  targets = ["ingest", "processor", "api", "executor", "archiver", "control", "web"]
 }
 
 target "_common" {
@@ -51,6 +51,12 @@ target "archiver" {
   inherits = ["_common"]
   target   = "archiver"
   tags     = ["${REGISTRY}/karbird-archiver:${VERSION}"]
+}
+
+target "control" {
+  inherits = ["_common"]
+  target   = "control"
+  tags     = ["${REGISTRY}/karbird-control:${VERSION}"]
 }
 
 target "web" {

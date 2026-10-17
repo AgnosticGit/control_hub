@@ -1,0 +1,11 @@
+# Install Karbird Control for one Docker container
+
+Karbird Control is separate from Karbird Collector. It needs Docker socket access and can start, stop, and restart **one confirmed container ID**. The image runs as root so it can access the standard Docker socket and persist its credential in the state volume. Docker socket access grants broad host privileges; the one-container allowlist limits intended behavior, not the impact of a compromised process. Install only on a trusted Docker host.
+
+1. In Karbird, open your environment's **Karbird Control** page and create an installation. Copy its one-time enrollment code into `deploy/control/secrets/enrollment` on the Docker host using a local editor. Do not put it in a shell command, `.env`, or Compose file. Restrict the file to the installing user. The code expires after 15 minutes.
+2. Run `docker inspect --format '{{.Id}}' YOUR_CONTAINER` and copy the full 64-character ID. Review that it names the intended container. A recreated container has a new ID and needs a new installation.
+3. Create `deploy/control/.env` on the host with `KARBIRD_CONTROL_ORIGIN` (your HTTPS Karbird origin), `KARBIRD_CONTROL_CONTAINER_ID`, and `KARBIRD_CONTROL_IMAGE` set to a published, version-pinned image such as `registry.example/karbird-control:0.1.0`. Never use `:latest`.
+4. From `deploy/control`, run `docker compose up -d`. Control connects outbound to Karbird; no inbound Docker API port is opened. After enrollment, erase the code from the local secret file but leave the empty file in place so future Compose starts can mount it. Keep the `control-state` volume: it contains the installation credential and command journal.
+5. Back in Karbird, compare the reported Docker ID with `docker inspect`, type it into the confirmation field and select **Allow control of this container**. The Actions page then offers Start, Stop and Restart to authorized roles.
+
+To revoke access, use **Revoke installation** in Karbird and stop/remove the Control Compose service. Revocation invalidates its credential. An interrupted restart may have an unknown outcome; inspect the container before submitting another plan. Reinstalling from a lost state volume requires a new enrollment code and owner confirmation. Updating the image retains the state volume; pin a new version before `docker compose up -d`.

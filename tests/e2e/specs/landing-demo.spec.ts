@@ -54,8 +54,12 @@ test.describe("landing page demo", () => {
     const slider = demo.getByRole("slider", { name: "Replay time" });
     const map = demo.getByRole("img", { name: /Service map at/ });
 
-    await slider.fill("570");
-    await expect(map).toHaveAttribute("aria-label", /Degraded: orders/);
+    // The slider is server-rendered; wait until hydration attaches its change handler.
+    await expect.poll(async () => {
+      await slider.fill("569");
+      await slider.fill("570");
+      return map.getAttribute("aria-label");
+    }).toMatch(/Degraded: orders/);
     const first = await demo.locator("svg circle").evaluateAll((cs) => cs.map((c) => `${c.getAttribute("cx")},${c.getAttribute("cy")}`).join(";"));
 
     await slider.fill("900");

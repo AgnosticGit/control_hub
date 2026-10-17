@@ -372,6 +372,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/control/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["control_poll"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/control/commands/{command_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["control_complete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/control/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["control_enroll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/control/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["control_report"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -670,6 +734,54 @@ export interface paths {
         get: operations["audit"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/control/installations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["control_list"];
+        put?: never;
+        post: operations["control_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/control/installations/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["control_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/environments/{environment_id}/control/installations/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["control_revoke"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1387,6 +1499,19 @@ export interface components {
             reason?: string | null;
             target?: string | null;
         };
+        CommandDto: {
+            container_id: string;
+            expires_at: string;
+            id: string;
+            verb: string;
+        };
+        CompleteRequest: {
+            detail?: string | null;
+            observed_state: string;
+            previous_started_at?: string | null;
+            started_at?: string | null;
+            succeeded: boolean;
+        };
         Completeness: {
             notes: string[];
             processing_caught_up: boolean;
@@ -1404,6 +1529,9 @@ export interface components {
              *     `null` when the processor has not reported progress yet.
              */
             watermark_ns?: string | null;
+        };
+        ConfirmContainerRequest: {
+            container_id: string;
         };
         ContainerDto: {
             /**
@@ -1491,6 +1619,9 @@ export interface components {
             /** @description Capabilities that are explicitly NOT available, so gaps are visible. */
             unsupported: string[];
         };
+        CreateInstallationRequest: {
+            name: string;
+        };
         CreateInviteRequest: {
             /**
              * Format: int32
@@ -1524,6 +1655,11 @@ export interface components {
             expires_in_days?: number | null;
             kind: components["schemas"]["TokenKindDto"];
             name: string;
+        };
+        CreatedInstallation: {
+            /** @description One-time code. Store in a local secret file; it expires in 15 minutes. */
+            enrollment_code: string;
+            installation: components["schemas"]["InstallationDto"];
         };
         CreatedInvite: {
             invite: components["schemas"]["InviteDto"];
@@ -1602,6 +1738,14 @@ export interface components {
         EndedSessions: {
             /** Format: int64 */
             revoked: number;
+        };
+        EnrollRequest: {
+            enrollment_code: string;
+        };
+        EnrollResponse: {
+            /** @description Shown only on enrollment and kept in a local secret file. */
+            credential: string;
+            installation_id: string;
         };
         /** @enum {string} */
         EntityKindDto: "service" | "instance" | "repository" | "deployment" | "database" | "cache" | "queue" | "infrastructure_resource" | "external_dependency" | "external_client";
@@ -1863,6 +2007,18 @@ export interface components {
              * @default 0
              */
             window_ns: string;
+        };
+        InstallationDto: {
+            confirmed_at?: string | null;
+            container_id?: string | null;
+            container_name?: string | null;
+            id: string;
+            last_seen_at?: string | null;
+            name: string;
+            reported_container_id?: string | null;
+            reported_container_name?: string | null;
+            reported_state?: string | null;
+            revoked_at?: string | null;
         };
         InstanceDto: {
             /**
@@ -2166,6 +2322,11 @@ export interface components {
         };
         /** @enum {string} */
         RelationKindDto: "calls" | "depends_on" | "runs_on" | "deployed_from" | "owns" | "publishes_to" | "consumes_from";
+        ReportRequest: {
+            container_id: string;
+            container_name: string;
+            state: string;
+        };
         /**
          * @description Where a database or queue runs, derived from the addresses services connect to it at.
          * @enum {string}
@@ -3916,6 +4077,128 @@ export interface operations {
             };
         };
     };
+    control_poll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": null | components["schemas"]["CommandDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    control_complete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                command_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    control_enroll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrollRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    control_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     health: {
         parameters: {
             query?: never;
@@ -4790,6 +5073,136 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    control_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallationDto"][];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    control_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInstallationRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedInstallation"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    control_confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmContainerRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallationDto"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    control_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                environment_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallationDto"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
